@@ -35,6 +35,8 @@ Design decisions that aren't made yet. Each one links to where it would land in 
 
 **Leaning:** (d) + (a). Default is optimistic — assume user edits are intentional. `[locked]` for the cases where the user really wants no touching.
 
+**Connection to self-healing:** every user edit of agent-written content is itself a trigger signal (§S3 in [`SELF_HEALING.md`](./SELF_HEALING.md)). So a user "correcting" Triage's backlog edits isn't lost work — LearnAgent uses it as training data. Control and learning are the same mechanism.
+
 **Lands in:** DESIGN.md § "Agent roles" / `TriageAgent`.
 
 ---
@@ -76,21 +78,16 @@ Design decisions that aren't made yet. Each one links to where it would land in 
 
 ---
 
-## 5. Notifications — how do we talk to the user?
+## 5. Notifications — ~~how do we talk to the user?~~ **RESOLVED**
 
-**The thought:** "How do we notify/talk to/handle all of this? I have a grand vision of pushing out a fun iOS app to manage all of this, but also text works too if that's easy to setup."
+**Decision (2026-04-23):** Flutter companion app is the primary channel. See [`MOBILE.md`](./MOBILE.md).
 
-**Why it matters:** With async agents, the user won't be staring at the terminal. They need to know when a PR is ready to review, when `INTERVIEW.md` has a new question, when CI failed something the agent can't fix, when `MANUAL.md` has an action they need to take.
+Companion is multi-platform (iOS + Android + web + desktop from one Flutter codebase) and talks to GitHub directly — no devx-specific backend. Push notifications go through one tiny Cloudflare Worker that relays GitHub webhooks → FCM (which fans out to APNs on iOS). The Worker is the only server-side code we write for the whole system.
 
-**Options (from cheapest to fanciest):**
-- **(a) Desktop notifications via `osascript` (macOS) / `notify-send` (Linux):** zero external deps. Good for when user's at the machine.
-- **(b) SMS via Twilio / push via ntfy.sh:** one HTTP call per notification. Cheap to set up, works anywhere. `ntfy.sh` is free and has an iOS app.
-- **(c) GitHub notifications as the channel:** since every agent action ends in a PR, GitHub's own notifications already carry most of the signal. Supplement with `INTERVIEW.md` edits as issue mentions.
-- **(d) Custom iOS app:** the grand vision. A native app that surfaces `INTERVIEW.md` / `MANUAL.md` / PR queue, lets the user answer questions inline, shows agent status. Huge lift — not MVP.
-
-**Leaning:** (c) + (a) for MVP (GitHub already notifies you about PRs; desktop toasts handle the local case). (b) via `ntfy.sh` for away-from-desk. (d) as the eventual end state.
-
-**Lands in:** DESIGN.md § new "Notifications" section + SETUP.md § "Bootstrap" (capture preferred channel during `/devx-init`).
+Fallback channels still available:
+- Desktop: macOS menu-bar widget (same Flutter codebase, v0.7 of the app).
+- SMS / no-code: `ntfy.sh` subscription to the webhook if user doesn't want to install the app.
+- GitHub native notifications still fire for PRs regardless.
 
 ---
 
@@ -200,6 +197,52 @@ Design decisions that aren't made yet. Each one links to where it would land in 
 **Leaning:** Start with a single-project template. Add a `devx.config.yaml` section `projects:` for monorepo users where they list each subtree + its lint/test/coverage commands. Detect monorepos during `/devx-init` (presence of `nx.json`, `pnpm-workspace.yaml`, `turbo.json`, Cargo workspaces) and offer the monorepo path.
 
 **Lands in:** DESIGN.md § "The /devx-init experience" / existing-project intake.
+
+---
+
+## 13. Self-healing — how aggressive should auto-apply be by default?
+
+**Context:** [`SELF_HEALING.md`](./SELF_HEALING.md) defines confidence gates per write target. But the actual thresholds are calibrated defaults — `high` confidence means "≥3 concordant signals, no contradictions." Those numbers are guesses.
+
+**Open:** do we let users tune thresholds in `devx.config.yaml` from day one, or ship with fixed defaults and tune based on real feedback?
+
+**Leaning:** ship with fixed defaults, log confidence-vs-outcome for every applied lesson, expose tuning once we have ~50 applied lessons to calibrate from. Don't design the knob before we have the data.
+
+**Lands in:** `devx.config.yaml` schema + a `.devx-cache/lesson-outcomes.jsonl` log.
+
+---
+
+## 14. Self-healing — global vs. per-project memory?
+
+**Context:** Some lessons are project-specific ("for palateful, default DB is Postgres"). Some are user-specific ("leonid prefers terse summaries"). Some are general best practices ("always add migrations when touching models").
+
+**Open:** where does each kind of lesson land?
+
+**Leaning:**
+- Project-specific → repo's `CLAUDE.md` or project memory.
+- User-specific → global user memory (`~/.claude/memory/`).
+- General best practices → devx repo's baked-in skill content (merged via PR to devx itself, distributed on next install).
+
+LearnAgent classifies as it writes, based on signal scope (one project = project memory; same pattern across two+ projects using devx = promote to global).
+
+**Lands in:** SELF_HEALING.md § new "Scope classification" section, once we've seen real examples.
+
+---
+
+## 15. Self-healing — unlearning
+
+**Context:** A lesson that was right at the time becomes wrong later. "Default DB is Postgres" → team migrates to DynamoDB. LearnAgent shouldn't keep applying the old rule forever.
+
+**Open:** how do we detect a lesson has gone stale?
+
+**Options:**
+- **(a) Contradiction detection:** when new signals contradict an applied lesson, LearnAgent proposes an "unlearn" — rolling back or inverting. Same confidence/gate system applies.
+- **(b) TTL on lessons:** every lesson has an expiration (6 months default), after which LearnAgent re-evaluates whether signals still support it.
+- **(c) User-driven:** user explicitly retracts a lesson via `/devx-learn --retract <hash>`. No automatic unlearning.
+
+**Leaning:** (a) + (c). No TTLs — that's time-based churn for no reason. Contradiction-driven + explicit retraction covers real cases.
+
+**Lands in:** SELF_HEALING.md § new "Unlearning" section.
 
 ---
 

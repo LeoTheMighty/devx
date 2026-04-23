@@ -34,12 +34,13 @@ Every command is a thin shell over a BMAD workflow plus devx-specific opinions (
 | `/devx-debug` | Autonomous debug loop. Reads `DEBUG.md` (bugs, flaky tests, production errors, user reports). Pulls logs/latency/DB state via the observability hooks. Reproduces, fixes, writes the regression test. | `DEBUG.md` (progress), `TEST.md` | `DEBUG.md`, production signals |
 | `/devx-focus` | Focus-group / real-user feedback loop. Synthesizes patterns from user sessions (via observability) and targeted interviews (via `INTERVIEW.md` prompts). Output is items added back to `DEV.md` and `DEBUG.md`. | `DEV.md`, `DEBUG.md`, `INTERVIEW.md` | `FOCUS.md`, user telemetry |
 | `/devx-triage` | The boss. Reads every backlog file, reconciles priorities, resolves conflicts, assigns owners (which agent type picks it up next), and decides what actually runs when parallel capacity opens up. Can be manually overridden. | every backlog file | every backlog file |
+| `/devx-learn` | Self-healing loop. Scans the request graph for patterns (repeated questions, CI fails, user corrections), proposes lessons, and — gated by confidence — writes them back into skills, `CLAUDE.md`, project memory, config, or templates so the next agent doesn't repeat the work. | `LESSONS.md`, memory, skills, `CLAUDE.md`, config | every backlog, git log, skill-edit log |
 
 ---
 
 ## The backlog files
 
-devx runs on seven top-level files at the project root. Each is both a human-readable document and a machine-readable backlog. Agents read and append; humans can edit directly.
+devx runs on eight top-level files at the project root. Each is both a human-readable document and a machine-readable backlog. Agents read and append; humans can edit directly.
 
 | File | Owned by | Purpose |
 |---|---|---|
@@ -50,6 +51,7 @@ devx runs on seven top-level files at the project root. Each is both a human-rea
 | `FOCUS.md` | FocusAgent writes → PlanAgents read | Signals from real users: friction points, requested features, abandonment spots. |
 | `INTERVIEW.md` | PlanAgents write → **user answers** | Questions the planner needs answered to move forward. The human's inbox. |
 | `MANUAL.md` | any agent writes → **user executes** | Actions only a human can do: approve a cloud resource, paste a secret, review a sensitive PR, sign in to a third-party service. |
+| `LESSONS.md` | LearnAgent writes → **user approves / auto-applies** | Learned improvements awaiting review: skill edits, CLAUDE.md additions, memory updates, config tweaks, template changes. Each is evidence-backed and gated by confidence. |
 
 Every item in every backlog is a one-line entry pointing at a detailed spec file under `dev/`, `plan/`, `test/`, etc. The spec file is the full context; the backlog entry is just the handle.
 
@@ -88,23 +90,24 @@ Because it's all files, `git log` is your audit trail, and you can `grep` across
                         │ /devx-triage │ ← the boss (rebalances priorities)
                         └───────┬──────┘
                                 │ reads/reorders all backlogs
-      ┌───────────────────┬─────┴─────┬───────────────────┐
-      ▼                   ▼           ▼                   ▼
-┌───────────┐      ┌───────────┐ ┌────────────┐    ┌────────────┐
-│ PlanAgent │      │ DevAgent  │ │ TestAgent  │    │ DebugAgent │
-│ (parallel)│      │ (parallel)│ │ (parallel) │    │ (parallel) │
-└─────┬─────┘      └─────┬─────┘ └──────┬─────┘    └──────┬─────┘
-      │ writes           │ writes      │ writes          │ writes
-      ▼                  ▼             ▼                 ▼
-  PLAN.md ───────→   DEV.md ────→  TEST.md  ────→  DEBUG.md
-  INTERVIEW.md                                          ▲
-  FOCUS.md                                              │
-                                                  ┌─────┴──────┐
-                                                  │ FocusAgent │
-                                                  │ (polls     │
+      ┌──────────────┬──────────┴────────┬──────────────┬──────────────┐
+      ▼              ▼                   ▼              ▼              ▼
+┌───────────┐  ┌───────────┐      ┌────────────┐  ┌────────────┐  ┌────────────┐
+│ PlanAgent │  │ DevAgent  │      │ TestAgent  │  │ DebugAgent │  │ LearnAgent │
+│ (parallel)│  │ (parallel)│      │ (parallel) │  │ (parallel) │  │ (idle time)│
+└─────┬─────┘  └─────┬─────┘      └──────┬─────┘  └──────┬─────┘  └──────┬─────┘
+      │ writes       │ writes           │ writes        │ writes        │ writes
+      ▼              ▼                  ▼               ▼               ▼
+  PLAN.md ───────→  DEV.md ────→    TEST.md  ────→  DEBUG.md       LESSONS.md
+  INTERVIEW.md                                          ▲            │ applies to
+  FOCUS.md                                              │            ▼
+                                                  ┌─────┴──────┐  skills / CLAUDE.md /
+                                                  │ FocusAgent │  memory / config /
+                                                  │ (polls     │  templates
                                                   │  telemetry)│
                                                   └────────────┘
 ```
+LearnAgent closes the loop back onto the system itself: it reads the whole request graph as training signal and edits the skills, project rules, memory, config, and templates so the next run is a little tighter.
 
 Parallel agents operate in **worktrees on separate branches**, so two DevAgents working different items don't collide.
 
@@ -114,9 +117,11 @@ Parallel agents operate in **worktrees on separate branches**, so two DevAgents 
 
 devx has strong opinions. Each can be overridden per-project, but the defaults are what make it fast.
 
-### 1. Worktrees + branches for conflict management
+### 1. Worktrees + branches + `develop`/`main` split
 
-Every item a DevAgent picks up gets its own `git worktree` and branch. Two agents never share a working directory. Merges happen through PRs, not through shared mutation. This is how we parallelize without the agents fighting.
+Every item a DevAgent picks up gets its own `git worktree` and a branch off `develop` (`develop/<type>-<hash>`). Two agents never share a working directory. Merges happen through PRs, not through shared mutation.
+
+`main` is production — deployed, protected, only reached via an explicit **promotion gate** that runs extended checks before merging `develop → main`. Agents never push to `main`. The mobile app never pushes to `main`. This keeps production isolated from the churn of the work graph. See [`DESIGN.md § Branching model`](./DESIGN.md#branching-model).
 
 ### 2. CI/CD on day one
 
@@ -143,6 +148,10 @@ This is what makes `/devx-debug` and `/devx-focus` actually useful — they can 
 
 A browser-driving agent (Playwright under the hood) operates the app the way a user would. `/devx-test` uses it for end-to-end flows; `/devx-focus` uses it to re-walk paths that real users got stuck on. This catches things unit tests never will.
 
+### 6. Self-healing — the system learns from its own work
+
+Every repeated question, CI failure, user correction, and flaky test is a signal. `/devx-learn` scans those signals, extracts a lesson, and writes it back into the system — into project memory, `CLAUDE.md`, skill files, config, or templates — so the next agent doesn't repeat the work. Gated by confidence + blast radius: personal-memory updates auto-apply; agent-prompt changes run a canary comparison and require explicit approval. See [`SELF_HEALING.md`](./SELF_HEALING.md).
+
 ---
 
 ## How it's different from raw BMAD
@@ -168,5 +177,7 @@ This repo is where devx itself is being built. We're using devx to build devx �
 
 See:
 - [`SETUP.md`](./SETUP.md) — install BMAD + devx skills on your machine.
-- [`DESIGN.md`](./DESIGN.md) — the backlog graph, filesystem layout, agent contracts in detail.
-- [`OPEN_QUESTIONS.md`](./OPEN_QUESTIONS.md) — design decisions we haven't made yet (observability hosting, iOS notifier, usage-limit handling, terminal control).
+- [`DESIGN.md`](./DESIGN.md) — the backlog graph, filesystem layout, agent contracts, `develop`/`main` branching.
+- [`MOBILE.md`](./MOBILE.md) — the Flutter companion app (iOS + Android + web + desktop), GitHub-as-backend, push notifications via a single Cloudflare Worker.
+- [`SELF_HEALING.md`](./SELF_HEALING.md) — how `/devx-learn` turns repeated signals into memory/skill/config/template edits, with confidence gates and canary runs for risky changes.
+- [`OPEN_QUESTIONS.md`](./OPEN_QUESTIONS.md) — design decisions still open (observability hosting, usage-limit handling, terminal control, BMAD integration audit).

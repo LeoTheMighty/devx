@@ -19,7 +19,7 @@ Nothing persists outside the repo. `git log` is the audit trail. `grep` is the q
 
 ---
 
-## The seven backlog files
+## The eight backlog files
 
 All live at the repo root. Each is a markdown file whose body is a bulleted list of spec-file references, plus some human-readable context at the top.
 
@@ -116,6 +116,15 @@ Read by: the user.
 
 Distinction from `INTERVIEW.md`: interview = decision, manual = action. Agents can recommend either, but users execute `MANUAL.md` items.
 
+### `LESSONS.md` — self-healing proposals
+
+Written by: LearnAgent (detected patterns), user (hand-crafted lessons via `/devx-learn --add`).
+Read by: TriageAgent (when deciding capacity), user (approve/reject pending lessons), mobile app (inbox).
+
+Each entry points at a `learn/learn-<hash>-<ts>-<slug>.md` spec file that carries the full evidence chain: which triggers produced the lesson, what target it proposes to edit, the proposed diff, the confidence level, and (once applied) the resulting commit.
+
+See [`SELF_HEALING.md`](./SELF_HEALING.md) for the complete contract — trigger signals, confidence gates per write target, canary runs for skill/prompt changes.
+
 ---
 
 ## Spec file convention
@@ -133,7 +142,7 @@ Examples:
   focus/focus-e1b5d8-2026-04-22T00:00-weekly-friction-summary.md
 ```
 
-- `<type>` — one of `dev`, `plan`, `test`, `debug`, `focus`. Implies the agent class.
+- `<type>` — one of `dev`, `plan`, `test`, `debug`, `focus`, `learn`. Implies the agent class.
 - `<hash>` — 6 random hex chars. Unique handle; short enough to reference inline.
 - `<timestamp>` — ISO 8601 local time at creation, minute precision. Lets you sort chronologically without a DB.
 - `<slug>` — kebab-case human description, trimmed to ~50 chars.
@@ -221,6 +230,16 @@ Every agent class maps 1:1 to a slash command, but the slash commands can also b
 - Work: synthesize patterns → cross-reference with planned work → identify gaps.
 - Output: rolling summary in `FOCUS.md`, new items in `DEV.md` (feature requests), new items in `DEBUG.md` (friction spots), questions in `INTERVIEW.md` when synthesis is ambiguous.
 
+### `LearnAgent` — `/devx-learn`
+
+- Input: request graph (every spec file's status log + `git log` + recorded CI outcomes + skill-edit log).
+- Work: scan for trigger signals (repeated blockers, repeated CI failures, user edits after agent writes, recurring INTERVIEW answers, repeated PR-review findings), cluster into lessons, draft diffs against the chosen write target, gate by confidence + blast radius.
+- Output: `LESSONS.md` entries + `learn/*.md` spec files with full evidence. Auto-applies high-confidence + low-blast lessons; queues everything else for user approval. Canary-runs agent-prompt changes before merge.
+- Scheduled by TriageAgent when capacity is idle and signals have accumulated; can also be invoked directly by the user or via `/loop 24h /devx-learn`.
+- Operates under the same worktree + `develop/learn-<hash>` branching rules as every other agent.
+
+Full contract: [`SELF_HEALING.md`](./SELF_HEALING.md).
+
 ### `TriageAgent` — `/devx-triage`
 
 - Input: every backlog file.
@@ -229,31 +248,98 @@ Every agent class maps 1:1 to a slash command, but the slash commands can also b
   2. Detect blocks (DevAgent-7 filed INTERVIEW q#4 → ensure dev-a3f2b9 shows `blocked`).
   3. Unblock on user answers (user checked q#4 → mark dev-a3f2b9 `ready` again).
   4. Reprioritize based on FOCUS signals.
-  5. Decide what to run when capacity opens: spawn the right agent class against the right spec file in the right worktree.
+  5. Schedule LearnAgent when trigger signals have accumulated and no active agent is running.
+  6. Decide what to run when capacity opens: spawn the right agent class against the right spec file in the right worktree.
 - Output: reordered backlog files, agent spawn decisions.
 - Never touches code. Never runs tests. Only coordinates.
 
 ---
 
-## Parallelism & worktrees
+## Branching model
 
-At any given moment there can be multiple agents running. Each one owns a **worktree**:
+devx is opinionated on a **`develop/main` split**:
+
+- **`main`** = production. What's deployed. Protected (branch protection enforced, no direct pushes, no force-pushes ever). Only accepts PRs from `develop`, and only via explicit promotion.
+- **`develop`** = integration. Where in-progress agent work accumulates. This is where the mobile app adds items, where agent PRs merge, where coverage gates run, where e2e tests live.
+- **Feature branches** = `develop/<type>-<hash>`, one per spec file. Branched off `develop`, PR'd back into `develop`.
+
+### Branch naming
 
 ```
-<repo>/                          ← main worktree, where the user is
-  DEV.md, PLAN.md, TEST.md, ... ← canonical backlog state
-  dev/, plan/, test/, ...        ← canonical spec files
+main                                           ← production, deployed
+develop                                        ← integration, WIP
+develop/dev-a3f2b9                             ← DevAgent-7 working dev-a3f2b9
+develop/debug-c4a7e2                           ← DebugAgent-2 working debug-c4a7e2
+develop/test-f8e2a1                            ← TestAgent-4 working test-f8e2a1
+develop/plan-9c1d4a                            ← PlanAgent-3 working plan-9c1d4a
+```
+
+### Lifecycle of a unit of work
+
+```
+┌──────────────────┐    ┌───────────┐    ┌───────────────────┐    ┌────────┐
+│ feature branch   │ →  │  develop  │ →  │  promotion gate   │ →  │  main  │
+│ develop/dev-XXX  │    │ (CI green)│    │  (extended gates) │    │(deploy)│
+└──────────────────┘    └───────────┘    └───────────────────┘    └────────┘
+      agent works           auto-merge        user-approved
+      in worktree           after CI          or Triage-decided
+                            + review
+```
+
+Five stages:
+
+1. **Agent works in its feature branch's worktree.**
+2. **Agent opens PR → `develop`.** CI runs; code review runs; coverage gate runs.
+3. **Auto-merge to `develop`** once gates pass. Triage can merge; no human required for this step by default.
+4. **Promotion gate.** Separate, slower cadence. Runs extended checks: integration tests against staging, browser-agent QA re-walks critical user flows, 24h soak on develop, FOCUS telemetry shows no regressions. Can be user-gated or Triage-gated (configurable).
+5. **Promote `develop → main`** via a squash-merge or merge commit. This push triggers the deploy pipeline.
+
+### What each branch means for agents
+
+- **DevAgents, DebugAgents, TestAgents, PlanAgents** → always branch off `develop`, always PR into `develop`. They literally cannot target `main`.
+- **The mobile app** → commits directly to `develop` (backlog appends) or opens branches off `develop`. Never touches `main`.
+- **The user hand-editing backlog files** → edits `develop` (that's the default branch agents and the phone read from). When the user wants to promote, they run `/devx-triage --promote` or merge the PR manually.
+- **A dedicated PromotionAgent** (new, resolves part of OPEN_QUESTIONS #7) → runs the promotion gate logic. Opens the `develop → main` PR, runs extended checks, merges when they pass. User can veto by closing the PR.
+
+### Why this shape
+
+- **The phone can't brick production.** Mobile writes hit `develop`; if they're bad, agent CI catches it before `main`.
+- **Agents iterate fast on `develop`.** No wait for production deploy on every DevAgent merge.
+- **Deploy cadence is a separate decision from merge cadence.** You can merge 30 agent PRs to `develop` before deciding any of them are ready to ship.
+- **Rollback is `git revert` on `main`, not on the whole work graph.** Production is isolated from WIP.
+- **CI configuration is layered:** `develop` CI = lint + unit + integration + coverage. `main` CI = deploy + smoke. Different jobs, different budgets.
+
+### What `/devx-init` sets up for this
+
+- Creates `develop` branch if absent, sets it as the default branch for the repo.
+- Enables branch protection on `main`: require PRs, require passing status checks, require linear history, block force-pushes. No one — not even you — pushes direct to `main`.
+- Writes `.github/workflows/devx-ci.yml` (runs on PRs to `develop` and on pushes to `develop`).
+- Writes `.github/workflows/devx-deploy.yml` (runs on pushes to `main` only).
+- Writes `.github/workflows/devx-promotion.yml` (runs the extended gate; triggered by a `promote` label or by PromotionAgent).
+
+---
+
+## Parallelism & worktrees
+
+At any given moment there can be multiple agents running. Each one owns a **worktree** on its own feature branch:
+
+```
+<repo>/                          ← main worktree, on `develop`, where the user is
+  DEV.md, PLAN.md, TEST.md, ... ← canonical backlog state (on develop)
+  dev/, plan/, test/, ...        ← canonical spec files (on develop)
 .worktrees/
-  dev-a3f2b9/                    ← DevAgent-7's worktree, branch devx/dev-a3f2b9
-  dev-e2c7d1/                    ← DevAgent-3's worktree, branch devx/dev-e2c7d1
-  debug-c4a7e2/                  ← DebugAgent-2's worktree, branch devx/debug-c4a7e2
+  dev-a3f2b9/                    ← DevAgent-7, branch develop/dev-a3f2b9
+  dev-e2c7d1/                    ← DevAgent-3, branch develop/dev-e2c7d1
+  debug-c4a7e2/                  ← DebugAgent-2, branch develop/debug-c4a7e2
 ```
 
 ### Rules
 
 - Agents **never** share a worktree.
-- Backlog files live only in the main worktree. Agents in a worktree write status to their own spec file (in the main worktree, via a path), and file new items against the main worktree's backlog.
-- Merges happen through PRs into main. PRs must go green in CI before merge.
+- Every feature branch is parented on `develop` (`git worktree add .worktrees/<name> -b develop/<type>-<hash> develop`).
+- Backlog files live on `develop` in the main worktree. Agents in a worktree write status to their own spec file (in the main worktree, via a path-relative edit), and file new items by opening a trivial PR against `develop` that only touches the backlog file + spec file.
+- Merges of agent work happen through PRs into `develop`. PRs must go green in CI before auto-merge.
+- **No agent ever merges to `main`.** That's the promotion gate's job, period.
 - Triage decides capacity: the default cap is 3 simultaneous agents (configurable in `devx.config.yaml`).
 
 ### Why worktrees vs. checkpoints
@@ -341,12 +427,14 @@ Same command, different intake:
 ├── FOCUS.md               ← backlog
 ├── INTERVIEW.md           ← user's inbox
 ├── MANUAL.md              ← user's todo
+├── LESSONS.md             ← self-healing proposals
 ├── devx.config.yaml       ← devx knobs
 ├── dev/                   ← spec files
 ├── plan/
 ├── test/
 ├── debug/
 ├── focus/
+├── learn/                 ← LearnAgent spec files (lesson evidence)
 ├── _bmad/                 ← BMAD framework (don't edit)
 ├── _bmad-output/          ← BMAD-generated planning + implementation artifacts
 │   ├── planning-artifacts/
@@ -360,9 +448,24 @@ Same command, different intake:
 ├── .worktrees/            ← live agent worktrees (gitignored)
 ├── .devx-cache/           ← telemetry snapshots, tool caches (gitignored)
 ├── .github/workflows/
-│   └── devx.yml
+│   ├── devx-ci.yml        ← runs on develop PRs + pushes
+│   ├── devx-promotion.yml ← extended gates (develop → main)
+│   └── devx-deploy.yml    ← runs on main pushes (production deploy)
 └── .claude/
     └── commands/          ← per-project override of devx-* commands (optional)
+```
+
+**Only for the devx repo itself**, additionally:
+
+```
+devx/
+├── skills/                ← the /devx-* slash command sources (not here yet — future)
+├── mobile/                ← Flutter companion app (see MOBILE.md)
+│   ├── lib/, test/, ios/, android/, web/, macos/
+│   └── pubspec.yaml
+└── worker/                ← Cloudflare Worker (webhook → FCM relay)
+    ├── src/index.ts
+    └── wrangler.toml
 ```
 
 ---
