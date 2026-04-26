@@ -1,8 +1,8 @@
 # BMAD audit
 
-**Status:** Sections 1–2 complete; Sections 3–5 pending (aud103).
+**Status:** Complete (Sections 1–5).
 **Audit date:** 2026-04-26
-**Audited by:** /devx aud101 (inventory), /devx aud102 (classification).
+**Audited by:** /devx aud101 (inventory), /devx aud102 (classification), /devx aud103 (risks + finalize).
 **Subject of audit:** the BMAD installation under `_bmad/` in this repo, as of the
 versions stamped below. Re-run this audit when any module version changes (see
 `_bmad/_config/manifest.yaml` → `modules[].version`).
@@ -51,7 +51,7 @@ here as the "one-line purpose" required by aud101 AC2.
 > diverge (e.g., the user updates the npm-installed BMAD version on their
 > machine while the in-repo manifests stay pinned), this audit goes stale
 > silently. aud103 should add this as a risk in Section 3 with whatever
-> ordering fits the rest of that section's risks.
+> ordering fits the rest of that section's risks. **Resolved: §3.5.**
 
 ### 1.1 Module versions
 
@@ -257,16 +257,21 @@ For each of the 51 skills inventoried in §1, exactly one classification:
 >    /devx-plan spec and the installed BMAD surface — flag in §3 risks and
 >    decide whether /devx-plan should be edited (replace `bmad-agent-qa` with
 >    `bmad-tea`) or `bmad-agent-qa` should be added (a new bmm Phase-4 agent).
+>    **Resolved: §3.1 mitigation + §4.2 row 1 (replace with `bmad-tea`).**
 > 2. The BMAD `bmad-create-epics-and-stories` workflow exists but `/devx-plan`
 >    Phase 4 chunks epics with custom heuristics (vertical user-value slices
 >    + per-layer end-user-flow narrative). Classified **shadow** below; §3
 >    should evaluate whether the BMAD workflow could be invoked first and
 >    then refined by devx (i.e., promote shadow → wrap), or whether the
 >    custom logic is materially different enough to keep them disjoint.
+>    **Resolved: §4.3 closing paragraph (deferred to first /devx-plan
+>    touch-up after Phase 5 wiring lands; not a §3 risk).**
 > 3. Eight of the nine `tea/workflows/testarch/*` skills + `bmad-tea` are
 >    classified **orphan** — this is the TEA-orphan risk that aud103's §3 must
 >    expand. The recommendations subsection below names the target phase /
 >    epic for each, so aud103's §4 can quote it directly.
+>    **Resolved: §3.1 (TEA-orphan as the largest-blast-radius §3 risk) +
+>    §4.1 rows quoting the §2.7 wiring map.**
 
 ### 2.1 `core` — 11 skills
 
@@ -413,14 +418,274 @@ first-class concern.
 
 ## Section 3 — Risks
 
-_Pending — story `aud103`._
+Five risks. Risks 1–4 follow the `aud103` acceptance-criteria ordering,
+opening with the largest-blast-radius risk (TEA orphan — an entire installed
+module unused). Risk 5 is the manifest-vs-installed-skills drift
+forward-pointed from §1's source-of-truth note, appended last. Each
+subsection states severity and impact and points at the recommendation in §4
+that resolves it.
+
+### 3.1 TEA orphan
+
+**Severity:** High — entire installed module unused.
+
+The `tea` module ships 10 skills (1 named agent + 9 testarch workflows) plus
+`tea/config.yaml` (with `tea_use_playwright_utils: true`, `risk_threshold: p1`,
+and three configured output paths under `{output_folder}/test-artifacts/`).
+All installed, all wired through BMAD's manifest, and currently invisible to
+devx commands. Per §2.6, 9 of the 10 are classified `orphan`; only
+`bmad-teach-me-testing` is escape-hatch by design (TEA Academy is educational,
+not a workflow step).
+
+Unwired TEA workflows + their downstream impact:
+
+| Skill | What devx loses by leaving it orphan |
+|---|---|
+| `bmad-tea` (Murat) | Test-architect persona absent from `/devx-plan` Phase 6 party-mode. `/devx-plan` currently references a non-existent `bmad-agent-qa` lens (no such skill in `skill-manifest.csv`) — the QA voice is silenced at planning time. |
+| `bmad-testarch-atdd` | Stories with red-phase-able acceptance criteria don't get scaffold tests written before implementation. `/devx` Phase 3's red-green-refactor proceeds without ATDD priming, losing the BMAD-prescribed step that catches AC misinterpretation early. |
+| `bmad-testarch-test-design` | No system-level / epic-level test plan after `/devx-plan` Phase 6. Risk-based prioritization (`risk_threshold: p1`) is not applied; coverage gaps are discovered ad-hoc by `/devx` Phase 8 instead of designed up-front. |
+| `bmad-testarch-automate` | Test gaps filed into `TEST.md` by `/devx` Phase 8 have no consumer skill — there is no `/devx-test` worker to drain them into automated coverage. |
+| `bmad-testarch-test-review` | Tests authored by `/devx`'s red-green-refactor loop are never quality-scored; low-quality tests pass CI undetected. |
+| `bmad-testarch-trace` | No traceability matrix is produced; the configured `trace_output: {output_folder}/test-artifacts/traceability` stays empty; PROD-gate quality decisions have no traceability evidence. |
+| `bmad-testarch-ci` | `/devx-init` GitHub-side scaffolding (ini503) writes its own `devx-ci.yml` without the TEA-shaped quality pipeline scaffold; CI structure diverges from BMAD's recommended shape. |
+| `bmad-testarch-framework` | Initial test-framework selection at project init is hand-rolled per `devx.config.yaml → projects[].test`; Playwright/Cypress bootstrap is not wired into `/devx-init`. |
+| `bmad-testarch-nfr` | NFR (performance / security / reliability) assessment has no Phase-9 PROD-gate hook; PROD promotions can clear without an NFR pass. |
+
+**Mitigation → §4.1.** Wire all 9 orphans per the §2.7 TEA wiring map. The
+bulk lands in Phase 5's new `epic-devx-test-layer-1` (5 testarch skills +
+`bmad-tea` as the TestAgent persona); two skills wire into Phase 0
+`epic-init-skill` (`testarch-ci` and `testarch-framework`); one wires into
+Phase 9 `epic-promotion-gate-prod` (`testarch-nfr`). The non-existent
+`bmad-agent-qa` reference in `/devx-plan` Phase 6 resolves to `bmad-tea`
+(Murat) as a one-line edit (§4.2).
+
+### 3.2 Sprint-planning shadow
+
+**Severity:** Medium — collision risk on user-initiated invocation; no impact
+in steady state.
+
+`bmad-sprint-planning` reads epics and produces a `sprint-status.yaml`
+describing a discrete sprint window with story-by-story status. devx
+**replaces** this with `DEV.md` continuous flow: `/devx-plan` appends spec
+files to `DEV.md`, `/devx` (and Phase 1+ ManageAgent) drains the top of the
+queue. There is no sprint window or sprint scope — specs are claimed in
+dependency order as they become unblocked. `sprint-status.yaml` is still
+maintained as a BMAD-shaped artifact (written by `/devx-plan`, updated by
+`/devx`) but is no longer the planning surface. Per §2.5, `bmad-sprint-planning`
+is classified `shadow`.
+
+**Conflict surface.** The skill remains exposed by Claude Code's BMAD skill
+surface — a user can invoke it directly at any time, in any session. If they
+do so after devx is installed, three failure modes exist:
+
+1. **Artifact divergence.** `bmad-sprint-planning` rewrites `sprint-status.yaml`
+   from epics, ignoring the spec-file graph under `dev/`. The result diverges
+   from `DEV.md` until the next `/devx-plan` or `/devx` run reconciles it.
+2. **Status overwrites.** `/devx` writes story status (`ready-for-dev`,
+   `done`) into `sprint-status.yaml` keyed on story IDs from the BMAD story
+   file. A standalone `bmad-sprint-planning` run can clobber those keys when
+   it regenerates the file from epics, masking in-flight work.
+3. **User-mental-model fork.** A user prompted to think in BMAD-sprint terms
+   (sprint window, sprint scope, sprint velocity) starts asking for ceremonies
+   the devx loop doesn't perform — `DEV.md` continuous flow has no sprint
+   boundary, no sprint retro, and no sprint-velocity number to report.
+
+**Mitigation → §4.2.** No new epic is required — divergence is recoverable on
+the next `/devx-plan` or `/devx` run. Two lighter-touch fixes: (a) `/devx-init`
+(ini504) seeds a clarifying note that devx supersedes `bmad-sprint-planning`;
+(b) `/devx-manage` (Phase 2) detects divergent `sprint-status.yaml` and
+reconciles from `DEV.md` on the next tick.
+
+### 3.3 Retrospective gap
+
+**Severity:** Medium — material learning surface absent until Phase 5.
+
+`bmad-retrospective` runs at end-of-epic, extracts lessons, and assesses
+success against the epic's locked decisions. devx currently has **no
+retrospective wiring** — the assumption is that the user updates `LESSONS.md`
+by hand whenever a meaningful learning surfaces (already noted as a known gap
+in `epic-bmad-audit.md`'s locked decisions). Per §2.5, `bmad-retrospective` is
+classified `orphan` with target `epic-retro-agent` (Phase 5).
+
+**Downstream impact.** Three concrete losses while this stays orphan:
+
+1. **LearnAgent has no canonical lessons feed.** `LESSONS.md` is the input
+   surface LearnAgent reads (per `docs/SELF_HEALING.md`). With manual-only
+   updates, the cadence is irregular and the corpus is sparse — auto-apply
+   confidence (gated by `self_healing.auto_apply.confidence_min: 0.85`) won't
+   trip, so LearnAgent stays inert.
+2. **Locked decisions go un-audited.** Each epic's "Locked decisions"
+   subsection (e.g., epic-bmad-audit's 4 entries) is supposed to be a contract
+   — what was promised at planning, then verified at the end. Without
+   `bmad-retrospective`, no one verifies that what shipped matches what was
+   locked.
+3. **Mobile companion has no retro feed.** Phase 8+ mobile shows a "retros"
+   view per `docs/MOBILE.md`; with no agent writing them, the view shows
+   whatever the user typed by hand, which is approximately nothing.
+
+**Mitigation → §4.1.** Wire `bmad-retrospective` via Phase 5 `epic-retro-agent`.
+RetroAgent runs at the end of every `/devx` and `/devx-plan`, and ManageAgent
+triggers it at end-of-epic (when all stories under an epic are `done`). Output:
+`retros/retro-<spec-hash>.md` plus a delta into `LESSONS.md`. The `retros/`
+directory is a new sibling of `dev/`, `plan/`, etc.; LearnAgent reads
+`LESSONS.md` as before, now with a steady feed.
+
+### 3.4 UX timing mismatch
+
+**Severity:** Low at YOLO, Medium at thoroughness=`thorough` — re-work cost
+scales with epic size and downstream commitment.
+
+BMAD's Phase 2 (planning) explicitly schedules `bmad-create-ux-design` (Sally)
+before Phase 3 (solutioning) — UX shape is locked before architecture commits.
+devx instead surfaces UX feedback in **Phase 6 party-mode** (per `/devx-plan`),
+where Sally's lens is one voice among several on already-drafted epics. Per
+§2.3, `bmad-create-ux-design` is `escape-hatch` (user-callable); the routine
+UX touchpoint is the Phase 6 lens.
+
+**Risk.** When a frontend-heavy epic lands at Phase 6 with a UX shape that
+party-mode flags as wrong, the rework path is "edit the epic, re-validate via
+Phase 7 readiness, possibly re-run Phase 6". Cost scales with epic size and
+how committed downstream epics are to the wrong UX. At YOLO/empty-dream this
+is cheap (no users yet, epics small, locked-decisions thin). At
+thoroughness=`thorough` (and especially under PROD with locked-in users),
+reworking late is materially more expensive than designing earlier.
+
+**Mitigation → §4.2.** Make `bmad-create-ux-design` an opt-in invocation in
+`/devx-plan` Phase 3 when `thoroughness == thorough` AND `stack.layers`
+contains `frontend`:
+
+- `thoroughness: send-it` — current behavior unchanged; UX surfaces in Phase 6.
+- `thoroughness: balanced` — current behavior unchanged.
+- `thoroughness: thorough` AND `frontend` declared — `/devx-plan` Phase 3
+  invokes `bmad-create-ux-design` with the brief from Phase 1, output appended
+  to `_bmad-output/planning-artifacts/ux-design.md`, then Phase 6 reads that
+  file as input rather than producing the UX shape from scratch.
+
+This is a small targeted edit to `/devx-plan` (Phase 3 conditional invocation
++ new `ux-design.md` artifact + Phase 6 reading that file as input), not a
+new epic.
+
+### 3.5 Manifest / installed-skills drift
+
+**Severity:** Medium — silent staleness if the user upgrades BMAD or modifies
+skill installs without re-running this audit.
+
+Per §1's source-of-truth note, the BMAD inventory in this repo's tree is
+**manifests only** (`_bmad/_config/{skill,agent}-manifest.csv`,
+`_bmad/_config/manifest.yaml`, per-module `config.yaml`). The actual SKILL.md
+and workflow.yaml source files are not vendored; they live in the npm package
+and in Claude Code's `~/.claude/skills/` install. The Phase 0 commit
+`508a62c chore: vendor BMAD framework + skills` stamps the manifests but does
+not co-locate the source.
+
+**Drift surfaces.** If `~/.claude/skills/` and `_bmad/_config/` diverge — for
+example, the user upgrades the npm-installed BMAD version on their machine
+while the in-repo manifests stay pinned — three things go silently wrong:
+
+1. **Invocations resolve against the live skill, audits cite the pinned
+   manifest.** A `Skill` tool call in `/devx` runs whatever
+   `~/.claude/skills/` ships; the audit table cites whatever
+   `_bmad/_config/skill-manifest.csv` says. The two can differ in input
+   shape, output shape, or skill set.
+2. **Orphan and escape-hatch classifications go stale.** A skill renamed or
+   removed upstream stays in `skill-manifest.csv` until someone reinstalls;
+   the classification table claims the skill exists when it doesn't.
+3. **Wiring recommendations target nonexistent skills.** §2.7's TEA wiring
+   map names `bmad-testarch-*` skills that may have moved, renamed, or split
+   in a TEA upgrade; Phase 5 epic specs would be authored against ghosts.
+
+**Mitigation → §4.1.** Two wirings (the second is advisory rather than a
+wired skill, so it does not get its own §4.2 row):
+
+- Phase 0 `epic-init-skill` (ini502 follow-up): `/devx-init` and
+  `/devx-init --upgrade` (ini507) reconcile `_bmad/_config/skill-manifest.csv`
+  against Claude Code's live skill list. Drift produces a `MANUAL.md` entry
+  plus a stale-flag at the top of `bmad-audit.md`.
+- Phase 5 LearnAgent (per `docs/SELF_HEALING.md`): on each weekly window,
+  compare manifest against live and emit a `LESSONS.md` candidate when drift
+  exceeds N skills. (LearnAgent's `auto_apply.blast_radius_max: medium` at
+  YOLO keeps this advisory rather than auto-applied.)
+
+A repo-resident `audit-stale-after` marker is unnecessary — re-run the audit
+when `_bmad/_config/manifest.yaml` modules[].version changes (per §5).
 
 ## Section 4 — Recommendations for downstream phases
 
-_Pending — story `aud103`._
+Each row in §4.1 and §4.2 cites the §3 risk it resolves. §4.3 is the
+cross-cutting summary.
+
+### 4.1 New-or-existing epic wirings
+
+| Risk | Skill | Target epic | Phase | Trigger inside devx |
+|---|---|---|---|---|
+| 3.1 | `bmad-testarch-atdd` | `epic-devx-test-layer-1` (new) | 5 | `/devx` Phase 2.5 (after `bmad-create-story`, before implementation) when the story's ACs are red-phase-able. |
+| 3.1 | `bmad-testarch-automate` | `epic-devx-test-layer-1` | 5 | `/devx-test` worker claiming a `test/test-*.md` filed by `/devx` Phase 8. |
+| 3.1 | `bmad-testarch-test-design` | `epic-devx-test-layer-1` | 5 | `/devx-plan` Phase 7 readiness check; system-level test plan per refined epic. |
+| 3.1 | `bmad-testarch-test-review` | `epic-devx-test-layer-1` | 5 | `/devx-test` after authoring; surfaces low-score tests into TEST.md. |
+| 3.1 | `bmad-testarch-trace` | `epic-devx-test-layer-1` | 5 | End of epic; output to `tea/config.yaml → trace_output`. |
+| 3.1 | `bmad-tea` (Murat) | `epic-devx-test-layer-1` | 5 | TestAgent persona anchoring `/devx-test`'s authoring flow; also the QA lens in `/devx-plan` Phase 6 (resolves the missing `bmad-agent-qa` reference — see §4.2). |
+| 3.1 | `bmad-testarch-ci` | `epic-init-skill` (ini503) | 0 | `/devx-init` GitHub scaffolding writes a TEA-shaped CI quality pipeline alongside `devx-ci.yml`. |
+| 3.1 | `bmad-testarch-framework` | `epic-init-skill` (ini503 follow-up) | 0 | `/devx-init` initial framework selection per declared layer; on-demand thereafter when a new layer is added (e.g., mobile Phase 8). |
+| 3.1 | `bmad-testarch-nfr` | `epic-promotion-gate-prod` (new) | 9 | PROD-gate NFR (performance / security / reliability) check before merge to `main`. |
+| 3.3 | `bmad-retrospective` | `epic-retro-agent` (new) | 5 | RetroAgent at end of every `/devx` / `/devx-plan` and end-of-epic (ManageAgent-triggered); writes `retros/retro-<hash>.md` + `LESSONS.md` delta. |
+| 3.5 | manifest reconcile | `epic-init-skill` (ini502 follow-up) | 0 | `/devx-init` and `/devx-init --upgrade` reconcile `skill-manifest.csv` vs. Claude Code's live skill list; drift → MANUAL.md + `bmad-audit.md` stale marker. |
+
+### 4.2 No-new-epic fixes (one-line / small edits)
+
+| Action | Where | Risk |
+|---|---|---|
+| Replace `bmad-agent-qa` with `bmad-tea` (Murat) in the Phase 6 party-mode lens list | `.claude/commands/devx-plan.md` | 3.1 |
+| Make `bmad-create-ux-design` opt-in in `/devx-plan` Phase 3 when `thoroughness=thorough` AND `stack.layers` contains `frontend`; output to `_bmad-output/planning-artifacts/ux-design.md`; Phase 6 consumes it | `.claude/commands/devx-plan.md` | 3.4 |
+| Detect divergent `sprint-status.yaml` (story-IDs in the file that don't appear in `DEV.md` and vice versa); reconcile from `DEV.md` on next tick | `/devx-manage` (Phase 2) | 3.2 |
+| Add a clarifying line to `/devx-init` skill help: "devx supersedes `bmad-sprint-planning`; standalone invocation produces a one-off snapshot, devx will overwrite on next run" | `/devx-init` (ini504) | 3.2 |
+
+### 4.3 Cross-cutting note
+
+Of the 14 orphans surfaced in §2.8, **9 are TEA, 3 are core doc utilities, and
+2 are bmm Phase-4** — the orphan column collapses to two new Phase-5 epics
+(`epic-devx-test-layer-1`, `epic-retro-agent`) plus three follow-ups in
+already-planned Phase 0 (`epic-init-skill`) and Phase 9
+(`epic-promotion-gate-prod`) epics. **No orphan requires a phase that isn't
+already on the roadmap.** The TEA orphans and `bmad-retrospective` are
+itemized in §4.1. The four orphans not in §4.1 (`bmad-distillator`,
+`bmad-shard-doc`, `bmad-index-docs`, `bmad-qa-generate-e2e-tests`) are not
+§3 risks and are already pointed at existing roadmap epics in their §2 rows;
+no §4 entry is needed for them.
+
+A separate forward-pointing item from §2.5: `bmad-create-epics-and-stories` is
+the closest candidate to promote shadow → wrap. `/devx-plan` Phase 4 currently
+chunks epics with custom heuristics and ignores the BMAD skill. Worth
+evaluating whether invoke-then-refine produces materially better epics than
+the current custom logic. Defer to the first `/devx-plan` touch-up after
+Phase 5 wiring lands; not a §3 risk.
 
 ## Section 5 — Module versions + audit re-run trigger
 
-_Pending — story `aud103`. Will record the versions stamped in §1.1 plus a
-"re-run when `_bmad/_config/manifest.yaml` modules\[\].version changes"
-trigger._
+| Module | Version | Source | Install date |
+|---|---|---|---|
+| `core` | 6.3.0 | built-in | 2026-04-23 |
+| `bmm` | 6.3.0 | built-in | 2026-04-23 |
+| `tea` | 1.13.1 | external (npm: `bmad-method-test-architecture-enterprise`) | 2026-04-23 |
+
+- **BMAD installer version:** 6.3.0
+- **IDE:** claude-code
+- **Audit run date:** 2026-04-26
+- **Source manifest:** `_bmad/_config/manifest.yaml` (note: the path is
+  `_config/`, not `_cfg/` — the abbreviated form used in
+  `epic-bmad-audit.md`'s party-mode notes does not exist on disk).
+
+**Re-run trigger.** Re-run this audit (`/devx aud101`, then `aud102`, then
+`aud103`, or a future consolidating skill) when ANY of the following changes:
+
+- `_bmad/_config/manifest.yaml → modules[].version` for any of `core`, `bmm`,
+  `tea`.
+- `_bmad/_config/manifest.yaml → modules[]` set changes (a module is added or
+  removed).
+- `_bmad/_config/skill-manifest.csv` skill set changes (skill added, removed,
+  or renamed).
+- `~/.claude/skills/` skill set diverges from `skill-manifest.csv` (per §3.5
+  — drift detector flags this once §4.1's ini502 follow-up lands).
+
+**Audit-stale signal until §3.5's mitigation lands:** mtime of
+`_bmad/_config/manifest.yaml` newer than mtime of this file is a sufficient
+manual signal to re-run.
