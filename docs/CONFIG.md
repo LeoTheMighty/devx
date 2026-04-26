@@ -440,4 +440,4 @@ Everything else is defaulted by mode + shape + thoroughness. The user edits `dev
 
 ## Schema validation
 
-`devx.config.yaml` is validated on load. Unknown keys produce a warning (not an error — devx upgrades may add keys); missing required keys (`mode`, `project.shape`) abort with a pointer to `/devx-init`. The full JSON schema lives at `_bmad/devx/config-schema.json` and is what `devx config <key>` autocompletes against.
+`devx.config.yaml` is validated on load. Unknown keys produce a warning (not an error — devx upgrades may add keys); missing required keys (`mode`, `project.shape`) abort with a pointer to `/devx-init`. The JSON schema (Phase 0 cfg201) ships embedded in the devx npm package and is resolved at runtime via `require.resolve` from the installed package; `devx config <key>` autocompletes against it. (BMAD modules under `_bmad/{core,bmm,tea}/` do not host devx-specific assets — devx is a separate package that consumes BMAD as a library.)
