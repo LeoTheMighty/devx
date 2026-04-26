@@ -5,7 +5,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 ## Phase 0 — Foundation (plan: plan-a01000)
 
 ### Epic 1 — BMAD audit
-- [/] `dev/dev-aud101-2026-04-26T19:35-bmad-modules-inventory.md` — Inventory BMAD modules + workflows. Status: in-progress. From: epic-bmad-audit.
+- [x] `dev/dev-aud101-2026-04-26T19:35-bmad-modules-inventory.md` — Inventory BMAD modules + workflows. Status: done. From: epic-bmad-audit. PR: https://github.com/LeoTheMighty/devx/pull/1 (merged 70872e4).
 - [ ] `dev/dev-aud102-2026-04-26T19:35-bmad-classify-workflows.md` — Classify each BMAD workflow + map to devx command. Status: ready. Blocked-by: aud101.
 - [ ] `dev/dev-aud103-2026-04-26T19:35-bmad-risks-finalize.md` — Risks subsection + finalize bmad-audit.md. Status: ready. Blocked-by: aud102.
 
