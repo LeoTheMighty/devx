@@ -1,0 +1,242 @@
+# devx implementation sprint status
+# Managed by /dev-plan + /dev. Never drop an entry silently — cuts become status: deleted.
+
+# Multiple plans tracked simultaneously. Each plan's epics + stories nest under their plan.
+
+plans:
+  - key: plan-a01000-foundation
+    title: Phase 0 — Foundation
+    status: backlog
+    epics:
+      - key: epic-bmad-audit
+        title: BMAD audit
+        status: backlog
+        stories:
+          - key: aud101
+            title: Inventory BMAD modules + workflows
+            status: backlog
+          - key: aud102
+            title: Classify each BMAD workflow + map to devx command
+            status: backlog
+            blocked_by: [aud101]
+          - key: aud103
+            title: Risks subsection + finalize bmad-audit.md
+            status: backlog
+            blocked_by: [aud102]
+
+      - key: epic-config-schema
+        title: devx.config.yaml schema + `devx config` CLI
+        status: backlog
+        stories:
+          - key: cfg201
+            title: JSON schema for all 15 sections of devx.config.yaml
+            status: backlog
+          - key: cfg202
+            title: YAML round-trip lib using eemeli/yaml
+            status: backlog
+          - key: cfg203
+            title: Config validation on load
+            status: backlog
+            blocked_by: [cfg201, cfg202]
+          - key: cfg204
+            title: `devx config <key>` get/set CLI
+            status: backlog
+            blocked_by: [cfg202, cfg203, cli301]
+
+      - key: epic-cli-skeleton
+        title: devx CLI skeleton (11 commands)
+        status: backlog
+        stories:
+          - key: cli301
+            title: npm package scaffold + commander dispatch
+            status: backlog
+          - key: cli302
+            title: Stub helper + 10 stub commands registered
+            status: backlog
+            blocked_by: [cli301]
+          - key: cli303
+            title: `devx --help` listing with phase + epic annotations
+            status: backlog
+            blocked_by: [cli302, cfg204]
+          - key: cli304
+            title: `devx --version` + postinstall PATH verification
+            status: backlog
+            blocked_by: [cli301]
+          - key: cli305
+            title: Cross-platform install + WSL PATH detection
+            status: backlog
+            blocked_by: [cli304]
+
+      - key: epic-os-supervisor-scaffold
+        title: OS supervisor unit-file scaffold
+        status: backlog
+        stories:
+          - key: sup401
+            title: Supervisor stub script + idempotent install
+            status: backlog
+            blocked_by: [cli301]
+          - key: sup402
+            title: macOS launchd plist generator + bootstrap
+            status: backlog
+            blocked_by: [sup401]
+          - key: sup403
+            title: Linux systemd-user .service generator + enable
+            status: backlog
+            blocked_by: [sup401]
+          - key: sup404
+            title: Windows/WSL Task Scheduler XML generator
+            status: backlog
+            blocked_by: [sup401]
+          - key: sup405
+            title: Platform auto-detect dispatch + post-install verification
+            status: backlog
+            blocked_by: [sup402, sup403, sup404]
+
+      - key: epic-init-skill
+        title: /devx-init skill
+        status: backlog
+        stories:
+          - key: ini501
+            title: 13-question flow + skip-table inference + state detection
+            status: backlog
+            blocked_by: [aud103, cli301]
+          - key: ini502
+            title: Local file writes (config + backlogs + spec dirs + CLAUDE.md + .gitignore)
+            status: backlog
+            blocked_by: [ini501, cfg204]
+          - key: ini503
+            title: GitHub-side scaffolding (workflows + PR template + develop + protection)
+            status: backlog
+            blocked_by: [ini502]
+          - key: ini504
+            title: Personas + INTERVIEW.md fixed-template seeding
+            status: backlog
+            blocked_by: [ini502]
+          - key: ini505
+            title: Supervisor installer trigger + verify
+            status: backlog
+            blocked_by: [ini502, sup405]
+          - key: ini506
+            title: Failure-mode handling (BMAD-fail / gh-not-auth / no-remote)
+            status: backlog
+            blocked_by: [ini503, ini505]
+          - key: ini507
+            title: Idempotent upgrade-mode re-run
+            status: backlog
+            blocked_by: [ini502, ini503, ini504, ini505]
+          - key: ini508
+            title: End-to-end integration test
+            status: backlog
+            blocked_by: [ini506, ini507]
+
+  - key: plan-7a2d1f-mobile-companion-v01
+    title: Mobile companion v0.1 → real-time
+    status: backlog
+    epics:
+      - key: epic-flutter-scaffold-ios-device
+        title: Flutter scaffold & iOS on device
+        status: backlog
+        stories:
+          - key: dev-a10001
+            title: Flutter project scaffold + nav shell
+            status: backlog
+          - key: dev-a10002
+            title: Riverpod + Material 3 theme + go_router foundations
+            status: backlog
+            blocked_by: [dev-a10001]
+          - key: dev-a10003
+            title: iOS project configuration
+            status: backlog
+            blocked_by: [dev-a10001]
+          - key: dev-a10004
+            title: First on-device run
+            status: backlog
+            blocked_by: [dev-a10002, dev-a10003]
+          - key: dev-a10005
+            title: TestFlight pipeline
+            status: backlog
+            blocked_by: [dev-a10004]
+
+      - key: epic-github-connection-read
+        title: GitHub connection (read-only)
+        status: backlog
+        stories:
+          - key: dev-b20001
+            title: Auth service + PAT onboarding screen
+            status: backlog
+            blocked_by: [dev-a10005]
+          - key: dev-b20002
+            title: GitHub client wrapper + Contents read client
+            status: backlog
+            blocked_by: [dev-b20001]
+          - key: dev-b20003
+            title: Backlog markdown → structured model parser
+            status: backlog
+            blocked_by: [dev-b20002]
+          - key: dev-b20004
+            title: Inbox tab
+            status: backlog
+            blocked_by: [dev-b20003]
+          - key: dev-b20005
+            title: Backlogs tab + spec detail view
+            status: backlog
+            blocked_by: [dev-b20003]
+
+      - key: epic-bidirectional-writes-offline
+        title: Bidirectional writes + offline queue
+        status: backlog
+        stories:
+          - key: dev-c30001
+            title: Offline queue foundation (drift + connectivity listener)
+            status: backlog
+            blocked_by: [dev-b20005]
+          - key: dev-c30002
+            title: Git Data API client (atomic multi-file commit)
+            status: backlog
+            blocked_by: [dev-b20002]
+          - key: dev-c30003
+            title: Add tab — (+) button flow
+            status: backlog
+            blocked_by: [dev-c30001, dev-c30002]
+          - key: dev-c30004
+            title: Inline INTERVIEW answering
+            status: backlog
+            blocked_by: [dev-c30001, dev-b20004]
+          - key: dev-c30005
+            title: Conflict resolution UI
+            status: backlog
+            blocked_by: [dev-c30003, dev-c30004]
+
+      - key: epic-realtime-updates-push
+        title: Real-time updates (bidirectional)
+        status: backlog
+        stories:
+          - key: dev-d40001
+            title: Cloudflare Worker scaffold + HMAC verification
+            status: backlog
+            blocked_by: [dev-c30005]
+          - key: dev-d40002
+            title: FCM sender + service-account JWT auth
+            status: backlog
+            blocked_by: [dev-d40001]
+          - key: dev-d40003
+            title: Event filters + fanout
+            status: backlog
+            blocked_by: [dev-d40002]
+          - key: dev-d40004
+            title: Device registration endpoints
+            status: backlog
+            blocked_by: [dev-d40001]
+          - key: dev-d40005
+            title: Flutter firebase_messaging integration
+            status: backlog
+            blocked_by: [dev-d40004]
+          - key: dev-d40006
+            title: Deep-linking + iOS inline-reply
+            status: backlog
+            blocked_by: [dev-d40005]
+          - key: dev-d40007
+            title: Laptop-side fast-path webhook receiver
+            status: backlog
+            optional: true
+            blocked_by: [dev-d40003]

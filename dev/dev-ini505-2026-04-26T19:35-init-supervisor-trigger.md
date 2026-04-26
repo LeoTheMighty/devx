@@ -1,0 +1,32 @@
+---
+hash: ini505
+type: dev
+created: 2026-04-26T19:35:00-07:00
+title: Supervisor installer trigger + verify
+from: _bmad-output/planning-artifacts/epic-init-skill.md
+plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
+status: ready
+blocked_by: [ini502, sup405]
+branch: develop/dev-ini505
+---
+
+## Goal
+
+Wire `/devx-init` to call `installSupervisor()` and `verifySupervisor()` from epic-os-supervisor-scaffold for both `manager` and `concierge` roles. Auto-detect platform; honor explicit `manager.os_supervisor` config override. Include WSL host-vs-WSL PATH detection from cli305.
+
+## Acceptance criteria
+
+- [ ] Calls `installSupervisor('manager')` and `installSupervisor('concierge')` from `src/lib/supervisor.ts`
+- [ ] Reads `manager.os_supervisor` from the just-written `devx.config.yaml`; `auto` resolves via `uname` → `launchd | systemd | task-scheduler`
+- [ ] Post-install: calls `verifySupervisor()` for both; on success appends checkmark to "setting up now…" checklist; on failure files MANUAL.md entry but does NOT abort init
+- [ ] WSL detection (cli305): warns if `npm config get prefix` is on `/mnt/c/`; surfaces as MANUAL.md entry (not init failure)
+- [ ] Vitest covers: macOS detection / Linux detection / WSL detection / explicit `none` skip / verification failure → MANUAL.md not abort
+
+## Technical notes
+
+- Verification failure ≠ install failure — units may be installed but not yet started; init should still complete.
+- Stub script must already exist at `~/.devx/bin/devx-supervisor-stub.sh` before unit install (sup401 prerequisite).
+
+## Status log
+
+- 2026-04-26T19:35 — created by /devx-plan

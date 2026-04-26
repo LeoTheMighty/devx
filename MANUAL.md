@@ -1,0 +1,55 @@
+# MANUAL — Actions only the user can do
+
+Items here block `/dev` when the user's action is required. Check off when done.
+
+## For Epic 1 (Flutter scaffold & iOS on device)
+
+- [ ] **M1.1 — Share Apple Developer Team ID.**
+  - Why: `dev-a10003` needs it to configure iOS signing.
+  - How: Apple Developer portal → Membership → copy Team ID (10-char string).
+  - Blocks: `dev-a10003`.
+
+- [ ] **M1.2 — Register iPhone UDID in Developer portal.**
+  - Why: Development signing requires the device be registered.
+  - How: Plug phone into Mac → Xcode → Window → Devices and Simulators → copy UDID → Apple Developer portal → Devices → Add.
+  - Blocks: `dev-a10004`.
+
+- [ ] **M1.3 — Upload first archive to App Store Connect / TestFlight.**
+  - Why: One-time setup that can't be automated without App Store Connect API key. Subsequent builds can be scripted.
+  - How: Xcode → Product → Archive → Distribute App → App Store Connect → Upload. Wait 10-20 minutes for processing.
+  - Blocks: `dev-a10005`.
+
+## For Epic 4 (Real-time updates)
+
+- [ ] **M4.1 — Create Firebase project and download service account JSON.**
+  - Why: Worker needs service account credentials to send FCM pushes.
+  - How: firebase.google.com → Create project → Project Settings → Service Accounts → Generate new private key (JSON download).
+  - Blocks: `dev-d40002`.
+
+- [ ] **M4.2 — Upload APNs auth key to Firebase.**
+  - Why: Firebase uses APNs under the hood to deliver iOS pushes.
+  - How: Apple Developer → Keys → Create a new key with APNs enabled → download `.p8`. Firebase console → Project Settings → Cloud Messaging → Apple app configuration → upload `.p8`.
+  - Blocks: `dev-d40002`.
+
+- [ ] **M4.3 — Add GoogleService-Info.plist to mobile/ios/Runner/.**
+  - Why: Flutter `firebase_messaging` needs this to identify the app with FCM.
+  - How: Firebase console → Project Settings → Your apps → iOS app → download `GoogleService-Info.plist` → drop into `mobile/ios/Runner/` in Xcode.
+  - Blocks: `dev-d40005`.
+  - Note: gitignored to avoid leaking app-private config.
+
+- [ ] **M4.4 — Create GitHub webhook on the devx repo pointing at Worker URL.**
+  - Why: Without a webhook configured, GitHub never notifies the Worker.
+  - How: devx repo → Settings → Webhooks → Add. Payload URL: `https://<worker-url>/webhook/github`. Content type: application/json. Secret: generate one; mirror into Worker secret `GH_WEBHOOK_SECRET`. Events: Push, Pull requests, Check suites, Workflow runs.
+  - Blocks: `dev-d40003`.
+
+## For Epic 3 (prerequisite)
+
+- [ ] **M3.1 — Enable branch protection on `main`.**
+  - Why: Prevents any bug in the slug generator from accidentally writing to production. Phone should only ever touch `develop`.
+  - How: devx repo → Settings → Branches → Add rule for `main` → Require a pull request, require status checks, restrict pushes.
+  - Blocks: `dev-c30003`.
+
+- [ ] **M3.2 — Create `develop` branch if absent.**
+  - Why: Phone writes target `develop`; the branch must exist.
+  - How: `git checkout -b develop && git push -u origin develop`.
+  - Blocks: `dev-c30003`.

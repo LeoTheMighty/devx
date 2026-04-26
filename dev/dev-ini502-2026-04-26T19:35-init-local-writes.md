@@ -1,0 +1,36 @@
+---
+hash: ini502
+type: dev
+created: 2026-04-26T19:35:00-07:00
+title: Local file writes (config + backlogs + spec dirs + CLAUDE.md + .gitignore)
+from: _bmad-output/planning-artifacts/epic-init-skill.md
+plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
+status: ready
+blocked_by: [ini501, cfg204]
+branch: develop/dev-ini502
+---
+
+## Goal
+
+Implement `src/lib/init-write.ts` — orchestrates all local file writes: `devx.config.yaml`, 8 backlog files (with empty-state headers), spec subdirectories, CLAUDE.md (with markers), and `.gitignore` (managed block).
+
+## Acceptance criteria
+
+- [ ] `init-write.ts` writes `devx.config.yaml` with all 15 sections + `devx_version` field at top + comments-on-inferred + comments-on-asked
+- [ ] Creates 8 backlog files (DEV/PLAN/TEST/DEBUG/FOCUS/INTERVIEW/MANUAL/LESSONS) each with empty-state header from `_devx/templates/init/backlog-headers/<NAME>.md.header`
+- [ ] Creates spec subdirectories: `dev/`, `plan/`, `test/`, `debug/`, `focus/`, `learn/`, `qa/` (creates `focus-group/personas/` if missing)
+- [ ] Writes/updates `CLAUDE.md`: if absent, creates with full template; if present and lacks markers, appends; if present with markers, updates only inside markers
+- [ ] CLAUDE.md merge conflict detection: non-devx content found inside `<!-- devx:start --> … <!-- devx:end -->` markers → file 1 INTERVIEW.md entry; do NOT auto-resolve
+- [ ] Appends `.gitignore` with `# >>> devx` / `# <<< devx` block; idempotent (re-run skips if block present)
+- [ ] All file writes atomic (tmp + rename)
+- [ ] Idempotent: existing files never overwritten — touch only if missing
+- [ ] Vitest covers: fresh / re-run / CLAUDE.md-merge-conflict / .gitignore-already-managed / partial-existing-backlogs
+
+## Technical notes
+
+- Write order: config → backlogs → spec dirs → CLAUDE.md → .gitignore. config.yaml first so other steps can reference its values.
+- Empty-state headers auto-delete when the file holds N≥3 items (logic added later; for now headers persist).
+
+## Status log
+
+- 2026-04-26T19:35 — created by /devx-plan

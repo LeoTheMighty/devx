@@ -1,0 +1,361 @@
+# devx.config.yaml — devx-self project (bootstrapping devx by building devx)
+#
+# Strategic axes: full YOLO. This is a pre-launch, no-real-users dogfood project.
+# The whole point is to move fast, build the system, and let the system tighten
+# itself once Phase 5 (LearnAgent) lands.
+#
+# Reference: docs/CONFIG.md (canonical knob list), docs/MODES.md (what YOLO does
+# to each subsystem), docs/DESIGN.md §Project shapes.
+
+# ---------------------------------------------------------------------------
+# 1. Risk & process — the three strategic axes
+# ---------------------------------------------------------------------------
+
+mode: YOLO                            # no real users → no gates that block velocity
+project:
+  shape: empty-dream                  # bootstrapping; aggressive parallelism allowed
+thoroughness: send-it                 # minimum ceremony — skip party-mode unless ≥2 surfaces
+
+# ---------------------------------------------------------------------------
+# 2. Capacity & cost
+# ---------------------------------------------------------------------------
+
+capacity:
+  max_concurrent: 5                   # YOLO default per MODES.md §2.8
+  usage_cap_pct: 95                   # % of Claude org limit; sole capacity gate
+  usage_hard_stop_pct: 100            # at 100%, kill in-flight work too
+  # daily_spend_cap_usd / daily_spend_hard_cap_usd intentionally omitted
+  # per INTERVIEW Q#6 — capacity is gated on Claude limit %, not on $.
+  token_budget_per_spec: 500000
+  model_strategy: balanced
+  models:
+    manager: claude-haiku-4-5
+    concierge: claude-haiku-4-5
+    plan: claude-opus-4-7
+    dev: claude-sonnet-4-6
+    test: claude-sonnet-4-6
+    debug: claude-sonnet-4-6
+    focus: claude-opus-4-7
+    learn: claude-opus-4-7
+
+# ---------------------------------------------------------------------------
+# 3. Permissions
+# ---------------------------------------------------------------------------
+
+permissions:
+  bash:
+    allow:
+      - git
+      - gh
+      - npm
+      - bun
+      - pnpm
+      - yarn
+      - pip
+      - pytest
+      - cargo
+      - go
+      - dart
+      - flutter
+      - playwright
+      - eslint
+      - prettier
+      - ts-node
+      - tsx
+      - node
+      - wrangler                      # Cloudflare Worker for Phase 4 mobile relay
+    ask:
+      - terraform
+      - kubectl
+      - docker
+      - aws
+      - gcloud
+      - az
+      - ssh
+      - rsync
+    deny:
+      - "rm -rf /"
+      - "curl https://*"
+      - "sudo *"
+  network:
+    allow_hosts:
+      - github.com
+      - api.github.com
+      - api.anthropic.com
+      - registry.npmjs.org
+      - pypi.org
+      - pub.dev                       # Flutter pub
+      - workers.cloudflare.com
+  file_writes:
+    allow: ["**/*"]
+    deny:
+      - ".env"
+      - ".env.*"
+      - "secrets/**"
+      - "id_rsa*"
+      - "**/.aws/credentials"
+      - "**/.ssh/**"
+
+# ---------------------------------------------------------------------------
+# 4. Git strategy
+# ---------------------------------------------------------------------------
+
+git:
+  default_branch: main
+  integration_branch: develop
+  branch_prefix: develop/             # feature branches: develop/dev-aud101 etc.
+  pr_strategy: pr-to-develop
+  merge_method: squash
+  protect_main: true
+  require_linear_history: true
+  allow_force_push_main: false
+  allow_force_push_develop: true
+  delete_branch_on_merge: true
+
+# ---------------------------------------------------------------------------
+# 5. Promotion & autonomy
+# ---------------------------------------------------------------------------
+
+promotion:
+  gate: fast-ship-always              # YOLO default — CI green only
+  soak_hours: 0
+  required_checks:
+    - ci
+  block_on_new_debug_items: false
+  autonomy:
+    initial_n: 0                      # YOLO: full autonomy from commit 1
+    count: 0                          # /devx reads this for the trust-gradient check
+    rollback_penalty: 0.5
+    hotfix_zeroes: true
+    veto_window_hours: 24
+  agent: PromotionAgent
+
+# ---------------------------------------------------------------------------
+# 6. Coverage
+# ---------------------------------------------------------------------------
+
+coverage:
+  enabled: true                       # we still measure even in YOLO
+  target: touched-lines
+  threshold: 1.00                     # informational at YOLO; never blocks merge
+  blocking: false                     # explicit: YOLO never blocks on coverage
+  opt_out_marker: "devx:no-coverage"
+  flaky_window_hours: 24
+  flaky_action: file-test-md-entry
+  language_runners:
+    typescript: vitest --coverage
+    dart: flutter test --coverage
+
+# ---------------------------------------------------------------------------
+# 7. CI
+# ---------------------------------------------------------------------------
+
+ci:
+  provider: github-actions
+  workflow_path: .github/workflows/devx-ci.yml
+  required_checks:
+    - lint
+    - test
+  retry_on_flake: true
+  max_retries: 2
+  poll_interval_s: 30
+  poll_timeout_min: 45
+
+# ---------------------------------------------------------------------------
+# 8. QA & focus group
+# ---------------------------------------------------------------------------
+
+qa:
+  browser_harness: playwright
+  layer_2_cadence: on-demand          # YOLO default per MODES.md §2.6
+  layer_2_personas: 4
+  scripted_test_runner: playwright
+
+focus_group:
+  panel_size: 5
+  consult_at: []                      # YOLO: skip per MODES.md §2.4
+  auto_evolve: true
+  binding: false
+
+# ---------------------------------------------------------------------------
+# 9. Self-healing
+# ---------------------------------------------------------------------------
+
+self_healing:
+  enabled: true
+  retro_concordance_threshold: 5      # send-it raises threshold so system mutates slowly
+  auto_apply:
+    confidence_min: 0.85
+    blast_radius_max: medium          # YOLO ceiling: through CLAUDE.md (per MODES.md §2.3)
+  canary_runs: 3
+  user_review_required_for:
+    - skills
+    - prompts
+    - agents
+  user_review_optional_for:
+    - memory
+    - claude-md
+    - config
+  over_tuning_detector: true
+  weekly_window_days: 7
+
+# ---------------------------------------------------------------------------
+# 10. Notifications
+# ---------------------------------------------------------------------------
+
+notifications:
+  channels:
+    - kind: email
+      to: leonid@ac93.org
+      digest_only: true
+  events:
+    # Per INTERVIEW Q#5: push only for things that block the loop on a
+    # human (INTERVIEW + MANUAL); everything else into the daily digest.
+    # System-critical events (usage cap, repeated crashes) override to push
+    # because they affect the loop itself, not just one item.
+    context_rot_detected: silent
+    manual_filed: push
+    interview_filed: push
+    ci_failed: digest
+    pr_opened: silent
+    pr_merged: digest
+    promotion_ready: silent           # YOLO: auto-promotes anyway
+    heartbeat_stale: push              # system-critical override
+    usage_cap_hit: push                # system-critical override
+    agent_crashed_repeatedly: push     # system-critical override
+  quiet_hours: "22:00-08:00"
+  quiet_hours_override:
+    - usage_cap_hit
+  digest_schedule: "daily-09:00"
+
+# ---------------------------------------------------------------------------
+# 11. UI
+# ---------------------------------------------------------------------------
+
+ui:
+  tui:
+    enabled: true
+    layout: three-pane
+    theme: dark
+    sidebar_density: comfortable
+    keybinds: vim
+    refresh_ms: 500
+    show_token_usage: true
+    show_phase_timing: true
+    sidebar_groups:
+      - workers
+      - system
+      - inboxes
+  web:
+    enabled: true
+    port: 7321
+    bind: 127.0.0.1
+    theme: dark
+    show_diff: true
+    show_pr_preview: true
+    enable_drag_reorder: true
+  mobile:
+    enabled: true
+    activity_feed_depth: 50
+    show_phase_changes: true
+    show_token_usage: true
+    swipe_to_kill: true
+
+# ---------------------------------------------------------------------------
+# 12. Manager & Concierge
+# ---------------------------------------------------------------------------
+
+manager:
+  heartbeat_interval_s: 60
+  restart_on_token_pct: 0.85
+  max_worker_age_min: 90
+  worker_crash_backoff_s: [10, 30, 90, 300]
+  max_restarts_per_spec: 5
+  cloud_watchdog: true
+  cloud_watchdog_cadence: "*/30 * * * *"
+  cloud_spillover:
+    enabled: false
+    target: github-actions
+  os_supervisor: auto
+  log_dir: ~/Library/Logs/devx
+
+concierge:
+  always_on: true
+  context_window_target: 0.40
+  digest_interval_min: 60
+  status_endpoint:
+    bind: 127.0.0.1
+    port: 7322
+  intent_routing:
+    feature_request: DEV.md
+    bug_report: DEBUG.md
+    question: INTERVIEW.md
+    feedback: FOCUS.md
+
+# ---------------------------------------------------------------------------
+# 13. Storage
+# ---------------------------------------------------------------------------
+
+storage:
+  worktree_root: .worktrees
+  cache_dir: .devx-cache
+  log_retention_days: 14
+  spec_archive_after_days: 90
+  archive_path: archive/
+  gitignore_managed: true
+
+# ---------------------------------------------------------------------------
+# 14. Observability
+# ---------------------------------------------------------------------------
+
+observability:
+  log_level: info
+  redact:
+    - api_keys
+    - emails
+    - tokens
+    - aws_access_keys
+  telemetry:
+    enabled: false
+    endpoint: null
+    anonymized: true
+
+# ---------------------------------------------------------------------------
+# 15. BMAD integration
+# ---------------------------------------------------------------------------
+
+bmad:
+  modules: [core, bmm, tea]
+  output_root: _bmad-output
+  preserve_on_eject: true
+  workflows_path: _bmad/
+
+# ---------------------------------------------------------------------------
+# Stack — what /devx Phase 5 (local CI) runs.
+#
+# Layered shape: most Phase 0 epics produce a node CLI; Phase 8 (mobile) is a
+# Flutter project under mobile/; Phase 4 mobile-relay is a Cloudflare Worker
+# under worker/. Until the CLI scaffold lands (cli301), these commands are
+# placeholders that no-op so /devx can run docs-only items without failing.
+# ---------------------------------------------------------------------------
+
+projects:
+  - name: cli
+    path: .
+    layers: [backend]
+    lint: 'echo "[cli] lint not yet wired (cli301)"'
+    test: 'echo "[cli] test not yet wired (cli301)"'
+    coverage: null
+    pre_push: null
+  - name: mobile
+    path: mobile
+    layers: [frontend]
+    lint: flutter analyze
+    test: flutter test
+    coverage: flutter test --coverage
+  - name: worker
+    path: worker
+    layers: [backend]
+    lint: bun run lint
+    test: bun test
+    coverage: bun test --coverage

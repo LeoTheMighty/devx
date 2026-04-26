@@ -1,0 +1,31 @@
+---
+hash: cli305
+type: dev
+created: 2026-04-26T19:35:00-07:00
+title: Cross-platform install + WSL PATH detection
+from: _bmad-output/planning-artifacts/epic-cli-skeleton.md
+plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
+status: ready
+blocked_by: [cli304]
+branch: develop/dev-cli305
+---
+
+## Goal
+
+Document the cross-platform install matrix and add WSL-specific detection: warn the user if `npm i -g` is landing binaries on the Windows host (`/mnt/c/`) instead of the WSL filesystem.
+
+## Acceptance criteria
+
+- [ ] `package/INSTALL.md` documents install on macOS / Ubuntu / WSL2-Ubuntu / Windows-host
+- [ ] Postinstall (cli304) detects WSL via `uname -r` containing `microsoft` AND `npm config get prefix` matching `/mnt/c/`; prints recommendation `npm config set prefix ~/.npm-global` + PATH update line
+- [ ] GitHub Actions matrix runs vitest on macos-latest + ubuntu-latest (Windows-host best-effort manual)
+- [ ] WSL detection short-circuits cleanly when not WSL — zero overhead
+
+## Technical notes
+
+- Don't try to detect Windows-from-PowerShell paths from inside Node — the platform identifier is sufficient.
+- WSL-host crossover is the single most common install foot-gun for Node CLIs.
+
+## Status log
+
+- 2026-04-26T19:35 — created by /devx-plan

@@ -1,0 +1,33 @@
+---
+hash: cli304
+type: dev
+created: 2026-04-26T19:35:00-07:00
+title: `devx --version` + postinstall PATH verification
+from: _bmad-output/planning-artifacts/epic-cli-skeleton.md
+plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
+status: ready
+blocked_by: [cli301]
+branch: develop/dev-cli304
+---
+
+## Goal
+
+Wire `devx --version` to print the package version. Add a postinstall script that verifies `command -v devx` resolves and prints the platform-specific PATH-fix command if not. Postinstall is non-fatal.
+
+## Acceptance criteria
+
+- [ ] `devx --version` prints `package.json` version, exits 0
+- [ ] `npm i -g @devx/cli` runs `scripts/postinstall.js` after install
+- [ ] Postinstall executes `command -v devx` (or platform equivalent on Windows); on success prints nothing
+- [ ] On failure prints platform-specific PATH-fix advice (macOS, Linux, WSL)
+- [ ] Postinstall **never throws** — exit 0 even on PATH failure (warn-only)
+- [ ] `package.json` `scripts.postinstall: "node scripts/postinstall.js"`
+
+## Technical notes
+
+- Read version via `import { version } from '../package.json' with { type: 'json' }` (Node ≥ 20).
+- Postinstall avoids dependency on built TS — pure JS file.
+
+## Status log
+
+- 2026-04-26T19:35 — created by /devx-plan
