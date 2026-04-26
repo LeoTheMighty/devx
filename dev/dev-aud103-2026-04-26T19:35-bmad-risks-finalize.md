@@ -5,9 +5,10 @@ created: 2026-04-26T19:35:00-07:00
 title: Risks subsection + finalize bmad-audit.md
 from: _bmad-output/planning-artifacts/epic-bmad-audit.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: done
+owner: /devx-2026-04-26-aud103
 blocked_by: [aud102]
-branch: develop/dev-aud103
+branch: feat/dev-aud103
 ---
 
 ## Goal
@@ -31,3 +32,6 @@ Author the Risks section (Section 3) of `bmad-audit.md` covering the four findin
 ## Status log
 
 - 2026-04-26T19:35 — created by /devx-plan
+- 2026-04-26T23:30 — claimed by /devx in session devx-2026-04-26-aud103; branch corrected to feat/dev-aud103 (single-branch model per devx.config.yaml git.integration_branch=null).
+- 2026-04-26T23:38 — Sections 3 (5 risks: TEA orphan, sprint-planning shadow, retrospective gap, UX timing, manifest drift), 4 (wirings + no-new-epic fixes + cross-cutting note), 5 (versions + audit re-run trigger) written to `_bmad-output/planning-artifacts/bmad-audit.md`. CONFIG.md path correction folded in (`_bmad/devx/config-schema.json` → npm-package-embedded). Forward-pointing notes in §1 and §2.6 annotated with resolution markers. Self-review fixed 4 issues: stale forward-pointing-note language, §3.5 cross-ref to non-existent §4.2 row, §4.3 misclassification of `bmad-retrospective`, "single conditional" overstatement in §3.4. Local CI: cli placeholders pass; mobile/worker untouched.
+- 2026-04-26T23:41 — PR #3 opened: https://github.com/LeoTheMighty/devx/pull/3 (target main, head feat/dev-aud103, commit 6e83a61). mergeStateStatus CLEAN; no required checks (CI workflow not yet wired by ini503). Squash-merged to main as 82ed445. Worktree + remote/local branches removed. Status: done.
