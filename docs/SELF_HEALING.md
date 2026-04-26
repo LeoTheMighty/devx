@@ -83,13 +83,77 @@ A `DEBUG.md` item resolved with "flaky test, retried and passed" three times →
 
 ---
 
+## Two-stage loop: RetroAgent → LearnAgent
+
+Self-healing is **two agents, two cadences, two purposes** — a deliberate slowdown that prevents one weird incident from mutating the system.
+
+```
+/dev or /dev-plan finishes
+       ↓
+  RetroAgent runs (cheap, per-completion)
+       ↓
+  retros/retro-<spec-hash>.md written (per-story retrospective)
+       ↓
+  ... time passes, more retros accrue ...
+       ↓
+  LearnAgent runs (mode-derived cadence; reads MANY retros)
+       ↓
+  LESSONS.md proposals (only when ≥3 concordant retros agree)
+       ↓
+  Mode-gated apply (memory / config / CLAUDE.md / skills / prompts)
+```
+
+### RetroAgent (new)
+
+- **Trigger:** every successful (or aborted) `/dev` or `/dev-plan` completion.
+- **Job:** read the just-finished spec file's status log, read the resulting commits, read any review findings or CI failures along the way. Write a single retrospective markdown file under `retros/retro-<spec-hash>-<YYYY-MM-DDTHH:MM>.md`.
+- **Output structure:**
+  ```yaml
+  ---
+  spec: dev/dev-a3f2b9-...md
+  type: retro
+  completed_at: 2026-04-25T14:30:00-07:00
+  outcome: shipped | aborted | partial
+  ---
+  ## What went smoothly
+  ## What I had to fix manually
+  ## What CI / review caught
+  ## Skill or workflow gaps observed
+  ## Surprises (good or bad)
+  ## Suggested lesson candidates (raw, not vetted)
+  ```
+- **Cost:** small — one Claude call per completion. Run inline in the same Claude Code session that completed the work, before releasing the worktree.
+- **Never proposes edits to the system.** RetroAgent only journals. The journal is grist for LearnAgent.
+
+### LearnAgent (revised mandate)
+
+- **Old behavior (single-stage):** scanned signals across spec files directly, inferred lessons, gated by confidence + mode.
+- **New behavior (two-stage):** reads `retros/*.md` files, clusters across **multiple** retros, and only proposes a lesson when ≥3 concordant retros agree on the same gap. Single-retro signals stay journaled; they do not yet move the system.
+- This raises the bar significantly. A bad day's worth of one weird story can no longer mutate skills. Real patterns surface only after the same problem has been independently observed three or more times.
+- Cadence (mode-derived) is unchanged from the previous spec. What changes is the **input** — retros instead of raw signals.
+
+### Why this is better
+
+- **Stories get to write down what happened, immediately, while context is fresh.** Retros capture nuance the spec file's status log can't.
+- **The system only changes when a pattern is independently confirmed.** No more "I had one weird run; LearnAgent will drift my skills" anxiety.
+- **The user can read retros directly.** They're a useful artifact in their own right (project journal, retrospective, blameless post-mortem).
+- **`devx eject` keeps retros.** Even if you leave devx, you keep the per-story journal.
+
 ## LearnAgent — the writer
 
-`/devx-learn` is the slash command. LearnAgent can be invoked:
+`/devx-learn` is the slash command. LearnAgent's scan cadence is mode-derived ([`MODES.md`](./MODES.md)):
+
+| Mode | Default cadence | Rationale |
+|---|---|---|
+| YOLO | After every merge to `develop` | Fast iteration; lessons compound quickly |
+| BETA | Daily | Balance speed and caution |
+| PROD | Weekly digest | Prefer conservative, compacted change |
+| LOCKDOWN | Paused | No learning during incidents |
+
+Plus always invocable:
 
 - **Manually** by the user, after a meaningful chunk of work ("hey, go digest what we just did").
-- **On a schedule** via `/loop 24h /devx-learn` — nightly digest.
-- **By TriageAgent** when it detects N accumulated trigger signals and capacity is free.
+- **By TriageAgent** when it detects N accumulated trigger signals and capacity is free (respects mode cadence as a floor, not a ceiling).
 - **After a completed promotion** (`develop → main`) — high-signal moment, freshly-closed items to learn from.
 
 ### Loop
@@ -106,7 +170,16 @@ A `DEBUG.md` item resolved with "flaky test, retried and passed" three times →
 
 ## Confidence and gates
 
-LearnAgent never auto-edits agent system prompts. It never auto-edits `CLAUDE.md` without a PR. The gates are proportional to blast radius:
+LearnAgent's auto-apply ceiling is derived from the project's risk **mode** ([`MODES.md`](./MODES.md)), then further gated by confidence:
+
+| Mode | Max auto-apply target | Targets above ceiling |
+|---|---|---|
+| YOLO | CLAUDE.md (auto-applies at high confidence) | skill + agent-prompt edits queue to `LESSONS.md` |
+| BETA | Config + templates (auto-applies at high confidence) | CLAUDE.md + skill + prompts queue |
+| PROD | Memory + config + templates (current default) | CLAUDE.md + skill + prompts queue |
+| LOCKDOWN | Nothing auto-applies | everything queues with `lockdown-deferred` tag |
+
+Within the mode's ceiling, confidence determines behavior:
 
 | Confidence | Target | Behavior |
 |---|---|---|

@@ -174,15 +174,114 @@ No data loss ever. The phone can be offline for a week; the queue drains when it
 
 ---
 
+## Realtime updates — three-tier architecture
+
+The git-commit-first invariant in DESIGN.md says every state change is a commit on `develop`. That's right for durable state, wrong for realtime. A commit per agent heartbeat would (a) blow up `git log` with status noise, (b) trigger CI on every tick, (c) eat GitHub API rate limit, and (d) saturate APNs push budget for trivia.
+
+**Realtime updates are projections of state, not state.** Commit the durable facts; stream the derivative.
+
+### Tier 1 — durable state (commits)
+
+Spec-file status logs + backlog file mutations on `develop`. One commit per *meaningful* event only: claimed, blocked, unblocked, PR opened, merged, promoted, mode change. ~5–15 commits per feature. This is the source of truth; anything else is a cache.
+
+### Tier 2 — realtime stream (Durable Object + WebSocket)
+
+A Cloudflare **Durable Object** (one per project) holds a small ring buffer of recent agent events and fans them out over WebSocket to subscribed phones.
+
+- **Laptop's TriageAgent** posts every `.devx-cache/events/<agent-id>.jsonl` line to `POST <worker>/event` (HMAC-signed with a shared secret in `devx.config.yaml`).
+- **Foregrounded app** holds a WebSocket on `WSS <worker>/stream/<repo>` for sub-second updates.
+- **Backgrounded app** drops the socket. The DO retains the last 50 events; next foreground gets a "missed while away" replay.
+- DO storage stays in `state.storage` (free tier, no KV needed for the stream itself).
+
+The DO is a cache. If it dies, the next foreground re-reads `develop` HEAD via the GitHub Contents API and rebuilds from spec-file status logs. **No data loss is possible.**
+
+### Tier 3 — push notifications (two cadences)
+
+APNs + FCM, but split:
+
+| Tier | What it does | Examples | Volume |
+|---|---|---|---|
+| **High-priority** | banner + vibrate + Live Activity update | INTERVIEW filed, MANUAL filed, CI red on develop, promotion awaiting approval, mode auto-changed to LOCKDOWN | ~5/day |
+| **Silent Live Activity** | updates lock-screen widget only, no banner | agent claimed, PR opened, CI green, merged | ~30–50/day |
+
+APNs allows ~120 silent Live Activity updates per activity per hour for free; we're well under. Android equivalent is `flutter_foreground_task` with a persistent notification.
+
+### Live Activity widget content
+
+Lock-screen layout (iOS Dynamic Island and below):
+
+```
+┌────────────────────────────────────────┐
+│ devx · palateful · [BETA]              │
+│ 2 agents active · 1 PR awaiting promo  │
+│ Last: DevAgent-7 → CI green ✓ (12s)    │
+└────────────────────────────────────────┘
+```
+
+Three lines, deterministic shape. Updated via silent APNs from the Worker; the Flutter app never needs to be foregrounded for the widget to refresh.
+
+### Architecture diagram
+
+```
+Laptop Triage  ──appends──▶  .devx-cache/events/<agent>.jsonl
+       │
+       ├──tier-3 critical──▶  POST /event (kind=critical)  ┐
+       │                                                    ├──▶ Worker ──▶ APNs/FCM (banner)
+       └──tier-2 all──────▶  POST /event (kind=stream)    ──┘                  │
+                                       │                                       └──▶ Live Activity (silent)
+                                       ▼
+                              Durable Object (one per repo)
+                                ├─ ring buffer (last 50)
+                                └─ WebSocket fan-out
+                                       ▲
+                                       │ subscribes when foregrounded
+                              Flutter app (iOS/Android)
+                                       │ on cold start
+                                       ▼
+                              GitHub Contents API ─── reads `develop` HEAD
+                                                       (truth; reconciles with stream)
+```
+
+### Why this stays cheap
+
+| Component | Cost |
+|---|---|
+| Durable Object | Free tier: 1M req/day, 12.8M GB-s/mo. Realistic use: <0.1%. |
+| Worker invocations | Free tier: 100k/day. Actual: ~100/day per active project. |
+| KV (device-token storage, unchanged from before) | Free tier: 100k reads/day. |
+| APNs/FCM sends (loud + silent Live Activity) | $0. Apple/Google don't charge. |
+| **Total marginal cost** | **$0**, same as the existing webhook plan. |
+
+### What survives `devx eject`
+
+The Worker + DO are devx infra, not user infra. Ejecting just stops the laptop from posting events; the phone falls back to GitHub-Contents-API polling on app open. No loss of audit trail (it was always in commits anyway).
+
+---
+
 ## Push notifications (Flutter side)
 
 - `firebase_messaging` registers the device with FCM (iOS devices get an APNs token that FCM forwards to).
 - Device sends its FCM token to the Cloudflare Worker via a `POST /devices/register` (authenticated with the same GitHub PAT — Worker verifies the PAT corresponds to a real user with push access to the repo).
 - Worker stores token → repo mapping in a Durable Object (or KV — free tier is fine).
-- On GitHub webhook (`INTERVIEW.md` touched, `MANUAL.md` touched, PR opened, CI red), Worker fans out FCM messages to registered tokens.
-- In Flutter, `FirebaseMessaging.onMessage` handler opens the relevant screen.
+- On critical events relayed from the laptop (or from GitHub webhooks for `INTERVIEW.md`/`MANUAL.md` writes, PR opened, CI red), Worker fans out FCM messages to registered tokens.
+- In Flutter, `FirebaseMessaging.onMessage` handler opens the relevant screen; `apns-push-type: liveactivity` payloads update the Live Activity without surfacing a banner.
 
 **Inline reply on iOS** uses `firebase_messaging`'s notification actions → answers the INTERVIEW without opening the app. Same UX pattern `palateful` already ships for reminders.
+
+---
+
+## Mode-gated write permissions
+
+The mobile app's write surface is scoped by the project's risk **mode** ([`MODES.md`](./MODES.md)):
+
+| Mode | What the phone can do |
+|---|---|
+| YOLO | Everything: add items, answer INTERVIEW, approve promotions, trigger deploys |
+| BETA | Everything except trigger production deploys |
+| PROD | Add items, answer INTERVIEW, approve panel-flagged promotions; no direct deploy triggering; no destructive data ops |
+| LOCKDOWN | Read-only: the phone sees incident state but can't change it |
+
+The app shows the current mode as a persistent banner color — green (YOLO), yellow (BETA), red (PROD), purple (LOCKDOWN) — and disables buttons the mode forbids with an explanatory tooltip.
 
 ---
 
@@ -197,13 +296,41 @@ No data loss ever. The phone can be offline for a week; the queue drains when it
 
 ---
 
+## Infrastructure cost
+
+**Marginal cost to the user: $0.** Apple Developer Program and Google Play developer fees are already paid from a separate project, so devx piggybacks on those.
+
+| Component | Cost | Notes |
+|---|---|---|
+| Apple Developer Program | already paid | Required for iOS signing + APNs. Shared with existing app. |
+| Google Play developer account | already paid | Only if shipping Android via Play Store. Sideload works for dev. |
+| Cloudflare Worker (webhook → FCM relay) | $0 | Free tier: 100k requests/day. Actual use: ~20/day. |
+| Cloudflare KV (device-token storage) | $0 | Free tier covers a fraction of what we'd use. |
+| Firebase Cloud Messaging (APNs + FCM + web push) | $0 | Unlimited free; no paid tier exists. One API call per notification. |
+| APNs / FCM sends themselves | $0 | Apple and Google don't charge for pushes. |
+| Domain name | **skipped** | Worker ships under `*.workers.dev` — free, HTTPS-valid, routable by GitHub webhooks. Can be swapped for a custom domain later if the project outlives dogfood. |
+| GitHub | $0 | Personal account, private repo, 5000 req/hr rate limit. Actual use: ~50/hr. |
+
+Total new spend: nothing.
+
+### What the Worker URL looks like without a domain
+
+```
+https://devx-push.<your-cf-subdomain>.workers.dev/webhook
+```
+
+Drop this into the devx repo's GitHub webhook config. HTTPS and signatures work out of the box; no DNS setup needed. If you ever want a custom domain later, point a CNAME at the Worker — no code changes, no reissued certs.
+
+---
+
 ## Delivery plan
 
 | Phase | Scope | Effort |
 |---|---|---|
 | **v0.1** | Read backlogs + inbox, answer INTERVIEW, add `/dev` item, PAT auth, poll-only. iOS + Android from day one (Flutter) + web build. | ~1 week |
 | **v0.2** | Offline queue via `drift`. | +1 day |
-| **v0.3** | Push notifications via Cloudflare Worker + FCM. | +3 days |
+| **v0.3** | Push notifications via Cloudflare Worker + FCM (high-priority tier). | +3 days |
+| **v0.3.5** | Live Activities + Durable Object event stream (Tier 2 + Tier 3 silent). iOS first; Android persistent notification. | +2 days |
 | **v0.4** | GitHub App OAuth (replaces PAT). | +2 days |
 | **v0.5** | Attachments (photo, voice note) committed as blobs. | +2 days |
 | **v0.6** | Spec-detail "add comment" (appends to status log). | +1 day |
@@ -239,8 +366,9 @@ devx/
 │   ├── macos/
 │   ├── pubspec.yaml
 │   └── README.md
-├── worker/                    ← Cloudflare Worker for push
-│   ├── src/index.ts
+├── worker/                    ← Cloudflare Worker for push + realtime stream
+│   ├── src/index.ts           ← /webhook, /event, /devices/register, /stream
+│   ├── src/durable_object.ts  ← per-project DO: ring buffer + WS fan-out
 │   └── wrangler.toml
 └── ...
 ```

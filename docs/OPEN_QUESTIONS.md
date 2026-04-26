@@ -139,18 +139,14 @@ Fallback channels still available:
 
 ---
 
-## 9. Browser agent — which harness?
+## 9. Browser agent — ~~which harness?~~ **RESOLVED**
 
-**Default decision:** Playwright. Mature, headless, scriptable, cross-platform, has a good Claude-friendly API via MCP or direct CLI.
+**Decision (2026-04-23):** Two layers, each with the right tool. See [`QA.md`](./QA.md).
 
-**Alternatives considered:**
-- **Puppeteer** — node-only, Chromium-only. Fewer features than Playwright.
-- **Cypress** — test-first framing doesn't fit well with "drive the app like a user for exploratory QA".
-- **Chrome DevTools Protocol direct** — more control, more work.
+- **Layer 1 (regression):** Playwright, scripted, runs in CI per PR. $0.
+- **Layer 2 (exploratory):** `browser-use` (LLM-agnostic open-source Python agent). Runs as a subprocess with its own Anthropic API key — decoupled from the Claude Code usage window. Scheduled by `/devx-focus`, fire-and-forget, reads results on next Triage tick.
 
-**Open:** does the browser agent run in CI (slow, expensive, comprehensive) or locally during `/devx-test` (fast, what-the-agent-is-doing-right-now)? Probably both: local for iteration, CI for gate.
-
-**Lands in:** DESIGN.md § new "Browser agent" section.
+**Key architectural choice:** exploratory QA is NOT a Claude Code sub-agent. It's a subprocess. This keeps costs predictable, keeps the main session's rate limit free, and lets Triage spawn multiple QA runs in parallel.
 
 ---
 
@@ -243,6 +239,238 @@ LearnAgent classifies as it writes, based on signal scope (one project = project
 **Leaning:** (a) + (c). No TTLs — that's time-based churn for no reason. Contradiction-driven + explicit retraction covers real cases.
 
 **Lands in:** SELF_HEALING.md § new "Unlearning" section.
+
+---
+
+## 16. Trust-gradient autonomy ladder — ~~what are the defaults?~~ **RESOLVED**
+
+**Decision (2026-04-23):** N is mode-derived ([`MODES.md`](./MODES.md)). YOLO N=0, BETA N=3, PROD N=10, LOCKDOWN N=∞. On rollback, N halves; on hotfix-revert, N zeros. See DESIGN.md § "Trust-gradient autonomy ladder."
+
+---
+
+## 17. CLAUDE.md bloat — when to compact?
+
+**Context:** LearnAgent grows `CLAUDE.md` with every applied lesson. Useful at first, unreadable at 1000+ lines.
+
+**Options:**
+- **(a) Size-based:** auto-compact when > 1000 lines.
+- **(b) Age-based:** quarterly compaction pass.
+- **(c) Signal-based:** triggered when user hand-edits CLAUDE.md to remove redundancy (self-healing signal S3).
+- **(d) Hierarchical:** compact near-duplicates into grouped rules; never delete; retain full history under `docs/claude-md-history/`.
+
+**Leaning:** (a) + (d). Size ceiling triggers a LearnAgent "compact" mode that groups near-duplicates into parent rules, preserving originals in history.
+
+**Lands in:** SELF_HEALING.md § new "Compaction" section.
+
+---
+
+## 18. Team onboarding — first command for the second dev
+
+**Context:** Walkthrough Moment 6 assumed the co-founder read the backlog files and got it. That's optimistic.
+
+**Open:** do we need `/devx-onboard <their-name>`? What does it do? Walks through the eight backlog files, assigns their GitHub handle, seeds their personal memory with project context, registers their mobile device?
+
+**Leaning:** Yes, `/devx-onboard` as a command. Not MVP but v1.5. Solo-first bias means deferring this.
+
+**Lands in:** Future `DX.md` epic ("team collaboration").
+
+---
+
+## 19. CI setup escape hatch
+
+**Context:** `/devx-init` scaffolds `.github/workflows/devx-ci.yml`. What if the user's repo can't run GitHub Actions (private runners only, client restrictions, whatever)?
+
+**Answer:** `/devx-init --skip-ci` flag, plus a graceful degradation path: if CI is not available, agents skip the "wait for remote CI" phase and gate merges on local checks only. Log the downgrade explicitly in CLAUDE.md so every future agent knows.
+
+**Lands in:** SETUP.md + `/devx-init` skill spec.
+
+---
+
+## 20. Monorepo per-subtree CI mapping
+
+Same as Q12 — walkthrough confirmed this is real, not hypothetical. Concrete shape:
+
+```yaml
+# devx.config.yaml
+projects:
+  api:
+    path: services/api
+    lint: npx nx run api:lint
+    test: npx nx run api:test
+    coverage: coverage/api/lcov.info
+  flutter:
+    path: apps/flutter
+    lint: dart analyze
+    test: flutter test
+    coverage: coverage/lcov.info
+```
+
+TestAgent selects the right commands based on which project's files were touched.
+
+**Lands in:** DESIGN.md § "Opinionated defaults" → "Tests early" + devx.config.yaml schema.
+
+---
+
+## 21. Lock-in mitigation — build `devx eject`
+
+**Context:** Portability claim in the brief must be testable. Solution: ship `devx eject` in v1.
+
+**What it does:** removes `.devx-cache/`, `.worktrees/`, and `.claude/commands/devx-*` from the current project. Leaves `_bmad/`, `_bmad-output/`, backlog files, spec files, and CLAUDE.md intact. User is left with a vanilla BMAD project that can be driven entirely by raw `/bmad-*` commands. Git history is preserved; lessons are preserved in CLAUDE.md.
+
+**Lands in:** DESIGN.md § "Contract between devx and BMAD" + `devx eject` CLI spec.
+
+---
+
+## 22. Focus-group panel size — how many personas?
+
+Default: 4 real + 1 anti-persona = 5. Minimum 3 real; maximum 7 real.
+
+**Open:** is mandatory anti-persona inclusion correct, or should it be opt-in? Leaning: mandatory. The anti-persona is the scope-discipline feature; making it optional would cause it to be skipped, which defeats the purpose.
+
+**Lands in:** FOCUS_GROUP.md § "When the focus group is consulted" (already partially there; mandatory anti-persona behavior needs explicit decision).
+
+---
+
+## 23. Panel-blocking weight threshold for promotion gate
+
+From `pre-merge-ux-check.md` prompt: `block_weight >= 0.40` → promotion blocked. Is 40% the right threshold?
+
+**Options:**
+- Lower (0.30): more cautious; more friction.
+- Higher (0.50): more permissive; risks shipping things that hurt a plurality.
+
+**Leaning:** 0.40 is a defensible starting default. LearnAgent should monitor: if real user churn correlates with persona blocks the gate didn't enforce, tighten. If the gate blocks things that shipped fine, loosen.
+
+**Lands in:** `devx.config.yaml` + self-healing signal.
+
+---
+
+## 24. Persona-evolution UX — how does the user see panel changes?
+
+Every persona edit proposed by LearnAgent goes through `LESSONS.md` → PR → approval. But small reaction-library updates accumulate quickly (new delight observed, old prediction invalidated).
+
+**Options:**
+- **(a) Per-edit items:** every change is its own `LESSONS.md` entry. Noisy.
+- **(b) Weekly persona digest:** Sunday rollup of all persona changes, one approval burst per persona per week.
+- **(c) Confidence-gated:** reaction-library updates auto-apply at high confidence, full-profile edits require approval.
+
+**Leaning:** (b) + (c). Weekly digest for bulk reaction-library updates; individual items for new persona creation / persona retirement.
+
+**Lands in:** SELF_HEALING.md § new "Persona evolution cadence" section.
+
+---
+
+## 25. Persona-seeded exploratory QA prompts
+
+QA.md's exploratory layer (browser-use) takes a persona prompt. Now that `focus-group/personas/*.md` exist, those files should be the authoritative source for QA prompts.
+
+**Decision (no longer open):** `/devx-test` exploratory runs read the persona file directly, render the persona into a browser-use persona prompt, and execute. Any divergence between persona-predicted behavior and actual browser-use behavior is itself a signal for persona evolution.
+
+**Lands in:** QA.md § 2 update + FOCUS_GROUP.md § 11 wiring.
+
+---
+
+## 26. Mode — temporary YOLO windows inside PROD projects?
+
+Sometimes you want "next 2 hours I'm rehearsing a migration on a scratch branch, treat it as YOLO" without downgrading the whole project.
+
+**Options:**
+- **(a) Per-branch mode override:** `.devx-branch-mode` file in a branch only; auto-reverts when branch merges or is deleted. Only allowed on non-`develop`, non-`main`.
+- **(b) Time-boxed mode override:** `/devx-mode yolo --for 2h` sets a mode that auto-reverts to project default on timer. Global across branches.
+- **(c) Don't support it.** Keep the mental model simple; use a separate scratch repo for high-risk rehearsal.
+
+**Leaning:** (a) for v1.5. Branch-scoped reversible override is the right granularity; time-based expires risk getting forgotten.
+
+**Lands in:** MODES.md § "Open questions" (already there).
+
+---
+
+## 27. Mode — per-epic or per-feature instead of per-project?
+
+Some features are riskier than others even within one project.
+
+**Decision:** No. Mode is per-project. Per-epic or per-feature mode adds cognitive load with marginal benefit. If one feature is meaningfully more dangerous than the project mode suggests, flag it in that epic's file and require an explicit `/devx-mode lockdown` window around the shipping.
+
+**Lands in:** MODES.md § 4 "Why four modes" (already documented).
+
+---
+
+## 28. Mode-aware self-healing cadence
+
+In YOLO we want fast iteration on lessons; in PROD we want slow and careful.
+
+**Decision:** Yes — mode determines both (a) the auto-apply ceiling (already in MODES.md §2.3) and (b) the scan cadence. YOLO: after every merge. BETA: daily. PROD: weekly digest. LOCKDOWN: paused.
+
+**Lands in:** SELF_HEALING.md § new "Cadence" section (needs adding).
+
+---
+
+## 29. RetroAgent threshold — how many concordant retros before LearnAgent acts?
+
+The two-stage self-healing model (`SELF_HEALING.md § Two-stage loop`) requires ≥3 concordant retros before LearnAgent proposes anything. Is 3 right? Plausible 2–5.
+
+**Leaning:** start at 3. Tune via `devx.config.yaml → learn.retro_threshold`. LearnAgent itself can adjust this over time (meta-learning) once enough data exists.
+
+**Lands in:** `devx.config.yaml` schema; SELF_HEALING.md.
+
+---
+
+## 30. Story-derived QA — when is the QA walkthrough section "good enough" to auto-translate into Playwright?
+
+Some QA walkthroughs are abstract ("user can sign up"); others are surgical ("tap Continue, expect green check"). Auto-translation works for the latter, not the former.
+
+**Options:**
+- **(a) TestAgent attempts translation; logs failures to `TEST.md` for manual fixup.**
+- **(b) DevAgent grades its own QA walkthrough (auto: surgical, mixed, abstract); only auto-translation if surgical.**
+- **(c) Two-pass: TestAgent does best-effort; FocusAgent re-uses abstract walkthroughs as exploratory persona prompts.**
+
+**Leaning:** (c). Surgical → regression test. Abstract → exploratory prompt. Mixed → both.
+
+**Lands in:** QA.md § "Story-derived QA"; `/dev` Phase 6 wiring.
+
+---
+
+## 31. Agent rip-through bug — was the lock primitive sufficient?
+
+The CI-race bug ("waits for CI in one agent; another rips through") is fixed in spec only. We need:
+- An integration test that intentionally races two `/dev` invocations against the same branch family and asserts the second backs off.
+- A `learn/` entry retroactively documenting what happened (so when it recurs we recognize it instantly).
+
+**Action item:** add to `MANUAL.md` once the lock primitive is implemented in code: "race-test the lock primitive end-to-end."
+
+---
+
+## 32. Project-shape mode interactions
+
+Five project shapes × four modes = 20 combinations. Most won't ever be exercised. Which ones are actually nonsensical or worth blocking?
+
+- `empty-dream + PROD` — silly (no users yet by definition); init refuses unless user explicitly confirms.
+- `production-careful + YOLO` — contradictory; init refuses.
+- All others: valid, with different DevAgent biases as described in DESIGN.md § Project shapes.
+
+**Lands in:** `/devx-init` validation logic.
+
+---
+
+## 33. Identify the "send it" / "just do it" LLM CLI Leonid is half-remembering
+
+**The thought:** "There's some 'Just do it' or 'Send it' LLM cli that I'm completely forgetting the name of that I want to look into what it is and does."
+
+**Why it matters:** If something out there is already nailing the `send-it` thoroughness tier (DESIGN.md § Thoroughness levels), we should at minimum study it before reinventing.
+
+**Research candidates to check:**
+- `aichat --yolo` (sigoden/aichat) — multi-model TUI with a yolo execute mode.
+- `opencode` (sst) — terminal coding agent with aggressive auto-approve.
+- `plandex` — multi-step CLI agent with auto-apply.
+- `goose` (Block) — desktop agent CLI; has an "auto" mode.
+- `llm` (Simon Willison) plus the `llm-cmd` plugin.
+- `just` — could be confused with the task runner of the same name; unlikely.
+- Aider's `--yes-always` flag (functional equivalent without a name).
+- `dyad`, `ona`, `sketch`, `vibe` — long-tail YC/indie tools; unverified.
+
+**Action:** spawn an Explore-style web research pass on these candidates; paste findings here; pick the closest match. If none match, consider that Leonid's memory is conflating two tools and bail.
+
+**Lands in:** add a comparison row to `COMPETITION.md` once identified; if the matching tool has a notable opinion in the `send-it` tier, fold into DESIGN.md § Thoroughness.
 
 ---
 
