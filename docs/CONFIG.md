@@ -122,20 +122,32 @@ permissions:
 ```yaml
 git:
   default_branch: main
-  integration_branch: develop          # null to skip the develop split
+  integration_branch: develop          # null = single-branch (no develop split)
   branch_prefix: develop/              # feature branches: develop/dev-a3f2b9
+                                       # (use feat/ when integration_branch: null)
   pr_strategy: pr-to-develop           # direct-to-main | pr-to-main | pr-to-develop
   merge_method: squash                 # squash | merge | rebase
-  protect_main: true
+  protect_main: true                   # false to skip GitHub branch protection
   require_linear_history: true
   allow_force_push_main: false
   allow_force_push_develop: true       # agents may force-push their own feature branches
   delete_branch_on_merge: true
 ```
 
+The develop/main split + branch protection on main are **recommended but not
+required**. `/devx-init` asks once and recommends the split for non-YOLO
+projects; users can decline either or both. Single-branch projects set
+`integration_branch: null` and `protect_main: false`; the system collapses
+the promotion gate into the merge gate. See `DESIGN.md` §"Branching model"
+for the full single-branch shape.
+
 `/devx-init` interview:
-- **"Do you want a `develop` branch separate from `main`?"** — yes for non-YOLO modes, otherwise asked.
-- **"PR or push direct?"** — `direct-to-main` only available in YOLO mode (and warned).
+- **"Want a separate `develop` branch from `main`, with branch protection on
+  `main`?"** — recommended yes for non-YOLO; recommended no for solo-YOLO.
+  Single question covers both knobs (`integration_branch` and `protect_main`)
+  because they're meaningless apart.
+- **"PR or push direct?"** — `direct-to-main` only available in YOLO with
+  single-branch (and warned).
 - **"Squash, merge, or rebase?"** — squash default.
 - **"Should agents be allowed to force-push their own feature branches?"** — yes default; some teams say no.
 
@@ -418,7 +430,7 @@ Out of all the above, the interview only asks where a sensible default can't be 
 | 8 | First slice? | seeds `DEV.md` |
 | 9 | **Daily cost cap?** | `capacity.daily_spend_cap_usd` |
 | 10 | **Permissions: terraform / cloud CLIs / docker / global installs?** | `permissions.bash.*` |
-| 11 | **Git strategy: develop branch? PR vs direct? squash vs merge?** | `git.*` |
+| 11 | **Git strategy: develop branch + main protection? PR vs direct? squash vs merge?** | `git.*` (recommends split for non-YOLO; both knobs are optional) |
 | 12 | **Promotion: auto after N green, or always ask?** | `promotion.autonomy.*` |
 | 13 | **Notifications: which channels + which events?** | `notifications.*` |
 

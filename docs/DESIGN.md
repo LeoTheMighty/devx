@@ -414,11 +414,31 @@ Considered collapsing thoroughness into mode (e.g., YOLO = send-it, PROD = thoro
 
 ## Branching model
 
-devx is opinionated on a **`develop/main` split**:
+devx **recommends but does not require** a `develop/main` split. The split is the
+default for non-YOLO projects and the recommended option `/devx-init` offers,
+but a single-branch flow is fully supported via `git.integration_branch: null`
++ `git.protect_main: false` for users who don't want the ceremony (typical for
+solo YOLO projects, prototypes, or one-off scripts).
+
+When the split is enabled (the default for BETA / PROD):
 
 - **`main`** = production. What's deployed. Protected (branch protection enforced, no direct pushes, no force-pushes ever). Only accepts PRs from `develop`, and only via explicit promotion.
 - **`develop`** = integration. Where in-progress agent work accumulates. This is where the mobile app adds items, where agent PRs merge, where coverage gates run, where e2e tests live.
 - **Feature branches** = `develop/<type>-<hash>`, one per spec file. Branched off `develop`, PR'd back into `develop`.
+
+When single-branch is chosen (`integration_branch: null`):
+
+- Feature branches are `<branch_prefix><type>-<hash>` off `main` (default
+  prefix `feat/` instead of `develop/`).
+- Agents PR back to `main` (`pr_strategy: pr-to-main`) or, in YOLO with
+  explicit consent, push direct (`pr_strategy: direct-to-main`).
+- The promotion gate collapses into the merge gate — there is no separate
+  promotion step.
+- The mobile app and user hand-edits commit directly to `main`.
+
+The rest of this section describes the split flow because it's the recommended
+shape; behavior under single-branch is the obvious simplification (skip every
+"promote" step, treat every merge as a deploy).
 
 ### Branch naming
 

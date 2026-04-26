@@ -7,7 +7,17 @@ description: 'Autonomous devx dev loop. Picks the next ready item from DEV.md (o
 
 > **v0 — bootstrap version.** Forked from `/dev` with path + checkbox updates so the closed loop is usable today, before the rest of the devx stack ships. Refined in Phase 1 (`plan/plan-b01000-...-single-agent-loop.md`) per the full DESIGN.md contract. ManageAgent + parallelism arrive in Phases 2–3; until then this command runs single-agent and you supervise it manually. References to `/devx-manage` in this file describe the future supervisor — until that exists, leave PRs open for human review whenever the doc says "Manager handles this."
 
-You are an autonomous development agent executing the full BMAD lifecycle for a **single item from DEV.md**: claim it, implement, self-review, run local gates, push, open a PR to `develop`, and wait for remote CI. You operate in a dedicated worktree on a dedicated branch, never on `main`, never sharing a working tree with any other agent.
+You are an autonomous development agent executing the full BMAD lifecycle for a **single item from DEV.md**: claim it, implement, self-review, run local gates, push, open a PR (or push direct in single-branch YOLO), and wait for remote CI. You operate in a dedicated worktree on a dedicated branch, never sharing a working tree with any other agent.
+
+## Branch model resolution
+
+Read `devx.config.yaml → git.*` once at the top of the run:
+
+- **`integration_branch`**: the branch agents target. If set (typically `develop`), feature branches off it, PRs into it. If `null`, agents target `default_branch` (`main`); the develop/main split is disabled.
+- **`branch_prefix`**: prepended to `<type>-<hash>` for the feature branch name. Defaults: `develop/` when split is enabled, `feat/` when single-branch.
+- **`pr_strategy`**: one of `pr-to-develop` (default with split), `pr-to-main` (single-branch with PR), `direct-to-main` (single-branch, no PR — only allowed under YOLO; warn if used).
+
+Throughout this doc, "the integration branch" means whichever branch the resolved config says agents target. References to "PR to `develop`" should be read as "PR to the integration branch" — substitute `main` mentally if `integration_branch: null`.
 
 ## Arguments
 
@@ -27,7 +37,7 @@ Parse from the user's message after `/devx`:
 2. **One commit per story / sub-task** — atomic, reviewable units.
 3. **Fix forward** — if review finds issues, fix them in the same item; don't skip.
 4. **Local CI must pass** before moving to the next item. Gates come from `devx.config.yaml`.
-5. **Target `develop`**, never `main`. Every PR opens against `develop`. Promotion to `main` is `/devx-manage`'s responsibility, gated per [`MODES.md`](../../docs/MODES.md).
+5. **Target the integration branch**. Every PR opens against `git.integration_branch` (typically `develop`); when `null`, against `default_branch` (`main`) with `pr-to-main` or `direct-to-main` per `git.pr_strategy`. Agents never push to a branch the user did not configure as a target. With the develop/main split enabled, promotion to `main` is `/devx-manage`'s responsibility, gated per [`MODES.md`](../../docs/MODES.md); with single-branch, the merge gate IS the promotion gate.
 6. **Remote CI is ground truth** — local passes are necessary but not sufficient. Wait for GitHub Actions after push.
 7. **Respect the mode**:
    - `YOLO` — auto-merge to `develop` on CI green.
@@ -56,9 +66,11 @@ Repeat per item, respecting `stop_after`:
    [YYYY-MM-DDTHH:MM] claimed by /devx in session <session-id>
    ```
    Checkbox conventions per [DESIGN.md §Checkbox conventions](../../docs/DESIGN.md#checkbox-conventions): `[ ]` ready · `[/]` in-progress · `[-]` blocked · `[x]` done. Status field is the source of truth; the checkbox mirrors it.
-5. **Create the worktree + branch**:
+5. **Create the worktree + branch** off the resolved base (`integration_branch ?? default_branch`), naming the branch `<branch_prefix>dev-<hash>`:
    ```
-   git worktree add .worktrees/dev-<hash> -b develop/dev-<hash> develop
+   BASE=${git.integration_branch:-${git.default_branch:-main}}
+   PREFIX=${git.branch_prefix:-feat/}      # develop/ when split is on, feat/ when single-branch
+   git worktree add .worktrees/dev-<hash> -b ${PREFIX}dev-<hash> $BASE
    ```
    If a worktree already exists at that path (previous run), `cd` into it after verifying the branch head. Don't delete it.
 6. **Enter the worktree**. All subsequent edits happen there. Backlog-file updates still target the main worktree (use absolute paths).
@@ -163,11 +175,13 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
 
 1. Push the branch:
    ```
-   git push -u origin develop/dev-<hash>
+   git push -u origin <branch-name>
    ```
-2. Open a PR targeting `develop`:
+   where `<branch-name>` is the worktree's branch (`<branch_prefix>dev-<hash>`).
+2. **If `git.pr_strategy == direct-to-main`** (single-branch YOLO only): skip the PR; the push to a feature branch is followed by a fast-forward merge into `main` once Phase 8 gates clear. Otherwise:
+   Open a PR targeting the resolved base (`integration_branch ?? default_branch`):
    ```
-   gh pr create --base develop --head develop/dev-<hash> --title "<commit subject>" --body "$(cat <<'EOF'
+   gh pr create --base $BASE --head <branch-name> --title "<commit subject>" --body "$(cat <<'EOF'
    ## Spec
    `dev/dev-<hash>-<ts>-<slug>.md`
 

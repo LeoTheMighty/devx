@@ -95,22 +95,27 @@ worker/                 ← Cloudflare Worker (webhook → FCM relay)
 
 ---
 
-## Branching model (load-bearing)
+## Branching model (this project: single-branch on `main`)
 
-devx is opinionated on a `develop`/`main` split. Read `docs/DESIGN.md` §
-"Branching model" for full detail.
+devx **recommends** a `develop`/`main` split with branch protection on `main`,
+but it's optional. This project explicitly opted out per INTERVIEW Q#7
+(`git.integration_branch: null`, `git.protect_main: false`) — pre-launch solo
+YOLO doesn't need the ceremony. Read `docs/DESIGN.md` §"Branching model" for
+the recommended shape and what changes when single-branch is chosen.
 
-- **`main`** = production. Branch-protected. Only accepts PRs from `develop` via
-  explicit promotion.
-- **`develop`** = integration. Where agent work accumulates. CI gates run here.
-- **Feature branches** = `develop/<type>-<hash>`, one per spec file. Branched
-  off `develop`, PR'd back into `develop`.
+For this project specifically:
+
+- **`main`** = the only long-lived branch. Not protected; agents and the user
+  push to it (via PRs for CI, not direct push).
+- **Feature branches** = `feat/<type>-<hash>`, one per spec file. Branched off
+  `main`, PR'd back into `main`.
 - **Worktrees** = `.worktrees/<type>-<hash>/` per agent. Agents never share a
   worktree.
-- **Agents never merge to `main`.** That's the promotion gate's job.
+- **No promotion gate.** The merge gate is the deploy gate. Mode rules
+  (currently YOLO → CI green only) apply to every PR.
 
-Backlog files live on `develop` in the main worktree. Agents in a worktree
-write status to the spec file in the main worktree via path-relative edits.
+Backlog files live on `main` in the main worktree. Agents in a worktree write
+status to the spec file in the main worktree via path-relative edits.
 
 ---
 

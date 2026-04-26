@@ -44,14 +44,11 @@ Items here block `/dev` when the user's action is required. Check off when done.
 
 ## For Epic 3 (prerequisite)
 
-- [ ] **M3.1 — Enable branch protection on `main`.**
-  - Why: Prevents any bug in the slug generator from accidentally writing to production. Phone should only ever touch `develop`.
-  - How: devx repo → Settings → Branches → Add rule for `main` → Require a pull request, require status checks, restrict pushes.
-  - Blocks: `dev-c30003`.
+Both M3.1 and M3.2 are now N/A for this project — INTERVIEW Q#7 (2026-04-26)
+opted out of the develop/main split + branch protection. The /devx-init flow
+upstream still recommends both for non-YOLO projects; this project simply
+declined. If/when this project upgrades to BETA or PROD, revisit.
 
-- [x] **M3.2 — Create `develop` branch if absent.**
-  - Why: Phone writes target `develop`; the branch must exist.
-  - How: `git checkout -b develop && git push -u origin develop`.
-  - Blocks: `dev-c30003`.
-  - Done 2026-04-26: branch created locally and pushed to origin (commit
-    `47f1336`); upstream tracking set.
+- [x] ~~**M3.1 — Enable branch protection on `main`.**~~ N/A — `git.protect_main: false` per INTERVIEW Q#7. Re-enable if mode changes to BETA/PROD.
+
+- [x] ~~**M3.2 — Create `develop` branch if absent.**~~ N/A — `git.integration_branch: null` per INTERVIEW Q#7. The develop branch was created and then collapsed back into main during the bootstrap session. Phone (Phase 8) will target main directly while this config holds.

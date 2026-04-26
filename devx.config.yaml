@@ -102,14 +102,17 @@ permissions:
 
 git:
   default_branch: main
-  integration_branch: develop
-  branch_prefix: develop/             # feature branches: develop/dev-aud101 etc.
-  pr_strategy: pr-to-develop
+  integration_branch: null            # single-branch: no develop split (per /devx
+                                      # bootstrap session 2026-04-26 — pre-launch
+                                      # solo YOLO doesn't need the ceremony)
+  branch_prefix: feat/                # feature branches: feat/dev-aud101 etc.
+  pr_strategy: pr-to-main             # PR for CI even in solo YOLO; cheaper than
+                                      # direct-to-main given GitHub Actions runs on PR
   merge_method: squash
-  protect_main: true
-  require_linear_history: true
+  protect_main: false                 # explicit: this project skips branch protection
+  require_linear_history: true        # still preferred; enforced via squash-merge
   allow_force_push_main: false
-  allow_force_push_develop: true
+  allow_force_push_develop: true      # vestigial; no develop branch in this project
   delete_branch_on_merge: true
 
 # ---------------------------------------------------------------------------

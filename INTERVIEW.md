@@ -50,7 +50,7 @@ loop can read.
     refactor.
   → Answer: (a) `empty-dream`.
 
-- [x] **Q#3 — Confirm `develop` branch creation.**
+- [x] **Q#3 — Confirm `develop` branch creation.** *(superseded by Q#7)*
   - Context: `/devx` requires a `develop` branch as the integration target;
     only `main` exists locally and on `origin`.
   - Question: OK to `git checkout -b develop && git push -u origin develop`
@@ -60,7 +60,10 @@ loop can read.
     until first real `/devx` claim.
   - Agent recommendation: (a) — required for the loop; `MANUAL.md` already
     flags this as `M3.2`.
-  → Answer: (a) yes, do it now. (Pending action — agent will run it next.)
+  → Answer: Originally (a). Develop was created and the bootstrap commits
+    landed there. Then superseded by Q#7 — this project no longer uses a
+    develop/main split, and the develop branch is being collapsed back into
+    main. /devx is being updated to make the split optional system-wide.
 
 - [x] **Q#4 — Stack confirmation for the devx CLI itself.**
   - Context: Phase 0 epic `epic-cli-skeleton` (`cli301`) needs a language +
@@ -110,6 +113,38 @@ loop can read.
     that doc should treat the project config as authoritative when it omits
     them. Worth a future LearnAgent pass to make the dollar caps optional in
     the schema rather than required-with-defaults.
+
+---
+
+- [x] **Q#7 — Make develop/main split + branch protection optional.**
+  - Context: Original Q#3 assumed the develop/main split + branch protection
+    on `main` were mandatory. User has decided neither should be required —
+    `/devx-init` should ask once, recommend the split for non-YOLO, and
+    accept "no" cleanly. For this project specifically, opt out of both.
+  - Question: Confirm the policy + project-level switch?
+  - Blocks: this project's branch model going forward; the design of every
+    `/devx-init` interview question 11.
+  - Options: (a) recommended-not-required system-wide + this project opts out
+    (single-branch on `main`, no protection), (b) keep mandatory.
+  - Agent recommendation: (a) — matches user request 2026-04-26.
+  → Answer: (a). Applied as:
+    - `devx.config.yaml → git.integration_branch: null`,
+      `branch_prefix: feat/`, `pr_strategy: pr-to-main`,
+      `protect_main: false`.
+    - `docs/DESIGN.md` §"Branching model" — relaxed from "opinionated" to
+      "recommended; not required". Single-branch flow documented.
+    - `docs/CONFIG.md` §4 — emphasize `null` integration_branch is
+      first-class. Q11 reframed as "want the split + protection?"
+    - `docs/MODES.md` §2.1 — clarify that promotion gate collapses into
+      merge gate when single-branch.
+    - `docs/ROADMAP.md` — locked-decisions list updated.
+    - `.claude/commands/devx.md` — base branch + PR target now resolved
+      from `git.*`; supports `pr-to-develop` / `pr-to-main` / `direct-to-main`.
+    - `MANUAL.md` M3.1 + M3.2 marked N/A (struck through).
+    - `develop` branch collapsed back into `main`.
+  → Note: spec files `dev-ini503` (init github scaffolding) and
+    `epic-init-skill.md` still reference the old assumption; LearnAgent /
+    next /devx-plan pass should reconcile when those items get claimed.
 
 ---
 

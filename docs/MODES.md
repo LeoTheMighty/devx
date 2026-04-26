@@ -36,7 +36,7 @@ Any mode → `LOCKDOWN` is instant. `LOCKDOWN` → anything requires explicit us
 
 ## 2. What each mode does to each subsystem
 
-### 2.1 Promotion gate (`develop → main`)
+### 2.1 Promotion gate (`develop → main`, when split is enabled)
 
 | Mode | Behavior |
 |---|---|
@@ -44,6 +44,15 @@ Any mode → `LOCKDOWN` is instant. `LOCKDOWN` → anything requires explicit us
 | BETA | `fast-ship` mode default (CI green + no reviewer-blocking comments). |
 | PROD | `careful` mode default (CI + 24h soak + exploratory QA + focus-group clear). |
 | LOCKDOWN | All promotion blocked. Explicit `/devx-promote --force` required, writes a decision record. |
+
+When the develop/main split is disabled (`git.integration_branch: null`), the
+promotion gate collapses into the merge gate: every PR or direct push to
+`main` is treated as a deploy, subject to the same mode rules above (so a
+PROD single-branch project still requires CI + soak + QA + panel before each
+merge — the gate just runs once instead of twice). Recommended for solo YOLO
+or prototype repos; not recommended for PROD (the develop split exists
+specifically to let you merge fast on `develop` without deploying every
+merge).
 
 ### 2.2 Trust-gradient autonomy ladder
 

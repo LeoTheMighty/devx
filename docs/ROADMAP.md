@@ -10,7 +10,9 @@ The phased buildout of devx: locked decisions, dependency graph, and what we won
 
 **Branching & process**
 - Commit prefix `devx-mobile:` tags all phone-originated commits.
-- Phone writes always target `develop`, never `main`.
+- Phone writes target `git.integration_branch` if set (typically `develop`),
+  otherwise `main` directly. The develop/main split is recommended-not-required;
+  `/devx-init` asks once and recommends the split for non-YOLO projects.
 - Single-repo MVP; multi-project switcher deferred to v1.5.
 
 **Mobile + realtime**
