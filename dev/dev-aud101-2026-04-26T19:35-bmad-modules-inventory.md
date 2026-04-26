@@ -5,8 +5,9 @@ created: 2026-04-26T19:35:00-07:00
 title: Inventory BMAD modules + workflows
 from: _bmad-output/planning-artifacts/epic-bmad-audit.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
-branch: develop/dev-aud101
+status: in-progress
+owner: /devx-2026-04-26-aud101
+branch: feat/dev-aud101
 ---
 
 ## Goal
@@ -28,3 +29,5 @@ Walk `_bmad/{core,bmm,tea}/` and produce a complete inventory of every workflow,
 ## Status log
 
 - 2026-04-26T19:35 — created by /devx-plan
+- 2026-04-26T20:00 — claimed by /devx; branch corrected to feat/dev-aud101 (single-branch model per devx.config.yaml git.integration_branch=null)
+- 2026-04-26T20:15 — Section 1 of _bmad-output/planning-artifacts/bmad-audit.md written; counts reconciled with skill-manifest.csv (51 skills, 6 agent-manifest entries + bmad-tea = 7 named agents); SKILL.md sources not vendored into repo, manifests authoritative — note left for aud103. Local CI: cli placeholders pass (echoes); mobile/worker untouched.
