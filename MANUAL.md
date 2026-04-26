@@ -49,7 +49,9 @@ Items here block `/dev` when the user's action is required. Check off when done.
   - How: devx repo → Settings → Branches → Add rule for `main` → Require a pull request, require status checks, restrict pushes.
   - Blocks: `dev-c30003`.
 
-- [ ] **M3.2 — Create `develop` branch if absent.**
+- [x] **M3.2 — Create `develop` branch if absent.**
   - Why: Phone writes target `develop`; the branch must exist.
   - How: `git checkout -b develop && git push -u origin develop`.
   - Blocks: `dev-c30003`.
+  - Done 2026-04-26: branch created locally and pushed to origin (commit
+    `47f1336`); upstream tracking set.
