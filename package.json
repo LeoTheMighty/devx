@@ -1,15 +1,30 @@
 {
-  "name": "@devx/repo-root",
-  "version": "0.0.0",
+  "name": "@devx/cli",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Repo-root tooling host for devx (the project building devx). Currently exists only to run the cfg201 schema smoke test and the cfg202 config-io round-trip suite until cli301 establishes the proper @devx/cli package layout — at that point this file is consumed by the package scaffold and these devDependencies migrate there.",
+  "description": "devx CLI — autonomous development system. Phase 0 surface area: scaffolded entrypoint + commander dispatch (cli301); 10 stubs + config command land in cli302/cfg204; --help annotations in cli303; --version + postinstall in cli304/cli305.",
+  "bin": {
+    "devx": "./dist/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist",
+    "_devx/config-schema.json"
+  ],
   "scripts": {
-    "test": "node test/schema-smoke.mjs && tsx test/config-io.test.ts && tsx test/config-validate.test.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "node test/schema-smoke.mjs && tsx test/config-io.test.ts && tsx test/config-validate.test.ts && npm run build && vitest run",
     "test:schema": "node test/schema-smoke.mjs",
     "test:config-io": "tsx test/config-io.test.ts",
     "test:config-validate": "tsx test/config-validate.test.ts",
+    "test:vitest": "vitest run",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
@@ -17,6 +32,7 @@
     "ajv-formats": "^3.0.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
     "yaml": "^2.6.1"
   }
 }
