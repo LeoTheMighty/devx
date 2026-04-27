@@ -101,8 +101,12 @@ plans:
             blocked_by: [sup401]
           - key: sup405
             title: Platform auto-detect dispatch + post-install verification
-            status: backlog
+            status: done
             blocked_by: [sup402, sup403, sup404]
+          - key: supret
+            title: Retro + LEARN.md updates (interim retro discipline)
+            status: in-progress
+            blocked_by: [sup401, sup402, sup403, sup404, sup405]
 
       - key: epic-init-skill
         title: /devx-init skill
