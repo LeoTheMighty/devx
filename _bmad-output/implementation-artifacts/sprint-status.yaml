@@ -56,7 +56,7 @@ plans:
             blocked_by: [cli301]
           - key: cli303
             title: `devx --help` listing with phase + epic annotations
-            status: ready-for-dev
+            status: done
             blocked_by: [cli302, cfg204]
           - key: cli304
             title: `devx --version` + postinstall PATH verification

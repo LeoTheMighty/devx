@@ -5,7 +5,7 @@ created: 2026-04-26T19:35:00-07:00
 title: `devx --help` listing with phase + epic annotations
 from: _bmad-output/planning-artifacts/epic-cli-skeleton.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: in-progress
+status: done
 blocked_by: [cli302, cfg204]
 branch: feat/dev-cli303
 owner: /devx
@@ -33,3 +33,5 @@ Customize `commander`'s help output so `devx --help` lists all 11 commands (`con
 - 2026-04-26T19:35 — created by /devx-plan
 - 2026-04-26T19:50 — claimed by /devx; branch feat/dev-cli303 off main; single-branch YOLO (git.integration_branch: null → PR to main)
 - 2026-04-26T19:57 — impl + self-review + local gates green: PhaseSortedHelp subclass + WeakMap-backed phase metadata; stub.ts + config.ts call attachPhase at register; cli.ts installs createHelp override after registration; test/help.test.ts has 5 tests (order, annotation, em-dash regression, config-no-coming, full inline snapshot); npm test 75/75 PASS
+- 2026-04-26T19:58 — PR #10 opened against main. No remote CI workflow detected — local gates are authoritative. Proceeding to YOLO auto-merge.
+- 2026-04-26T19:59 — merged via PR #10 (squash → fa48586). Worktree removed; feat/dev-cli303 branch deleted (local + remote).
