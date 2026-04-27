@@ -1,0 +1,7 @@
+# Fixture: empty repo
+#
+# Used by test/init-e2e.test.ts. The fixture is intentionally empty — the
+# test copies this directory into a tmpdir, runs `git init`, and exercises
+# the fresh-init path against the resulting empty repo.
+#
+# Anything you add here ends up in the test's tmpdir. Keep it minimal.

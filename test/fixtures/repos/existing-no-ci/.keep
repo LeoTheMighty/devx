@@ -1,0 +1,6 @@
+# Fixture: existing repo, no CI
+#
+# Simulates a repo with commits + a TS surface but no `.github/workflows/`
+# yet — the path most users will land on when they first try `/devx-init`.
+# The test seeder commits README.md + package.json + src/index.ts before
+# invoking the orchestrator.
