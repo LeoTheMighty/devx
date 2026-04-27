@@ -13,7 +13,9 @@
   "files": [
     "dist",
     "scripts/postinstall.js",
-    "_devx/config-schema.json"
+    "scripts/postinstall-lib.mjs",
+    "_devx/config-schema.json",
+    "INSTALL.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
