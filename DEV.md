@@ -40,7 +40,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-ini504-2026-04-26T19:35-init-personas-and-interview.md` — Personas + INTERVIEW.md fixed-template seeding. Status: done. Blocked-by: ini502. PR: https://github.com/LeoTheMighty/devx/pull/25 (merged aeb09ee).
 - [x] `dev/dev-ini505-2026-04-26T19:35-init-supervisor-trigger.md` — Supervisor installer trigger + verify. Status: done. Blocked-by: ini502, sup405. PR: https://github.com/LeoTheMighty/devx/pull/26 (merged 54f8443).
 - [x] `dev/dev-ini506-2026-04-26T19:35-init-failure-modes.md` — Failure-mode handling (BMAD-fail / gh-not-auth / no-remote). Status: done. Blocked-by: ini503, ini505. PR: https://github.com/LeoTheMighty/devx/pull/27 (merged addac3c).
-- [/] `dev/dev-ini507-2026-04-26T19:35-init-idempotent-upgrade.md` — Idempotent upgrade-mode re-run. Status: in-progress. Blocked-by: ini502, ini503, ini504, ini505.
+- [x] `dev/dev-ini507-2026-04-26T19:35-init-idempotent-upgrade.md` — Idempotent upgrade-mode re-run. Status: done. Blocked-by: ini502, ini503, ini504, ini505. PR: https://github.com/LeoTheMighty/devx/pull/28 (merged 20b126d).
 - [ ] `dev/dev-ini508-2026-04-26T19:35-init-end-to-end-test.md` — End-to-end integration test. Status: ready. Blocked-by: ini506, ini507.
 - [ ] `dev/dev-iniret-2026-04-27T08:00-retro-init-skill.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: ini501, ini502, ini503, ini504, ini505, ini506, ini507, ini508.
 
