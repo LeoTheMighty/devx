@@ -5,7 +5,7 @@ created: 2026-04-26T19:35:00-07:00
 title: Linux systemd-user .service generator + enable
 from: _bmad-output/planning-artifacts/epic-os-supervisor-scaffold.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: in-progress
+status: done
 owner: /devx-2026-04-26T21:00-sup403
 blocked_by: [sup401]
 branch: feat/dev-sup403
@@ -36,3 +36,5 @@ Implement the Linux supervisor installer: render `devx-{manager,concierge}.servi
 
 - 2026-04-26T19:35 — created by /devx-plan
 - 2026-04-26T21:00 — claimed by /devx in session 2026-04-26T21:00-sup403
+- 2026-04-26T21:23 — implemented + self-reviewed; systemd template + render/install/uninstall via injectable systemctl/loginctl exec; supervisor.ts dispatch routes systemd; manager.linger schema knob added (systemd-only). 21 new tests (153 total green).
+- 2026-04-26T21:25 — merged via PR #15 (squash → c51bd91)
