@@ -5,7 +5,7 @@ created: 2026-04-26T19:35:00-07:00
 title: Windows/WSL Task Scheduler XML generator
 from: _bmad-output/planning-artifacts/epic-os-supervisor-scaffold.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: in-progress
+status: done
 owner: /devx-2026-04-26T21:30-sup404
 blocked_by: [sup401]
 branch: feat/dev-sup404
@@ -36,3 +36,5 @@ Implement the Windows/WSL supervisor installer: render Task Scheduler XML invoki
 
 - 2026-04-26T19:35 — created by /devx-plan
 - 2026-04-26T21:30 — claimed by /devx in session 2026-04-26T21:30-sup404
+- 2026-04-26T21:48 — implemented + self-reviewed; task-scheduler XML template + render/install/uninstall via injectable schtasks exec; supervisor.ts dispatch routes task-scheduler. Substitutes `__ROLE__/__DISTRO__/__USER__/__WSL_HOME__` at install (deviation from AC: `${HOME}` baked in too because `wsl.exe --exec` doesn't spawn a shell). 20 new tests (172 total green).
+- 2026-04-26T21:55 — merged via PR #16 (squash → 1c260ad)

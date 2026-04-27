@@ -85,7 +85,7 @@ plans:
             blocked_by: [sup401]
           - key: sup404
             title: Windows/WSL Task Scheduler XML generator
-            status: backlog
+            status: done
             blocked_by: [sup401]
           - key: sup405
             title: Platform auto-detect dispatch + post-install verification
