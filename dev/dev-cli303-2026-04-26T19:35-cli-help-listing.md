@@ -5,9 +5,10 @@ created: 2026-04-26T19:35:00-07:00
 title: `devx --help` listing with phase + epic annotations
 from: _bmad-output/planning-artifacts/epic-cli-skeleton.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: in-progress
 blocked_by: [cli302, cfg204]
-branch: develop/dev-cli303
+branch: feat/dev-cli303
+owner: /devx
 ---
 
 ## Goal
@@ -30,3 +31,4 @@ Customize `commander`'s help output so `devx --help` lists all 11 commands (`con
 ## Status log
 
 - 2026-04-26T19:35 — created by /devx-plan
+- 2026-04-26T19:50 — claimed by /devx; branch feat/dev-cli303 off main; single-branch YOLO (git.integration_branch: null → PR to main)
