@@ -5,7 +5,7 @@ created: 2026-04-26T19:35:00-07:00
 title: Config validation on load
 from: _bmad-output/planning-artifacts/epic-config-schema.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: in-progress
+status: done
 blocked_by: [cfg201, cfg202]
 branch: feat/dev-cfg203
 owner: /devx
@@ -37,3 +37,4 @@ Implement `src/lib/config-validate.ts` that validates a parsed config against `_
 - 2026-04-26T20:45 — implemented src/lib/config-validate.ts + test/config-validate.test.ts + corrupt-missing-mode fixture; npm test green (32 PASS); typecheck clean
 - 2026-04-26T20:45 — self-review pass: tightened cache key to (projectPath, userPath); cleaned addFormats import; documented additionalProperties walk limitation
 - 2026-04-26T20:45 — no remote CI workflow detected — local gates are authoritative
+- 2026-04-26T20:51 — merged via PR #6 (squash → b00ef2e)

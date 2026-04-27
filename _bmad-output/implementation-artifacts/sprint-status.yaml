@@ -36,7 +36,7 @@ plans:
             status: done
           - key: cfg203
             title: Config validation on load
-            status: backlog
+            status: done
             blocked_by: [cfg201, cfg202]
           - key: cfg204
             title: `devx config <key>` get/set CLI
