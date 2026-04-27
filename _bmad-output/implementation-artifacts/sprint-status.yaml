@@ -40,7 +40,7 @@ plans:
             blocked_by: [cfg201, cfg202]
           - key: cfg204
             title: `devx config <key>` get/set CLI
-            status: backlog
+            status: done
             blocked_by: [cfg202, cfg203, cli301]
 
       - key: epic-cli-skeleton

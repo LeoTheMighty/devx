@@ -5,7 +5,7 @@ created: 2026-04-26T19:35:00-07:00
 title: `devx config <key>` get/set CLI
 from: _bmad-output/planning-artifacts/epic-config-schema.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: in-progress
+status: done
 blocked_by: [cfg202, cfg203, cli301]
 branch: feat/dev-cfg204
 owner: /devx
@@ -37,3 +37,5 @@ Implement `src/commands/config.ts` registering the `devx config` command (and it
 - 2026-04-26T21:00 — claimed by /devx; branch feat/dev-cfg204 off main (single-branch YOLO; spec frontmatter said develop/dev-cfg204 which is stale, corrected here).
 - 2026-04-26T21:30 — implemented src/commands/config.ts + wired into src/cli.ts; 35-test vitest suite covering all ACs (round-trip, dotted-path get/set, --user flag, enum rejection, non-leaf rejection, unknown-key write+warning, type coercion). Local gates: typecheck clean, npm test 40/40 PASS (5 cli.test + 35 config-command.test), schema-smoke + cfg202/cfg203 tsx suites still green.
 - 2026-04-26T21:30 — self-review (edge-case-hunter) found 12 findings; addressed the 5 actionable ones: (1) suppressed spurious "unknown key" warning when no schema file is on disk; (2) friendly error on corrupt schema JSON; (3) reject array-element writes (numeric segment into existing Seq) up front to avoid eemeli/yaml setIn silently writing a stringly-keyed phantom on a Seq; (4) widened number coercion regex to accept '.5' and '5.'; (5) `--user` on a get now warns that the flag is ignored on reads. Tests added for all five.
+- 2026-04-26T21:30 — no remote CI workflow detected — local gates are authoritative; PR opened: https://github.com/LeoTheMighty/devx/pull/8.
+- 2026-04-26T21:35 — merged via PR #8 (squash → 1ba275f).
