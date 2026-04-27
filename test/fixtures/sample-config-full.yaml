@@ -1,31 +1,33 @@
-# devx.config.yaml — devx-self project (bootstrapping devx by building devx)
+# sample-config-full.yaml — exercises every section of the schema.
 #
-# Strategic axes: full YOLO. This is a pre-launch, no-real-users dogfood project.
-# The whole point is to move fast, build the system, and let the system tighten
-# itself once Phase 5 (LearnAgent) lands.
+# Used by:
+#   - cfg201's schema-validation smoke test (test/schema-smoke.mjs)
+#   - cfg202's round-trip tests (load → setLeaf → toString → diff)
+#   - cfg203's load-time validator tests
 #
-# Reference: docs/CONFIG.md (canonical knob list), docs/MODES.md (what YOLO does
-# to each subsystem), docs/DESIGN.md §Project shapes.
+# Comments + key ordering + blank-line spacing must round-trip identically
+# through eemeli/yaml.parseDocument — DO NOT reformat by hand without
+# updating the round-trip baseline in cfg202.
 
 # ---------------------------------------------------------------------------
-# 1. Risk & process — the three strategic axes
+# 1. Risk & process
 # ---------------------------------------------------------------------------
 
-mode: YOLO                            # no real users → no gates that block velocity
+mode: BETA
 project:
-  shape: empty-dream                  # bootstrapping; aggressive parallelism allowed
-thoroughness: send-it                 # minimum ceremony — skip party-mode unless ≥2 surfaces
+  shape: bootstrapped-rewriting
+thoroughness: balanced
 
 # ---------------------------------------------------------------------------
 # 2. Capacity & cost
 # ---------------------------------------------------------------------------
 
 capacity:
-  max_concurrent: 5                   # YOLO default per MODES.md §2.8
-  usage_cap_pct: 95                   # % of Claude org limit; sole capacity gate
-  usage_hard_stop_pct: 100            # at 100%, kill in-flight work too
-  # daily_spend_cap_usd / daily_spend_hard_cap_usd intentionally omitted
-  # per INTERVIEW Q#6 — capacity is gated on Claude limit %, not on $.
+  max_concurrent: 3
+  usage_cap_pct: 95
+  usage_hard_stop_pct: 100
+  daily_spend_cap_usd: 25.0
+  daily_spend_hard_cap_usd: 100.0
   token_budget_per_spec: 500000
   model_strategy: balanced
   models:
@@ -48,44 +50,18 @@ permissions:
       - git
       - gh
       - npm
-      - bun
-      - pnpm
-      - yarn
-      - pip
       - pytest
-      - cargo
-      - go
-      - dart
-      - flutter
-      - playwright
-      - eslint
-      - prettier
-      - ts-node
-      - tsx
-      - node
-      - wrangler                      # Cloudflare Worker for Phase 4 mobile relay
     ask:
       - terraform
-      - kubectl
       - docker
-      - aws
-      - gcloud
-      - az
-      - ssh
-      - rsync
     deny:
       - "rm -rf /"
-      - "curl https://*"
       - "sudo *"
   network:
     allow_hosts:
       - github.com
-      - api.github.com
       - api.anthropic.com
       - registry.npmjs.org
-      - pypi.org
-      - pub.dev                       # Flutter pub
-      - workers.cloudflare.com
   file_writes:
     allow: ["**/*"]
     deny:
@@ -93,8 +69,6 @@ permissions:
       - ".env.*"
       - "secrets/**"
       - "id_rsa*"
-      - "**/.aws/credentials"
-      - "**/.ssh/**"
 
 # ---------------------------------------------------------------------------
 # 4. Git strategy
@@ -102,17 +76,14 @@ permissions:
 
 git:
   default_branch: main
-  integration_branch: null            # single-branch: no develop split (per /devx
-                                      # bootstrap session 2026-04-26 — pre-launch
-                                      # solo YOLO doesn't need the ceremony)
-  branch_prefix: feat/                # feature branches: feat/dev-aud101 etc.
-  pr_strategy: pr-to-main             # PR for CI even in solo YOLO; cheaper than
-                                      # direct-to-main given GitHub Actions runs on PR
+  integration_branch: develop
+  branch_prefix: develop/
+  pr_strategy: pr-to-develop
   merge_method: squash
-  protect_main: false                 # explicit: this project skips branch protection
-  require_linear_history: true        # still preferred; enforced via squash-merge
+  protect_main: true
+  require_linear_history: true
   allow_force_push_main: false
-  allow_force_push_develop: true      # vestigial; no develop branch in this project
+  allow_force_push_develop: true
   delete_branch_on_merge: true
 
 # ---------------------------------------------------------------------------
@@ -120,14 +91,16 @@ git:
 # ---------------------------------------------------------------------------
 
 promotion:
-  gate: fast-ship-always              # YOLO default — CI green only
-  soak_hours: 0
+  gate: balanced
+  soak_hours: 24
   required_checks:
     - ci
-  block_on_new_debug_items: false
+    - coverage
+    - qa-layer-2
+  block_on_new_debug_items: true
   autonomy:
-    initial_n: 0                      # YOLO: full autonomy from commit 1
-    count: 0                          # /devx reads this for the trust-gradient check
+    initial_n: 3
+    count: 0
     rollback_penalty: 0.5
     hotfix_zeroes: true
     veto_window_hours: 24
@@ -138,16 +111,18 @@ promotion:
 # ---------------------------------------------------------------------------
 
 coverage:
-  enabled: true                       # we still measure even in YOLO
+  enabled: true
   target: touched-lines
-  threshold: 1.00                     # informational at YOLO; never blocks merge
-  blocking: false                     # explicit: YOLO never blocks on coverage
+  threshold: 1.00
+  blocking: true
   opt_out_marker: "devx:no-coverage"
   flaky_window_hours: 24
   flaky_action: file-test-md-entry
   language_runners:
+    python: pytest --cov
     typescript: vitest --coverage
-    dart: flutter test --coverage
+    rust: cargo llvm-cov
+    go: go test -cover
 
 # ---------------------------------------------------------------------------
 # 7. CI
@@ -159,6 +134,7 @@ ci:
   required_checks:
     - lint
     - test
+    - coverage
   retry_on_flake: true
   max_retries: 2
   poll_interval_s: 30
@@ -170,13 +146,15 @@ ci:
 
 qa:
   browser_harness: playwright
-  layer_2_cadence: on-demand          # YOLO default per MODES.md §2.6
+  layer_2_cadence: nightly
   layer_2_personas: 4
   scripted_test_runner: playwright
 
 focus_group:
   panel_size: 5
-  consult_at: []                      # YOLO: skip per MODES.md §2.4
+  consult_at:
+    - plan
+    - pre-promotion
   auto_evolve: true
   binding: false
 
@@ -186,10 +164,10 @@ focus_group:
 
 self_healing:
   enabled: true
-  retro_concordance_threshold: 5      # send-it raises threshold so system mutates slowly
+  retro_concordance_threshold: 3
   auto_apply:
     confidence_min: 0.85
-    blast_radius_max: medium          # YOLO ceiling: through CLAUDE.md (per MODES.md §2.3)
+    blast_radius_max: low
   canary_runs: 3
   user_review_required_for:
     - skills
@@ -208,27 +186,30 @@ self_healing:
 
 notifications:
   channels:
+    - kind: fcm
+      topic: devx-leonid
+    - kind: webhook
+      url: https://hooks.slack.com/services/T000/B000/XXXX
+      template: slack
     - kind: email
-      to: leonid@ac93.org
+      to: leonid@example.com
       digest_only: true
   events:
-    # Per INTERVIEW Q#5: push only for things that block the loop on a
-    # human (INTERVIEW + MANUAL); everything else into the daily digest.
-    # System-critical events (usage cap, repeated crashes) override to push
-    # because they affect the loop itself, not just one item.
     context_rot_detected: silent
     manual_filed: push
     interview_filed: push
-    ci_failed: digest
+    ci_failed: push
     pr_opened: silent
     pr_merged: digest
-    promotion_ready: silent           # YOLO: auto-promotes anyway
-    heartbeat_stale: push              # system-critical override
-    usage_cap_hit: push                # system-critical override
-    agent_crashed_repeatedly: push     # system-critical override
+    promotion_ready: push
+    heartbeat_stale: push
+    usage_cap_hit: push
+    daily_spend_cap_hit: push
+    agent_crashed_repeatedly: push
   quiet_hours: "22:00-08:00"
   quiet_hours_override:
     - usage_cap_hit
+    - daily_spend_cap_hit
   digest_schedule: "daily-09:00"
 
 # ---------------------------------------------------------------------------
@@ -334,23 +315,16 @@ bmad:
   workflows_path: _bmad/
 
 # ---------------------------------------------------------------------------
-# Stack — what /devx Phase 5 (local CI) runs.
-#
-# Layered shape: most Phase 0 epics produce a node CLI; Phase 8 (mobile) is a
-# Flutter project under mobile/; Phase 4 mobile-relay is a Cloudflare Worker
-# under worker/. Until the CLI scaffold lands (cli301), `lint` is still a
-# placeholder echo (no JS source to lint yet — schema is pure JSON), but
-# `test` runs cfg201's schema smoke test so any change to the schema or its
-# fixtures is gated by the local CI step.
+# Stack — monorepo shape (mutually exclusive with single `stack:` block).
 # ---------------------------------------------------------------------------
 
 projects:
   - name: cli
     path: .
     layers: [backend]
-    lint: 'echo "[cli] lint not yet wired (cli301)"'
-    test: 'npm test --silent'
-    coverage: null
+    lint: eslint .
+    test: vitest run
+    coverage: vitest run --coverage
     pre_push: null
   - name: mobile
     path: mobile
@@ -358,9 +332,3 @@ projects:
     lint: flutter analyze
     test: flutter test
     coverage: flutter test --coverage
-  - name: worker
-    path: worker
-    layers: [backend]
-    lint: bun run lint
-    test: bun test
-    coverage: bun test --coverage
