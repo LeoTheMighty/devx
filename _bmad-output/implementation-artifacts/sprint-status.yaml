@@ -126,7 +126,7 @@ plans:
             blocked_by: [ini502]
           - key: ini504
             title: Personas + INTERVIEW.md fixed-template seeding
-            status: backlog
+            status: done
             blocked_by: [ini502]
           - key: ini505
             title: Supervisor installer trigger + verify

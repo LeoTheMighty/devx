@@ -5,7 +5,7 @@ created: 2026-04-26T19:35:00-07:00
 title: Personas + INTERVIEW.md fixed-template seeding
 from: _bmad-output/planning-artifacts/epic-init-skill.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: in-progress
+status: done
 blocked_by: [ini502]
 branch: feat/dev-ini504
 owner: /devx
@@ -35,3 +35,7 @@ Implement `src/lib/init-personas.ts` (4 real + 1 anti-persona seeding from N3 an
 
 - 2026-04-26T19:35 — created by /devx-plan
 - 2026-04-27T17:00 — claimed by /devx; branch feat/dev-ini504
+- 2026-04-27T17:30 — implemented init-personas.ts + init-interview.ts + 6 stack-templated INTERVIEW seeds + skeleton.md persona template; 29 tests pass (20 personas + 9 interview)
+- 2026-04-27T17:45 — self-review pass: added defensive mkdirSync for personas dir + slugify hyphen-trim; one new test (mkdir-when-missing) → 30 tests total; full local suite (337 tests) green
+- 2026-04-27T17:50 — PR opened: https://github.com/LeoTheMighty/devx/pull/25
+- 2026-04-27T20:31 — merged via PR #25 (squash → aeb09ee)
