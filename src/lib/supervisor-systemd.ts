@@ -305,3 +305,38 @@ function runOrThrow(
     throw new Error(`${binary} ${args.join(" ")} failed: ${detail}`);
   }
 }
+
+export interface VerifySystemdOpts {
+  role: Role;
+  exec?: SystemdExec;
+}
+
+/**
+ * Verify the systemd-user unit for `role` is active. sup405 entry.
+ *
+ * `systemctl --user is-active devx-<role>.service` is the canonical probe:
+ *   - exit 0 + stdout starting with `active`  → ok.
+ *   - exit 3 (`inactive`) / 4 (`failed`) / non-zero → fail. Detail carries
+ *     the exact stdout/stderr so MANUAL.md is diagnostic.
+ *
+ * `is-active` is preferred over `status` because `status` returns 0 even when
+ * the unit is in a deactivating state — `is-active` is strict about "running".
+ */
+export function verifySystemd(
+  opts: VerifySystemdOpts
+): { ok: boolean; detail: string } {
+  const exec = opts.exec ?? defaultSystemdExec;
+  const unitName = unitFilename(opts.role);
+
+  const result = exec("systemctl", ["--user", "is-active", unitName]);
+  const stdoutTrimmed = (result.stdout ?? "").trim();
+
+  if ((result.status ?? 1) === 0 && stdoutTrimmed === "active") {
+    return { ok: true, detail: `is-active=active (${unitName})` };
+  }
+
+  const detail = result.error
+    ? result.error.message
+    : `is-active=${stdoutTrimmed || "(empty)"}, exit=${result.status ?? "null"}, stderr=${(result.stderr ?? "").trim() || "(empty)"}`;
+  return { ok: false, detail };
+}

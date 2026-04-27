@@ -292,3 +292,54 @@ function runOrThrow(exec: SchtasksExec, args: string[]): void {
     throw new Error(`schtasks ${args.join(" ")} failed: ${detail}`);
   }
 }
+
+export interface VerifyTaskSchedulerOpts {
+  role: Role;
+  exec?: SchtasksExec;
+}
+
+/**
+ * Verify the Task Scheduler task for `role` is registered and ready. sup405 entry.
+ *
+ * `schtasks /Query /TN devx-<role> /V /FO LIST` lists the task's verbose
+ * record; we look for a `Status:` line whose value is `Ready` (waiting for
+ * trigger — Phase 0 baseline) or `Running`. Anything else (`Disabled`,
+ * `Could not start`, etc.) is a fail. Exit status 0 alone isn't enough —
+ * schtasks /Query returns 0 for disabled tasks too.
+ *
+ * The Status field's exact label varies by Windows locale. We match
+ * case-insensitively against English values; a non-English Windows install
+ * trips the fall-through and gets a MANUAL.md entry. Documented as a known
+ * limitation for now (a `learn/` follow-up will wire localized matching).
+ */
+export function verifyTaskScheduler(
+  opts: VerifyTaskSchedulerOpts
+): { ok: boolean; detail: string } {
+  const exec = opts.exec ?? defaultSchtasksExec;
+  const tn = taskName(opts.role);
+
+  const result = exec(["/Query", "/TN", tn, "/V", "/FO", "LIST"]);
+  if (result.error || (result.status ?? 1) !== 0) {
+    const detail =
+      result.stderr?.trim() ||
+      result.error?.message ||
+      `schtasks /Query /TN ${tn} exited ${result.status}`;
+    return { ok: false, detail };
+  }
+
+  const stdout = result.stdout ?? "";
+  // Status line in /FO LIST format: `Status:                               Ready`
+  const statusMatch = stdout.match(/^\s*Status:\s*(.+?)\s*$/m);
+  const status = statusMatch?.[1] ?? "";
+
+  if (/^(ready|running)$/i.test(status)) {
+    return { ok: true, detail: `Status: ${status} (${tn})` };
+  }
+
+  return {
+    ok: false,
+    detail: status
+      ? `unexpected Status: ${status} for ${tn}`
+      : `Status line missing from schtasks /Query /TN ${tn} output`,
+  };
+}

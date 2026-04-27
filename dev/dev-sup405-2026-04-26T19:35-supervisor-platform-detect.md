@@ -34,3 +34,4 @@ Implement the top-level `installSupervisor(role)` and `verifySupervisor(role)` d
 
 - 2026-04-26T19:35 — created by /devx-plan
 - 2026-04-26T20:30 — claimed by /devx; branch feat/dev-sup405 (single-branch YOLO; develop/dev-sup405 in frontmatter was stale plan-time default)
+- 2026-04-26T20:55 — implemented installSupervisor(role) / uninstallSupervisor(role) / verifySupervisor(role) auto-resolution + per-platform verify*(); 199/199 tests passing locally (27 new in test/supervisor-platform-detect.test.ts); docs/SUPERVISOR-TESTING.md added.

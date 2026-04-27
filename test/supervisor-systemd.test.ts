@@ -459,7 +459,8 @@ describe("sup403 — installSupervisor / uninstallSupervisor dispatch", () => {
 
   it("platform=systemd routes through installSystemd", () => {
     const { exec, calls } = makeRecordingExec();
-    const result = installSupervisor("manager", "systemd", {
+    const result = installSupervisor("manager", {
+      platform: "systemd",
       devxHome,
       homeDir,
       unitDir,
@@ -478,7 +479,8 @@ describe("sup403 — installSupervisor / uninstallSupervisor dispatch", () => {
 
   it("dispatch passes linger + user through to installSystemd", () => {
     const { exec, calls } = makeRecordingExec();
-    installSupervisor("manager", "systemd", {
+    installSupervisor("manager", {
+      platform: "systemd",
       devxHome,
       homeDir,
       unitDir,
@@ -495,7 +497,8 @@ describe("sup403 — installSupervisor / uninstallSupervisor dispatch", () => {
 
   it("uninstallSupervisor(systemd) routes through uninstallSystemd", () => {
     const { exec: e1 } = makeRecordingExec();
-    installSupervisor("manager", "systemd", {
+    installSupervisor("manager", {
+      platform: "systemd",
       devxHome,
       homeDir,
       unitDir,
@@ -503,7 +506,8 @@ describe("sup403 — installSupervisor / uninstallSupervisor dispatch", () => {
     });
 
     const { exec: e2 } = makeRecordingExec();
-    const result = uninstallSupervisor("manager", "systemd", {
+    const result = uninstallSupervisor("manager", {
+      platform: "systemd",
       devxHome,
       homeDir,
       unitDir,
