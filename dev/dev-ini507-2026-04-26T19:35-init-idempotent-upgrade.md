@@ -5,9 +5,10 @@ created: 2026-04-26T19:35:00-07:00
 title: Idempotent upgrade-mode re-run
 from: _bmad-output/planning-artifacts/epic-init-skill.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: in-progress
 blocked_by: [ini502, ini503, ini504, ini505]
-branch: develop/dev-ini507
+branch: feat/dev-ini507
+owner: /devx
 ---
 
 ## Goal
@@ -37,3 +38,4 @@ Implement `src/lib/init-upgrade.ts` — detects `devx_version` in existing `devx
 ## Status log
 
 - 2026-04-26T19:35 — created by /devx-plan
+- 2026-04-27T claimed by /devx (ini507 — init-upgrade.ts implementation)
