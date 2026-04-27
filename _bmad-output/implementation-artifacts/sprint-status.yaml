@@ -77,7 +77,7 @@ plans:
             blocked_by: [cli301]
           - key: sup402
             title: macOS launchd plist generator + bootstrap
-            status: in-progress
+            status: done
             blocked_by: [sup401]
           - key: sup403
             title: Linux systemd-user .service generator + enable
