@@ -1,19 +1,23 @@
-// Help-listing tests (cli303).
+// Help-listing tests (cli303 + ini506).
 //
 // Three layers of coverage:
-//   1. Order: positions of the 11 command lines in `devx --help` are strictly
-//      monotonically increasing in the canonical [config, ask, kill, pause,
-//      restart, resume, status, serve, tail, ui, eject] order — the exact
-//      shape required by the AC (phase ASC; ties alphabetical).
+//   1. Order: positions of the 12 command lines in `devx --help` are strictly
+//      monotonically increasing in the canonical [config, init, ask, kill,
+//      pause, restart, resume, status, serve, tail, ui, eject] order — the
+//      exact shape required by the AC (phase ASC; ties alphabetical).
+//      ini506 added `init` as the second Phase-0 real command (tied with
+//      `config`; alphabetical tie-break puts `config` first).
 //   2. Annotation: each of the 10 stubs has its `(coming in Phase N —
-//      epic-<slug>)` annotation on its line; `config` has no `(coming`
-//      annotation. Drift (e.g. an editor replacing the em-dash with a hyphen)
-//      fails this layer before reaching the snapshot.
+//      epic-<slug>)` annotation on its line; the two real Phase-0 commands
+//      (`config`, `init`) have no `(coming` annotation. Drift (e.g. an editor
+//      replacing the em-dash with a hyphen) fails this layer before reaching
+//      the snapshot.
 //   3. Inline snapshot: full `--help` stdout pinned. Any wording change (the
 //      program description, an option label, a stub epic slug) must update
 //      the snapshot — that's the "atomic" property the spec asks for.
 //
 // Spec: dev/dev-cli303-2026-04-26T19:35-cli-help-listing.md
+// Spec: dev/dev-ini506-2026-04-26T19:35-init-failure-modes.md (added `init`)
 
 import { describe, expect, it } from "vitest";
 
@@ -48,6 +52,7 @@ function captureHelp(): string {
 
 const expectedOrder = [
   "config",
+  "init",
   "ask",
   "kill",
   "pause",
@@ -90,7 +95,7 @@ function lineIndexOf(out: string, name: string): number {
 }
 
 describe("cli303 — devx --help command listing", () => {
-  it("lists all 11 commands sorted by phase ASC; ties alphabetical", () => {
+  it("lists all 12 commands sorted by phase ASC; ties alphabetical", () => {
     const out = captureHelp();
     const positions = expectedOrder.map((name) => ({
       name,
@@ -121,22 +126,26 @@ describe("cli303 — devx --help command listing", () => {
     expect(out).not.toContain("- epic-");
   });
 
-  it("config is listed without a (coming annotation", () => {
+  it("real Phase-0 commands (config, init) are listed without a (coming annotation", () => {
     const out = captureHelp();
-    const configLineStart = lineIndexOf(out, "config");
-    expect(configLineStart).toBeGreaterThanOrEqual(0);
-    // Commander wraps long descriptions onto continuation lines indented to
-    // the description column. Read until the next non-continuation line so we
-    // capture the entire visual "config row".
-    const lines = out.slice(configLineStart).split("\n");
-    const configBlock: string[] = [lines[0]];
-    for (let i = 1; i < lines.length; i++) {
-      // Continuation lines are indented further than the command-name column
-      // (two spaces) — they start with at least 4 spaces of padding.
-      if (/^ {4,}\S/.test(lines[i])) configBlock.push(lines[i]);
-      else break;
+    for (const name of ["config", "init"]) {
+      const lineStart = lineIndexOf(out, name);
+      expect(lineStart, `expected '${name}' to appear in --help`).toBeGreaterThanOrEqual(0);
+      // Commander wraps long descriptions onto continuation lines indented to
+      // the description column. Read until the next non-continuation line so we
+      // capture the entire visual row for this command.
+      const lines = out.slice(lineStart).split("\n");
+      const block: string[] = [lines[0]];
+      for (let i = 1; i < lines.length; i++) {
+        // Continuation lines are indented further than the command-name column
+        // (two spaces) — they start with at least 4 spaces of padding.
+        if (/^ {4,}\S/.test(lines[i])) block.push(lines[i]);
+        else break;
+      }
+      expect(block.join("\n"), `'${name}' must not be marked '(coming…)'`).not.toContain(
+        "(coming",
+      );
     }
-    expect(configBlock.join("\n")).not.toContain("(coming");
   });
 
   it("snapshot of full --help output pins wording (run vitest -u to refresh)", () => {
@@ -153,6 +162,8 @@ describe("cli303 — devx --help command listing", () => {
       Commands:
         config [options] [args...]  Get or set values in devx.config.yaml (project)
                                     or ~/.devx/config.yaml (user)
+        init [options]              Resume deferred /devx-init work (--resume-gh).
+                                    Fresh-init lives in the /devx-init slash command.
         ask                         (coming in Phase 2 — epic-devx-concierge-skill)
         kill                        (coming in Phase 2 — epic-devx-concierge-skill)
         pause                       (coming in Phase 2 — epic-devx-manage-minimal)
