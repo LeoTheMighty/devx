@@ -5,9 +5,10 @@ created: 2026-04-26T19:35:00-07:00
 title: Platform auto-detect dispatch + post-install verification
 from: _bmad-output/planning-artifacts/epic-os-supervisor-scaffold.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: in-progress
+owner: /devx
 blocked_by: [sup402, sup403, sup404]
-branch: develop/dev-sup405
+branch: feat/dev-sup405
 ---
 
 ## Goal
@@ -32,3 +33,4 @@ Implement the top-level `installSupervisor(role)` and `verifySupervisor(role)` d
 ## Status log
 
 - 2026-04-26T19:35 — created by /devx-plan
+- 2026-04-26T20:30 — claimed by /devx; branch feat/dev-sup405 (single-branch YOLO; develop/dev-sup405 in frontmatter was stale plan-time default)
