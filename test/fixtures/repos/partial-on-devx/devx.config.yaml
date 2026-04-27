@@ -1,0 +1,22 @@
+# Partial devx.config.yaml — init_partial: true marks the run as deferred.
+# The fixture intentionally omits most sections so /devx-init's upgrade-mode
+# auto-repair path has surfaces to fix (CLAUDE.md, personas, INTERVIEW seed,
+# CI workflow, PR template).
+
+devx_version: 0.1.0
+init_partial: true
+mode: YOLO
+project:
+  shape: empty-dream
+thoroughness: send-it
+git:
+  default_branch: main
+  integration_branch: null
+  branch_prefix: feat/
+  pr_strategy: pr-to-main
+  protect_main: false
+manager:
+  os_supervisor: none
+bmad:
+  modules: []
+  output_root: _bmad-output

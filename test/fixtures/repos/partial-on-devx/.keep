@@ -1,0 +1,7 @@
+# Fixture: partial-on-devx
+#
+# Simulates a repo where /devx-init was interrupted mid-flow. The seeder
+# writes a partial devx.config.yaml (with init_partial: true) plus a few
+# of the backlog files, then leaves CLAUDE.md / .gitignore / personas /
+# INTERVIEW seed missing so the upgrade-mode auto-repair path has work
+# to do.
