@@ -1,0 +1,5 @@
+# corrupt-missing-mode.yaml — schema must reject this with the missing-required
+# error path. Used by test/config-validate.test.ts (cfg203 AC).
+project:
+  shape: empty-dream
+thoroughness: send-it
