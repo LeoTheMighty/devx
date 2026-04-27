@@ -5,9 +5,10 @@ created: 2026-04-27T08:00:00-07:00
 title: Retrospective + LEARN.md updates for epic-bmad-audit
 from: _bmad-output/planning-artifacts/epic-bmad-audit.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: in-progress
 blocked_by: [aud101, aud102, aud103]
-branch: develop/dev-audret
+branch: feat/dev-audret
+owner: /devx
 ---
 
 ## Goal
@@ -26,3 +27,5 @@ Run `bmad-retrospective` on epic-bmad-audit and append findings to `LEARN.md § 
 
 ## Status log
 - 2026-04-27 — created by interim retro discipline (ROADMAP.md locked decision)
+- 2026-04-27T10:50 — claimed by /devx; corrected `branch:` from `develop/dev-audret` to `feat/dev-audret` per cross-epic finding (planner default vs `git.integration_branch: null` config)
+- 2026-04-27T10:50 — branched off main HEAD which carries unpushed commit `1b8edb3` ("interim retro discipline + Phase 0 learnings"); reset local main back to origin/main so the audret PR carries the infra commit through CI rather than bypassing it
