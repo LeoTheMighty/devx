@@ -74,3 +74,10 @@ declined. If/when this project upgrades to BETA or PROD, revisit.
   - How: open `_bmad-output/implementation-artifacts/sprint-status.yaml`; flip the four rows from `status: backlog` to `status: done`. Single-line edit per row. Optionally also note ini501 (already shows `done`, included for completeness check). Commit as `chore: backfill stale sprint-status flips for aud101–103 + sup405`.
   - Blocks: nothing immediate. File a `chore:` debug spec instead if you'd rather have an agent do it (it's mechanical).
   - Source: `LEARN.md § epic-config-schema` E3, `_bmad-output/implementation-artifacts/epic-config-schema-retro-2026-04-27.md` §3.4.
+
+- [ ] **MP0.2 — Approve skill-prompt edit so retro rows auto-emit into `sprint-status.yaml`.**
+  - Why: cliret's formal retro confirmed for the third time (audret + cfgret + cliret) that `*ret` stories are missing from `sprint-status.yaml` at the moment the planner files them in DEV.md. cliret applied the mechanical 3-row backfill (rows for audret + cfgret + cliret placed under their parent epics) — but the root-cause fix is a one-line addition to `/devx-plan` Phase 7 emission template + the matching `/dev-plan` mirror so future retros emit their yaml row at the same time as their DEV.md row.
+  - How: edit `.claude/commands/devx-plan.md` (and `.claude/commands/dev-plan.md`) wherever the `*ret` story emission template lives — append a single yaml row under the parent epic's `stories:` list with `status: backlog`, `blocked_by:` listing all parent stories. Convention picked by cliret: retro rows go under the epic they retroe, ordered after parent stories (keeps DEV.md and sprint-status orderings parallel; "epic complete" is a single-section check).
+  - Blocks: nothing immediate. The mechanical backfill is the workaround; the skill change just stops the bleed for the next epic that ships a retro.
+  - User-review-required because `self_healing.user_review_required_for: [skills]`.
+  - Source: `LEARN.md § Cross-epic patterns` row "Retro stories absent from sprint-status.yaml", `_bmad-output/implementation-artifacts/epic-cli-skeleton-retro-2026-04-27.md` §3.4 + §6.

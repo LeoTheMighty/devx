@@ -23,6 +23,10 @@ plans:
             title: Risks subsection + finalize bmad-audit.md
             status: backlog
             blocked_by: [aud102]
+          - key: audret
+            title: Retro + LEARN.md updates (interim retro discipline)
+            status: done
+            blocked_by: [aud101, aud102, aud103]
 
       - key: epic-config-schema
         title: devx.config.yaml schema + `devx config` CLI
@@ -42,6 +46,10 @@ plans:
             title: `devx config <key>` get/set CLI
             status: done
             blocked_by: [cfg202, cfg203, cli301]
+          - key: cfgret
+            title: Retro + LEARN.md updates (interim retro discipline)
+            status: done
+            blocked_by: [cfg201, cfg202, cfg203, cfg204]
 
       - key: epic-cli-skeleton
         title: devx CLI skeleton (11 commands)
@@ -66,6 +74,10 @@ plans:
             title: Cross-platform install + WSL PATH detection
             status: done
             blocked_by: [cli304]
+          - key: cliret
+            title: Retro + LEARN.md updates (interim retro discipline)
+            status: ready-for-dev
+            blocked_by: [cli301, cli302, cli303, cli304, cli305]
 
       - key: epic-os-supervisor-scaffold
         title: OS supervisor unit-file scaffold
