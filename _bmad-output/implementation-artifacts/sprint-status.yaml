@@ -130,7 +130,7 @@ plans:
             blocked_by: [ini502]
           - key: ini505
             title: Supervisor installer trigger + verify
-            status: backlog
+            status: done
             blocked_by: [ini502, sup405]
           - key: ini506
             title: Failure-mode handling (BMAD-fail / gh-not-auth / no-remote)
