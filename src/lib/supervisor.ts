@@ -1,34 +1,46 @@
-// Supervisor installer — Phase 0 (sup401).
+// Supervisor installer — Phase 0 (sup401 + sup402+).
 //
-// Ships the placeholder stub script (`_devx/templates/supervisor-stub.sh`)
-// to `~/.devx/bin/devx-supervisor-stub.sh` and tracks installation state at
-// `~/.devx/state/supervisor.installed.json`. Idempotent: re-installs detect
-// matching content via SHA-256 hash and short-circuit.
+// Public surface:
+//   - installStub() / uninstallStub()        — sup401: ships ~/.devx/bin/devx-supervisor-stub.sh
+//   - installSupervisor() / uninstallSupervisor() — sup402+: per-platform unit-file install
 //
-// Phase 0 is the stub-only piece. sup402–sup405 add the platform-specific
-// unit-file generators (launchd / systemd / Task Scheduler) on top of this
-// state file. Phase 10's `devx eject` will call `uninstallStub`.
+// Idempotency state lives at `~/.devx/state/supervisor.installed.json`.
+// Per-key namespace: `stub` (sup401), `manager` / `concierge` (sup402+ role units).
 //
-// Spec: dev/dev-sup401-2026-04-26T19:35-supervisor-stub-script.md
+// Shared helpers (atomic write, hash, state-file IO) live in
+// supervisor-internal.ts so the platform-specific modules
+// (supervisor-launchd.ts, future supervisor-systemd.ts, supervisor-task-scheduler.ts)
+// can reuse them without duplicating logic.
+//
+// Spec: dev/dev-sup401-2026-04-26T19:35-supervisor-stub-script.md (stub)
+//       dev/dev-sup402-2026-04-26T19:35-supervisor-launchd.md      (launchd dispatch)
 // Epic: _bmad-output/planning-artifacts/epic-os-supervisor-scaffold.md
 
+import { existsSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+
 import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { createHash } from "node:crypto";
+  STATE_FILENAME,
+  type SupervisorStateFile,
+  defaultDevxHome,
+  defaultTemplateDir,
+  nowIso,
+  readPackageVersion,
+  readStateFile,
+  sha256,
+  writeAtomic,
+  writeStateFile,
+} from "./supervisor-internal.js";
+import {
+  type LaunchctlExec,
+  installLaunchd,
+  uninstallLaunchd,
+} from "./supervisor-launchd.js";
 
 export type InstallResult = "fresh" | "kept" | "rewritten";
 export type UninstallResult = "removed" | "absent";
+export type Role = "manager" | "concierge";
+export type SupervisorPlatform = "launchd" | "systemd" | "task-scheduler";
 
 export interface InstallStubOpts {
   /** Override `~/.devx/`. Defaults to `os.homedir() + "/.devx"`. Tests pass a tmpdir. */
@@ -37,94 +49,30 @@ export interface InstallStubOpts {
   templateDir?: string;
 }
 
-interface StubStateRecord {
-  hash: string;
-  version: string;
-  installed_at: string;
-}
-
-interface SupervisorStateFile {
-  stub?: StubStateRecord;
-  // sup402+: per-role unit-file records (manager, concierge, ...) live here.
-  [k: string]: unknown;
+export interface InstallSupervisorOpts {
+  devxHome?: string;
+  templateDir?: string;
+  /** ${HOME} substitution + log dir parent. Defaults to `os.homedir()`. */
+  homeDir?: string;
+  /** Dir where unit files are written (`~/Library/LaunchAgents` for launchd, etc). */
+  unitDir?: string;
+  /** Log dir (`~/Library/Logs/devx` for launchd). Tests override. */
+  logDir?: string;
+  /** Injected launchctl/systemctl/schtasks invoker for tests. */
+  exec?: LaunchctlExec;
+  /** Override `process.getuid()`. Tests pass a fixed uid. */
+  uid?: number;
 }
 
 const STUB_FILENAME = "devx-supervisor-stub.sh";
-const STATE_FILENAME = "supervisor.installed.json";
-const TEMPLATE_FILENAME = "supervisor-stub.sh";
-
-function defaultDevxHome(): string {
-  return join(homedir(), ".devx");
-}
-
-function defaultTemplateDir(): string {
-  // src/lib/supervisor.ts → ../../_devx/templates (works from src under
-  // tsx/vitest AND from dist/lib/supervisor.js after build, since the package
-  // ships `_devx/templates/` and `dist/` side-by-side).
-  const here = dirname(fileURLToPath(import.meta.url));
-  return resolve(here, "..", "..", "_devx", "templates");
-}
-
-function sha256(buf: Buffer | string): string {
-  return createHash("sha256").update(buf).digest("hex");
-}
-
-function readStateFile(stateFile: string): SupervisorStateFile {
-  if (!existsSync(stateFile)) return {};
-  try {
-    const raw = readFileSync(stateFile, "utf8");
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") return parsed as SupervisorStateFile;
-    return {};
-  } catch {
-    // Corrupt state file: treat as fresh install rather than throwing. The
-    // hash-rewrite will re-establish a valid record. Logging this would be
-    // ideal but we don't have a logger plumbed yet (Phase 0).
-    return {};
-  }
-}
-
-function writeAtomic(targetPath: string, contents: Buffer | string, mode?: number): void {
-  mkdirSync(dirname(targetPath), { recursive: true });
-  // .tmp.<pid>.<rand> avoids collisions when two processes race. Same FS as
-  // target so renameSync is atomic on POSIX.
-  const tmp = `${targetPath}.tmp.${process.pid}.${Math.random().toString(36).slice(2, 10)}`;
-  try {
-    writeFileSync(tmp, contents);
-    if (mode !== undefined) chmodSync(tmp, mode);
-    renameSync(tmp, targetPath);
-  } catch (err) {
-    // Best-effort cleanup of the tmp file if rename failed.
-    try {
-      if (existsSync(tmp)) unlinkSync(tmp);
-    } catch {
-      // ignore
-    }
-    throw err;
-  }
-}
-
-function readPackageVersion(): string {
-  // package.json sits at the repo root, two levels above this file in src/
-  // (and two levels above dist/lib/ after build). Same resolution logic as
-  // defaultTemplateDir.
-  const here = dirname(fileURLToPath(import.meta.url));
-  const pkgPath = resolve(here, "..", "..", "package.json");
-  try {
-    const raw = readFileSync(pkgPath, "utf8");
-    const parsed = JSON.parse(raw) as { version?: string };
-    return parsed.version ?? "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
-}
+const STUB_TEMPLATE_FILENAME = "supervisor-stub.sh";
 
 /** Install the supervisor stub script and update the state file. Idempotent. */
 export function installStub(opts: InstallStubOpts = {}): InstallResult {
   const devxHome = opts.devxHome ?? defaultDevxHome();
   const templateDir = opts.templateDir ?? defaultTemplateDir();
 
-  const templatePath = join(templateDir, TEMPLATE_FILENAME);
+  const templatePath = join(templateDir, STUB_TEMPLATE_FILENAME);
   const targetPath = join(devxHome, "bin", STUB_FILENAME);
   const stateFile = join(devxHome, "state", STATE_FILENAME);
 
@@ -148,15 +96,14 @@ export function installStub(opts: InstallStubOpts = {}): InstallResult {
     stub: {
       hash: newHash,
       version: readPackageVersion(),
-      installed_at: new Date().toISOString(),
+      installed_at: nowIso(),
     },
   };
-  writeAtomic(stateFile, JSON.stringify(next, null, 2) + "\n");
+  writeStateFile(stateFile, next);
 
   if (!prior) return "fresh";
-  if (prior.hash !== newHash) return "rewritten";
-  // prior.hash === newHash but target was missing — counts as rewrite of the
-  // binary even though state was preserved.
+  // prior.hash !== newHash OR prior.hash === newHash but target was missing —
+  // both count as a rewrite.
   return "rewritten";
 }
 
@@ -194,9 +141,47 @@ export function uninstallStub(opts: InstallStubOpts = {}): UninstallResult {
         // ignore
       }
     } else {
-      writeAtomic(stateFile, JSON.stringify(next, null, 2) + "\n");
+      writeStateFile(stateFile, next);
     }
   }
 
   return "removed";
+}
+
+/**
+ * Install a supervisor unit (launchd / systemd / Task Scheduler).
+ *
+ * Phase 0 currently implements `launchd` only (sup402). `systemd` and
+ * `task-scheduler` throw with a forward-pointer to their stories; sup405
+ * adds the platform auto-detect dispatch on top of this entry point.
+ */
+export function installSupervisor(
+  role: Role,
+  platform: SupervisorPlatform,
+  opts: InstallSupervisorOpts = {}
+): InstallResult {
+  switch (platform) {
+    case "launchd":
+      return installLaunchd({ role, ...opts });
+    case "systemd":
+      throw new Error("installSupervisor: systemd not yet implemented (sup403)");
+    case "task-scheduler":
+      throw new Error("installSupervisor: task-scheduler not yet implemented (sup404)");
+  }
+}
+
+/** Uninstall a supervisor unit. Used by Phase 10 `devx eject`. */
+export function uninstallSupervisor(
+  role: Role,
+  platform: SupervisorPlatform,
+  opts: InstallSupervisorOpts = {}
+): UninstallResult {
+  switch (platform) {
+    case "launchd":
+      return uninstallLaunchd({ role, ...opts });
+    case "systemd":
+      throw new Error("uninstallSupervisor: systemd not yet implemented (sup403)");
+    case "task-scheduler":
+      throw new Error("uninstallSupervisor: task-scheduler not yet implemented (sup404)");
+  }
 }

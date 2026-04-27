@@ -42,6 +42,20 @@ Items here block `/dev` when the user's action is required. Check off when done.
   - How: devx repo → Settings → Webhooks → Add. Payload URL: `https://<worker-url>/webhook/github`. Content type: application/json. Secret: generate one; mirror into Worker secret `GH_WEBHOOK_SECRET`. Events: Push, Pull requests, Check suites, Workflow runs.
   - Blocks: `dev-d40003`.
 
+## For Epic 4 — OS supervisor scaffold (Phase 0)
+
+- [ ] **MS.1 — On-host launchd kill-and-watch-restart proof (macOS).**
+  - Why: sup402's automated tests use a mocked `launchctl` so they run on Linux CI. The "the unit actually auto-restarts after a kill" check requires real launchd and can't be a CI step.
+  - How: After `installSupervisor("manager", "launchd")` runs (e.g., from `/devx-init`), on a macOS host:
+    ```sh
+    launchctl print "gui/$(id -u)/dev.devx.manager"   # expect state = running
+    launchctl kickstart -k "gui/$(id -u)/dev.devx.manager"
+    sleep 12
+    launchctl print "gui/$(id -u)/dev.devx.manager"   # expect state = running (PID changed)
+    ```
+  - Blocks: nothing (informational; Phase 1 supervisor body comes online before any user-visible signal depends on it).
+  - Spec: `dev/dev-sup402-2026-04-26T19:35-supervisor-launchd.md`.
+
 ## For Epic 3 (prerequisite)
 
 Both M3.1 and M3.2 are now N/A for this project — INTERVIEW Q#7 (2026-04-26)
