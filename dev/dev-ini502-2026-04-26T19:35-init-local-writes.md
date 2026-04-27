@@ -5,9 +5,10 @@ created: 2026-04-26T19:35:00-07:00
 title: Local file writes (config + backlogs + spec dirs + CLAUDE.md + .gitignore)
 from: _bmad-output/planning-artifacts/epic-init-skill.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: in-progress
 blocked_by: [ini501, cfg204]
-branch: develop/dev-ini502
+branch: feat/dev-ini502
+owner: /devx-2026-04-27
 ---
 
 ## Goal
@@ -34,3 +35,4 @@ Implement `src/lib/init-write.ts` — orchestrates all local file writes: `devx.
 ## Status log
 
 - 2026-04-26T19:35 — created by /devx-plan
+- 2026-04-27T13:00 — claimed by /devx in session devx-2026-04-27 (branch feat/dev-ini502; spec branch field bumped develop→feat per single-branch git config)
