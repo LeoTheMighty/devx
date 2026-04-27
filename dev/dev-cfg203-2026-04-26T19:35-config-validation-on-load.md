@@ -34,3 +34,6 @@ Implement `src/lib/config-validate.ts` that validates a parsed config against `_
 
 - 2026-04-26T19:35 — created by /devx-plan
 - 2026-04-26T20:30 — claimed by /devx (single-branch YOLO; branch feat/dev-cfg203 off main)
+- 2026-04-26T20:45 — implemented src/lib/config-validate.ts + test/config-validate.test.ts + corrupt-missing-mode fixture; npm test green (32 PASS); typecheck clean
+- 2026-04-26T20:45 — self-review pass: tightened cache key to (projectPath, userPath); cleaned addFormats import; documented additionalProperties walk limitation
+- 2026-04-26T20:45 — no remote CI workflow detected — local gates are authoritative
