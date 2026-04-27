@@ -5,8 +5,9 @@ created: 2026-04-26T19:35:00-07:00
 title: YAML round-trip lib using eemeli/yaml
 from: _bmad-output/planning-artifacts/epic-config-schema.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
-branch: develop/dev-cfg202
+status: in-progress
+branch: feat/dev-cfg202
+owner: /devx
 ---
 
 ## Goal
@@ -31,3 +32,4 @@ Implement `src/lib/config-io.ts` providing comment-preserving YAML I/O for `devx
 ## Status log
 
 - 2026-04-26T19:35 — created by /devx-plan
+- 2026-04-26T20:00 — claimed by /devx; branch feat/dev-cfg202 (single-branch model — git.integration_branch is null per devx.config.yaml; spec frontmatter said develop/dev-cfg202 which is stale, corrected here). Note: spec ACs say XDG-on-Linux for user-config path; epic-config-schema.md "locked decisions" say `~/.devx/` everywhere. Following spec ACs (source of truth). On macOS the two are identical so no behavior delta for this project.

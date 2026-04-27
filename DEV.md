@@ -11,7 +11,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 
 ### Epic 2 — devx.config.yaml schema + CLI
 - [x] `dev/dev-cfg201-2026-04-26T19:35-config-schema-json.md` — JSON schema for all 15 sections of devx.config.yaml. Status: done. From: epic-config-schema. PR: https://github.com/LeoTheMighty/devx/pull/4 (merged cb73bc5).
-- [ ] `dev/dev-cfg202-2026-04-26T19:35-config-yaml-roundtrip-lib.md` — YAML round-trip lib using eemeli/yaml. Status: ready.
+- [/] `dev/dev-cfg202-2026-04-26T19:35-config-yaml-roundtrip-lib.md` — YAML round-trip lib using eemeli/yaml. Status: in-progress.
 - [ ] `dev/dev-cfg203-2026-04-26T19:35-config-validation-on-load.md` — Config validation on load. Status: ready. Blocked-by: cfg201, cfg202.
 - [ ] `dev/dev-cfg204-2026-04-26T19:35-config-cli-get-set.md` — `devx config <key>` get/set CLI. Status: ready. Blocked-by: cfg202, cfg203, cli301.
 
