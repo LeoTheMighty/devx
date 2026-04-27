@@ -32,3 +32,4 @@ Customize `commander`'s help output so `devx --help` lists all 11 commands (`con
 
 - 2026-04-26T19:35 — created by /devx-plan
 - 2026-04-26T19:50 — claimed by /devx; branch feat/dev-cli303 off main; single-branch YOLO (git.integration_branch: null → PR to main)
+- 2026-04-26T19:57 — impl + self-review + local gates green: PhaseSortedHelp subclass + WeakMap-backed phase metadata; stub.ts + config.ts call attachPhase at register; cli.ts installs createHelp override after registration; test/help.test.ts has 5 tests (order, annotation, em-dash regression, config-no-coming, full inline snapshot); npm test 75/75 PASS
