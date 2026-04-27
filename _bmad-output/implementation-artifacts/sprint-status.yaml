@@ -138,12 +138,16 @@ plans:
             blocked_by: [ini503, ini505]
           - key: ini507
             title: Idempotent upgrade-mode re-run
-            status: backlog
+            status: done
             blocked_by: [ini502, ini503, ini504, ini505]
           - key: ini508
             title: End-to-end integration test
-            status: backlog
+            status: done
             blocked_by: [ini506, ini507]
+          - key: iniret
+            title: Retro + LEARN.md updates (interim retro discipline)
+            status: in-progress
+            blocked_by: [ini501, ini502, ini503, ini504, ini505, ini506, ini507, ini508]
 
   - key: plan-7a2d1f-mobile-companion-v01
     title: Mobile companion v0.1 → real-time
