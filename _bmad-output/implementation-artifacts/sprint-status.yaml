@@ -60,7 +60,7 @@ plans:
             blocked_by: [cli302, cfg204]
           - key: cli304
             title: `devx --version` + postinstall PATH verification
-            status: backlog
+            status: done
             blocked_by: [cli301]
           - key: cli305
             title: Cross-platform install + WSL PATH detection
