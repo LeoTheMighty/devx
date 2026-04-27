@@ -32,3 +32,4 @@ Wire `/devx-init` to call `installSupervisor()` and `verifySupervisor()` from ep
 
 - 2026-04-26T19:35 — created by /devx-plan
 - 2026-04-27T14:35 — claimed by /devx; branch feat/dev-ini505 (single-branch YOLO; develop/dev-ini505 in frontmatter was stale plan-time default)
+- 2026-04-27T14:55 — implemented src/lib/init-supervisor.ts (runInitSupervisor composes installSupervisor + verifySupervisor for manager+concierge; pins resolved platform to skip per-call YAML re-reads; WSL host-crossover MANUAL.md filing per cli305); 8 new tests in test/init-supervisor.test.ts; 345/345 tests passing locally.
