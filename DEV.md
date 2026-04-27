@@ -8,12 +8,14 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-aud101-2026-04-26T19:35-bmad-modules-inventory.md` — Inventory BMAD modules + workflows. Status: done. From: epic-bmad-audit. PR: https://github.com/LeoTheMighty/devx/pull/1 (merged 70872e4).
 - [x] `dev/dev-aud102-2026-04-26T19:35-bmad-classify-workflows.md` — Classify each BMAD workflow + map to devx command. Status: done. From: epic-bmad-audit. PR: https://github.com/LeoTheMighty/devx/pull/2 (merged 2697f54).
 - [x] `dev/dev-aud103-2026-04-26T19:35-bmad-risks-finalize.md` — Risks subsection + finalize bmad-audit.md. Status: done. From: epic-bmad-audit. PR: https://github.com/LeoTheMighty/devx/pull/3 (merged 82ed445).
+- [ ] `dev/dev-audret-2026-04-27T08:00-retro-bmad-audit.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: aud101, aud102, aud103.
 
 ### Epic 2 — devx.config.yaml schema + CLI
 - [x] `dev/dev-cfg201-2026-04-26T19:35-config-schema-json.md` — JSON schema for all 15 sections of devx.config.yaml. Status: done. From: epic-config-schema. PR: https://github.com/LeoTheMighty/devx/pull/4 (merged cb73bc5).
 - [x] `dev/dev-cfg202-2026-04-26T19:35-config-yaml-roundtrip-lib.md` — YAML round-trip lib using eemeli/yaml. Status: done. From: epic-config-schema. PR: https://github.com/LeoTheMighty/devx/pull/5 (merged c6a5625).
 - [x] `dev/dev-cfg203-2026-04-26T19:35-config-validation-on-load.md` — Config validation on load. Status: done. Blocked-by: cfg201, cfg202. PR: https://github.com/LeoTheMighty/devx/pull/6 (merged b00ef2e).
 - [x] `dev/dev-cfg204-2026-04-26T19:35-config-cli-get-set.md` — `devx config <key>` get/set CLI. Status: done. Blocked-by: cfg202, cfg203, cli301. PR: https://github.com/LeoTheMighty/devx/pull/8 (merged 1ba275f).
+- [ ] `dev/dev-cfgret-2026-04-27T08:00-retro-config-schema.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: cfg201, cfg202, cfg203, cfg204.
 
 ### Epic 3 — devx CLI skeleton
 - [x] `dev/dev-cli301-2026-04-26T19:35-cli-package-scaffold.md` — npm package scaffold + commander dispatch. Status: done. From: epic-cli-skeleton. PR: https://github.com/LeoTheMighty/devx/pull/7 (merged 3641bd6).
@@ -21,6 +23,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-cli303-2026-04-26T19:35-cli-help-listing.md` — `devx --help` listing with phase + epic annotations. Status: done. Blocked-by: cli302, cfg204. PR: https://github.com/LeoTheMighty/devx/pull/10 (merged fa48586).
 - [x] `dev/dev-cli304-2026-04-26T19:35-cli-version-postinstall.md` — `devx --version` + postinstall PATH verification. Status: done. Blocked-by: cli301. PR: https://github.com/LeoTheMighty/devx/pull/11 (merged 17428b9).
 - [x] `dev/dev-cli305-2026-04-26T19:35-cli-cross-platform-install.md` — Cross-platform install + WSL PATH detection. Status: done. Blocked-by: cli304. PR: https://github.com/LeoTheMighty/devx/pull/12 (merged 1a58274).
+- [ ] `dev/dev-cliret-2026-04-27T08:00-retro-cli-skeleton.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: cli301, cli302, cli303, cli304, cli305.
 
 ### Epic 4 — OS supervisor scaffold
 - [x] `dev/dev-sup401-2026-04-26T19:35-supervisor-stub-script.md` — Supervisor stub script + idempotent install. Status: done. From: epic-os-supervisor-scaffold. Blocked-by: cli301. PR: https://github.com/LeoTheMighty/devx/pull/13 (merged b6bb9dd).
@@ -28,6 +31,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-sup403-2026-04-26T19:35-supervisor-systemd.md` — Linux systemd-user .service generator + enable. Status: done. Blocked-by: sup401. PR: https://github.com/LeoTheMighty/devx/pull/15 (merged c51bd91).
 - [x] `dev/dev-sup404-2026-04-26T19:35-supervisor-task-scheduler.md` — Windows/WSL Task Scheduler XML generator. Status: done. Blocked-by: sup401. PR: https://github.com/LeoTheMighty/devx/pull/16 (merged 1c260ad).
 - [x] `dev/dev-sup405-2026-04-26T19:35-supervisor-platform-detect.md` — Platform auto-detect dispatch + post-install verification. Status: done. Blocked-by: sup402, sup403, sup404. PR: https://github.com/LeoTheMighty/devx/pull/17 (merged 322bbb4).
+- [ ] `dev/dev-supret-2026-04-27T08:00-retro-os-supervisor-scaffold.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: sup401, sup402, sup403, sup404, sup405.
 
 ### Epic 5 — `/devx-init` skill
 - [/] `dev/dev-ini501-2026-04-26T19:35-init-question-flow.md` — 13-question flow + skip-table inference + state detection. Status: in-progress. From: epic-init-skill. Blocked-by: aud103, cli301.
@@ -38,6 +42,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [ ] `dev/dev-ini506-2026-04-26T19:35-init-failure-modes.md` — Failure-mode handling (BMAD-fail / gh-not-auth / no-remote). Status: ready. Blocked-by: ini503, ini505.
 - [ ] `dev/dev-ini507-2026-04-26T19:35-init-idempotent-upgrade.md` — Idempotent upgrade-mode re-run. Status: ready. Blocked-by: ini502, ini503, ini504, ini505.
 - [ ] `dev/dev-ini508-2026-04-26T19:35-init-end-to-end-test.md` — End-to-end integration test. Status: ready. Blocked-by: ini506, ini507.
+- [ ] `dev/dev-iniret-2026-04-27T08:00-retro-init-skill.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: ini501, ini502, ini503, ini504, ini505, ini506, ini507, ini508.
 
 ## Mobile companion v0.1 (plan: plan-7a2d1f)
 
@@ -47,6 +52,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [ ] `dev/dev-a10003-2026-04-23T13:03-ios-project-config.md` — iOS project configuration (bundle ID, signing, push capability). Status: ready. Blocked-by: a10001. Requires user action (Team ID).
 - [ ] `dev/dev-a10004-2026-04-23T13:04-first-ondevice-run.md` — First on-device run. Status: ready. Blocked-by: a10002, a10003. Requires user action (plug in phone).
 - [ ] `dev/dev-a10005-2026-04-23T13:05-testflight-pipeline.md` — TestFlight pipeline. Status: ready. Blocked-by: a10004. Requires user action (App Store Connect upload).
+- [ ] `dev/dev-a10ret-2026-04-27T08:00-retro-flutter-scaffold.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: a10001, a10002, a10003, a10004, a10005.
 
 ### Epic 2 — GitHub connection read (M2)
 - [ ] `dev/dev-b20001-2026-04-23T13:10-auth-service-onboarding.md` — Auth service + PAT onboarding screen. Status: ready. Blocked-by: a10005.
@@ -54,6 +60,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [ ] `dev/dev-b20003-2026-04-23T13:12-backlog-parser.md` — Backlog markdown → structured model parser. Status: ready. Blocked-by: b20002.
 - [ ] `dev/dev-b20004-2026-04-23T13:13-inbox-tab.md` — Inbox tab — INTERVIEW + MANUAL + open PRs. Status: ready. Blocked-by: b20003.
 - [ ] `dev/dev-b20005-2026-04-23T13:14-backlogs-tab-spec-detail.md` — Backlogs tab + spec detail view. Status: ready. Blocked-by: b20003.
+- [ ] `dev/dev-b20ret-2026-04-27T08:00-retro-github-connection-read.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: b20001, b20002, b20003, b20004, b20005.
 
 ### Epic 3 — Bidirectional writes + offline (M3)
 - [ ] `dev/dev-c30001-2026-04-23T13:20-offline-queue-drift.md` — Offline queue foundation. Status: ready. Blocked-by: b20005.
@@ -61,6 +68,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [ ] `dev/dev-c30003-2026-04-23T13:22-add-tab-plus-button.md` — Add tab — (+) button flow. Status: ready. Blocked-by: c30001, c30002.
 - [ ] `dev/dev-c30004-2026-04-23T13:23-inline-interview-answer.md` — Inline INTERVIEW answering. Status: ready. Blocked-by: c30001, b20004.
 - [ ] `dev/dev-c30005-2026-04-23T13:24-conflict-resolution-ui.md` — Conflict resolution UI. Status: ready. Blocked-by: c30003, c30004.
+- [ ] `dev/dev-c30ret-2026-04-27T08:00-retro-bidirectional-writes-offline.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: c30001, c30002, c30003, c30004, c30005.
 
 ### Epic 4 — Real-time updates (M4)
 - [ ] `dev/dev-d40001-2026-04-23T13:30-cloudflare-worker-scaffold.md` — Cloudflare Worker scaffold + HMAC verification. Status: ready. Blocked-by: c30005.
@@ -70,3 +78,4 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [ ] `dev/dev-d40005-2026-04-23T13:34-flutter-fcm-integration.md` — Flutter firebase_messaging integration. Status: ready. Blocked-by: d40004. Requires user action (GoogleService-Info.plist).
 - [ ] `dev/dev-d40006-2026-04-23T13:35-deep-linking-inline-reply.md` — Deep-linking + iOS inline-reply. Status: ready. Blocked-by: d40005.
 - [ ] `dev/dev-d40007-2026-04-23T13:36-laptop-fastpath-webhook.md` — Laptop-side fast-path webhook receiver. Status: ready. Blocked-by: d40003. Optional.
+- [ ] `dev/dev-d40ret-2026-04-27T08:00-retro-realtime-updates-push.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: d40001, d40002, d40003, d40004, d40005, d40006.

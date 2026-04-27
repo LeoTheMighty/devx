@@ -98,7 +98,7 @@ plans:
         stories:
           - key: ini501
             title: 13-question flow + skip-table inference + state detection
-            status: backlog
+            status: done
             blocked_by: [aud103, cli301]
           - key: ini502
             title: Local file writes (config + backlogs + spec dirs + CLAUDE.md + .gitignore)
