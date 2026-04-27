@@ -9,11 +9,12 @@
 // independently.
 //
 // Registration order is alphabetical by command name. cli303 owns the
-// help-text re-sort (by phase ascending with section headers), so the order
-// here is purely for grep-friendliness, not user-facing layout.
+// help-text re-sort (by phase ascending; ties broken alphabetically), so the
+// order here is purely for grep-friendliness, not user-facing layout.
 //
 // Spec: dev/dev-cli301-2026-04-26T19:35-cli-package-scaffold.md
 // Spec: dev/dev-cli302-2026-04-26T19:35-cli-stubs.md
+// Spec: dev/dev-cli303-2026-04-26T19:35-cli-help-listing.md
 
 import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -31,6 +32,8 @@ import * as serveCommand from "./commands/serve.js";
 import * as statusCommand from "./commands/status.js";
 import * as tailCommand from "./commands/tail.js";
 import * as uiCommand from "./commands/ui.js";
+
+import { installPhaseSortedHelp } from "./lib/help.js";
 
 interface CommandModule {
   register(program: Command): void;
@@ -72,6 +75,12 @@ export function buildProgram(): Command {
   for (const cmd of commands) {
     cmd.register(program);
   }
+
+  // cli303: re-sort `--help` subcommands by phase ascending; ties alphabetical.
+  // Each command's register() called attachPhase() with its target phase
+  // (config = 0; stubs carry their (phase, epic) from cli302).
+  installPhaseSortedHelp(program);
+
   return program;
 }
 

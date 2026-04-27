@@ -18,6 +18,8 @@
 
 import type { Command } from "commander";
 
+import { attachPhase } from "./help.js";
+
 /** Canonical wiring message — must stay byte-identical to the AC. */
 export function stubMessage(phase: number, epic: string): string {
   return `not yet wired — ships in Phase ${phase} (${epic})`;
@@ -73,12 +75,14 @@ export function defineStubCommand(
 ): StubCommandModule {
   const handler = makeStub(phase, epic);
   const register = (program: Command): void => {
-    program
+    const sub = program
       .command(name)
       .description(`(coming in Phase ${phase} — ${epic})`)
       .allowExcessArguments(true)
       .allowUnknownOption(true)
       .action(() => handler());
+    // cli303 reads this back to sort `--help` by phase ascending.
+    attachPhase(sub, phase);
   };
   return { name, phase, epic, handler, register };
 }
