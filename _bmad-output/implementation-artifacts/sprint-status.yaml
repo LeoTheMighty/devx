@@ -122,7 +122,7 @@ plans:
             blocked_by: [ini501, cfg204]
           - key: ini503
             title: GitHub-side scaffolding (workflows + PR template + develop + protection)
-            status: backlog
+            status: done
             blocked_by: [ini502]
           - key: ini504
             title: Personas + INTERVIEW.md fixed-template seeding
