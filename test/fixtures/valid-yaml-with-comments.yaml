@@ -1,0 +1,38 @@
+# Round-trip preservation fixture for cfg202.
+#
+# Exercises every shape that eemeli/yaml's parseDocument is supposed to
+# preserve through a setLeaf() round-trip:
+#   - head comments (this block)
+#   - custom (non-alphabetical) key order at the top level
+#   - inline / line comments on a scalar leaf
+#   - anchors + aliases (defaults &defaults / *defaults via merge keys)
+#   - nested maps + sequences
+#   - a trailing comment
+
+# Custom ordering: zeta first, then alpha — must survive write-back.
+zeta:
+  inner: original-value  # inline comment on the leaf we modify
+  ratio: 0.42
+
+alpha: alpha-value
+
+# Anchors + aliases must round-trip without rewriting the alias as inlined
+# duplicates. cfg202 party-mode critique called this out explicitly.
+defaults: &defaults
+  retries: 3
+  timeout: 30
+
+services:
+  api:
+    <<: *defaults
+    name: api-service
+  worker:
+    <<: *defaults
+    name: worker-service
+
+list_section:
+  - first
+  - second
+  - third
+
+# Trailing comment.

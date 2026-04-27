@@ -3,14 +3,19 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Repo-root tooling host for devx (the project building devx). Currently exists only to run the cfg201 schema smoke test until cli301 establishes the proper @devx/cli package layout — at that point this file is consumed by the package scaffold and these devDependencies migrate there.",
+  "description": "Repo-root tooling host for devx (the project building devx). Currently exists only to run the cfg201 schema smoke test and the cfg202 config-io round-trip suite until cli301 establishes the proper @devx/cli package layout — at that point this file is consumed by the package scaffold and these devDependencies migrate there.",
   "scripts": {
-    "test": "node test/schema-smoke.mjs",
-    "test:schema": "node test/schema-smoke.mjs"
+    "test": "node test/schema-smoke.mjs && tsx test/config-io.test.ts",
+    "test:schema": "node test/schema-smoke.mjs",
+    "test:config-io": "tsx test/config-io.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/node": "^22.10.0",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
     "yaml": "^2.6.1"
   }
 }
