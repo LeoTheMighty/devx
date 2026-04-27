@@ -5,9 +5,10 @@ created: 2026-04-27T08:00:00-07:00
 title: Retrospective + LEARN.md updates for epic-init-skill
 from: docs/ROADMAP.md#phase-0--foundation-week-1
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: in-progress
 blocked_by: [ini501, ini502, ini503, ini504, ini505, ini506, ini507, ini508]
-branch: develop/dev-iniret
+branch: feat/dev-iniret
+owner: /devx
 ---
 
 ## Goal
@@ -27,3 +28,4 @@ Run `bmad-retrospective` on epic-init-skill and append findings to `LEARN.md § 
 
 ## Status log
 - 2026-04-27 — created by interim retro discipline (ROADMAP.md locked decision)
+- 2026-04-27 — claimed by /devx; branch corrected develop/dev-iniret → feat/dev-iniret per `git.integration_branch: null` + `git.branch_prefix: feat/`
