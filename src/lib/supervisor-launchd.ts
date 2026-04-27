@@ -265,3 +265,53 @@ export function uninstallLaunchd(opts: UninstallLaunchdOpts): LaunchUninstallRes
 function ensureDir(path: string): void {
   mkdirSync(path, { recursive: true });
 }
+
+export interface VerifyLaunchdOpts {
+  role: Role;
+  exec?: LaunchctlExec;
+  uid?: number;
+}
+
+/**
+ * Verify the launchd unit for `role` is loaded + running. sup405 entry.
+ *
+ * `launchctl print gui/<uid>/dev.devx.<role>` exits 0 when the unit is loaded
+ * AND prints a multiline block whose `state = ` line carries the run state.
+ * In Phase 0 the unit body is `exec sleep infinity`, so once bootstrapped the
+ * state is `running` (not `waiting` or `not running`). Anything else → fail.
+ */
+export function verifyLaunchd(
+  opts: VerifyLaunchdOpts
+): { ok: boolean; detail: string } {
+  const exec = opts.exec ?? defaultLaunchctlExec;
+  const uid = opts.uid ?? defaultUid();
+  const target = `gui/${uid}/dev.devx.${opts.role}`;
+
+  const result = exec(["print", target]);
+  if (result.error || (result.status ?? 1) !== 0) {
+    const detail =
+      result.stderr?.trim() ||
+      result.error?.message ||
+      `launchctl print ${target} exited ${result.status}`;
+    return { ok: false, detail };
+  }
+
+  const stdout = result.stdout ?? "";
+  if (/state\s*=\s*running\b/.test(stdout)) {
+    return { ok: true, detail: `state = running (${target})` };
+  }
+
+  // Unit is loaded (exit 0) but not in the running state we expect for the
+  // sleep-infinity stub. Surface the actual state line so MANUAL.md gets
+  // something diagnostic.
+  const stateLine = stdout
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => /^state\s*=/.test(l));
+  return {
+    ok: false,
+    detail: stateLine
+      ? `unexpected ${stateLine} for ${target}`
+      : `state line missing from launchctl print ${target}`,
+  };
+}

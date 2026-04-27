@@ -378,7 +378,8 @@ describe("sup402 — installSupervisor / uninstallSupervisor dispatch", () => {
 
   it("platform=launchd routes through installLaunchd", () => {
     const { exec, calls } = makeRecordingExec();
-    const result = installSupervisor("manager", "launchd", {
+    const result = installSupervisor("manager", {
+      platform: "launchd",
       devxHome,
       homeDir,
       unitDir,
@@ -392,7 +393,8 @@ describe("sup402 — installSupervisor / uninstallSupervisor dispatch", () => {
 
   it("uninstallSupervisor(launchd) routes through uninstallLaunchd", () => {
     const { exec: e1 } = makeRecordingExec();
-    installSupervisor("manager", "launchd", {
+    installSupervisor("manager", {
+      platform: "launchd",
       devxHome,
       homeDir,
       unitDir,
@@ -402,7 +404,8 @@ describe("sup402 — installSupervisor / uninstallSupervisor dispatch", () => {
     });
 
     const { exec: e2 } = makeRecordingExec();
-    const result = uninstallSupervisor("manager", "launchd", {
+    const result = uninstallSupervisor("manager", {
+      platform: "launchd",
       devxHome,
       unitDir,
       exec: e2,

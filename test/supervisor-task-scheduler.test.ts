@@ -492,7 +492,8 @@ describe("sup404 — installSupervisor / uninstallSupervisor dispatch", () => {
 
   it("platform=task-scheduler routes through installTaskScheduler", () => {
     const { exec, calls } = makeRecordingExec();
-    const result = installSupervisor("manager", "task-scheduler", {
+    const result = installSupervisor("manager", {
+      platform: "task-scheduler",
       devxHome,
       unitDir,
       user: "leo",
@@ -506,7 +507,8 @@ describe("sup404 — installSupervisor / uninstallSupervisor dispatch", () => {
 
   it("dispatch passes distro + user + wslHome through to installTaskScheduler", () => {
     const { exec } = makeRecordingExec();
-    installSupervisor("manager", "task-scheduler", {
+    installSupervisor("manager", {
+      platform: "task-scheduler",
       devxHome,
       unitDir,
       distro: "Debian",
@@ -526,7 +528,8 @@ describe("sup404 — installSupervisor / uninstallSupervisor dispatch", () => {
 
   it("uninstallSupervisor(task-scheduler) routes through uninstallTaskScheduler", () => {
     const { exec: e1 } = makeRecordingExec();
-    installSupervisor("manager", "task-scheduler", {
+    installSupervisor("manager", {
+      platform: "task-scheduler",
       devxHome,
       unitDir,
       user: "leo",
@@ -534,7 +537,8 @@ describe("sup404 — installSupervisor / uninstallSupervisor dispatch", () => {
     });
 
     const { exec: e2, calls } = makeRecordingExec();
-    const result = uninstallSupervisor("manager", "task-scheduler", {
+    const result = uninstallSupervisor("manager", {
+      platform: "task-scheduler",
       devxHome,
       unitDir,
       exec: e2,
