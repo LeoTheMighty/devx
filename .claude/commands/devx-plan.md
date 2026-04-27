@@ -126,7 +126,12 @@ For **each** new epic:
 
    Mark the file with `<!-- draft: pre-critique -->` at top.
 
-2. **Write spec files to `dev/`** — for each story, create `dev/dev-<6-hex-hash>-<YYYY-MM-DDTHH:MM>-<slug>.md` with frontmatter (hash, type=dev, created, title, from=`plan/plan-<epic-hash>.md`, status=ready, acceptance criteria, branch placeholder). See DESIGN.md § "Spec file convention."
+2. **Write spec files to `dev/`** — for each story, create `dev/dev-<6-hex-hash>-<YYYY-MM-DDTHH:MM>-<slug>.md` with frontmatter (hash, type=dev, created, title, from=`plan/plan-<epic-hash>.md`, status=ready, acceptance criteria, branch). See DESIGN.md § "Spec file convention."
+
+   **Branch field — compute from `devx.config.yaml`, not a hardcoded default.** Read `git.integration_branch` and `git.branch_prefix`:
+   - `integration_branch: null` (single-branch model) → `branch: <prefix>dev-<hash>` (e.g. `feat/dev-aud101`).
+   - `integration_branch: develop` (or any non-null value) → `branch: <integration_branch>/<prefix>dev-<hash>` (e.g. `develop/feat/dev-aud101`) — or whatever the project's documented convention is.
+   - **Do not** emit `develop/dev-<hash>` as a default. Every shipped Phase 0 story had to correct the branch on claim because the planner ignored config — captured in `LEARN.md § epic-bmad-audit / epic-config-schema / epic-cli-skeleton / epic-os-supervisor-scaffold`.
 
 3. **Append to `DEV.md`** — one line per spec file:
    ```markdown
@@ -136,6 +141,16 @@ For **each** new epic:
 4. **Append to `sprint-status.yaml`** — every story as `backlog`, epic header as `backlog`. Do NOT create BMAD story files — `/devx` creates those on demand.
 
 5. **Update `epics.md`** — one-line summary + "user sees:" per epic.
+
+6. **Emit a retro story** — required by [`docs/ROADMAP.md` § Locked decisions — Interim retro discipline](../../docs/ROADMAP.md#locked-decisions-cross-epic). Until Phase 5's `epic-retro-agent` + `epic-learn-agent` ship, every epic ends with a `*ret` retrospective story:
+   - **Hash:** epic-prefix + `ret` (e.g. `audret`, `cfgret`, `a10ret`). 6-char convention.
+   - **Spec file:** `dev/dev-<hash>ret-<ts>-retro-<epic-slug>.md`. Frontmatter mirrors a normal dev spec; `blocked_by:` lists every story hash in the epic; goal = "Run `bmad-retrospective` on epic-<slug> and append findings to `LEARN.md § epic-<slug>`."
+   - **Acceptance criteria** (use the canonical template from existing retros, e.g. `dev/dev-audret-…`): invoke `bmad-retrospective`, append findings tagged with **confidence** (low/med/high) + **blast radius** (memory/skill/template/config/docs/code), apply low-blast items in the retro PR, file higher-blast items as MANUAL.md or new dev specs.
+   - **DEV.md row:** added at the bottom of the epic's section, blocked on every other story in the epic.
+   - **sprint-status.yaml:** add as a `backlog` story under the epic header, same as the others.
+   - **Plan-spec `spawned:`:** include the retro hash so re-emission preserves it.
+   - **LEARN.md:** if the file does not yet exist (pre-`/devx-init`), create it with a per-epic section stub. If it exists, add the new epic's section if missing.
+   - **Sunset:** when Phase 5 lands, `epic-retro-agent` replaces this; on first run `epic-learn-agent` ingests `LEARN.md` into `LESSONS.md` and the `*ret` rows are removed in a sweep PR.
 
 Run Phase 5 drafts in parallel — epic files are independent writes.
 
@@ -229,7 +244,7 @@ Output, in order:
 8. **Epics refined via focus-group (Phase 6.5)** — one-line sharpest user-lens finding (skipped in YOLO).
 9. **End-to-end traceability check** — per epic, confirm in one line: user action → every declared layer → result. Flag any broken chain.
 10. **Cross-epic locked decisions** — the running list.
-11. **DEV.md / sprint-status entries added** — counts (added, renamed, cut).
+11. **DEV.md / sprint-status entries added** — counts (added, renamed, cut). Confirm one `*ret` retro story per epic.
 12. **Next command** — exact `/devx <hash-or-slug>` line(s) in dependency order, or `/devx next` to pick top of DEV.md.
 
 Do NOT push, commit, or run `/devx`. `/devx-plan` produces artifacts; `/devx` consumes them. Committing planning artifacts is the user's call.

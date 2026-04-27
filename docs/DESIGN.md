@@ -173,6 +173,27 @@ Examples:
 - `<timestamp>` — ISO 8601 local time at creation, minute precision. Lets you sort chronologically without a DB.
 - `<slug>` — kebab-case human description, trimmed to ~50 chars.
 
+### Branch field — derived from `devx.config.yaml`
+
+The spec's `branch:` frontmatter is a **derivation**, not a fixed default. The planner computes it from `devx.config.yaml`:
+
+- `git.integration_branch: null` (single-branch model) → `branch: <git.branch_prefix>dev-<hash>` (e.g. `feat/dev-aud101`).
+- `git.integration_branch: <name>` (e.g. `develop`) → `branch: <name>/<git.branch_prefix>dev-<hash>` (or whatever the project's documented convention is).
+
+Hardcoding `develop/dev-<hash>` (or any other fixed prefix) into spec frontmatter caused every Phase 0 story to "correct branch" on claim — see `LEARN.md § epic-bmad-audit / epic-config-schema / epic-cli-skeleton / epic-os-supervisor-scaffold`.
+
+### Source-of-truth precedence (when artifacts disagree)
+
+Real conflicts have already shown up between a story's spec ACs and its parent epic's "locked decisions" (cfg202: spec said XDG-Linux, epic said `~/.devx/`) and between spec ACs and party-mode minutes (cli302: party-mode wanted a `preview:` line, spec said stderr "match exactly"). The precedence rule:
+
+1. **Story spec acceptance criteria** — highest. The spec is what `/devx` claims and ships.
+2. **Epic file's "Locked decisions" section** — overrides defaults but loses to the spec.
+3. **Plan-spec frontmatter** (`mode`, `project_shape`, `thoroughness`).
+4. **`devx.config.yaml`** defaults.
+5. **Skill-prompt or template defaults** — lowest.
+
+When `/devx` finds a conflict, follow the spec, and in the same PR file a doc/spec correction so the lower-precedence source is updated to match (or marked as the deliberate exception with a one-line rationale).
+
 ### Spec file contents
 
 ```markdown
@@ -186,7 +207,7 @@ spawned:
   - test/test-f8e2a1-oauth-callback-coverage.md
 status: in-progress
 owner: DevAgent-7
-branch: devx/dev-a3f2b9
+branch: feat/dev-a3f2b9        # derived from devx.config.yaml; see § Branch field above
 worktree: .worktrees/dev-a3f2b9
 ---
 

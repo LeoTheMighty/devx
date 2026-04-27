@@ -9,6 +9,10 @@ spawned:
   - _bmad-output/planning-artifacts/epic-github-connection-read.md
   - _bmad-output/planning-artifacts/epic-bidirectional-writes-offline.md
   - _bmad-output/planning-artifacts/epic-realtime-updates-push.md
+  - a10ret  # interim retro discipline (ROADMAP.md locked 2026-04-27)
+  - b20ret
+  - c30ret
+  - d40ret
 mode: YOLO
 stack_layers: [frontend, backend, infra]
 ---

@@ -117,7 +117,12 @@ For **each** new epic:
 
    Mark the file with `<!-- draft: pre-critique -->` at top.
 
-2. **Write spec files to `dev/`** — for each story, create `dev/dev-<6-hex-hash>-<YYYY-MM-DDTHH:MM>-<slug>.md` with frontmatter (hash, type=dev, created, title, from=`plan/plan-<epic-hash>.md`, status=ready, acceptance criteria, branch placeholder). See DESIGN.md § "Spec file convention."
+2. **Write spec files to `dev/`** — for each story, create `dev/dev-<6-hex-hash>-<YYYY-MM-DDTHH:MM>-<slug>.md` with frontmatter (hash, type=dev, created, title, from=`plan/plan-<epic-hash>.md`, status=ready, acceptance criteria, branch). See DESIGN.md § "Spec file convention."
+
+   **Branch field — compute from `devx.config.yaml`, not a hardcoded default.** Read `git.integration_branch` and `git.branch_prefix`:
+   - `integration_branch: null` → `branch: <prefix>dev-<hash>` (e.g. `feat/dev-aud101`).
+   - `integration_branch: develop` (or non-null) → `branch: <integration_branch>/<prefix>dev-<hash>`.
+   - Do not hardcode `develop/dev-<hash>`. Phase 0 specs all had to correct this on claim — see `LEARN.md`.
 
 3. **Append to `DEV.md`** — one line per spec file:
    ```markdown
@@ -127,6 +132,16 @@ For **each** new epic:
 4. **Append to `sprint-status.yaml`** — every story as `backlog`, epic header as `backlog`. Do NOT create BMAD story files — `/dev` creates those on demand.
 
 5. **Update `epics.md`** — one-line summary + "user sees:" per epic.
+
+6. **Emit a retro story** — required by [`docs/ROADMAP.md` § Locked decisions — Interim retro discipline](../../docs/ROADMAP.md#locked-decisions-cross-epic). Until Phase 5's `epic-retro-agent` + `epic-learn-agent` ship, every epic ends with a `*ret` retrospective story:
+   - **Hash:** epic-prefix + `ret` (e.g. `audret`, `cfgret`, `a10ret`).
+   - **Spec file:** `dev/dev-<hash>ret-<ts>-retro-<epic-slug>.md`. Goal = "Run `bmad-retrospective` on epic-<slug> and append findings to `LEARN.md § epic-<slug>`."
+   - **Acceptance criteria** (use the canonical template from existing retros, e.g. `dev/dev-audret-…`): invoke `bmad-retrospective`, append findings tagged with **confidence** (low/med/high) + **blast radius** (memory/skill/template/config/docs/code), apply low-blast items in the retro PR, file higher-blast items as MANUAL.md or new dev specs.
+   - **DEV.md row:** added at the bottom of the epic's section, blocked on every other story in the epic.
+   - **sprint-status.yaml:** add as a `backlog` story under the epic header.
+   - **Plan-spec `spawned:`:** include the retro hash so re-emission preserves it.
+   - **LEARN.md:** add the epic's section if missing.
+   - **Sunset:** when Phase 5 lands, `epic-retro-agent` replaces this; `epic-learn-agent` ingests `LEARN.md` into `LESSONS.md` and the `*ret` rows are removed.
 
 Run Phase 5 drafts in parallel — epic files are independent writes.
 

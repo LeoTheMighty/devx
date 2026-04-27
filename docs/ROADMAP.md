@@ -38,6 +38,13 @@ The phased buildout of devx: locked decisions, dependency graph, and what we won
 - Workers are stateless restartable subprocesses. Spec-file status log + acceptance criteria carry the resume context — context rot triggers a fresh `claude /devx-<role> <slug>`, not a continuation snippet.
 - OS-level supervision via launchd (mac) / systemd-user (linux) / Task Scheduler (win-WSL). Mutual watchdog between Manager and Concierge. Cloud watchdog GitHub Actions cron for laptop-asleep coverage.
 
+**Interim retro discipline (locked 2026-04-27)**
+- Until Phase 5's `epic-retro-agent` + `epic-learn-agent` ship, **every epic ends with a `*ret` retrospective story** (e.g. `audret`, `cfgret`) blocked on all other stories in the epic. The retro story invokes `bmad-retrospective` against the epic's shipped stories and appends findings to `LEARN.md § <epic>`.
+- Each finding tags **confidence** (low/med/high) + **blast radius** (memory/skill/template/config/docs/code). Low-blast items apply in the retro PR; higher-blast items file as MANUAL.md rows or new dev specs.
+- Cross-epic patterns hitting ≥3 concordant retros get promoted into `LEARN.md § Cross-epic patterns` (mirrors the Phase 5 `epic-learn-agent` threshold manually).
+- `/devx-plan` must emit a `*ret` story when chunking any new epic into stories. `/devx-init` (epic `ini502`) creates `LEARN.md` alongside the other backlog files.
+- **Sunset:** when Phase 5 lands, `epic-retro-agent` replaces these per-epic retro stories with an automatic post-epic hook, and `epic-learn-agent` ingests the contents of `LEARN.md` into `LESSONS.md` on first run. The retro stories become no-ops and are removed in a follow-up sweep.
+
 ---
 
 ## Phased buildout
@@ -115,8 +122,8 @@ Each phase is built on top of the previous one. No skipping, but parallelism wit
 | `epic-devx-test-layer-1` | `/devx-test` Phase 1 — Playwright regression authoring, line-level touched-surface coverage gate |
 | `epic-devx-debug-skill` | `/devx-debug` — read DEBUG.md, repro from logs, fix, regression test |
 | `epic-flaky-detection` | Auto-flag tests that green-then-red-then-green within 24h; write to TEST.md |
-| `epic-retro-agent` | RetroAgent runs at end of every `/devx` and `/devx-plan`; writes `retros/retro-<spec-hash>.md` |
-| `epic-learn-agent` | LearnAgent ≥3 concordant retros → LESSONS.md proposal with mode-derived auto-apply ceiling |
+| `epic-retro-agent` | RetroAgent runs at end of every `/devx` and `/devx-plan`; writes `retros/retro-<spec-hash>.md`. Replaces the **Interim retro discipline** (per-epic `*ret` stories writing to `LEARN.md`); on first run, removes the remaining `*ret` rows from DEV.md |
+| `epic-learn-agent` | LearnAgent ≥3 concordant retros → LESSONS.md proposal with mode-derived auto-apply ceiling. **First run ingests `LEARN.md` content into `LESSONS.md`** and deletes the interim file |
 | `epic-canary-prompt-changes` | Skill/prompt edits run via 3-shadow-PR comparison before merge (SELF_HEALING.md §Canary) |
 | `epic-over-tuning-detector` | LearnAgent compares user skill edits vs lesson applications; surfaces warning to MANUAL.md |
 

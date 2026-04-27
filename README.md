@@ -54,6 +54,7 @@ devx runs on eight top-level files at the project root. Each is both a human-rea
 | `FOCUS.md` | FocusAgent writes → PlanAgents read | Signals from real users: friction points, requested features, abandonment spots. |
 | `INTERVIEW.md` | PlanAgents write → **user answers** | Questions the planner needs answered to move forward. The human's inbox. |
 | `MANUAL.md` | any agent writes → **user executes** | Actions only a human can do: approve a cloud resource, paste a secret, review a sensitive PR, sign in to a third-party service. |
+| `LEARN.md` | per-epic retro story writes → **user reviews + applies** | **Interim** (until Phase 5 ships `LearnAgent` + `LESSONS.md`). Per-epic retrospective findings — what to change about the spec template / skill prompts / CLAUDE.md / config / docs. Tagged with confidence + blast radius; low-blast items applied immediately. Absorbed into `LESSONS.md` when Phase 5 lands. |
 | `LESSONS.md` | LearnAgent writes → **user approves / auto-applies** | Learned improvements awaiting review: skill edits, CLAUDE.md additions, memory updates, config tweaks, template changes. Each is evidence-backed and gated by confidence. |
 
 Every item in every backlog is a one-line entry pointing at a detailed spec file under `dev/`, `plan/`, `test/`, etc. The spec file is the full context; the backlog entry is just the handle.
