@@ -38,7 +38,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-ini502-2026-04-26T19:35-init-local-writes.md` — Local file writes (config + backlogs + spec dirs + CLAUDE.md + .gitignore). Status: done. Blocked-by: ini501, cfg204. PR: https://github.com/LeoTheMighty/devx/pull/23 (merged 1d98b6c).
 - [x] `dev/dev-ini503-2026-04-26T19:35-init-github-scaffolding.md` — GitHub-side scaffolding (workflows + PR template + develop + protection). Status: done. Blocked-by: ini502. PR: https://github.com/LeoTheMighty/devx/pull/24 (merged 036b7e7).
 - [x] `dev/dev-ini504-2026-04-26T19:35-init-personas-and-interview.md` — Personas + INTERVIEW.md fixed-template seeding. Status: done. Blocked-by: ini502. PR: https://github.com/LeoTheMighty/devx/pull/25 (merged aeb09ee).
-- [ ] `dev/dev-ini505-2026-04-26T19:35-init-supervisor-trigger.md` — Supervisor installer trigger + verify. Status: ready. Blocked-by: ini502, sup405.
+- [/] `dev/dev-ini505-2026-04-26T19:35-init-supervisor-trigger.md` — Supervisor installer trigger + verify. Status: in-progress. Blocked-by: ini502, sup405.
 - [ ] `dev/dev-ini506-2026-04-26T19:35-init-failure-modes.md` — Failure-mode handling (BMAD-fail / gh-not-auth / no-remote). Status: ready. Blocked-by: ini503, ini505.
 - [ ] `dev/dev-ini507-2026-04-26T19:35-init-idempotent-upgrade.md` — Idempotent upgrade-mode re-run. Status: ready. Blocked-by: ini502, ini503, ini504, ini505.
 - [ ] `dev/dev-ini508-2026-04-26T19:35-init-end-to-end-test.md` — End-to-end integration test. Status: ready. Blocked-by: ini506, ini507.

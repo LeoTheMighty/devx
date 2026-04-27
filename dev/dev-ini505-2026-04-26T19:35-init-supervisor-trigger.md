@@ -5,9 +5,10 @@ created: 2026-04-26T19:35:00-07:00
 title: Supervisor installer trigger + verify
 from: _bmad-output/planning-artifacts/epic-init-skill.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: in-progress
+owner: /devx
 blocked_by: [ini502, sup405]
-branch: develop/dev-ini505
+branch: feat/dev-ini505
 ---
 
 ## Goal
@@ -30,3 +31,4 @@ Wire `/devx-init` to call `installSupervisor()` and `verifySupervisor()` from ep
 ## Status log
 
 - 2026-04-26T19:35 — created by /devx-plan
+- 2026-04-27T14:35 — claimed by /devx; branch feat/dev-ini505 (single-branch YOLO; develop/dev-ini505 in frontmatter was stale plan-time default)
