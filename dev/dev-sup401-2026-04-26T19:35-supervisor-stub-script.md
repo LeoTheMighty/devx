@@ -5,9 +5,10 @@ created: 2026-04-26T19:35:00-07:00
 title: Supervisor stub script + idempotent install
 from: _bmad-output/planning-artifacts/epic-os-supervisor-scaffold.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: in-progress
+owner: /devx-2026-04-26T20:35-sup401
 blocked_by: [cli301]
-branch: develop/dev-sup401
+branch: feat/dev-sup401
 ---
 
 ## Goal
@@ -33,3 +34,4 @@ Ship the placeholder `supervisor-stub.sh` script template + the idempotent insta
 ## Status log
 
 - 2026-04-26T19:35 — created by /devx-plan
+- 2026-04-26T20:35 — claimed by /devx in session 2026-04-26T20:35-sup401

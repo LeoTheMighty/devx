@@ -73,7 +73,7 @@ plans:
         stories:
           - key: sup401
             title: Supervisor stub script + idempotent install
-            status: backlog
+            status: in-progress
             blocked_by: [cli301]
           - key: sup402
             title: macOS launchd plist generator + bootstrap
