@@ -1,0 +1,456 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LeoTheMighty/devx/_devx/config-schema.json",
+  "title": "devx.config.yaml",
+  "description": "Schema for devx.config.yaml — covers all 15 sections from docs/CONFIG.md plus the projects/stack block consumed by the local-CI gate. Required keys: `mode`, `project.shape`. Everything else has defaults supplied by mode + shape + thoroughness. Unknown keys are intentionally allowed at runtime — the load-time validator (cfg203) downgrades them to warnings so devx upgrades that introduce new keys don't brick existing configs.",
+  "type": "object",
+  "required": ["mode", "project"],
+  "properties": {
+    "mode": {
+      "description": "Strategic axis #1 — what kind of risk surface this project sits on. Sets default gates across every subsystem (see docs/MODES.md).",
+      "enum": ["YOLO", "BETA", "PROD", "LOCKDOWN"]
+    },
+    "project": {
+      "type": "object",
+      "required": ["shape"],
+      "properties": {
+        "shape": {
+          "description": "Strategic axis #2 — what shape this project is in. Steers parallelism, tests-first vs tests-alongside, and ceremony heaviness.",
+          "enum": [
+            "empty-dream",
+            "bootstrapped-rewriting",
+            "mature-refactor-and-add",
+            "mature-yolo-rewrites",
+            "production-careful"
+          ]
+        }
+      }
+    },
+    "thoroughness": {
+      "description": "Strategic axis #3 — how much ceremony to apply. send-it = minimum, balanced = default, thorough = full party-mode + focus-group + retro.",
+      "enum": ["send-it", "balanced", "thorough"]
+    },
+
+    "capacity": {
+      "type": "object",
+      "properties": {
+        "max_concurrent": { "type": "integer", "minimum": 1 },
+        "usage_cap_pct": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "usage_hard_stop_pct": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "daily_spend_cap_usd": { "type": "number", "minimum": 0 },
+        "daily_spend_hard_cap_usd": { "type": "number", "minimum": 0 },
+        "token_budget_per_spec": { "type": "integer", "minimum": 1 },
+        "model_strategy": {
+          "enum": ["cost-optimized", "balanced", "quality-first"]
+        },
+        "models": {
+          "type": "object",
+          "properties": {
+            "manager": { "type": "string", "minLength": 1 },
+            "concierge": { "type": "string", "minLength": 1 },
+            "plan": { "type": "string", "minLength": 1 },
+            "dev": { "type": "string", "minLength": 1 },
+            "test": { "type": "string", "minLength": 1 },
+            "debug": { "type": "string", "minLength": 1 },
+            "focus": { "type": "string", "minLength": 1 },
+            "learn": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+
+    "permissions": {
+      "type": "object",
+      "properties": {
+        "bash": {
+          "type": "object",
+          "properties": {
+            "allow": { "type": "array", "items": { "type": "string" } },
+            "ask": { "type": "array", "items": { "type": "string" } },
+            "deny": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "network": {
+          "type": "object",
+          "properties": {
+            "allow_hosts": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "file_writes": {
+          "type": "object",
+          "properties": {
+            "allow": { "type": "array", "items": { "type": "string" } },
+            "deny": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+
+    "git": {
+      "type": "object",
+      "properties": {
+        "default_branch": { "type": "string", "minLength": 1 },
+        "integration_branch": {
+          "description": "Long-lived integration branch (typically `develop`). Set to null for single-branch projects (the merge gate becomes the deploy gate).",
+          "type": ["string", "null"]
+        },
+        "branch_prefix": { "type": "string" },
+        "pr_strategy": {
+          "enum": ["direct-to-main", "pr-to-main", "pr-to-develop"]
+        },
+        "merge_method": { "enum": ["squash", "merge", "rebase"] },
+        "protect_main": { "type": "boolean" },
+        "require_linear_history": { "type": "boolean" },
+        "allow_force_push_main": { "type": "boolean" },
+        "allow_force_push_develop": { "type": "boolean" },
+        "delete_branch_on_merge": { "type": "boolean" }
+      }
+    },
+
+    "promotion": {
+      "type": "object",
+      "properties": {
+        "gate": {
+          "enum": [
+            "fast-ship-always",
+            "fast-ship",
+            "balanced",
+            "careful",
+            "manual-only"
+          ]
+        },
+        "soak_hours": { "type": "integer", "minimum": 0 },
+        "required_checks": { "type": "array", "items": { "type": "string" } },
+        "block_on_new_debug_items": { "type": "boolean" },
+        "autonomy": {
+          "type": "object",
+          "properties": {
+            "initial_n": { "type": "integer", "minimum": 0 },
+            "count": { "type": "integer", "minimum": 0 },
+            "rollback_penalty": { "type": "number", "minimum": 0, "maximum": 1 },
+            "hotfix_zeroes": { "type": "boolean" },
+            "veto_window_hours": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "agent": { "type": ["string", "null"] }
+      }
+    },
+
+    "coverage": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "target": { "enum": ["touched-lines", "full-project", "none"] },
+        "threshold": { "type": "number", "minimum": 0, "maximum": 1 },
+        "blocking": { "type": "boolean" },
+        "opt_out_marker": { "type": "string", "minLength": 1 },
+        "flaky_window_hours": { "type": "integer", "minimum": 0 },
+        "flaky_action": {
+          "enum": ["file-test-md-entry", "quarantine", "none"]
+        },
+        "language_runners": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+
+    "ci": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "enum": ["github-actions", "gitlab", "circleci", "none"]
+        },
+        "workflow_path": { "type": "string" },
+        "required_checks": { "type": "array", "items": { "type": "string" } },
+        "retry_on_flake": { "type": "boolean" },
+        "max_retries": { "type": "integer", "minimum": 0 },
+        "poll_interval_s": { "type": "integer", "minimum": 1 },
+        "poll_timeout_min": { "type": "integer", "minimum": 1 }
+      }
+    },
+
+    "qa": {
+      "type": "object",
+      "properties": {
+        "browser_harness": { "enum": ["playwright", "cypress", "none"] },
+        "layer_2_cadence": {
+          "enum": ["nightly", "per-pr", "on-demand", "off"]
+        },
+        "layer_2_personas": { "type": "integer", "minimum": 0 },
+        "scripted_test_runner": { "type": "string" }
+      }
+    },
+
+    "focus_group": {
+      "type": "object",
+      "properties": {
+        "panel_size": { "type": "integer", "minimum": 0 },
+        "consult_at": {
+          "type": "array",
+          "items": { "enum": ["plan", "pre-promotion"] }
+        },
+        "auto_evolve": { "type": "boolean" },
+        "binding": { "type": "boolean" }
+      }
+    },
+
+    "self_healing": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "retro_concordance_threshold": { "type": "integer", "minimum": 1 },
+        "auto_apply": {
+          "type": "object",
+          "properties": {
+            "confidence_min": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "blast_radius_max": { "enum": ["low", "medium", "high"] }
+          }
+        },
+        "canary_runs": { "type": "integer", "minimum": 0 },
+        "user_review_required_for": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "skills",
+              "prompts",
+              "agents",
+              "memory",
+              "claude-md",
+              "config"
+            ]
+          }
+        },
+        "user_review_optional_for": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "skills",
+              "prompts",
+              "agents",
+              "memory",
+              "claude-md",
+              "config"
+            ]
+          }
+        },
+        "over_tuning_detector": { "type": "boolean" },
+        "weekly_window_days": { "type": "integer", "minimum": 1 }
+      }
+    },
+
+    "notifications": {
+      "type": "object",
+      "properties": {
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": { "enum": ["fcm", "webhook", "email"] },
+              "topic": { "type": "string" },
+              "url": { "type": "string", "format": "uri" },
+              "to": { "type": "string" },
+              "template": { "type": "string" },
+              "digest_only": { "type": "boolean" }
+            }
+          }
+        },
+        "events": {
+          "description": "Map of event-name → notification level. Event names are open-ended (devx upgrades add new events); level enum is closed.",
+          "type": "object",
+          "additionalProperties": { "enum": ["silent", "push", "digest"] }
+        },
+        "quiet_hours": {
+          "description": "Local-time HH:MM-HH:MM range during which `push` is muted (MANUAL.md still files).",
+          "type": "string",
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d-([01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "quiet_hours_override": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "digest_schedule": { "type": "string" }
+      }
+    },
+
+    "ui": {
+      "type": "object",
+      "properties": {
+        "tui": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "layout": { "enum": ["three-pane", "stack", "minimal"] },
+            "theme": { "enum": ["dark", "light", "auto"] },
+            "sidebar_density": { "enum": ["comfortable", "compact"] },
+            "keybinds": { "enum": ["vim", "emacs", "default"] },
+            "refresh_ms": { "type": "integer", "minimum": 1 },
+            "show_token_usage": { "type": "boolean" },
+            "show_phase_timing": { "type": "boolean" },
+            "sidebar_groups": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "web": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "bind": { "type": "string" },
+            "theme": { "enum": ["dark", "light", "auto"] },
+            "show_diff": { "type": "boolean" },
+            "show_pr_preview": { "type": "boolean" },
+            "enable_drag_reorder": { "type": "boolean" }
+          }
+        },
+        "mobile": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "activity_feed_depth": { "type": "integer", "minimum": 0 },
+            "show_phase_changes": { "type": "boolean" },
+            "show_token_usage": { "type": "boolean" },
+            "swipe_to_kill": { "type": "boolean" }
+          }
+        }
+      }
+    },
+
+    "manager": {
+      "type": "object",
+      "properties": {
+        "heartbeat_interval_s": { "type": "integer", "minimum": 1 },
+        "restart_on_token_pct": { "type": "number", "minimum": 0, "maximum": 1 },
+        "max_worker_age_min": { "type": "integer", "minimum": 1 },
+        "worker_crash_backoff_s": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 }
+        },
+        "max_restarts_per_spec": { "type": "integer", "minimum": 0 },
+        "cloud_watchdog": { "type": "boolean" },
+        "cloud_watchdog_cadence": { "type": "string" },
+        "cloud_spillover": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "target": {
+              "enum": ["github-actions", "cloudflare-containers", "fly"]
+            }
+          }
+        },
+        "os_supervisor": {
+          "enum": ["auto", "launchd", "systemd", "task-scheduler", "none"]
+        },
+        "log_dir": { "type": "string" }
+      }
+    },
+
+    "concierge": {
+      "type": "object",
+      "properties": {
+        "always_on": { "type": "boolean" },
+        "context_window_target": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "digest_interval_min": { "type": "integer", "minimum": 1 },
+        "status_endpoint": {
+          "type": "object",
+          "properties": {
+            "bind": { "type": "string" },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+          }
+        },
+        "intent_routing": {
+          "type": "object",
+          "properties": {
+            "feature_request": { "type": "string" },
+            "bug_report": { "type": "string" },
+            "question": { "type": "string" },
+            "feedback": { "type": "string" }
+          }
+        }
+      }
+    },
+
+    "storage": {
+      "type": "object",
+      "properties": {
+        "worktree_root": { "type": "string" },
+        "cache_dir": { "type": "string" },
+        "log_retention_days": { "type": "integer", "minimum": 0 },
+        "spec_archive_after_days": { "type": "integer", "minimum": 0 },
+        "archive_path": { "type": "string" },
+        "gitignore_managed": { "type": "boolean" }
+      }
+    },
+
+    "observability": {
+      "type": "object",
+      "properties": {
+        "log_level": { "enum": ["debug", "info", "warn", "error"] },
+        "redact": { "type": "array", "items": { "type": "string" } },
+        "telemetry": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "endpoint": { "type": ["string", "null"] },
+            "anonymized": { "type": "boolean" }
+          }
+        }
+      }
+    },
+
+    "bmad": {
+      "type": "object",
+      "properties": {
+        "modules": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "output_root": { "type": "string" },
+        "preserve_on_eject": { "type": "boolean" },
+        "workflows_path": { "type": "string" }
+      }
+    },
+
+    "stack": {
+      "description": "Single-project stack block. Mutually exclusive with `projects` — enforced by the load-time validator (cfg203), not the schema. Phase 5 (local CI) reads `lint`/`test`/`coverage`/`pre_push` to gate merges.",
+      "type": "object",
+      "properties": {
+        "layers": { "type": "array", "items": { "type": "string" } },
+        "lint": { "type": ["string", "null"] },
+        "test": { "type": ["string", "null"] },
+        "coverage": { "type": ["string", "null"] },
+        "pre_push": { "type": ["string", "null"] }
+      }
+    },
+
+    "projects": {
+      "description": "Monorepo-shape stack block. Each entry is a project with its own lint/test/coverage commands. Mutually exclusive with `stack` — enforced by the load-time validator (cfg203), not the schema, since JSON Schema's `not.required` idiom is awkward to express here without tripping ajv strict mode.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "path"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 },
+          "layers": { "type": "array", "items": { "type": "string" } },
+          "lint": { "type": ["string", "null"] },
+          "test": { "type": ["string", "null"] },
+          "coverage": { "type": ["string", "null"] },
+          "pre_push": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@devx/repo-root",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Repo-root tooling host for devx (the project building devx). Currently exists only to run the cfg201 schema smoke test until cli301 establishes the proper @devx/cli package layout — at that point this file is consumed by the package scaffold and these devDependencies migrate there.",
+  "scripts": {
+    "test": "node test/schema-smoke.mjs",
+    "test:schema": "node test/schema-smoke.mjs"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "yaml": "^2.6.1"
+  }
+}

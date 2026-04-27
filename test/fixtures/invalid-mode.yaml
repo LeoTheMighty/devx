@@ -1,0 +1,5 @@
+# invalid-mode.yaml — schema must reject this with a useful error.
+# Used by test/schema-smoke.mjs to verify cfg201 AC #5.
+mode: ROCKETSHIP
+project:
+  shape: empty-dream
