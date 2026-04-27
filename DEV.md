@@ -27,7 +27,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-sup402-2026-04-26T19:35-supervisor-launchd.md` — macOS launchd plist generator + bootstrap. Status: done. Blocked-by: sup401. PR: https://github.com/LeoTheMighty/devx/pull/14 (merged c2c7044).
 - [x] `dev/dev-sup403-2026-04-26T19:35-supervisor-systemd.md` — Linux systemd-user .service generator + enable. Status: done. Blocked-by: sup401. PR: https://github.com/LeoTheMighty/devx/pull/15 (merged c51bd91).
 - [x] `dev/dev-sup404-2026-04-26T19:35-supervisor-task-scheduler.md` — Windows/WSL Task Scheduler XML generator. Status: done. Blocked-by: sup401. PR: https://github.com/LeoTheMighty/devx/pull/16 (merged 1c260ad).
-- [/] `dev/dev-sup405-2026-04-26T19:35-supervisor-platform-detect.md` — Platform auto-detect dispatch + post-install verification. Status: in-progress. Blocked-by: sup402, sup403, sup404.
+- [x] `dev/dev-sup405-2026-04-26T19:35-supervisor-platform-detect.md` — Platform auto-detect dispatch + post-install verification. Status: done. Blocked-by: sup402, sup403, sup404. PR: https://github.com/LeoTheMighty/devx/pull/17 (merged 322bbb4).
 
 ### Epic 5 — `/devx-init` skill
 - [ ] `dev/dev-ini501-2026-04-26T19:35-init-question-flow.md` — 13-question flow + skip-table inference + state detection. Status: ready. From: epic-init-skill. Blocked-by: aud103, cli301.
