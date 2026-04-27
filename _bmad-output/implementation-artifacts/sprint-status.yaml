@@ -134,7 +134,7 @@ plans:
             blocked_by: [ini502, sup405]
           - key: ini506
             title: Failure-mode handling (BMAD-fail / gh-not-auth / no-remote)
-            status: in-progress
+            status: done
             blocked_by: [ini503, ini505]
           - key: ini507
             title: Idempotent upgrade-mode re-run

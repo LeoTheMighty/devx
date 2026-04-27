@@ -5,7 +5,7 @@ created: 2026-04-26T19:35:00-07:00
 title: Failure-mode handling (BMAD-fail / gh-not-auth / no-remote)
 from: _bmad-output/planning-artifacts/epic-init-skill.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: in-progress
+status: done
 owner: /devx-2026-04-27T20:00
 blocked_by: [ini503, ini505]
 branch: feat/dev-ini506
@@ -35,3 +35,7 @@ Implement `src/lib/init-failure.ts` covering the three Phase 0 failure modes. Ad
 
 - 2026-04-26T19:35 — created by /devx-plan
 - 2026-04-27T20:00 — claimed by /devx (single-branch YOLO; branch resolved to feat/dev-ini506 from devx.config.yaml git.branch_prefix; spec frontmatter `branch:` corrected from develop/* to feat/*)
+- 2026-04-27T21:20 — implemented src/lib/init-failure.ts (3 failure handlers + flag round-trip + assertNotPartial guard + replayPendingGhOps) + src/commands/init.ts (devx init --resume-gh as 12th non-stub command); 47 vitest cases pass; full suite 392/392
+- 2026-04-27T21:21 — self-review pass found and fixed 3 issues with regression tests added: (a) per-segment URL encoding for push-workflows content probe (encodeURIComponent on full path 404s every directoried path), (b) backtick-fence escalation in MANUAL.md so captured stderr containing literal ``` doesn't break markdown rendering, (c) `created:` timestamp preservation across queue rewrites (was overwriting the original first-queued time with each replay's now())
+- 2026-04-27T21:21 — JSON queue format kept (matches init-gh.ts ship + AC #3/#5 explicit `pending-gh-ops.json` mention; spec technical-note about YAML noted as superseded); the assertNotPartial gate is exported for Phase-1 /devx-plan + /devx wiring (Phase 0 has no slash-skill-side hook to wire into yet)
+- 2026-04-27T21:25 — merged via PR #27 (squash → addac3c)
