@@ -5,9 +5,10 @@ created: 2026-04-26T19:35:00-07:00
 title: Windows/WSL Task Scheduler XML generator
 from: _bmad-output/planning-artifacts/epic-os-supervisor-scaffold.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: in-progress
+owner: /devx-2026-04-26T21:30-sup404
 blocked_by: [sup401]
-branch: develop/dev-sup404
+branch: feat/dev-sup404
 ---
 
 ## Goal
@@ -34,3 +35,4 @@ Implement the Windows/WSL supervisor installer: render Task Scheduler XML invoki
 ## Status log
 
 - 2026-04-26T19:35 — created by /devx-plan
+- 2026-04-26T21:30 — claimed by /devx in session 2026-04-26T21:30-sup404
