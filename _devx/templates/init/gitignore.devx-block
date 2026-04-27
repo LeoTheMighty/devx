@@ -1,0 +1,6 @@
+# >>> devx
+# Managed by /devx-init. Edit between the markers and your changes will be
+# preserved across re-runs; the markers themselves are sacrosanct.
+.worktrees/
+.devx-cache/
+# <<< devx
