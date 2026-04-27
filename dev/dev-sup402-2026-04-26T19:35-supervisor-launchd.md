@@ -5,9 +5,10 @@ created: 2026-04-26T19:35:00-07:00
 title: macOS launchd plist generator + bootstrap
 from: _bmad-output/planning-artifacts/epic-os-supervisor-scaffold.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: in-progress
+owner: /devx-2026-04-26T20:40-sup402
 blocked_by: [sup401]
-branch: develop/dev-sup402
+branch: feat/dev-sup402
 ---
 
 ## Goal
@@ -35,3 +36,4 @@ Implement the macOS supervisor installer: render `dev.devx.{manager,concierge}.p
 ## Status log
 
 - 2026-04-26T19:35 — created by /devx-plan
+- 2026-04-26T20:40 — claimed by /devx in session 2026-04-26T20:40-sup402
