@@ -17,9 +17,10 @@ they work, and a supervisor agent (`ManageAgent`) keeps the loop running across
 context rot.
 
 This repo is **devx building itself** — the project is bootstrapping its own
-tooling. Phase 0 (foundation) is in flight; the Phase 1 single-agent loop
-(`/devx-plan`, `/devx`, minimal `/devx-manage`) lands next. Mobile companion app
-runs in parallel from Phase 8.
+tooling. Phase 0 (foundation) closed 2026-04-27 with all 5 epics shipped +
+retroed; the Phase 1 single-agent loop (`/devx-plan`, `/devx`, minimal
+`/devx-manage`) lands next. Mobile companion app runs in parallel from
+Phase 8.
 
 Read `README.md` for the public pitch and `docs/DESIGN.md` for the full system
 shape.
@@ -190,13 +191,14 @@ skill is branch-model-aware; values below are this project's resolution.
 2. **Worktree**: `git worktree add .worktrees/dev-<hash> -b feat/dev-<hash>
    main`.
 3. **BMAD story**: `bmad-create-story` if no story file exists; otherwise
-   read the existing one. *Empirically across all 4 shipped Phase 0 epics
-   (17/17 stories) this step has been skipped because spec ACs already
+   read the existing one. *Empirically across all 5 shipped Phase 0 epics
+   (25/25 stories) this step has been skipped because spec ACs already
    cover what `bmad-create-story` would generate; the contract-vs-reality
    drift is tracked in `LEARN.md § Cross-epic patterns` and reaffirmed
-   in every retro to date (audret + cfgret + cliret + supret). The actual
-   /devx skill change (enforce / make conditional / drop) remains
-   user-review-required per `self_healing.user_review_required_for: [skills]`.*
+   in every retro to date (audret + cfgret + cliret + supret + iniret).
+   The actual /devx skill change (enforce / make conditional / drop)
+   remains user-review-required per
+   `self_healing.user_review_required_for: [skills]`.*
 4. **Implement**: `bmad-dev-story`, red-green-refactor, all tasks/subtasks.
 5. **Self-review**: `bmad-code-review` adversarially; fix all findings
    automatically; re-review.
@@ -264,8 +266,10 @@ Full contract: `.claude/commands/devx.md`.
 
 ---
 
-## Status: Phase 0 — Foundation
+## Status: Phase 0 — Foundation (closed 2026-04-27)
 
-Currently building the rails: `/devx-init`, config schema + CLI, OS supervisor
-scaffolds, CLI skeleton, BMAD audit. See `DEV.md § Phase 0` for the 25 spec
-files spawned across 5 epics. The Phase 1 closed loop comes next.
+All 5 epics shipped + retroed: BMAD audit (PR #19 retro), config schema +
+CLI (PR #20), CLI skeleton (PR #21), OS supervisor scaffold (PR #22),
+`/devx-init` skill (this PR). 25 parent stories across the 5 epics; +225
+net tests in the ini epic alone (largest of any Phase 0 epic). The Phase 1
+single-agent closed loop is next.
