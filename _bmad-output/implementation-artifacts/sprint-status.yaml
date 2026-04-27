@@ -146,7 +146,7 @@ plans:
             blocked_by: [ini506, ini507]
           - key: iniret
             title: Retro + LEARN.md updates (interim retro discipline)
-            status: in-progress
+            status: done
             blocked_by: [ini501, ini502, ini503, ini504, ini505, ini506, ini507, ini508]
 
   - key: plan-7a2d1f-mobile-companion-v01
