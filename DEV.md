@@ -8,7 +8,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-aud101-2026-04-26T19:35-bmad-modules-inventory.md` — Inventory BMAD modules + workflows. Status: done. From: epic-bmad-audit. PR: https://github.com/LeoTheMighty/devx/pull/1 (merged 70872e4).
 - [x] `dev/dev-aud102-2026-04-26T19:35-bmad-classify-workflows.md` — Classify each BMAD workflow + map to devx command. Status: done. From: epic-bmad-audit. PR: https://github.com/LeoTheMighty/devx/pull/2 (merged 2697f54).
 - [x] `dev/dev-aud103-2026-04-26T19:35-bmad-risks-finalize.md` — Risks subsection + finalize bmad-audit.md. Status: done. From: epic-bmad-audit. PR: https://github.com/LeoTheMighty/devx/pull/3 (merged 82ed445).
-- [/] `dev/dev-audret-2026-04-27T08:00-retro-bmad-audit.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: in-progress. Blocked-by: aud101, aud102, aud103.
+- [x] `dev/dev-audret-2026-04-27T08:00-retro-bmad-audit.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: done. From: epic-bmad-audit. PR: https://github.com/LeoTheMighty/devx/pull/19 (merged 7444b11).
 
 ### Epic 2 — devx.config.yaml schema + CLI
 - [x] `dev/dev-cfg201-2026-04-26T19:35-config-schema-json.md` — JSON schema for all 15 sections of devx.config.yaml. Status: done. From: epic-config-schema. PR: https://github.com/LeoTheMighty/devx/pull/4 (merged cb73bc5).

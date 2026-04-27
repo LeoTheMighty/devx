@@ -5,7 +5,7 @@ created: 2026-04-27T08:00:00-07:00
 title: Retrospective + LEARN.md updates for epic-bmad-audit
 from: _bmad-output/planning-artifacts/epic-bmad-audit.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: in-progress
+status: done
 blocked_by: [aud101, aud102, aud103]
 branch: feat/dev-audret
 owner: /devx
@@ -31,3 +31,4 @@ Run `bmad-retrospective` on epic-bmad-audit and append findings to `LEARN.md § 
 - 2026-04-27T10:50 — branched off main HEAD which carries unpushed commit `1b8edb3` ("interim retro discipline + Phase 0 learnings"); reset local main back to origin/main so the audret PR carries the infra commit through CI rather than bypassing it
 - 2026-04-27T10:55 — PR #19 opened: https://github.com/LeoTheMighty/devx/pull/19
 - 2026-04-27T11:00 — formal `bmad-retrospective` synthesis pass complete (analytical workflow run against aud101–aud103 status logs + `_bmad-output/planning-artifacts/bmad-audit.md`; party-mode-dialogue facilitation steps skipped per autonomous YOLO mode + interim retro discipline targeting `LEARN.md` rather than `_bmad-output/implementation-artifacts/epic-N-retro-DATE.md`). BMAD-shaped sibling artifact written to `_bmad-output/implementation-artifacts/epic-bmad-audit-retro-2026-04-27.md`. `LEARN.md § epic-bmad-audit` extended with five new findings (E1–E5) reconciled against the existing four hand-extracted entries. Low-blast item E1 applied: `bmad-agent-qa` ghost reference replaced with `bmad-tea` in `.claude/commands/devx-plan.md` and `.claude/commands/dev-plan.md` (per `bmad-audit.md` §4.2 row 1). E2–E5 noted as `pending-concordance` (single-epic evidence; will revisit at next retro or when LearnAgent lands).
+- 2026-04-27T11:10 — local CI green (typecheck clean, 250/250 vitest tests). Pushed to PR #19; remote CI passed both runners (macos-latest + ubuntu-latest, run 25008321286). Squash-merged to main as 7444b11 via `gh pr merge --squash --delete-branch`. Status: done.
