@@ -5,9 +5,10 @@ created: 2026-04-27T08:00:00-07:00
 title: Retrospective + LEARN.md updates for epic-cli-skeleton
 from: docs/ROADMAP.md#phase-0--foundation-week-1
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: in-progress
+owner: /devx-2026-04-27T-cliret
 blocked_by: [cli301, cli302, cli303, cli304, cli305]
-branch: develop/dev-cliret
+branch: feat/dev-cliret
 ---
 
 ## Goal
@@ -26,3 +27,4 @@ Run `bmad-retrospective` on epic-cli-skeleton and append findings to `LEARN.md �
 
 ## Status log
 - 2026-04-27 — created by interim retro discipline (ROADMAP.md locked decision)
+- 2026-04-27 — claimed by /devx in session /devx-2026-04-27T-cliret; branch feat/dev-cliret off main per single-branch config (frontmatter `branch:` corrected from stale `develop/dev-cliret`). 3rd retro application of interim discipline → expected to be the concordance point that promotes E2 (retros absent from sprint-status.yaml) to LEARN.md cross-epic patterns.
