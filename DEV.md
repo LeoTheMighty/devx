@@ -15,7 +15,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-cfg202-2026-04-26T19:35-config-yaml-roundtrip-lib.md` — YAML round-trip lib using eemeli/yaml. Status: done. From: epic-config-schema. PR: https://github.com/LeoTheMighty/devx/pull/5 (merged c6a5625).
 - [x] `dev/dev-cfg203-2026-04-26T19:35-config-validation-on-load.md` — Config validation on load. Status: done. Blocked-by: cfg201, cfg202. PR: https://github.com/LeoTheMighty/devx/pull/6 (merged b00ef2e).
 - [x] `dev/dev-cfg204-2026-04-26T19:35-config-cli-get-set.md` — `devx config <key>` get/set CLI. Status: done. Blocked-by: cfg202, cfg203, cli301. PR: https://github.com/LeoTheMighty/devx/pull/8 (merged 1ba275f).
-- [/] `dev/dev-cfgret-2026-04-27T08:00-retro-config-schema.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: in-progress. Blocked-by: cfg201, cfg202, cfg203, cfg204.
+- [x] `dev/dev-cfgret-2026-04-27T08:00-retro-config-schema.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: done. Blocked-by: cfg201, cfg202, cfg203, cfg204. PR: https://github.com/LeoTheMighty/devx/pull/20 (merged 7440a05).
 
 ### Epic 3 — devx CLI skeleton
 - [x] `dev/dev-cli301-2026-04-26T19:35-cli-package-scaffold.md` — npm package scaffold + commander dispatch. Status: done. From: epic-cli-skeleton. PR: https://github.com/LeoTheMighty/devx/pull/7 (merged 3641bd6).
