@@ -190,11 +190,13 @@ skill is branch-model-aware; values below are this project's resolution.
 2. **Worktree**: `git worktree add .worktrees/dev-<hash> -b feat/dev-<hash>
    main`.
 3. **BMAD story**: `bmad-create-story` if no story file exists; otherwise
-   read the existing one. *Empirically across all 4 Phase 0 epics this
-   step has been skipped because spec ACs already cover what
-   `bmad-create-story` would generate; the contract-vs-reality drift is
-   tracked in `LEARN.md § epic-config-schema` E1 and pending a /devx
-   skill update once concordance is sufficient.*
+   read the existing one. *Empirically across all 4 shipped Phase 0 epics
+   (17/17 stories) this step has been skipped because spec ACs already
+   cover what `bmad-create-story` would generate; the contract-vs-reality
+   drift is tracked in `LEARN.md § Cross-epic patterns` and reaffirmed
+   in cliret retro. The actual /devx skill change (enforce / make
+   conditional / drop) remains user-review-required per
+   `self_healing.user_review_required_for: [skills]`.*
 4. **Implement**: `bmad-dev-story`, red-green-refactor, all tasks/subtasks.
 5. **Self-review**: `bmad-code-review` adversarially; fix all findings
    automatically; re-review.
