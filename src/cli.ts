@@ -1,31 +1,53 @@
 #!/usr/bin/env node
-// devx CLI entrypoint (cli301 scaffold).
+// devx CLI entrypoint (cli301 scaffold; cli302 wired the 10 stubs).
 //
-// Commander dispatches via a static registration array. cli302 fills in the
-// 10 stub commands, cfg204 wires `devx config` (real), and cli303 formats the
-// `--help` listing. Until then, `devx` exposes only the global flags
-// (--help / --version) — but the surface is in place so every later phase
-// just appends to `commands` below.
+// Commander dispatches via a static registration array. cli302 wired the 10
+// stub commands (`ui`, `serve`, `tail`, `kill`, `restart`, `status`, `pause`,
+// `resume`, `ask`, `eject`); cfg204 wired `devx config` (real); cli303 formats
+// the `--help` listing. Static array (not glob discovery) per
+// epic-cli-skeleton: explicit beats implicit; one file per command tested
+// independently.
 //
-// Static array (not glob discovery) per epic-cli-skeleton: explicit beats
-// implicit; one file per command tested independently.
+// Registration order is alphabetical by command name. cli303 owns the
+// help-text re-sort (by phase ascending with section headers), so the order
+// here is purely for grep-friendliness, not user-facing layout.
 //
 // Spec: dev/dev-cli301-2026-04-26T19:35-cli-package-scaffold.md
+// Spec: dev/dev-cli302-2026-04-26T19:35-cli-stubs.md
 
 import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 
+import * as askCommand from "./commands/ask.js";
 import * as configCommand from "./commands/config.js";
+import * as ejectCommand from "./commands/eject.js";
+import * as killCommand from "./commands/kill.js";
+import * as pauseCommand from "./commands/pause.js";
+import * as restartCommand from "./commands/restart.js";
+import * as resumeCommand from "./commands/resume.js";
+import * as serveCommand from "./commands/serve.js";
+import * as statusCommand from "./commands/status.js";
+import * as tailCommand from "./commands/tail.js";
+import * as uiCommand from "./commands/ui.js";
 
 interface CommandModule {
   register(program: Command): void;
 }
 
 const commands: CommandModule[] = [
-  // cli302 will append the 10 stub commands above/below this line.
+  askCommand,
   configCommand,
+  ejectCommand,
+  killCommand,
+  pauseCommand,
+  restartCommand,
+  resumeCommand,
+  serveCommand,
+  statusCommand,
+  tailCommand,
+  uiCommand,
 ];
 
 function readPackageVersion(): string {
