@@ -5,8 +5,9 @@ created: 2026-04-26T19:35:00-07:00
 title: npm package scaffold + commander dispatch
 from: _bmad-output/planning-artifacts/epic-cli-skeleton.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
-branch: develop/dev-cli301
+status: in-progress
+branch: feat/dev-cli301
+owner: /devx
 ---
 
 ## Goal
@@ -31,3 +32,4 @@ Scaffold the `@devx/cli` npm package: `package.json` with `bin` entry, `tsconfig
 ## Status log
 
 - 2026-04-26T19:35 — created by /devx-plan
+- 2026-04-26T19:55 — claimed by /devx; branch feat/dev-cli301 (single-branch YOLO; integration_branch: null)
