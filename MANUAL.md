@@ -66,3 +66,11 @@ declined. If/when this project upgrades to BETA or PROD, revisit.
 - [x] ~~**M3.1 — Enable branch protection on `main`.**~~ N/A — `git.protect_main: false` per INTERVIEW Q#7. Re-enable if mode changes to BETA/PROD.
 
 - [x] ~~**M3.2 — Create `develop` branch if absent.**~~ N/A — `git.integration_branch: null` per INTERVIEW Q#7. The develop branch was created and then collapsed back into main during the bootstrap session. Phone (Phase 8) will target main directly while this config holds.
+
+## For Phase 0 — bookkeeping (filed by cfgret 2026-04-27)
+
+- [ ] **MP0.1 — Backfill stale `sprint-status.yaml` story rows.**
+  - Why: cfgret's formal retro found that several merged stories still carry `status: backlog` in `_bmad-output/implementation-artifacts/sprint-status.yaml`: `aud101`, `aud102`, `aud103`, `sup405`. Their PRs all merged (PR #1, #2, #3, #17) but `/devx` Phase 8.6 didn't flip their yaml rows. Currently harmless (no consumer reads the yaml) but becomes a behavior bug the moment LearnAgent or `/devx-manage` lands.
+  - How: open `_bmad-output/implementation-artifacts/sprint-status.yaml`; flip the four rows from `status: backlog` to `status: done`. Single-line edit per row. Optionally also note ini501 (already shows `done`, included for completeness check). Commit as `chore: backfill stale sprint-status flips for aud101–103 + sup405`.
+  - Blocks: nothing immediate. File a `chore:` debug spec instead if you'd rather have an agent do it (it's mechanical).
+  - Source: `LEARN.md § epic-config-schema` E3, `_bmad-output/implementation-artifacts/epic-config-schema-retro-2026-04-27.md` §3.4.

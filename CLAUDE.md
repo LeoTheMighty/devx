@@ -148,7 +148,7 @@ is the request history — where a thing came from, where it went.
 | `[ ]` | `ready` | claimable; `/devx` no-args picks the top one |
 | `[/]` | `in-progress` | claimed by a worker; spec lock held |
 | `[-]` | `blocked` | waiting on INTERVIEW / MANUAL / dependency |
-| `[x]` | `done` | merged to `develop` |
+| `[x]` | `done` | merged to the integration branch (this project: `main`) |
 | `~~…~~` | `deleted` / abandoned | kept for audit |
 
 The Status field in frontmatter is the source of truth; the checkbox mirrors
@@ -179,12 +179,22 @@ take. Don't conflate.
 
 ## How `/devx` runs (in this repo)
 
+This project runs single-branch on `main` (per INTERVIEW Q#7). The /devx
+skill is branch-model-aware; values below are this project's resolution.
+
 1. **Claim**: pick top `[ ]` ready item from `DEV.md`, flip to `[/]`, set
-   `status: in-progress`, append status log line.
-2. **Worktree**: `git worktree add .worktrees/dev-<hash> -b develop/dev-<hash>
-   develop`.
-3. **BMAD story**: `bmad-create-story` if no story file exists; otherwise read
-   the existing one. Use YOLO mode (auto-select defaults).
+   `status: in-progress`, append status log line. **Push the claim commit
+   to `origin/main` before opening the PR** (otherwise main diverges and
+   `pull --ff-only` fails post-merge — see
+   `feedback_devx_push_claim_before_pr.md`).
+2. **Worktree**: `git worktree add .worktrees/dev-<hash> -b feat/dev-<hash>
+   main`.
+3. **BMAD story**: `bmad-create-story` if no story file exists; otherwise
+   read the existing one. *Empirically across all 4 Phase 0 epics this
+   step has been skipped because spec ACs already cover what
+   `bmad-create-story` would generate; the contract-vs-reality drift is
+   tracked in `LEARN.md § epic-config-schema` E1 and pending a /devx
+   skill update once concordance is sufficient.*
 4. **Implement**: `bmad-dev-story`, red-green-refactor, all tasks/subtasks.
 5. **Self-review**: `bmad-code-review` adversarially; fix all findings
    automatically; re-review.
@@ -192,11 +202,13 @@ take. Don't conflate.
    touched-surface projects only.
 7. **Commit**: one commit per story; conventional-commit prefix; message links
    to spec + story.
-8. **Push + PR to `develop`**: PR body includes spec link, ACs as checkboxes,
+8. **Push + PR to `main`**: PR body includes spec link, ACs as checkboxes,
    test plan, current mode.
-9. **Wait remote CI**: poll with `gh run list ... --branch develop/dev-<hash>`;
+9. **Wait remote CI**: poll with `gh run list ... --branch feat/dev-<hash>`;
    verify `headSha` matches; fix-forward on failure.
-10. **Auto-merge** (YOLO): `gh pr merge --auto --squash` after CI green.
+10. **Auto-merge** (YOLO): `gh pr merge --squash --delete-branch` after CI
+    green. (Note: `--auto` alone requires "Allow auto-merge" repo setting
+    which isn't on; the direct squash form is what works.)
 11. **File gaps**: test gaps → `test/test-*.md` + `TEST.md`; bugs out of scope
     → `debug/debug-*.md` + `DEBUG.md`. Don't expand the current item's scope.
 12. **Cleanup**: remove worktree, mark spec `done`, flip `DEV.md` checkbox to
@@ -228,6 +240,12 @@ Full contract: `.claude/commands/devx.md`.
 - **Status log is append-only.** Add lines; don't rewrite history.
 - **Worktrees are isolation, not staging.** Don't run a non-`/devx` flow inside
   a worktree; don't share a worktree across agents.
+- **Self-review is non-skippable.** Every dev story runs `bmad-code-review`
+  after implementation, fixes ALL findings (HIGH/MED/LOW) without asking,
+  and re-runs to verify. Empirically (LEARN.md cross-epic patterns) this
+  catches real semantics bugs every time across 5+ stories spanning all 4
+  Phase 0 epics — it pays for itself on every run. Skip this step and
+  load-bearing bugs ship.
 
 ---
 
