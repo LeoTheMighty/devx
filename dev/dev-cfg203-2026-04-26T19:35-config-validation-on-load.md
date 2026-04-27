@@ -5,9 +5,10 @@ created: 2026-04-26T19:35:00-07:00
 title: Config validation on load
 from: _bmad-output/planning-artifacts/epic-config-schema.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: in-progress
 blocked_by: [cfg201, cfg202]
-branch: develop/dev-cfg203
+branch: feat/dev-cfg203
+owner: /devx
 ---
 
 ## Goal
@@ -32,3 +33,4 @@ Implement `src/lib/config-validate.ts` that validates a parsed config against `_
 ## Status log
 
 - 2026-04-26T19:35 — created by /devx-plan
+- 2026-04-26T20:30 — claimed by /devx (single-branch YOLO; branch feat/dev-cfg203 off main)
