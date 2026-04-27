@@ -5,9 +5,10 @@ created: 2026-04-27T08:00:00-07:00
 title: Retrospective + LEARN.md updates for epic-config-schema
 from: docs/ROADMAP.md#phase-0--foundation-week-1
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: in-progress
 blocked_by: [cfg201, cfg202, cfg203, cfg204]
-branch: develop/dev-cfgret
+branch: feat/dev-cfgret
+owner: /devx
 ---
 
 ## Goal
@@ -26,3 +27,4 @@ Run `bmad-retrospective` on epic-config-schema and append findings to `LEARN.md 
 
 ## Status log
 - 2026-04-27 — created by interim retro discipline (ROADMAP.md locked decision)
+- 2026-04-27T11:05 — claimed by /devx; corrected `branch:` from `develop/dev-cfgret` to `feat/dev-cfgret` per cross-epic finding (planner default vs `git.integration_branch: null` config). Same fix every prior story has had to apply.
