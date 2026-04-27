@@ -52,7 +52,7 @@ plans:
             status: done
           - key: cli302
             title: Stub helper + 10 stub commands registered
-            status: backlog
+            status: done
             blocked_by: [cli301]
           - key: cli303
             title: `devx --help` listing with phase + epic annotations
