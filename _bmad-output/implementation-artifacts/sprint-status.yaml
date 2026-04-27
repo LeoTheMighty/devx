@@ -33,7 +33,7 @@ plans:
             status: backlog
           - key: cfg202
             title: YAML round-trip lib using eemeli/yaml
-            status: ready-for-dev
+            status: done
           - key: cfg203
             title: Config validation on load
             status: backlog

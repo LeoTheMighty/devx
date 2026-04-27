@@ -5,7 +5,7 @@ created: 2026-04-26T19:35:00-07:00
 title: YAML round-trip lib using eemeli/yaml
 from: _bmad-output/planning-artifacts/epic-config-schema.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: in-progress
+status: done
 branch: feat/dev-cfg202
 owner: /devx
 ---
@@ -33,4 +33,5 @@ Implement `src/lib/config-io.ts` providing comment-preserving YAML I/O for `devx
 
 - 2026-04-26T19:35 — created by /devx-plan
 - 2026-04-26T20:00 — claimed by /devx; branch feat/dev-cfg202 (single-branch model — git.integration_branch is null per devx.config.yaml; spec frontmatter said develop/dev-cfg202 which is stale, corrected here). Note: spec ACs say XDG-on-Linux for user-config path; epic-config-schema.md "locked decisions" say `~/.devx/` everywhere. Following spec ACs (source of truth). On macOS the two are identical so no behavior delta for this project.
-- 2026-04-26T20:30 — implemented + self-reviewed + local CI clean (17 cfg202 tests + 3 schema-smoke tests pass, typecheck clean). PR opened: https://github.com/LeoTheMighty/devx/pull/5. Awaiting human merge — no GitHub Actions workflow exists yet and prior PRs (#1-#4) were all merged by the user; following established practice. Implementation note: setLeaf mutates the existing Scalar.value in place rather than going through doc.setIn — setIn replaces the Scalar node and loses any inline comment attached to it, which the spec's "no comments lost" diff regression guards against. Falls back to setIn only when the path doesn't exist yet.
+- 2026-04-26T20:30 — implemented + self-reviewed + local CI clean (17 cfg202 tests + 3 schema-smoke tests pass, typecheck clean). PR opened: https://github.com/LeoTheMighty/devx/pull/5. Implementation note: setLeaf mutates the existing Scalar.value in place rather than going through doc.setIn — setIn replaces the Scalar node and loses any inline comment attached to it, which the spec's "no comments lost" diff regression guards against. Falls back to setIn only when the path doesn't exist yet.
+- 2026-04-26T20:36 — merged via PR #5 (squash → c6a5625). User feedback corrected the manual-merge default: in YOLO single-branch repos /devx auto-merges on local-CI green, no human in the loop. /devx skill updated to enforce this.

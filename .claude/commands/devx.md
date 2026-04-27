@@ -5,9 +5,11 @@ description: 'Autonomous devx dev loop. Picks the next ready item from DEV.md (o
 
 # /devx — Autonomous devx Dev Loop
 
-> **v0 — bootstrap version.** Forked from `/dev` with path + checkbox updates so the closed loop is usable today, before the rest of the devx stack ships. Refined in Phase 1 (`plan/plan-b01000-...-single-agent-loop.md`) per the full DESIGN.md contract. ManageAgent + parallelism arrive in Phases 2–3; until then this command runs single-agent and you supervise it manually. References to `/devx-manage` in this file describe the future supervisor — until that exists, leave PRs open for human review whenever the doc says "Manager handles this."
+> **v0 — bootstrap version.** Forked from `/dev` with path + checkbox updates so the closed loop is usable today, before the rest of the devx stack ships. Refined in Phase 1 (`plan/plan-b01000-...-single-agent-loop.md`) per the full DESIGN.md contract. ManageAgent + parallelism arrive in Phases 2–3.
+>
+> **Until ManageAgent ships, /devx still runs the full loop end-to-end — claim → implement → self-review → local CI → PR → merge → cleanup.** Specifically: `/devx-manage` references in this file are about cross-item orchestration (parallelism, prioritization, soak windows). They are NOT a license to leave PRs open for human review. In YOLO single-branch this skill merges its own PR on every successful run. The only things that stop a YOLO merge are a failing local-CI gate, a non-empty workflow that returned non-success, or trust-gradient N not yet reached. "Prior PRs were merged by a human" is a bug log, not a precedent — do not infer policy from it.
 
-You are an autonomous development agent executing the full BMAD lifecycle for a **single item from DEV.md**: claim it, implement, self-review, run local gates, push, open a PR (or push direct in single-branch YOLO), and wait for remote CI. You operate in a dedicated worktree on a dedicated branch, never sharing a working tree with any other agent.
+You are an autonomous development agent executing the full BMAD lifecycle for a **single item from DEV.md**: claim it, implement, self-review, run local gates, push, open a PR (or push direct in single-branch YOLO), wait for remote CI iff one is configured, **merge the PR yourself**, and cleanup. You operate in a dedicated worktree on a dedicated branch, never sharing a working tree with any other agent.
 
 ## Branch model resolution
 
@@ -38,13 +40,13 @@ Parse from the user's message after `/devx`:
 3. **Fix forward** — if review finds issues, fix them in the same item; don't skip.
 4. **Local CI must pass** before moving to the next item. Gates come from `devx.config.yaml`.
 5. **Target the integration branch**. Every PR opens against `git.integration_branch` (typically `develop`); when `null`, against `default_branch` (`main`) with `pr-to-main` or `direct-to-main` per `git.pr_strategy`. Agents never push to a branch the user did not configure as a target. With the develop/main split enabled, promotion to `main` is `/devx-manage`'s responsibility, gated per [`MODES.md`](../../docs/MODES.md); with single-branch, the merge gate IS the promotion gate.
-6. **Remote CI is ground truth** — local passes are necessary but not sufficient. Wait for GitHub Actions after push.
-7. **Respect the mode**:
-   - `YOLO` — auto-merge to `develop` on CI green.
-   - `BETA` — auto-merge on CI green + no blocking reviewer comments.
-   - `PROD` — auto-merge on CI green + no blocking comments + coverage gate clear (focus-group pre-promotion is `/devx-manage`'s concern, not `/devx`'s).
-   - `LOCKDOWN` — do not auto-merge. Open PR, leave it awaiting user action, stop.
-7. **Respect trust-gradient autonomy** — read `devx.config.yaml → promotion.autonomy.count`; the ladder's N is mode-derived. Until N reached, merge requires user approval (even if CI passes). After N, auto-merge per mode gate above.
+6. **Remote CI is ground truth IF configured.** When `.github/workflows/*.yml` exists and triggers on the feature branch, wait for GitHub Actions to complete and only proceed on success. When no workflow is configured (typical during early bootstrap), local CI from Phase 5 IS the gate — do NOT block waiting for phantom CI; do NOT defer to a human just because there's nothing on GitHub side to gate on.
+7. **Respect the mode — and actually act on it. YOLO means YOLO: this skill merges its own PRs.**
+   - `YOLO` — merge immediately on local-CI green (and on remote-CI green when CI is configured). No "leaving the PR for the user."
+   - `BETA` — merge on CI green + no blocking reviewer comments.
+   - `PROD` — merge on CI green + no blocking comments + coverage gate clear (focus-group pre-promotion is `/devx-manage`'s concern, not `/devx`'s).
+   - `LOCKDOWN` — do not merge. Open PR, leave it awaiting user action, stop.
+7. **Respect trust-gradient autonomy** — read `devx.config.yaml → promotion.autonomy.count`; the ladder's N is mode-derived. Until N reached, merge requires user approval (even if CI passes). After N, auto-merge per mode gate above. Note: this project starts at `initial_n: 0, count: 0` (full autonomy from commit 1) per its YOLO config — the trust gate does not apply here unless the user explicitly bumps it.
 8. **Status log is append-only** — every phase transition appends a line to the spec file's status log. Never rewrite log lines.
 9. **File out-of-scope work** — when implementing reveals test gaps, file `test/test-*.md` specs and append to `TEST.md`. When it reveals bugs, file `debug/debug-*.md` specs and append to `DEBUG.md`. Don't expand the current item's scope.
 
@@ -200,12 +202,18 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
    )"
    ```
 3. Append a status-log line with the PR URL.
-4. **Wait for remote CI.** Never declare the item done before CI turns green. Use `ScheduleWakeup` with 120s delays to stay cache-warm; run:
+4. **Remote CI: detect, then wait if it exists, otherwise proceed immediately.**
+
+   First, probe whether a workflow has been wired up:
    ```
-   gh run list --branch develop/dev-<hash> --limit 1 --json databaseId,status,conclusion,url,headSha
+   gh run list --branch <branch-name> --limit 1 --json databaseId,status,conclusion,url,headSha,workflowName
    ```
-   Verify `headSha == git rev-parse HEAD`. Poll until `status == "completed"`.
-5. If `conclusion == "success"`: proceed to Phase 8.
+
+   - **No runs returned AND `.github/workflows/` is empty (or missing)** → there is no remote CI to wait for. Local CI from Phase 5 IS the gate. Append a status-log line `no remote CI workflow detected — local gates are authoritative` and proceed to Phase 8 immediately. Do NOT block on phantom CI; do NOT defer to a human.
+   - **No runs returned but `.github/workflows/*.yml` exists** → CI was wired but didn't trigger (typical causes: workflow `on:` filters exclude this branch, or GitHub is slow to schedule). Wait up to 60s with one `ScheduleWakeup` retry; if still no run, file an `INTERVIEW.md` entry asking the user to confirm the workflow's `on:` filters cover `<branch-name>`, mark the PR `awaiting-approval`, and stop. Do NOT auto-merge in this state — silent CI is a config bug, not a green light.
+   - **Runs returned** → verify `headSha == git rev-parse HEAD`. Poll until `status == "completed"` using `ScheduleWakeup` with 120s delays to stay cache-warm. Then evaluate `conclusion`.
+
+5. If `conclusion == "success"` (or remote CI was absent per the bullet above): proceed to Phase 8.
 6. If `conclusion != "success"`:
    - `gh run view <run-id> --log-failed`
    - Identify the failing check (lint? test? coverage? something local didn't catch?).
@@ -215,11 +223,13 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
 
 ### Phase 8: Auto-Merge (mode-gated) or Hand Off
 
+**YOLO is fully autonomous — /devx merges its own PRs. Period.** No "leave it open for human review," no "prior PRs were merged manually so I'll follow that pattern." If the user wants to gate merges on human approval they bump out of YOLO. The only thing that stops a YOLO merge is a failing local CI gate, a non-empty workflow that returned non-success, or trust-gradient N not yet reached. Past PRs being merged by a human is irrelevant — that's an artifact of `/devx` not doing its job, not a project policy.
+
 Behavior by mode:
 
-| Mode | If CI green and trust-gradient N reached |
+| Mode | If gates clear and trust-gradient N reached |
 |---|---|
-| YOLO | `gh pr merge --auto --squash` — don't wait if mergeable blocks remain; let `--auto` handle it. |
+| YOLO | **Merge immediately.** Try `gh pr merge --squash --delete-branch` first (single-step). If GitHub rejects with "auto-merge not enabled" only when `--auto` is used, fall back to `--admin` if available, else just `--squash --delete-branch` directly. Do NOT use `--auto` alone in this repo — it requires "Allow auto-merge" repo setting which isn't on, and it silently no-ops. |
 | BETA | Merge if no reviewer blocking comments; otherwise wait. |
 | PROD | Merge if coverage gate clear; otherwise wait. |
 | LOCKDOWN | Do NOT merge. Leave PR open. Append to `MANUAL.md`: "PR <#> awaiting lockdown-resume before merge." |
@@ -228,15 +238,28 @@ If trust-gradient N has NOT been reached (promotion count < threshold from `devx
 - Append to `INTERVIEW.md`: "Approve merge of PR <#>? (`y` / `n` / `hold`)".
 - Leave PR open; do NOT merge.
 
-After merge (or after punting to manual):
-1. Remove worktree: `git worktree remove .worktrees/dev-<hash>`.
-2. Delete local branch (remote will be deleted by `--delete-branch` flag on merge, or `gh api -X DELETE`).
-3. Update the spec file: `status: done` (or `awaiting-approval`), append status-log line.
-4. Update `DEV.md`: flip the checkbox `[/]` → `[x]` (or `[-]` if blocked on user/INTERVIEW/MANUAL), append the PR URL inline. If the spec was abandoned/superseded, wrap the entry line in `~~…~~` instead.
-5. File gaps:
+**Merge command (YOLO single-branch, this repo's setting):**
+```
+gh pr merge <#> --squash --delete-branch
+```
+Then verify:
+```
+gh pr view <#> --json state,mergeCommit
+```
+Expect `state == "MERGED"` and a `mergeCommit.oid`. If not merged, surface the gh error verbatim and stop — do NOT silently leave the PR open.
+
+After merge:
+1. `git fetch origin --prune && git pull --ff-only` in the main worktree to bring the merge commit into local `main`.
+2. Remove worktree: `git worktree remove .worktrees/dev-<hash>`.
+3. Delete local branch: `git branch -D <branch-name>` (the `--delete-branch` flag on `gh pr merge` handles the remote).
+4. Update the spec file: `status: done`, append status-log line `merged via PR #<n> (squash → <merge-sha-short>)`.
+5. Update `DEV.md`: flip the checkbox `[/]` → `[x]`, append the PR URL inline in the format used by prior entries: `PR: https://github.com/.../pull/<n> (merged <merge-sha-short>)`. If the spec was abandoned/superseded, wrap the entry line in `~~…~~` instead.
+6. Update `_bmad-output/implementation-artifacts/sprint-status.yaml`: flip the matching `<hash>` story's `status:` from `ready-for-dev` to `done`.
+7. Commit all of (4-6) on `main` with message `chore: mark <hash> done after PR #<n> merge` and push.
+8. File gaps:
    - **Test gaps** observed during implementation → new `test/test-*.md` specs + `TEST.md` entries.
    - **Bugs discovered but out of scope** → new `debug/debug-*.md` specs + `DEBUG.md` entries.
-6. If the item is part of an epic, check if the epic's other stories are all done; if so, log a promotion candidate in `PLAN.md`.
+9. If the item is part of an epic, check if the epic's other stories are all done; if so, log a promotion candidate in `PLAN.md`.
 
 ### Phase 9: Next Item or Finish
 
