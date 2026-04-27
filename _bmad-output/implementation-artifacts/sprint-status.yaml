@@ -118,7 +118,7 @@ plans:
             blocked_by: [aud103, cli301]
           - key: ini502
             title: Local file writes (config + backlogs + spec dirs + CLAUDE.md + .gitignore)
-            status: backlog
+            status: done
             blocked_by: [ini501, cfg204]
           - key: ini503
             title: GitHub-side scaffolding (workflows + PR template + develop + protection)
