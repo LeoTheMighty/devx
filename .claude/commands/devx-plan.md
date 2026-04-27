@@ -168,7 +168,7 @@ For **each** draft epic, in dependency order (foundational first):
    - **Dev (frontend framing)** (`bmad-agent-dev`): screens, nav, state, a11y — skip if no frontend layer.
    - **Architect / Dev (backend framing)** (`bmad-agent-architect` / `bmad-agent-dev`): data model, contracts, idempotency, auth, performance — skip if no backend layer.
    - **Infrastructure / devops**: migrations, deploy order, secrets, rollback — skip if no infra layer.
-   - **QA** (`bmad-agent-qa`): end-to-end coverage.
+   - **QA / Test architect** (`bmad-tea`, persona Murat): end-to-end coverage, risk-based test design. (Replaces the non-existent `bmad-agent-qa` referenced in the original draft — `bmad-tea` is the BMAD-installed test-architect persona; see `_bmad-output/planning-artifacts/bmad-audit.md` §4.2 row 1.)
 
    Feed personas: draft epic file, relevant PRD sections, research synthesis, and a list of *decisions locked by earlier party-modes this run* (so later epics inherit instead of re-litigating). Autonomously pick "Continue" at BMAD halts.
 
