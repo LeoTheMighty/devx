@@ -42,6 +42,7 @@ import {
   type LeafValue,
   type Target,
 } from "../lib/config-io.js";
+import { attachPhase } from "../lib/help.js";
 
 const LEAF_ONLY_MSG =
   "Phase 0 supports leaf scalar writes only — see Phase 1";
@@ -370,7 +371,7 @@ function coerceForSchema(
 }
 
 export function register(program: Command): void {
-  program
+  const sub = program
     .command("config")
     .description("Get or set values in devx.config.yaml (project) or ~/.devx/config.yaml (user)")
     .option("--user", "Target the user-level config file instead of the project file")
@@ -381,4 +382,7 @@ export function register(program: Command): void {
     .action((args: string[], opts: { user?: boolean }) => {
       runConfig(args ?? [], opts.user === true);
     });
+  // cli303: config shipped in Phase 0 (cfg204) — phase 0 places it first in
+  // `devx --help` listing, before the Phase 2/4/10 stubs.
+  attachPhase(sub, 0);
 }
