@@ -36,7 +36,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 ### Epic 5 — `/devx-init` skill
 - [x] `dev/dev-ini501-2026-04-26T19:35-init-question-flow.md` — 13-question flow + skip-table inference + state detection. Status: done. From: epic-init-skill. Blocked-by: aud103, cli301. PR: https://github.com/LeoTheMighty/devx/pull/18 (merged 3baf1a9).
 - [x] `dev/dev-ini502-2026-04-26T19:35-init-local-writes.md` — Local file writes (config + backlogs + spec dirs + CLAUDE.md + .gitignore). Status: done. Blocked-by: ini501, cfg204. PR: https://github.com/LeoTheMighty/devx/pull/23 (merged 1d98b6c).
-- [ ] `dev/dev-ini503-2026-04-26T19:35-init-github-scaffolding.md` — GitHub-side scaffolding (workflows + PR template + develop + protection). Status: ready. Blocked-by: ini502.
+- [/] `dev/dev-ini503-2026-04-26T19:35-init-github-scaffolding.md` — GitHub-side scaffolding (workflows + PR template + develop + protection). Status: in-progress. Blocked-by: ini502.
 - [ ] `dev/dev-ini504-2026-04-26T19:35-init-personas-and-interview.md` — Personas + INTERVIEW.md fixed-template seeding. Status: ready. Blocked-by: ini502.
 - [ ] `dev/dev-ini505-2026-04-26T19:35-init-supervisor-trigger.md` — Supervisor installer trigger + verify. Status: ready. Blocked-by: ini502, sup405.
 - [ ] `dev/dev-ini506-2026-04-26T19:35-init-failure-modes.md` — Failure-mode handling (BMAD-fail / gh-not-auth / no-remote). Status: ready. Blocked-by: ini503, ini505.

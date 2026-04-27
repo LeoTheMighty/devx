@@ -5,9 +5,10 @@ created: 2026-04-26T19:35:00-07:00
 title: GitHub-side scaffolding (workflows + PR template + develop + protection)
 from: _bmad-output/planning-artifacts/epic-init-skill.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: in-progress
 blocked_by: [ini502]
-branch: develop/dev-ini503
+branch: feat/dev-ini503
+owner: /devx
 ---
 
 ## Goal
@@ -35,3 +36,5 @@ Implement `src/lib/init-gh.ts` — writes `.github/workflows/*` + `pull_request_
 ## Status log
 
 - 2026-04-26T19:35 — created by /devx-plan
+- 2026-04-27T11:30 — claimed by /devx; branch `feat/dev-ini503` (single-branch per project config — `git.integration_branch: null`, `git.protect_main: false`); library still implements full develop/main + protection path for target projects whose config opts in
+
