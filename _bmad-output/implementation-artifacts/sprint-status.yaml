@@ -49,7 +49,7 @@ plans:
         stories:
           - key: cli301
             title: npm package scaffold + commander dispatch
-            status: backlog
+            status: done
           - key: cli302
             title: Stub helper + 10 stub commands registered
             status: backlog

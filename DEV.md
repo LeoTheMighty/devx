@@ -16,7 +16,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [ ] `dev/dev-cfg204-2026-04-26T19:35-config-cli-get-set.md` — `devx config <key>` get/set CLI. Status: ready. Blocked-by: cfg202, cfg203, cli301.
 
 ### Epic 3 — devx CLI skeleton
-- [/] `dev/dev-cli301-2026-04-26T19:35-cli-package-scaffold.md` — npm package scaffold + commander dispatch. Status: in-progress. From: epic-cli-skeleton.
+- [x] `dev/dev-cli301-2026-04-26T19:35-cli-package-scaffold.md` — npm package scaffold + commander dispatch. Status: done. From: epic-cli-skeleton. PR: https://github.com/LeoTheMighty/devx/pull/7 (merged 3641bd6).
 - [ ] `dev/dev-cli302-2026-04-26T19:35-cli-stubs.md` — Stub helper + 10 stub commands registered. Status: ready. Blocked-by: cli301.
 - [ ] `dev/dev-cli303-2026-04-26T19:35-cli-help-listing.md` — `devx --help` listing with phase + epic annotations. Status: ready. Blocked-by: cli302, cfg204.
 - [ ] `dev/dev-cli304-2026-04-26T19:35-cli-version-postinstall.md` — `devx --version` + postinstall PATH verification. Status: ready. Blocked-by: cli301.
