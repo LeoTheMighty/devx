@@ -15,6 +15,7 @@
     "scripts/postinstall.js",
     "scripts/postinstall-lib.mjs",
     "_devx/config-schema.json",
+    "_devx/templates",
     "INSTALL.md"
   ],
   "scripts": {
