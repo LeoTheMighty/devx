@@ -64,7 +64,7 @@ plans:
             blocked_by: [cli301]
           - key: cli305
             title: Cross-platform install + WSL PATH detection
-            status: in-progress
+            status: done
             blocked_by: [cli304]
 
       - key: epic-os-supervisor-scaffold

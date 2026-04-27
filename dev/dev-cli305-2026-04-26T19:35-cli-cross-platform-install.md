@@ -5,7 +5,7 @@ created: 2026-04-26T19:35:00-07:00
 title: Cross-platform install + WSL PATH detection
 from: _bmad-output/planning-artifacts/epic-cli-skeleton.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: in-progress
+status: done
 owner: /devx-2026-04-26T20:30-cli305
 blocked_by: [cli304]
 branch: feat/dev-cli305
@@ -31,3 +31,5 @@ Document the cross-platform install matrix and add WSL-specific detection: warn 
 
 - 2026-04-26T19:35 — created by /devx-plan
 - 2026-04-26T20:30 — claimed by /devx in session 2026-04-26T20:30-cli305
+- 2026-04-26T20:31 — implemented + self-reviewed; refactored postinstall.js into wrapper + postinstall-lib.mjs with WSL host-crossover detection; added INSTALL.md (at repo root, not package/) + .github/workflows/devx-ci.yml matrix (macos-latest + ubuntu-latest, Node 20). 25 new tests (106 total green).
+- 2026-04-26T20:32 — merged via PR #12 (squash → 1a58274)
