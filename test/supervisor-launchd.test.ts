@@ -390,12 +390,6 @@ describe("sup402 — installSupervisor / uninstallSupervisor dispatch", () => {
     expect(calls[0].args[0]).toBe("bootstrap");
   });
 
-  it("platform=systemd throws with sup403 forward-pointer", () => {
-    expect(() =>
-      installSupervisor("manager", "systemd", { devxHome, homeDir })
-    ).toThrow(/sup403/);
-  });
-
   it("platform=task-scheduler throws with sup404 forward-pointer", () => {
     expect(() =>
       installSupervisor("manager", "task-scheduler", { devxHome, homeDir })

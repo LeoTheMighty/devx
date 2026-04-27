@@ -349,6 +349,10 @@
         "os_supervisor": {
           "enum": ["auto", "launchd", "systemd", "task-scheduler", "none"]
         },
+        "linger": {
+          "type": "boolean",
+          "description": "systemd-only: invoke `loginctl enable-linger <user>` so the manager/concierge units survive logout. Ignored on launchd (macOS) and Task Scheduler (Windows). Default: false."
+        },
         "log_dir": { "type": "string" }
       }
     },

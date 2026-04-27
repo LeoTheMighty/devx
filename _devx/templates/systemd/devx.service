@@ -1,0 +1,15 @@
+[Unit]
+Description=devx __ROLE__ supervisor
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/.devx/bin/devx-supervisor-stub.sh __ROLE__
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=0
+StandardOutput=append:%S/devx/__ROLE__.out.log
+StandardError=append:%S/devx/__ROLE__.err.log
+
+[Install]
+WantedBy=default.target
