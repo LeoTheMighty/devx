@@ -5,7 +5,7 @@ created: 2026-04-27T08:00:00-07:00
 title: Retrospective + LEARN.md updates for epic-os-supervisor-scaffold
 from: docs/ROADMAP.md#phase-0--foundation-week-1
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: in-progress
+status: done
 owner: /devx-2026-04-27T17:00-supret
 blocked_by: [sup401, sup402, sup403, sup404, sup405]
 branch: feat/dev-supret
@@ -28,3 +28,4 @@ Run `bmad-retrospective` on epic-os-supervisor-scaffold and append findings to `
 ## Status log
 - 2026-04-27 — created by interim retro discipline (ROADMAP.md locked decision)
 - 2026-04-27T17:00 — claimed by /devx in session 2026-04-27T17:00-supret; corrected `branch:` from stale planner-default `develop/dev-supret` to project-config `feat/dev-supret` at claim time (same as audret/cfgret/cliret).
+- 2026-04-27T18:11 — merged via PR #22 (squash → 0e9d6b3); 4 files changed, 344 insertions, 9 deletions; remote CI green on macOS + Ubuntu Node 20.

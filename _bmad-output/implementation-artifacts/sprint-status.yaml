@@ -105,7 +105,7 @@ plans:
             blocked_by: [sup402, sup403, sup404]
           - key: supret
             title: Retro + LEARN.md updates (interim retro discipline)
-            status: in-progress
+            status: done
             blocked_by: [sup401, sup402, sup403, sup404, sup405]
 
       - key: epic-init-skill
