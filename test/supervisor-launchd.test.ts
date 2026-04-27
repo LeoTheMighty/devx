@@ -390,12 +390,6 @@ describe("sup402 — installSupervisor / uninstallSupervisor dispatch", () => {
     expect(calls[0].args[0]).toBe("bootstrap");
   });
 
-  it("platform=task-scheduler throws with sup404 forward-pointer", () => {
-    expect(() =>
-      installSupervisor("manager", "task-scheduler", { devxHome, homeDir })
-    ).toThrow(/sup404/);
-  });
-
   it("uninstallSupervisor(launchd) routes through uninstallLaunchd", () => {
     const { exec: e1 } = makeRecordingExec();
     installSupervisor("manager", "launchd", {
