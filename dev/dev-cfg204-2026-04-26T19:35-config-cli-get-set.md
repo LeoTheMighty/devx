@@ -5,9 +5,10 @@ created: 2026-04-26T19:35:00-07:00
 title: `devx config <key>` get/set CLI
 from: _bmad-output/planning-artifacts/epic-config-schema.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: in-progress
 blocked_by: [cfg202, cfg203, cli301]
-branch: develop/dev-cfg204
+branch: feat/dev-cfg204
+owner: /devx
 ---
 
 ## Goal
@@ -33,3 +34,4 @@ Implement `src/commands/config.ts` registering the `devx config` command (and it
 ## Status log
 
 - 2026-04-26T19:35 — created by /devx-plan
+- 2026-04-26T21:00 — claimed by /devx; branch feat/dev-cfg204 off main (single-branch YOLO; spec frontmatter said develop/dev-cfg204 which is stale, corrected here).
