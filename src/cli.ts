@@ -17,12 +17,15 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 
+import * as configCommand from "./commands/config.js";
+
 interface CommandModule {
   register(program: Command): void;
 }
 
 const commands: CommandModule[] = [
-  // Populated by cli302 (10 stubs) and cfg204 (`devx config`).
+  // cli302 will append the 10 stub commands above/below this line.
+  configCommand,
 ];
 
 function readPackageVersion(): string {
