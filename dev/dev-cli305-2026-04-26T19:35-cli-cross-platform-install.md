@@ -5,9 +5,10 @@ created: 2026-04-26T19:35:00-07:00
 title: Cross-platform install + WSL PATH detection
 from: _bmad-output/planning-artifacts/epic-cli-skeleton.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: in-progress
+owner: /devx-2026-04-26T20:30-cli305
 blocked_by: [cli304]
-branch: develop/dev-cli305
+branch: feat/dev-cli305
 ---
 
 ## Goal
@@ -29,3 +30,4 @@ Document the cross-platform install matrix and add WSL-specific detection: warn 
 ## Status log
 
 - 2026-04-26T19:35 — created by /devx-plan
+- 2026-04-26T20:30 — claimed by /devx in session 2026-04-26T20:30-cli305

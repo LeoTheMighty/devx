@@ -20,7 +20,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-cli302-2026-04-26T19:35-cli-stubs.md` — Stub helper + 10 stub commands registered. Status: done. Blocked-by: cli301. PR: https://github.com/LeoTheMighty/devx/pull/9 (merged 379a79e).
 - [x] `dev/dev-cli303-2026-04-26T19:35-cli-help-listing.md` — `devx --help` listing with phase + epic annotations. Status: done. Blocked-by: cli302, cfg204. PR: https://github.com/LeoTheMighty/devx/pull/10 (merged fa48586).
 - [x] `dev/dev-cli304-2026-04-26T19:35-cli-version-postinstall.md` — `devx --version` + postinstall PATH verification. Status: done. Blocked-by: cli301. PR: https://github.com/LeoTheMighty/devx/pull/11 (merged 17428b9).
-- [ ] `dev/dev-cli305-2026-04-26T19:35-cli-cross-platform-install.md` — Cross-platform install + WSL PATH detection. Status: ready. Blocked-by: cli304.
+- [/] `dev/dev-cli305-2026-04-26T19:35-cli-cross-platform-install.md` — Cross-platform install + WSL PATH detection. Status: in-progress. Blocked-by: cli304.
 
 ### Epic 4 — OS supervisor scaffold
 - [ ] `dev/dev-sup401-2026-04-26T19:35-supervisor-stub-script.md` — Supervisor stub script + idempotent install. Status: ready. From: epic-os-supervisor-scaffold. Blocked-by: cli301.
