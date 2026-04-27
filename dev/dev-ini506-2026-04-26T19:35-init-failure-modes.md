@@ -5,9 +5,10 @@ created: 2026-04-26T19:35:00-07:00
 title: Failure-mode handling (BMAD-fail / gh-not-auth / no-remote)
 from: _bmad-output/planning-artifacts/epic-init-skill.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: in-progress
+owner: /devx-2026-04-27T20:00
 blocked_by: [ini503, ini505]
-branch: develop/dev-ini506
+branch: feat/dev-ini506
 ---
 
 ## Goal
@@ -33,3 +34,4 @@ Implement `src/lib/init-failure.ts` covering the three Phase 0 failure modes. Ad
 ## Status log
 
 - 2026-04-26T19:35 — created by /devx-plan
+- 2026-04-27T20:00 — claimed by /devx (single-branch YOLO; branch resolved to feat/dev-ini506 from devx.config.yaml git.branch_prefix; spec frontmatter `branch:` corrected from develop/* to feat/*)
