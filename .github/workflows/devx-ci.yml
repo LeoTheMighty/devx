@@ -1,0 +1,45 @@
+# devx CI — Phase 0 surface area is the @devx/cli npm package at repo root.
+#
+# Matrix runs on macos-latest + ubuntu-latest (per cli305 AC#3). Windows-host
+# install is documented in INSTALL.md but not gated in CI for Phase 0.
+#
+# Future workflow steps (when the surfaces land):
+# - flutter analyze + flutter test for mobile/ (Phase 8 onward)
+# - bun test for worker/ (Phase 4 mobile-relay)
+#
+# Spec: dev/dev-cli305-2026-04-26T19:35-cli-cross-platform-install.md
+# Config: devx.config.yaml → ci.workflow_path
+
+name: devx-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  cli:
+    name: cli (${{ matrix.os }} / node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+        node: ['20']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
