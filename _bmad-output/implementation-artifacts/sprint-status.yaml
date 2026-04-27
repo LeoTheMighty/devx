@@ -30,7 +30,7 @@ plans:
         stories:
           - key: cfg201
             title: JSON schema for all 15 sections of devx.config.yaml
-            status: backlog
+            status: done
           - key: cfg202
             title: YAML round-trip lib using eemeli/yaml
             status: done

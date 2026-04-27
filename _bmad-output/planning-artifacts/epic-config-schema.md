@@ -119,7 +119,7 @@ None.
 - **Locked decisions fed forward**:
   - `eemeli/yaml` `parseDocument` mode (NOT `js-yaml`) is the canonical YAML library across all devx Node code.
   - Leaf-scalar writes only in Phase 0; sub-tree writes are a Phase 1 follow-up. Documented in cfg202.
-  - User-config path: `~/.devx/config.yaml` cross-platform (NOT XDG; one user-visible directory under `~/.devx/`).
+  - User-config path: XDG-on-Linux (`$XDG_CONFIG_HOME/devx/config.yaml` → fall back to `~/.config/devx/config.yaml`) and `~/.devx/config.yaml` on macOS+WSL. (Updated by cfgret 2026-04-27 — earlier draft said `~/.devx/` cross-platform; cfg202 implemented XDG-on-Linux per its spec AC. Fixing the loser per `docs/DESIGN.md § Source-of-truth precedence`.)
   - Required keys: `mode`, `project.shape` (everything else has defaults).
   - Schema ships embedded in npm package at `_devx/config-schema.json` (NOT under `_bmad/` per CONFIG.md's stale path).
   - `devx config --list` added to cfg204 ACs.
