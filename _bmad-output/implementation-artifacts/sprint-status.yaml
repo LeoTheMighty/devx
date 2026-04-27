@@ -81,7 +81,7 @@ plans:
             blocked_by: [sup401]
           - key: sup403
             title: Linux systemd-user .service generator + enable
-            status: backlog
+            status: ready-for-dev
             blocked_by: [sup401]
           - key: sup404
             title: Windows/WSL Task Scheduler XML generator

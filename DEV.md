@@ -25,7 +25,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 ### Epic 4 — OS supervisor scaffold
 - [x] `dev/dev-sup401-2026-04-26T19:35-supervisor-stub-script.md` — Supervisor stub script + idempotent install. Status: done. From: epic-os-supervisor-scaffold. Blocked-by: cli301. PR: https://github.com/LeoTheMighty/devx/pull/13 (merged b6bb9dd).
 - [x] `dev/dev-sup402-2026-04-26T19:35-supervisor-launchd.md` — macOS launchd plist generator + bootstrap. Status: done. Blocked-by: sup401. PR: https://github.com/LeoTheMighty/devx/pull/14 (merged c2c7044).
-- [ ] `dev/dev-sup403-2026-04-26T19:35-supervisor-systemd.md` — Linux systemd-user .service generator + enable. Status: ready. Blocked-by: sup401.
+- [/] `dev/dev-sup403-2026-04-26T19:35-supervisor-systemd.md` — Linux systemd-user .service generator + enable. Status: in-progress. Blocked-by: sup401.
 - [ ] `dev/dev-sup404-2026-04-26T19:35-supervisor-task-scheduler.md` — Windows/WSL Task Scheduler XML generator. Status: ready. Blocked-by: sup401.
 - [ ] `dev/dev-sup405-2026-04-26T19:35-supervisor-platform-detect.md` — Platform auto-detect dispatch + post-install verification. Status: ready. Blocked-by: sup402, sup403, sup404.
 

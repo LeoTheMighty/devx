@@ -5,9 +5,10 @@ created: 2026-04-26T19:35:00-07:00
 title: Linux systemd-user .service generator + enable
 from: _bmad-output/planning-artifacts/epic-os-supervisor-scaffold.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: in-progress
+owner: /devx-2026-04-26T21:00-sup403
 blocked_by: [sup401]
-branch: develop/dev-sup403
+branch: feat/dev-sup403
 ---
 
 ## Goal
@@ -34,3 +35,4 @@ Implement the Linux supervisor installer: render `devx-{manager,concierge}.servi
 ## Status log
 
 - 2026-04-26T19:35 — created by /devx-plan
+- 2026-04-26T21:00 — claimed by /devx in session 2026-04-26T21:00-sup403
