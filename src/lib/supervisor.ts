@@ -1,4 +1,4 @@
-// Supervisor installer — Phase 0 (sup401 + sup402 + sup403).
+// Supervisor installer — Phase 0 (sup401 + sup402 + sup403 + sup404).
 //
 // Public surface:
 //   - installStub() / uninstallStub()        — sup401: ships ~/.devx/bin/devx-supervisor-stub.sh
@@ -9,12 +9,13 @@
 //
 // Shared helpers (atomic write, hash, state-file IO) live in
 // supervisor-internal.ts so the platform-specific modules
-// (supervisor-launchd.ts, supervisor-systemd.ts, future supervisor-task-scheduler.ts)
+// (supervisor-launchd.ts, supervisor-systemd.ts, supervisor-task-scheduler.ts)
 // can reuse them without duplicating logic.
 //
-// Spec: dev/dev-sup401-2026-04-26T19:35-supervisor-stub-script.md (stub)
-//       dev/dev-sup402-2026-04-26T19:35-supervisor-launchd.md      (launchd dispatch)
-//       dev/dev-sup403-2026-04-26T19:35-supervisor-systemd.md      (systemd dispatch)
+// Spec: dev/dev-sup401-2026-04-26T19:35-supervisor-stub-script.md     (stub)
+//       dev/dev-sup402-2026-04-26T19:35-supervisor-launchd.md         (launchd dispatch)
+//       dev/dev-sup403-2026-04-26T19:35-supervisor-systemd.md         (systemd dispatch)
+//       dev/dev-sup404-2026-04-26T19:35-supervisor-task-scheduler.md  (task-scheduler dispatch)
 // Epic: _bmad-output/planning-artifacts/epic-os-supervisor-scaffold.md
 
 import { existsSync, readFileSync, rmSync } from "node:fs";
@@ -42,6 +43,11 @@ import {
   installSystemd,
   uninstallSystemd,
 } from "./supervisor-systemd.js";
+import {
+  type SchtasksExec,
+  installTaskScheduler,
+  uninstallTaskScheduler,
+} from "./supervisor-task-scheduler.js";
 
 export type InstallResult = "fresh" | "kept" | "rewritten";
 export type UninstallResult = "removed" | "absent";
@@ -69,13 +75,18 @@ export interface InstallSupervisorOpts {
   logDir?: string;
   /** Injected launchctl/systemctl/loginctl/schtasks invoker for tests.
    *  Each platform narrows this to its own type at the dispatch boundary. */
-  exec?: LaunchctlExec | SystemdExec;
+  exec?: LaunchctlExec | SystemdExec | SchtasksExec;
   /** Override `process.getuid()`. Tests pass a fixed uid. (launchd-only) */
   uid?: number;
   /** systemd-only: invoke `loginctl enable-linger <user>` so units survive logout. */
   linger?: boolean;
-  /** systemd-only: username for loginctl. Defaults to `os.userInfo().username`. */
+  /** Username for loginctl (systemd) / `wsl.exe -u <user>` (task-scheduler).
+   *  Defaults to `os.userInfo().username`. */
   user?: string;
+  /** task-scheduler-only: WSL distro name for `wsl.exe -d <distro>`. Default: `Ubuntu`. */
+  distro?: string;
+  /** task-scheduler-only: absolute WSL home dir, e.g. `/home/leo`. Default: `/home/<user>`. */
+  wslHome?: string;
 }
 
 const STUB_FILENAME = "devx-supervisor-stub.sh";
@@ -165,9 +176,9 @@ export function uninstallStub(opts: InstallStubOpts = {}): UninstallResult {
 /**
  * Install a supervisor unit (launchd / systemd / Task Scheduler).
  *
- * Phase 0 implements `launchd` (sup402) and `systemd` (sup403). `task-scheduler`
- * throws with a forward-pointer to its story; sup405 adds the platform
- * auto-detect dispatch on top of this entry point.
+ * Phase 0 implements `launchd` (sup402), `systemd` (sup403), and
+ * `task-scheduler` (sup404). sup405 adds the platform auto-detect dispatch
+ * on top of this entry point.
  */
 export function installSupervisor(
   role: Role,
@@ -198,7 +209,16 @@ export function installSupervisor(
         exec: opts.exec as SystemdExec | undefined,
       });
     case "task-scheduler":
-      throw new Error("installSupervisor: task-scheduler not yet implemented (sup404)");
+      return installTaskScheduler({
+        role,
+        devxHome: opts.devxHome,
+        templateDir: opts.templateDir,
+        unitDir: opts.unitDir,
+        distro: opts.distro,
+        user: opts.user,
+        wslHome: opts.wslHome,
+        exec: opts.exec as SchtasksExec | undefined,
+      });
   }
 }
 
@@ -226,6 +246,11 @@ export function uninstallSupervisor(
         exec: opts.exec as SystemdExec | undefined,
       });
     case "task-scheduler":
-      throw new Error("uninstallSupervisor: task-scheduler not yet implemented (sup404)");
+      return uninstallTaskScheduler({
+        role,
+        devxHome: opts.devxHome,
+        unitDir: opts.unitDir,
+        exec: opts.exec as SchtasksExec | undefined,
+      });
   }
 }
