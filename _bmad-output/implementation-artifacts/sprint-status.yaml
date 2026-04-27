@@ -76,7 +76,7 @@ plans:
             blocked_by: [cli304]
           - key: cliret
             title: Retro + LEARN.md updates (interim retro discipline)
-            status: ready-for-dev
+            status: done
             blocked_by: [cli301, cli302, cli303, cli304, cli305]
 
       - key: epic-os-supervisor-scaffold
