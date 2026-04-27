@@ -6,6 +6,15 @@
   "type": "object",
   "required": ["mode", "project"],
   "properties": {
+    "devx_version": {
+      "description": "Idempotency signal written by /devx-init at the top of the file. Read by /devx-init's upgrade-mode detector (ini507) — present + parseable → upgrade rerun; present + missing version → corrupt-config halt; absent → fresh init. Bump on each release; do not hand-edit.",
+      "type": "string",
+      "minLength": 1
+    },
+    "init_partial": {
+      "description": "Set to true by /devx-init's failure-mode handler (ini506) when init has deferred work (gh-not-auth, BMAD-install fail, no-remote). Other devx commands refuse to spawn in modes ≥ BETA while this flag is true. Cleared by `devx init --resume-gh` once all deferred ops succeed.",
+      "type": "boolean"
+    },
     "mode": {
       "description": "Strategic axis #1 — what kind of risk surface this project sits on. Sets default gates across every subsystem (see docs/MODES.md).",
       "enum": ["YOLO", "BETA", "PROD", "LOCKDOWN"]
