@@ -5,9 +5,10 @@
   "type": "module",
   "description": "Repo-root tooling host for devx (the project building devx). Currently exists only to run the cfg201 schema smoke test and the cfg202 config-io round-trip suite until cli301 establishes the proper @devx/cli package layout — at that point this file is consumed by the package scaffold and these devDependencies migrate there.",
   "scripts": {
-    "test": "node test/schema-smoke.mjs && tsx test/config-io.test.ts",
+    "test": "node test/schema-smoke.mjs && tsx test/config-io.test.ts && tsx test/config-validate.test.ts",
     "test:schema": "node test/schema-smoke.mjs",
     "test:config-io": "tsx test/config-io.test.ts",
+    "test:config-validate": "tsx test/config-validate.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
