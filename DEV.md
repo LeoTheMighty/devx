@@ -30,7 +30,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-sup405-2026-04-26T19:35-supervisor-platform-detect.md` — Platform auto-detect dispatch + post-install verification. Status: done. Blocked-by: sup402, sup403, sup404. PR: https://github.com/LeoTheMighty/devx/pull/17 (merged 322bbb4).
 
 ### Epic 5 — `/devx-init` skill
-- [ ] `dev/dev-ini501-2026-04-26T19:35-init-question-flow.md` — 13-question flow + skip-table inference + state detection. Status: ready. From: epic-init-skill. Blocked-by: aud103, cli301.
+- [/] `dev/dev-ini501-2026-04-26T19:35-init-question-flow.md` — 13-question flow + skip-table inference + state detection. Status: in-progress. From: epic-init-skill. Blocked-by: aud103, cli301.
 - [ ] `dev/dev-ini502-2026-04-26T19:35-init-local-writes.md` — Local file writes (config + backlogs + spec dirs + CLAUDE.md + .gitignore). Status: ready. Blocked-by: ini501, cfg204.
 - [ ] `dev/dev-ini503-2026-04-26T19:35-init-github-scaffolding.md` — GitHub-side scaffolding (workflows + PR template + develop + protection). Status: ready. Blocked-by: ini502.
 - [ ] `dev/dev-ini504-2026-04-26T19:35-init-personas-and-interview.md` — Personas + INTERVIEW.md fixed-template seeding. Status: ready. Blocked-by: ini502.
