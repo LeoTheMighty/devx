@@ -12,10 +12,12 @@
   },
   "files": [
     "dist",
+    "scripts/postinstall.js",
     "_devx/config-schema.json"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "postinstall": "node scripts/postinstall.js",
     "test": "node test/schema-smoke.mjs && tsx test/config-io.test.ts && tsx test/config-validate.test.ts && npm run build && vitest run",
     "test:schema": "node test/schema-smoke.mjs",
     "test:config-io": "tsx test/config-io.test.ts",
