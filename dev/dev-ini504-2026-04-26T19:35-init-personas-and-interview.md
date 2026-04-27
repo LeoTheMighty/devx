@@ -5,9 +5,10 @@ created: 2026-04-26T19:35:00-07:00
 title: Personas + INTERVIEW.md fixed-template seeding
 from: _bmad-output/planning-artifacts/epic-init-skill.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
-status: ready
+status: in-progress
 blocked_by: [ini502]
-branch: develop/dev-ini504
+branch: feat/dev-ini504
+owner: /devx
 ---
 
 ## Goal
@@ -33,3 +34,4 @@ Implement `src/lib/init-personas.ts` (4 real + 1 anti-persona seeding from N3 an
 ## Status log
 
 - 2026-04-26T19:35 — created by /devx-plan
+- 2026-04-27T17:00 — claimed by /devx; branch feat/dev-ini504
