@@ -5,7 +5,8 @@ created: 2026-04-28T19:30:00-07:00
 title: devx merge-gate <hash> CLI passthrough + /devx Phase 8 integration
 from: _bmad-output/planning-artifacts/epic-merge-gate-modes.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: ready
+status: in-progress
+owner: /devx-2026-04-28T22:30
 blocked_by: [mrg101]
 branch: feat/dev-mrg102
 ---
@@ -31,3 +32,4 @@ Expose `mergeGateFor()` via `devx merge-gate <hash>` CLI; wire `/devx` Phase 8 t
 ## Status log
 
 - 2026-04-28T19:30 — created by /devx-plan
+- 2026-04-28T22:30 — claimed by /devx (session 2026-04-28T22:30); branch feat/dev-mrg102 off main
