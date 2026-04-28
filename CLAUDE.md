@@ -191,13 +191,14 @@ skill is branch-model-aware; values below are this project's resolution.
 2. **Worktree**: `git worktree add .worktrees/dev-<hash> -b feat/dev-<hash>
    main`.
 3. **BMAD story**: `bmad-create-story` if no story file exists; otherwise
-   read the existing one. *Empirically across all 5 shipped Phase 0 epics
-   (25/25 stories) this step has been skipped because spec ACs already
+   read the existing one. *Empirically across 6 shipped epics (Phase 0 +
+   Phase 1's first epic; 28/28 stories: aud × 3, cfg × 4, cli × 5, sup × 5,
+   ini × 8, mrg × 3) this step has been skipped because spec ACs already
    cover what `bmad-create-story` would generate; the contract-vs-reality
    drift is tracked in `LEARN.md § Cross-epic patterns` and reaffirmed
-   in every retro to date (audret + cfgret + cliret + supret + iniret).
-   The actual /devx skill change (enforce / make conditional / drop)
-   remains user-review-required per
+   in every retro to date (audret + cfgret + cliret + supret + iniret +
+   mrgret). The actual /devx skill change (enforce / make conditional /
+   drop) remains user-review-required per
    `self_healing.user_review_required_for: [skills]`.*
 4. **Implement**: `bmad-dev-story`, red-green-refactor, all tasks/subtasks.
 5. **Self-review**: `bmad-code-review` adversarially; fix all findings
@@ -247,9 +248,11 @@ Full contract: `.claude/commands/devx.md`.
 - **Self-review is non-skippable.** Every dev story runs `bmad-code-review`
   after implementation, fixes ALL findings (HIGH/MED/LOW) without asking,
   and re-runs to verify. Empirically (LEARN.md cross-epic patterns) this
-  catches real semantics bugs every time across 5+ stories spanning all 4
-  Phase 0 epics — it pays for itself on every run. Skip this step and
-  load-bearing bugs ship.
+  catches real semantics bugs every time across 6 shipped epics — all 5
+  Phase 0 epics + Phase 1's first epic (mrg). It pays for itself on every
+  run. Skip this step and load-bearing bugs ship. The correct shape when
+  there's nothing to fix is explicit-zero ("self-review found nothing
+  actionable"), not omission — see `LEARN.md § epic-merge-gate-modes` E7.
 
 ---
 
@@ -270,6 +273,19 @@ Full contract: `.claude/commands/devx.md`.
 
 All 5 epics shipped + retroed: BMAD audit (PR #19 retro), config schema +
 CLI (PR #20), CLI skeleton (PR #21), OS supervisor scaffold (PR #22),
-`/devx-init` skill (this PR). 25 parent stories across the 5 epics; +225
-net tests in the ini epic alone (largest of any Phase 0 epic). The Phase 1
-single-agent closed loop is next.
+`/devx-init` skill (PR #30). 25 parent stories across the 5 epics; +225
+net tests in the ini epic alone (largest of any Phase 0 epic).
+
+## Status: Phase 1 — Single-agent core loop (in flight, 1/5 epics shipped)
+
+epic-merge-gate-modes shipped (PRs #31 mrg101 + #32 mrg102 + #33 mrg103 +
+this PR mrgret). +92 net tests across the 3 stories. Delivers the single
+mode-derived merge-gate primitive consumed by `/devx` Phase 8 today (via
+`devx merge-gate <hash>`) and by the latent `/devx-manage` promotion path
+when split-branch users arrive (`promoteIntegrationToDefault`). mrg102
+specifically unblocks dvx101 + dvx106 in epic-devx-skill.
+
+4 epics remaining: epic-pr-template (independent), epic-devx-plan-skill
+(independent), epic-devx-skill (blocked-by mrg102 ✓ + prt102), epic-devx-
+manage-minimal (blocked-by dvxret). Mobile companion v0.1 runs in
+parallel from Phase 8.
