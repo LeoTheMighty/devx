@@ -5,7 +5,8 @@ created: 2026-04-28T19:30:00-07:00
 title: Develop->main promotion code path (latent / dead-code-until-split-branch)
 from: _bmad-output/planning-artifacts/epic-merge-gate-modes.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: ready
+status: in-progress
+owner: /devx-2026-04-28T23:00
 blocked_by: [mrg101]
 branch: feat/dev-mrg103
 ---
@@ -29,3 +30,4 @@ Ship `src/lib/manage/promote.ts → promoteIntegrationToDefault(mode, signals)` 
 ## Status log
 
 - 2026-04-28T19:30 — created by /devx-plan
+- 2026-04-28T23:00 — claimed by /devx (session 2026-04-28T23:00); branch feat/dev-mrg103 off main
