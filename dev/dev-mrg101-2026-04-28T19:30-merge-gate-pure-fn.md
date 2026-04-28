@@ -16,16 +16,16 @@ Ship `src/lib/merge-gate.ts` with `mergeGateFor(mode, signals): GateDecision` as
 
 ## Acceptance criteria
 
-- [ ] `src/lib/merge-gate.ts` exports `Mode`, `GateSignals`, `GateDecision`, and `mergeGateFor(mode, signals)`.
-- [ ] YOLO: `merge=true` iff `ciConclusion ∈ {success, null}` AND `lockdownActive == false`.
-- [ ] BETA: YOLO conditions + `blockingReviewComments == 0`.
-- [ ] PROD: BETA conditions + `coveragePctTouched != null AND coveragePctTouched >= 1.0`.
-- [ ] LOCKDOWN: always `merge=false`, `reason: "lockdown active; manual merge required"`.
-- [ ] Trust-gradient override: `count < initialN` returns `{merge:false, advice:["file INTERVIEW for approval"]}` BEFORE mode logic.
-- [ ] Unknown / malformed mode → `{merge:false, reason:"unknown mode: <value>"}`.
-- [ ] Missing `coveragePctTouched` under PROD → `{merge:false, reason:"PROD: coverage data missing"}`.
-- [ ] No I/O inside the function — verified by test that imports the file with `fs` and `child_process` shadowed to throw on use.
-- [ ] Tests: `test/merge-gate-truth-table.test.ts` covers ≥ 16 distinct rows; `test/merge-gate-trust-gradient.test.ts` covers override-applies + overrides-mode-success cases.
+- [x] `src/lib/merge-gate.ts` exports `Mode`, `GateSignals`, `GateDecision`, and `mergeGateFor(mode, signals)`.
+- [x] YOLO: `merge=true` iff `ciConclusion ∈ {success, null}` AND `lockdownActive == false`.
+- [x] BETA: YOLO conditions + `blockingReviewComments == 0`.
+- [x] PROD: BETA conditions + `coveragePctTouched != null AND coveragePctTouched >= 1.0`.
+- [x] LOCKDOWN: always `merge=false`, `reason: "lockdown active; manual merge required"`.
+- [x] Trust-gradient override: `count < initialN` returns `{merge:false, advice:["file INTERVIEW for approval"]}` BEFORE mode logic.
+- [x] Unknown / malformed mode → `{merge:false, reason:"unknown mode: <value>"}`.
+- [x] Missing `coveragePctTouched` under PROD → `{merge:false, reason:"PROD: coverage data missing"}`.
+- [x] No I/O inside the function — verified by test that imports the file with `fs` and `child_process` shadowed to throw on use.
+- [x] Tests: `test/merge-gate-truth-table.test.ts` covers ≥ 16 distinct rows; `test/merge-gate-trust-gradient.test.ts` covers override-applies + overrides-mode-success cases.
 
 ## Technical notes
 
@@ -36,3 +36,4 @@ Ship `src/lib/merge-gate.ts` with `mergeGateFor(mode, signals): GateDecision` as
 
 - 2026-04-28T19:30 — created by /devx-plan
 - 2026-04-28T20:05 — claimed by /devx in session /devx-2026-04-28-mrg101 (Phase 1 epic-1 starter; no blockers)
+- 2026-04-28T20:48 — implemented `src/lib/merge-gate.ts` + 3 test files (truth-table 18 rows, trust-gradient 9 cases, no-io 2). All 10 ACs satisfied. Self-review found 1 MED (audit-log reason text for runtime lockdown was code-shaped) + 2 LOW (plural noun, project-context leak in test) — all fixed before commit per CLAUDE.md self-review-non-skippable. Local CI green: 455/455 tests pass (424 prior + 31 new).
