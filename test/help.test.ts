@@ -1,23 +1,24 @@
-// Help-listing tests (cli303 + ini506).
+// Help-listing tests (cli303 + ini506 + mrg102).
 //
 // Three layers of coverage:
-//   1. Order: positions of the 12 command lines in `devx --help` are strictly
-//      monotonically increasing in the canonical [config, init, ask, kill,
-//      pause, restart, resume, status, serve, tail, ui, eject] order — the
-//      exact shape required by the AC (phase ASC; ties alphabetical).
-//      ini506 added `init` as the second Phase-0 real command (tied with
-//      `config`; alphabetical tie-break puts `config` first).
+//   1. Order: positions of the 13 command lines in `devx --help` are strictly
+//      monotonically increasing in the canonical [config, init, merge-gate,
+//      ask, kill, pause, restart, resume, status, serve, tail, ui, eject]
+//      order — the exact shape required by the AC (phase ASC; ties
+//      alphabetical). ini506 added `init` as the second Phase-0 real command;
+//      mrg102 added `merge-gate` as the first (and only) Phase-1 real command.
 //   2. Annotation: each of the 10 stubs has its `(coming in Phase N —
-//      epic-<slug>)` annotation on its line; the two real Phase-0 commands
-//      (`config`, `init`) have no `(coming` annotation. Drift (e.g. an editor
-//      replacing the em-dash with a hyphen) fails this layer before reaching
-//      the snapshot.
+//      epic-<slug>)` annotation on its line; the three real commands
+//      (`config`, `init`, `merge-gate`) have no `(coming` annotation. Drift
+//      (e.g. an editor replacing the em-dash with a hyphen) fails this layer
+//      before reaching the snapshot.
 //   3. Inline snapshot: full `--help` stdout pinned. Any wording change (the
 //      program description, an option label, a stub epic slug) must update
 //      the snapshot — that's the "atomic" property the spec asks for.
 //
 // Spec: dev/dev-cli303-2026-04-26T19:35-cli-help-listing.md
 // Spec: dev/dev-ini506-2026-04-26T19:35-init-failure-modes.md (added `init`)
+// Spec: dev/dev-mrg102-2026-04-28T19:30-merge-gate-cli.md (added `merge-gate`)
 
 import { describe, expect, it } from "vitest";
 
@@ -53,6 +54,7 @@ function captureHelp(): string {
 const expectedOrder = [
   "config",
   "init",
+  "merge-gate",
   "ask",
   "kill",
   "pause",
@@ -95,7 +97,7 @@ function lineIndexOf(out: string, name: string): number {
 }
 
 describe("cli303 — devx --help command listing", () => {
-  it("lists all 12 commands sorted by phase ASC; ties alphabetical", () => {
+  it("lists all 13 commands sorted by phase ASC; ties alphabetical", () => {
     const out = captureHelp();
     const positions = expectedOrder.map((name) => ({
       name,
@@ -126,9 +128,9 @@ describe("cli303 — devx --help command listing", () => {
     expect(out).not.toContain("- epic-");
   });
 
-  it("real Phase-0 commands (config, init) are listed without a (coming annotation", () => {
+  it("real commands (config, init, merge-gate) are listed without a (coming annotation", () => {
     const out = captureHelp();
-    for (const name of ["config", "init"]) {
+    for (const name of ["config", "init", "merge-gate"]) {
       const lineStart = lineIndexOf(out, name);
       expect(lineStart, `expected '${name}' to appear in --help`).toBeGreaterThanOrEqual(0);
       // Commander wraps long descriptions onto continuation lines indented to
@@ -156,25 +158,29 @@ describe("cli303 — devx --help command listing", () => {
       devx — autonomous development system built on BMAD
 
       Options:
-        -V, --version               output the version number
-        -h, --help                  display help for command
+        -V, --version                output the version number
+        -h, --help                   display help for command
 
       Commands:
-        config [options] [args...]  Get or set values in devx.config.yaml (project)
-                                    or ~/.devx/config.yaml (user)
-        init [options]              Resume deferred /devx-init work (--resume-gh).
-                                    Fresh-init lives in the /devx-init slash command.
-        ask                         (coming in Phase 2 — epic-devx-concierge-skill)
-        kill                        (coming in Phase 2 — epic-devx-concierge-skill)
-        pause                       (coming in Phase 2 — epic-devx-manage-minimal)
-        restart                     (coming in Phase 2 — epic-devx-concierge-skill)
-        resume                      (coming in Phase 2 — epic-devx-manage-minimal)
-        status                      (coming in Phase 2 — epic-devx-concierge-skill)
-        serve                       (coming in Phase 4 — epic-devx-serve-web)
-        tail                        (coming in Phase 4 — epic-devx-ui-tui)
-        ui                          (coming in Phase 4 — epic-devx-ui-tui)
-        eject                       (coming in Phase 10 — epic-eject-cli)
-        help [command]              display help for command
+        config [options] [args...]   Get or set values in devx.config.yaml (project)
+                                     or ~/.devx/config.yaml (user)
+        init [options]               Resume deferred /devx-init work (--resume-gh).
+                                     Fresh-init lives in the /devx-init slash
+                                     command.
+        merge-gate [options] <hash>  Compute the mode-derived merge decision for a
+                                     spec PR (Phase 1). Emits JSON; exit 0 = merge, 1
+                                     = no-merge, 2 = signal trouble.
+        ask                          (coming in Phase 2 — epic-devx-concierge-skill)
+        kill                         (coming in Phase 2 — epic-devx-concierge-skill)
+        pause                        (coming in Phase 2 — epic-devx-manage-minimal)
+        restart                      (coming in Phase 2 — epic-devx-concierge-skill)
+        resume                       (coming in Phase 2 — epic-devx-manage-minimal)
+        status                       (coming in Phase 2 — epic-devx-concierge-skill)
+        serve                        (coming in Phase 4 — epic-devx-serve-web)
+        tail                         (coming in Phase 4 — epic-devx-ui-tui)
+        ui                           (coming in Phase 4 — epic-devx-ui-tui)
+        eject                        (coming in Phase 10 — epic-eject-cli)
+        help [command]               display help for command
       "
     `);
   });

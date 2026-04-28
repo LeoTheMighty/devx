@@ -26,6 +26,7 @@ import * as configCommand from "./commands/config.js";
 import * as ejectCommand from "./commands/eject.js";
 import * as initCommand from "./commands/init.js";
 import * as killCommand from "./commands/kill.js";
+import * as mergeGateCommand from "./commands/merge-gate.js";
 import * as pauseCommand from "./commands/pause.js";
 import * as restartCommand from "./commands/restart.js";
 import * as resumeCommand from "./commands/resume.js";
@@ -46,6 +47,7 @@ const commands: CommandModule[] = [
   ejectCommand,
   initCommand,
   killCommand,
+  mergeGateCommand,
   pauseCommand,
   restartCommand,
   resumeCommand,
