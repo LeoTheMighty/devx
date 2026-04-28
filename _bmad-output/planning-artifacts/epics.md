@@ -42,3 +42,37 @@ epic-init-skill ─────────────┘               (orches
 **Recommended execution order** (matching dependency chain): `epic-bmad-audit` → `epic-config-schema` → `epic-cli-skeleton` → `epic-os-supervisor-scaffold` → `epic-init-skill`.
 
 **Parallel-safe pairs:** `epic-bmad-audit` ∥ `epic-config-schema` (audit is research, config-schema is code — no shared surface). `epic-cli-skeleton` ∥ `epic-os-supervisor-scaffold` after config-schema lands (both depend on `devx` binary existing but don't depend on each other once the entrypoint is in place).
+
+## Addendum — 2026-04-28 — Phase 1 Single-agent core loop (devx itself)
+
+Five epics, derived from [`docs/ROADMAP.md § Phase 1`](../../docs/ROADMAP.md#phase-1--single-agent-core-loop-week-2) and [`plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md`](../../plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md). Plan mode: YOLO, project_shape: empty-dream, thoroughness: balanced. Stack layers: backend + infra (no frontend layer this phase).
+
+| # | Slug | User sees | Layers touched |
+|---|---|---|---|
+| 1 | `epic-merge-gate-modes` | "Mode-derived merge gate is one function call. Same primitive consumed by `/devx`'s feature→main merge (single-branch) and the latent `/devx-manage` develop→main promotion (split-branch). Single source of truth." | backend |
+| 2 | `epic-pr-template` | "Every agent PR opens with the spec-file link as the first line and `Mode: <mode>` stamped at PR-open time. Reviewers know which gate auto-merge is applying." | infra |
+| 3 | `epic-devx-plan-skill` | "`/devx-plan` runs the seven-phase loop end-to-end with branch-derivation, retro-row co-emission, source-of-truth-precedence enforcement, and a structurally explicit Phase 6.5 mode gate. The next plan I run produces ready-to-claim work with zero hand-edits." | backend |
+| 4 | `epic-devx-skill` | "`/devx` runs the nine-phase loop end-to-end with claim-push-before-PR, conditional `bmad-create-story` (canary), adversarial self-review status-log discipline, mode-derived coverage gate, three-state remote-CI probe, and mode-gated auto-merge via the unified primitive. The 5 LEARN.md cross-epic patterns from Phase 0 don't regress." | backend |
+| 5 | `epic-devx-manage-minimal` | "`/devx-manage` v0 runs as a thin scheduler+supervisor under the OS supervisor unit. It picks one ready DEV.md item, spawns one `claude /devx <hash>` subprocess (hard cap N=1), restarts on plain crash, persists state to `.devx-cache/state/`. The closed loop runs without me invoking `/devx`." | backend + infra |
+
+### Dependencies
+
+```
+epic-merge-gate-modes ──┐                       (independent — landable first)
+                        │
+epic-pr-template ───────┤                       (independent — landable first; epic-init-skill already shipped)
+                        │
+epic-devx-plan-skill ───┤                       (independent of other Phase 1 peers)
+                        │
+                        ▼
+                 epic-devx-skill                (consumes mrg102 CLI passthrough + prt102 template substitution)
+                        │
+                        ▼
+            epic-devx-manage-minimal            (spawns claude /devx <hash> — needs Phase 1 /devx stable)
+```
+
+**Recommended execution order:** `epic-merge-gate-modes` ∥ `epic-pr-template` ∥ `epic-devx-plan-skill` (parallel-safe; pick top of DEV.md when starting) → `epic-devx-skill` (after mrg + prt land) → `epic-devx-manage-minimal` (after dvx ships).
+
+**Parallel-safe pairs:** mrg ∥ prt ∥ pln (no shared files). Within each epic, stories follow the blocked-by graph in DEV.md / sprint-status.yaml.
+
+**Story count:** 24 parent stories + 5 retro stories = 29 specs total. Comparable to Phase 0's 25.

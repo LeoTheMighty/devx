@@ -114,6 +114,18 @@ Sections are added by each `*ret` story when it runs. Empty sections below are p
 - [E11] [low] [docs] **ini507/ini508 minimally-populated status logs** ("claimed by /devx" / "merged via PR #N" without intermediate implementation/test-count/review milestones). Same-epic internal observation that correlates with E7's self-review-omission pattern; the cross-epic trajectory is captured in E7. Likely root cause is /devx run-style variance rather than story-shape. — recorded; revisit as part of E7's eventual cross-epic promotion.
 - [E12] [low] [docs] **Phase 0 closure.** iniret is the 5th and final shipped-epic retro of Phase 0 — Foundation. After this PR merges, all 5 Phase 0 epics have a formal retro on file (aud / cfg / cli / sup / ini). The Cross-epic-patterns section is now seeded with a meaningful set of confirmed conventions; Phase 1's first epic retro inherits a richer baseline than aud did.
 
+### Phase 1 — Single-agent core loop (plan: plan-b01000)
+
+#### epic-merge-gate-modes
+
+#### epic-pr-template
+
+#### epic-devx-plan-skill
+
+#### epic-devx-skill
+
+#### epic-devx-manage-minimal
+
 ### Mobile companion v0.1 (plan: plan-7a2d1f)
 
 #### epic-flutter-scaffold-ios-device

@@ -79,3 +79,44 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [ ] `dev/dev-d40006-2026-04-23T13:35-deep-linking-inline-reply.md` — Deep-linking + iOS inline-reply. Status: ready. Blocked-by: d40005.
 - [ ] `dev/dev-d40007-2026-04-23T13:36-laptop-fastpath-webhook.md` — Laptop-side fast-path webhook receiver. Status: ready. Blocked-by: d40003. Optional.
 - [ ] `dev/dev-d40ret-2026-04-27T08:00-retro-realtime-updates-push.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: d40001, d40002, d40003, d40004, d40005, d40006.
+
+## Phase 1 — Single-agent core loop (plan: plan-b01000)
+
+### Epic 1 — Mode-derived merge gate (renamed from epic-promotion-gate-yolo-beta)
+- [ ] `dev/dev-mrg101-2026-04-28T19:30-merge-gate-pure-fn.md` — mergeGateFor() pure function + truth-table tests. Status: ready. From: epic-merge-gate-modes.
+- [ ] `dev/dev-mrg102-2026-04-28T19:30-merge-gate-cli.md` — devx merge-gate <hash> CLI passthrough + /devx Phase 8 integration. Status: ready. Blocked-by: mrg101.
+- [ ] `dev/dev-mrg103-2026-04-28T19:30-promote-integration.md` — Develop→main promotion code path (latent / dead-code-until-split-branch). Status: ready. Blocked-by: mrg101.
+- [ ] `dev/dev-mrgret-2026-04-28T19:30-retro-merge-gate-modes.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: mrg101, mrg102, mrg103.
+
+### Epic 2 — PR template (spec link as first line + Mode stamp)
+- [ ] `dev/dev-prt101-2026-04-28T19:30-pr-template-init-write.md` — Template ships + /devx-init writes it idempotently. Status: ready. From: epic-pr-template.
+- [ ] `dev/dev-prt102-2026-04-28T19:30-pr-template-substitution.md` — /devx Phase 7 reads template + substitutes mode + spec path. Status: ready. Blocked-by: prt101.
+- [ ] `dev/dev-prtret-2026-04-28T19:30-retro-pr-template.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: prt101, prt102.
+
+### Epic 3 — /devx-plan skill (canonical PlanAgent)
+- [ ] `dev/dev-pln101-2026-04-28T19:30-plan-derive-branch.md` — deriveBranch() helper + devx plan-helper derive-branch CLI. Status: ready. From: epic-devx-plan-skill.
+- [ ] `dev/dev-pln102-2026-04-28T19:30-plan-emit-retro.md` — emitRetroStory() helper + retro-row co-emission discipline. Status: ready. Blocked-by: pln101.
+- [ ] `dev/dev-pln103-2026-04-28T19:30-plan-validate-emit.md` — devx plan-helper validate-emit cross-reference checker. Status: ready. Blocked-by: pln101, pln102.
+- [ ] `dev/dev-pln104-2026-04-28T19:30-plan-precedence-enforcement.md` — Source-of-truth-precedence enforcement at planning time. Status: ready. Blocked-by: pln103.
+- [ ] `dev/dev-pln105-2026-04-28T19:30-plan-mode-gate.md` — Phase 6.5 mode gate is structurally explicit. Status: ready. Blocked-by: pln103.
+- [ ] `dev/dev-pln106-2026-04-28T19:30-plan-summary-format.md` — Phase 8 final-summary Next command block format. Status: ready. Blocked-by: pln102.
+- [ ] `dev/dev-plnret-2026-04-28T19:30-retro-devx-plan-skill.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: pln101, pln102, pln103, pln104, pln105, pln106.
+
+### Epic 4 — /devx skill (canonical DevAgent)
+- [ ] `dev/dev-dvx101-2026-04-28T19:30-devx-claim-atomic.md` — Atomic claim + push-before-PR + spec lock. Status: ready. From: epic-devx-skill. Blocked-by: mrg102, prt102.
+- [ ] `dev/dev-dvx102-2026-04-28T19:30-devx-conditional-create-story.md` — Conditional bmad-create-story with canary flag. Status: ready. Blocked-by: dvx101.
+- [ ] `dev/dev-dvx103-2026-04-28T19:30-devx-self-review-discipline.md` — Phase 4 self-review status-log assertion. Status: ready. Blocked-by: dvx102.
+- [ ] `dev/dev-dvx104-2026-04-28T19:30-devx-coverage-gate.md` — Mode-derived coverage gate (Phase 5). Status: ready. Blocked-by: dvx101.
+- [ ] `dev/dev-dvx105-2026-04-28T19:30-devx-await-remote-ci.md` — Three-state remote-CI probe + ScheduleWakeup polling. Status: ready. Blocked-by: dvx101.
+- [ ] `dev/dev-dvx106-2026-04-28T19:30-devx-auto-merge-gate.md` — Phase 8 auto-merge wired through devx merge-gate. Status: ready. Blocked-by: dvx101, mrg102.
+- [ ] `dev/dev-dvx107-2026-04-28T19:30-devx-stop-after-handoff.md` — stop_after handling + Handoff Snippet on early stop. Status: ready. Blocked-by: dvx106.
+- [ ] `dev/dev-dvxret-2026-04-28T19:30-retro-devx-skill.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: dvx101, dvx102, dvx103, dvx104, dvx105, dvx106, dvx107.
+
+### Epic 5 — /devx-manage v0 (minimal scheduler + supervisor)
+- [ ] `dev/dev-mgr101-2026-04-28T19:30-manage-scaffold.md` — Manager scaffold + devx manage --once single-tick CLI. Status: ready. From: epic-devx-manage-minimal. Blocked-by: dvxret.
+- [ ] `dev/dev-mgr102-2026-04-28T19:30-manage-state-files.md` — State persistence: schedule.json + manager.json + heartbeat.json with atomic writes. Status: ready. Blocked-by: mgr101.
+- [ ] `dev/dev-mgr103-2026-04-28T19:30-manage-reconcile.md` — Reconcile loop: read backlogs + compute diff + detect unblocks. Status: ready. Blocked-by: mgr102.
+- [ ] `dev/dev-mgr104-2026-04-28T19:30-manage-spawn-worker.md` — Spawn one worker (hard cap N=1) + claude /devx <hash> subprocess. Status: ready. Blocked-by: mgr103.
+- [ ] `dev/dev-mgr105-2026-04-28T19:30-manage-crash-restart.md` — Plain-crash restart logic + max-restarts-per-spec gate. Status: ready. Blocked-by: mgr104.
+- [ ] `dev/dev-mgr106-2026-04-28T19:30-manage-lock-heartbeat.md` — Manager lock + heartbeat + SIGTERM-clean. Status: ready. Blocked-by: mgr101.
+- [ ] `dev/dev-mgrret-2026-04-28T19:30-retro-devx-manage-minimal.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: mgr101, mgr102, mgr103, mgr104, mgr105, mgr106.

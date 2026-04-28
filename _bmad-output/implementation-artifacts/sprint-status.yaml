@@ -260,3 +260,145 @@ plans:
             status: backlog
             optional: true
             blocked_by: [dev-d40003]
+
+  - key: plan-b01000-single-agent-loop
+    title: Phase 1 — Single-agent core loop (/devx-plan + /devx + minimal /devx-manage)
+    status: backlog
+    epics:
+      - key: epic-merge-gate-modes
+        title: Mode-derived merge gate (renamed from epic-promotion-gate-yolo-beta)
+        status: backlog
+        stories:
+          - key: mrg101
+            title: mergeGateFor() pure function + truth-table tests
+            status: backlog
+          - key: mrg102
+            title: devx merge-gate <hash> CLI passthrough + /devx Phase 8 integration
+            status: backlog
+            blocked_by: [mrg101]
+          - key: mrg103
+            title: Develop→main promotion code path (latent / dead-code-until-split-branch)
+            status: backlog
+            blocked_by: [mrg101]
+          - key: mrgret
+            title: Retro + LEARN.md updates (interim retro discipline)
+            status: backlog
+            blocked_by: [mrg101, mrg102, mrg103]
+
+      - key: epic-pr-template
+        title: PR template (spec link as first line + Mode stamp)
+        status: backlog
+        stories:
+          - key: prt101
+            title: Template ships + /devx-init writes it idempotently
+            status: backlog
+          - key: prt102
+            title: /devx Phase 7 reads template + substitutes mode + spec path
+            status: backlog
+            blocked_by: [prt101]
+          - key: prtret
+            title: Retro + LEARN.md updates (interim retro discipline)
+            status: backlog
+            blocked_by: [prt101, prt102]
+
+      - key: epic-devx-plan-skill
+        title: /devx-plan skill (canonical PlanAgent)
+        status: backlog
+        stories:
+          - key: pln101
+            title: deriveBranch() helper + devx plan-helper derive-branch CLI
+            status: backlog
+          - key: pln102
+            title: emitRetroStory() helper + retro-row co-emission discipline
+            status: backlog
+            blocked_by: [pln101]
+          - key: pln103
+            title: devx plan-helper validate-emit cross-reference checker
+            status: backlog
+            blocked_by: [pln101, pln102]
+          - key: pln104
+            title: Source-of-truth-precedence enforcement at planning time
+            status: backlog
+            blocked_by: [pln103]
+          - key: pln105
+            title: Phase 6.5 mode gate is structurally explicit
+            status: backlog
+            blocked_by: [pln103]
+          - key: pln106
+            title: Phase 8 final-summary Next command block format
+            status: backlog
+            blocked_by: [pln102]
+          - key: plnret
+            title: Retro + LEARN.md updates (interim retro discipline)
+            status: backlog
+            blocked_by: [pln101, pln102, pln103, pln104, pln105, pln106]
+
+      - key: epic-devx-skill
+        title: /devx skill (canonical DevAgent)
+        status: backlog
+        stories:
+          - key: dvx101
+            title: Atomic claim + push-before-PR + spec lock
+            status: backlog
+            blocked_by: [mrg102, prt102]
+          - key: dvx102
+            title: Conditional bmad-create-story with canary flag
+            status: backlog
+            blocked_by: [dvx101]
+          - key: dvx103
+            title: Phase 4 self-review status-log assertion
+            status: backlog
+            blocked_by: [dvx102]
+          - key: dvx104
+            title: Mode-derived coverage gate (Phase 5)
+            status: backlog
+            blocked_by: [dvx101]
+          - key: dvx105
+            title: Three-state remote-CI probe + ScheduleWakeup polling
+            status: backlog
+            blocked_by: [dvx101]
+          - key: dvx106
+            title: Phase 8 auto-merge wired through devx merge-gate
+            status: backlog
+            blocked_by: [dvx101, mrg102]
+          - key: dvx107
+            title: stop_after handling + Handoff Snippet on early stop
+            status: backlog
+            blocked_by: [dvx106]
+          - key: dvxret
+            title: Retro + LEARN.md updates (interim retro discipline)
+            status: backlog
+            blocked_by: [dvx101, dvx102, dvx103, dvx104, dvx105, dvx106, dvx107]
+
+      - key: epic-devx-manage-minimal
+        title: /devx-manage v0 (minimal scheduler + supervisor)
+        status: backlog
+        stories:
+          - key: mgr101
+            title: Manager scaffold + devx manage --once single-tick CLI
+            status: backlog
+            blocked_by: [dvxret]
+          - key: mgr102
+            title: State persistence (schedule/manager/heartbeat) with atomic writes
+            status: backlog
+            blocked_by: [mgr101]
+          - key: mgr103
+            title: Reconcile loop with hard cap N=1 enforcement
+            status: backlog
+            blocked_by: [mgr102]
+          - key: mgr104
+            title: Spawn one worker (claude /devx <hash> subprocess)
+            status: backlog
+            blocked_by: [mgr103]
+          - key: mgr105
+            title: Plain-crash restart logic + max-restarts-per-spec gate
+            status: backlog
+            blocked_by: [mgr104]
+          - key: mgr106
+            title: Manager lock + heartbeat + SIGTERM-clean
+            status: backlog
+            blocked_by: [mgr101]
+          - key: mgrret
+            title: Retro + LEARN.md updates (interim retro discipline)
+            status: backlog
+            blocked_by: [mgr101, mgr102, mgr103, mgr104, mgr105, mgr106]

@@ -319,3 +319,177 @@ If absent, write a minimal `CLAUDE.md` with: project context derived from N1, de
 ### Open questions (escalated to user — none)
 
 All Phase 0 surfaces resolved by existing locked decisions in `docs/CONFIG.md`, `docs/DESIGN.md`, `docs/MODES.md`, `docs/ROADMAP.md`, persona-leonid voice, and product-brief Moment 2. Phase 0 plan-spec mode is YOLO, project_shape is empty-dream — autonomous decisions are in scope per `/devx-plan` rules.
+
+---
+
+## Addendum — 2026-04-28 — Phase 1 Single-agent core loop (devx itself)
+
+Derived from [`docs/ROADMAP.md § Phase 1`](../../docs/ROADMAP.md#phase-1--single-agent-core-loop-week-2) and [`plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md`](../../plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md). Plan mode: YOLO, project_shape: empty-dream, thoroughness: balanced. Stack layers (per plan frontmatter): backend + infra. No frontend layer in scope this phase.
+
+### Goals
+
+1. `/devx-plan` is the canonical PlanAgent skill — research → PRD → architecture → epic chunking → party-mode → focus-group (mode-gated) → DEV.md entries — emitting `branch:` frontmatter derived from `devx.config.yaml` (no hardcoded `develop/`), retro stories with sprint-status rows, and source-of-truth precedence applied. v0 bootstrap text in `.claude/commands/devx-plan.md` is refined in-place.
+2. `/devx` is the canonical DevAgent skill — claim → worktree → (conditional bmad-create-story) → bmad-dev-story → adversarial self-review → mode-derived **merge gate** → push → wait remote-CI-if-configured → merge → cleanup. v0 bootstrap text in `.claude/commands/devx.md` is refined in-place. The `bmad-create-story` step becomes conditional on project_shape (empty-dream → skip with rationale, anything else → invoke); ships behind a canary that runs the conditional path on one in-flight story before flipping the default.
+3. `/devx-manage` v0 exists as a thin scheduler+supervisor: reads backlogs, picks one runnable item from `DEV.md`, spawns one `claude /devx <hash>` subprocess (hard-capped at N=1), persists `.devx-cache/state/{schedule.json,manager.json}`, writes `heartbeat.json` every 60s, restarts the worker on plain crash (exit code != 0). No context-rot detection (Phase 2). No event-stream parsing (Phase 2).
+4. `.github/pull_request_template.md` ships, with the spec-file link as the first line of every agent PR body and an explicit `Mode: <YOLO|BETA|PROD|LOCKDOWN>` line stamped at PR-open time so reviewers see the gate that auto-merge is using.
+5. The mode-derived **merge gate** is implemented as a single primitive (`mergeGateFor(mode)` returning the gate predicate set) consumed by both `/devx`'s feature→main merge (single-branch) and the (not-yet-exercised-in-self-host) `/devx-manage` develop→main promotion. YOLO = CI green only; BETA = CI green + no blocking PR comments; PROD = CI green + no blocking comments + 100% touched-line coverage. Single implementation, single test surface, ready for split-mode users without rework.
+
+### Non-goals (this addendum)
+
+- Context-rot detection (`epic-context-rot-detection` — Phase 2). Manager v0 supervises by PID + exit-code only.
+- Event-stream emission and consumption (`epic-events-stream` — Phase 2). Manager v0 reads spec status logs + `.devx-cache/state/*.json`, not jsonl streams.
+- Restart-from-status-log resume protocol (`epic-restart-from-status-log` — Phase 2). v0 restart respawns against the same hash but does not synthesize a resume snippet; the existing v0 `/devx`'s "is this a resume?" check at Phase 1 of its loop carries the load.
+- Crash recovery from disk after Manager dies (`epic-crash-recovery` — Phase 2). v0 logs a fatal line and exits; the OS supervisor unit (sup402/sup403/sup404) restarts it; the next tick rediscovers state from backlog files + `schedule.json`.
+- Concierge (`epic-devx-concierge-skill` — Phase 2). User invokes `devx ask` and gets the existing stub.
+- Mutual + cloud watchdog (`epic-mutual-watchdog`, `epic-cloud-watchdog` — Phase 2). v0 relies on the OS supervisor only.
+- Locks, intents, parallelism (Phase 3). v0 hard-caps at one worker.
+- TUI / web / mobile event relay (Phase 4).
+- Test, debug, retro, learn agents as scheduled workers (Phase 5). The interim `*ret` per-epic retro-story discipline continues until then.
+- Focus-group consultation in `/devx-plan` Phase 6.5 — skipped under YOLO per [`docs/MODES.md`](../../docs/MODES.md). The skill code path exists and is exercised under BETA/PROD only.
+- LOCKDOWN mode wiring beyond "do not merge; leave PR open" — full LOCKDOWN gate cascade is Phase 9.
+- Promotion-gate execution against a real develop/main project — the merge-gate primitive is built and unit-tested, but the develop→main flow is dead code in self-host until a non-YOLO devx user appears. ([`OQ-B1.4`](#open-questions-resolved-here-1) below.)
+
+### Users
+
+- **Primary:** Leonid (solo founder-engineer) — first user of the closed loop. Persona: `focus-group/personas/persona-leonid-solo-founder.md`.
+- **Anti-persona:** Morgan. "Ceremony-for-ceremony's-sake" / enterprise-flavored gates are red flags and get cut.
+
+### Functional requirements
+
+#### FR-B1: `/devx-plan` runs the seven-phase loop end-to-end
+
+The current `.claude/commands/devx-plan.md` (this skill) becomes the canonical PlanAgent skill, with the following invariants enforced:
+
+- **Phase 1 — Intake.** Reads `devx.config.yaml`, all 8 backlog files, prd.md/architecture.md/epics.md if present, sprint-status.yaml, focus-group/personas/. Honors plan frontmatter overrides for `mode`, `project_shape`, `thoroughness`.
+- **Phase 2 — Parallel research.** Spawns research agents per applicable axis (Domain + Codebase always; Frontend/Backend/Infra conditional on `stack.layers`; Market conditional on requirements). Each capped at 400 words. Synthesizes in-memory only (no research-doc write unless asked).
+- **Phase 3 — PRD synthesis** via `bmad-create-prd`. Append-only addenda — never overwrite.
+- **Phase 4 — Epic chunking.** 3–8 stories per epic. Every epic traces user action → every declared layer → result. Layer "None" allowed but must include a one-line rationale.
+- **Phase 5 — Draft.** Writes `_bmad-output/planning-artifacts/epic-<slug>.md` with `<!-- draft: pre-critique -->`, `dev/dev-<hash>-<ts>-<slug>.md` per story (frontmatter: `branch:` derived from `devx.config.yaml`, never hardcoded `develop/`), DEV.md rows, sprint-status.yaml entries, epics.md addendum heading, **per-epic `*ret` retro story** (story + DEV.md row + sprint-status row, all three present and consistent — closes the LEARN.md cross-epic-pattern bug).
+- **Phase 6 — Party-mode.** Sequential per epic; PM/UX/Dev/Architect/Infra/Murat lenses (skipped per absent layer); decisions feed forward to later epics via in-memory locked-decisions list. Rewrites epic file in place; flips comment to `<!-- refined: party-mode YYYY-MM-DD -->`.
+- **Phase 6.5 — Focus-group.** Skipped under YOLO. Under BETA/PROD: per-epic persona panel via `focus-group/prompts/new-feature-reaction.md`; writes `focus-group/sessions/session-*.md`; cross-references back to epic.
+- **Phase 7 — Readiness check** via `bmad-check-implementation-readiness`; fix in place.
+- **Phase 8 — Final summary** including a `Next command` block with exact `/devx <hash>` invocations in dependency order. Never auto-pushes; never commits.
+
+Ask-vs-YOLO discipline per the skill body: BMAD presentation menus → YOLO; net-new user-visible surface, candidate deferral, non-trivial trade-off → ask once and batch.
+
+#### FR-B2: `/devx` runs the nine-phase loop end-to-end with mode-gated merge
+
+The current `.claude/commands/devx.md` becomes the canonical DevAgent skill, with the following invariants enforced:
+
+- **Phase 1 — Claim.** Resolve item (hash | slug | `next`); flip DEV.md `[ ]`→`[/]`; spec frontmatter `status: in-progress`; status log line; **push the claim commit to remote integration branch** before opening the PR (root-cause-fix for `feedback_devx_push_claim_before_pr.md`); create worktree on the resolved branch (prefix derived from `devx.config.yaml → git.{integration_branch,branch_prefix}`); enter worktree.
+- **Phase 2 — BMAD story (conditional).** Skip with one-line rationale when `project.shape == empty-dream` AND no story file exists AND spec ACs ≥ 3 actionable items. Otherwise invoke `bmad-create-story`. Conditional ships behind a canary: one in-flight story exercises the new conditional path; if green, default flips. Spec ACs remain top of source-of-truth precedence regardless. (Resolves the LEARN.md `[high] [skill]` cross-epic pattern that hit 25/25 in Phase 0.)
+- **Phase 3 — Implement** via `bmad-dev-story`; red-green-refactor; all tasks/subtasks; story File List updated; spec status log line.
+- **Phase 4 — Self-review (adversarial, non-skippable)** via `bmad-code-review`. Find 3–10 issues minimum (zero = failed review, re-run stricter). Fix ALL HIGH/MED/LOW automatically. Re-review. (Closes the LEARN.md `[high] [code]` cross-epic pattern.)
+- **Phase 5 — Local CI** per `devx.config.yaml → projects:` for the touched surface (single-project or monorepo). Coverage gate is mode-derived: YOLO informational; BETA warn <80%; PROD block <100% line-of-touched-surface (`# devx:no-coverage <reason>` per-line opt-out); LOCKDOWN block <100% AND require browser-QA pass.
+- **Phase 6 — Commit.** One commit per story / sub-task; conventional-commit prefix; message links spec + story (when story exists). Stage files explicitly; never `git add -A`.
+- **Phase 7 — Push, PR, remote CI.** Push branch; open PR targeting resolved base; remote CI detection per `.github/workflows/` presence (no workflow → local gates authoritative; workflow + no run for branch → file INTERVIEW + stop; workflow + run → poll until completion via `ScheduleWakeup`).
+- **Phase 8 — Auto-merge (mode-gated via `mergeGateFor(mode)`).** YOLO: merge immediately on green; BETA: + no blocking comments; PROD: + coverage gate clear; LOCKDOWN: do not merge, file MANUAL.md, leave PR open. Trust-gradient `promotion.autonomy.count < initial_n` requires INTERVIEW approval (does not apply to this project; `count: 0, initial_n: 0`). After merge: `git fetch --prune && git pull --ff-only` on main worktree, remove worktree, delete local branch, update spec/sprint-status/DEV.md, commit + push the bookkeeping commit on `main`.
+- **Phase 9 — Loop or finalize.** Honors `stop_after`; emits the Handoff Snippet on early stop.
+
+Branching contract: every step reads `git.{default_branch,integration_branch,branch_prefix,pr_strategy}` from `devx.config.yaml`. `pr_strategy: direct-to-main` allowed only under YOLO single-branch. Non-existence of `integration_branch` collapses the promotion gate into the merge gate (single-branch).
+
+#### FR-B3: `/devx-manage` v0 is a thin loop, hard-capped at N=1
+
+A single TypeScript module under `src/lib/manage/` invokable as `devx manage` (the existing stub in `src/commands/` flips to real). Exits non-zero on fatal errors so the OS supervisor (sup402/3/4) restarts it. Per-tick:
+
+1. **Read state.** `DEV.md`, `INTERVIEW.md`, `MANUAL.md` (for unblock detection); `.devx-cache/state/{schedule.json,manager.json}` if present; `.devx-cache/locks/manager.lock` (acquire-or-wait with `O_EXCL`-style atomic create — same primitive as `_devx/state/*.installed.json` from epic-os-supervisor-scaffold's `supervisor-internal.ts`).
+2. **Reconcile.** Detect duplicate / superseded / completed entries. Detect INTERVIEW answers + MANUAL completions and unblock specs whose `blocked-by:` clears.
+3. **Compute desired roster.** Top one `[ ]` ready spec from `DEV.md` whose blockers are clear. **Hard cap = 1** — explicit constant; not parameterized off `capacity.max_concurrent` until Phase 3. Unit test asserts spawn-2 is rejected with the exact "Phase 1 hard cap" error.
+4. **Reconcile against running.** Read currently-spawned PIDs from `.devx-cache/state/manager.json`. If a child exists and its target spec is still ready → leave alone. If exited cleanly with target spec marked `done` → release slot, log to `manager.json`. If exited non-zero (plain crash, not rot) → respawn against the same spec, increment `crash_count`, fall back to `worker_crash_backoff_s` from config; after `manager.max_restarts_per_spec` (default 5) → mark spec `blocked` with status-log line "manager: max restarts exceeded" and file `INTERVIEW.md` entry.
+5. **Spawn if room.** Spawn `claude /devx <hash>` as a detached child via `child_process.spawn`. Persist (pid, hash, started_at, model) to `manager.json`. Atomic write (`*.tmp` + `rename`).
+6. **Heartbeat.** Append to `.devx-cache/state/heartbeat.json` (single line: `{ts, pid, generation}`); rotate at 1 MB.
+7. **Sleep.** `manager.heartbeat_interval_s` (default 60s) before next tick. SIGTERM-clean: drains a pending tick and exits 0.
+
+Out of scope for v0 (Phase 2): event-stream parsing, token-pct restart, max-worker-age restart, FOCUS reprioritization, LearnAgent scheduling, watchdog cooperation.
+
+#### FR-B4: `pull_request_template.md` ships from `_devx/templates/`
+
+`/devx-init` (epic-init-skill, already shipped) supplies templates from `_devx/templates/`. Add `pull_request_template.md` there. `/devx-init` writes it to `.github/pull_request_template.md` if not present (idempotent — never overwrite). Template body:
+
+```markdown
+<!-- devx:mode -->
+**Spec:** `<dev/dev-<hash>-<ts>-<slug>.md>`
+**Mode:** <!-- devx:auto:mode --> *(stamped at PR-open by /devx)*
+
+## Summary
+<1–3 bullets on what changed>
+
+## Acceptance criteria
+<checkbox list copied from spec>
+
+## Test plan
+<bulleted list of what local CI gates covered + any manual steps>
+
+## Notes for reviewers
+<surprises, deviations, follow-ups>
+```
+
+`/devx` Phase 7 PR-body construction reads this template, replaces `<!-- devx:auto:mode -->` with the current `devx.config.yaml → mode`, and emits the rendered body via `gh pr create --body`. Tests cover: (a) template substitution, (b) mode stamping, (c) idempotent re-write skip in `/devx-init`.
+
+#### FR-B5: Mode-derived merge gate as a single primitive
+
+A pure function `mergeGateFor(mode: Mode, signals: GateSignals): GateDecision` in `src/lib/merge-gate.ts`. Signals carry the inputs the gate cares about: `ciConclusion`, `blockingReviewComments`, `coveragePctTouched`, `lockdownActive`, `trustGradient: {count, initialN}`. Decision: `{merge: boolean, reason: string, advice?: string[]}`.
+
+| Mode | merge=true iff |
+|---|---|
+| YOLO | `ciConclusion == 'success' OR ciConclusion == null` |
+| BETA | YOLO conditions + `blockingReviewComments == 0` |
+| PROD | BETA conditions + `coveragePctTouched >= 1.0` |
+| LOCKDOWN | always false; reason = "lockdown active; manual merge required" |
+
+Trust-gradient overrides ALL: if `trustGradient.count < trustGradient.initialN`, decision is "do not auto-merge; file INTERVIEW for approval" regardless of mode. (No-op for this project; both are 0.)
+
+Consumed by:
+- `/devx` Phase 8 (skill body — invokes via `devx merge-gate <hash>` CLI passthrough or inline TS import depending on harness; story decides).
+- `/devx-manage` (when develop→main promotion lands; v0 doesn't exercise this) — re-uses the same primitive at the promotion step under split-branch projects.
+
+Tests: gate truth table per mode; trust-gradient override; LOCKDOWN regardless; signals defaulting (e.g., absent CI workflow ↔ `ciConclusion: null` ↔ green for YOLO).
+
+### Non-functional requirements
+
+- **Context budget per /devx run:** ≤ `capacity.token_budget_per_spec` (current 500K). Manager kills + respawns if exceeded (Phase 2 — out of scope here; v0 lets it run to natural completion).
+- **`/devx-manage` tick wall-clock:** ≤ 5s on a 30-spec backlog with one running worker. (Stays well under heartbeat interval.)
+- **Heartbeat freshness:** `heartbeat.json` ts within 90s of wall-clock when manager is healthy. The OS supervisor restart cycle handles older-than-300s on Phase 2's mutual-watchdog epic.
+- **Atomic state writes:** every `.devx-cache/state/*.json` write is `*.tmp` + `rename` so partial writes are impossible.
+- **Single-branch correctness:** every `/devx` run on this self-host project pushes to `feat/dev-<hash>` off `main`, PRs to `main`, squash-merges, deletes branch — no `develop` references in the actual flow (only as fallback path in skill code for split-mode projects).
+
+### Layer coverage
+
+- **Backend (CLI / skill):** FR-B1, FR-B2, FR-B3, FR-B5. The `/devx-plan` and `/devx` skill bodies live as `.claude/commands/*.md` (text, exercised by Claude Code at runtime). `/devx-manage` v0 is TypeScript under `src/lib/manage/` + `src/commands/manage.ts`. Merge gate is `src/lib/merge-gate.ts`.
+- **Infrastructure:** FR-B4 (PR template). `.github/pull_request_template.md`. The mode-stamping wire-up is in the `/devx` skill (which substitutes at PR open time via `gh pr create --body`).
+- **Frontend:** None — this phase touches no UI surface. (Mobile companion runs in parallel via plan-7a2d1f.)
+
+### Dependencies (external)
+
+- **`gh` CLI authenticated** — required for `/devx` PR open + merge. (Already required by Phase 0.)
+- **`claude` CLI on PATH** — required for `/devx-manage` v0 to spawn worker subprocesses. (Already required for any agent run.)
+- **GitHub repo with push access** — required for `/devx` PR flow. Self-host already has it.
+- **No new runtimes** — Node 20+, TypeScript, Bun all already required.
+
+### Release milestones
+
+- **M-B1.0 — `/devx-plan` runs its seven-phase loop on a real plan-spec without hand-edits to the emitted artifacts.** Test: `/devx-plan c4f1a2` (Phase 2 control plane, the next plan after this one) emits epic files + dev specs + sprint-status rows + retro stories with no hand-fixing of `branch:` frontmatter or sprint-status entries. (Validates end-to-end on the next plan that ships through this skill.)
+- **M-B1.1 — `/devx` ships a single Phase 1 story end-to-end** including the conditional `bmad-create-story` skip + canary, with the retro story authored alongside.
+- **M-B1.2 — `/devx-manage` runs as a foreground process and supervises one `/devx` invocation through claim → merge → cleanup** with crash-restart proven (kill -9 the child mid-run; manager respawns; second worker completes the same spec). Logs in `~/Library/Logs/devx/manager.log`.
+- **M-B1.3 — `pull_request_template.md` ships and is rendered on the next `/devx` PR** with `Mode: YOLO` correctly stamped.
+- **M-B1.4 — `mergeGateFor()` truth-table tests pass** for all four modes + trust-gradient override.
+
+### Success metrics
+
+- ≥ 1 Phase 2 story (i.e., something planned by /devx-plan after this Phase 1 lands) ships through `/devx-plan` → `/devx` with zero hand-edits to emitted artifacts.
+- 0 of the 5 LEARN.md `[high]` cross-epic patterns regress (`branch:` derivation, retro-row presence, source-of-truth precedence application, self-review non-skippable, `bmad-create-story` skip rationalized).
+- `/devx-manage` v0 survives 5 consecutive plain-crash restarts of its child worker without manual intervention.
+- PR template renders with the spec link as the first line on 100% of /devx-emitted PRs.
+
+### Open questions (resolved here)
+
+- **OQ-B1.1 — Promotion-gate framing under single-branch.** → Q1=(c) Rebrand `epic-promotion-gate-yolo-beta` to `epic-merge-gate-modes`. Single primitive `mergeGateFor()` consumed by `/devx` (single-branch) and `/devx-manage` (split-branch promotion when used). Built and unit-tested under self-host; develop→main path is dead code until a split-branch user arrives.
+- **OQ-B1.2 — `bmad-create-story` step in `/devx`.** → Q2=(c) Conditional + canary. Skip when `project.shape == empty-dream` AND spec ACs ≥ 3 actionable items AND no story file exists. Land via canary on one in-flight story before flipping default. Spec ACs remain top of source-of-truth precedence.
+- **OQ-B1.3 — `/devx-manage` v0 worker count.** → Q3=Hard cap N=1. `capacity.max_concurrent: 5` from config is honored from Phase 3's epic-capacity-management. v0 has an explicit constant + a unit test asserting spawn-2 rejection with the exact error message.
+- **OQ-B1.4 — Develop→main promotion code path under self-host.** → Built but not exercised. Pure-function merge gate keeps the dead code minimal (one function + tests). When a non-self-host devx user opts into split-branch, the develop→main code path runs without rework.
+- **OQ-B1.5 — Skill-prompt edits and the `self_healing.user_review_required_for: [skills]` gate.** → The Phase 1 skill edits to `.claude/commands/devx.md` and `.claude/commands/devx-plan.md` ARE the user-review-required edits. They land via the standard `/devx` PR flow with the user as the merge-approver of the actual PR. (Self-host loop catches its own learning.)
+
+### Open questions (escalated to user — resolved before this addendum was written)
+
+- **Q1, Q2, Q3** above (resolved 2026-04-28 per user reply: Q1=(c), Q2=(c), Q3=hard-cap-1). Pinned in OQ-B1.1 / OQ-B1.2 / OQ-B1.3.
+
