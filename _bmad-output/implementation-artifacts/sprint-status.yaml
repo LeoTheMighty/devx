@@ -278,7 +278,7 @@ plans:
             blocked_by: [mrg101]
           - key: mrg103
             title: Develop→main promotion code path (latent / dead-code-until-split-branch)
-            status: backlog
+            status: done
             blocked_by: [mrg101]
           - key: mrgret
             title: Retro + LEARN.md updates (interim retro discipline)
