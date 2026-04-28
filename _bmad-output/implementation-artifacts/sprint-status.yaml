@@ -282,7 +282,7 @@ plans:
             blocked_by: [mrg101]
           - key: mrgret
             title: Retro + LEARN.md updates (interim retro discipline)
-            status: backlog
+            status: in-progress
             blocked_by: [mrg101, mrg102, mrg103]
 
       - key: epic-pr-template
