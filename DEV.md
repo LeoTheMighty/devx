@@ -83,7 +83,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 ## Phase 1 — Single-agent core loop (plan: plan-b01000)
 
 ### Epic 1 — Mode-derived merge gate (renamed from epic-promotion-gate-yolo-beta)
-- [/] `dev/dev-mrg101-2026-04-28T19:30-merge-gate-pure-fn.md` — mergeGateFor() pure function + truth-table tests. Status: in-progress. From: epic-merge-gate-modes.
+- [x] `dev/dev-mrg101-2026-04-28T19:30-merge-gate-pure-fn.md` — mergeGateFor() pure function + truth-table tests. Status: done. From: epic-merge-gate-modes. PR: https://github.com/LeoTheMighty/devx/pull/31 (merged 48cbd2f).
 - [ ] `dev/dev-mrg102-2026-04-28T19:30-merge-gate-cli.md` — devx merge-gate <hash> CLI passthrough + /devx Phase 8 integration. Status: ready. Blocked-by: mrg101.
 - [ ] `dev/dev-mrg103-2026-04-28T19:30-promote-integration.md` — Develop→main promotion code path (latent / dead-code-until-split-branch). Status: ready. Blocked-by: mrg101.
 - [ ] `dev/dev-mrgret-2026-04-28T19:30-retro-merge-gate-modes.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: mrg101, mrg102, mrg103.

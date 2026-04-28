@@ -271,7 +271,7 @@ plans:
         stories:
           - key: mrg101
             title: mergeGateFor() pure function + truth-table tests
-            status: backlog
+            status: done
           - key: mrg102
             title: devx merge-gate <hash> CLI passthrough + /devx Phase 8 integration
             status: backlog
