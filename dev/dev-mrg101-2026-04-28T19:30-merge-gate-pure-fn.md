@@ -5,7 +5,8 @@ created: 2026-04-28T19:30:00-07:00
 title: mergeGateFor() pure function + truth-table tests
 from: _bmad-output/planning-artifacts/epic-merge-gate-modes.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: ready
+status: in-progress
+owner: /devx-2026-04-28-mrg101
 branch: feat/dev-mrg101
 ---
 
@@ -34,3 +35,4 @@ Ship `src/lib/merge-gate.ts` with `mergeGateFor(mode, signals): GateDecision` as
 ## Status log
 
 - 2026-04-28T19:30 — created by /devx-plan
+- 2026-04-28T20:05 — claimed by /devx in session /devx-2026-04-28-mrg101 (Phase 1 epic-1 starter; no blockers)
