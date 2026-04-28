@@ -274,7 +274,7 @@ plans:
             status: done
           - key: mrg102
             title: devx merge-gate <hash> CLI passthrough + /devx Phase 8 integration
-            status: backlog
+            status: done
             blocked_by: [mrg101]
           - key: mrg103
             title: Develop→main promotion code path (latent / dead-code-until-split-branch)
