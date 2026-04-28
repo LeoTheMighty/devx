@@ -86,7 +86,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-mrg101-2026-04-28T19:30-merge-gate-pure-fn.md` — mergeGateFor() pure function + truth-table tests. Status: done. From: epic-merge-gate-modes. PR: https://github.com/LeoTheMighty/devx/pull/31 (merged 48cbd2f).
 - [x] `dev/dev-mrg102-2026-04-28T19:30-merge-gate-cli.md` — devx merge-gate <hash> CLI passthrough + /devx Phase 8 integration. Status: done. Blocked-by: mrg101. PR: https://github.com/LeoTheMighty/devx/pull/32 (merged dc86eb7).
 - [x] `dev/dev-mrg103-2026-04-28T19:30-promote-integration.md` — Develop→main promotion code path (latent / dead-code-until-split-branch). Status: done. Blocked-by: mrg101. PR: https://github.com/LeoTheMighty/devx/pull/33 (merged 937624e).
-- [ ] `dev/dev-mrgret-2026-04-28T19:30-retro-merge-gate-modes.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: mrg101, mrg102, mrg103.
+- [/] `dev/dev-mrgret-2026-04-28T19:30-retro-merge-gate-modes.md` — Retro + LEARN.md updates (interim retro discipline). Status: in-progress. Blocked-by: mrg101, mrg102, mrg103.
 
 ### Epic 2 — PR template (spec link as first line + Mode stamp)
 - [ ] `dev/dev-prt101-2026-04-28T19:30-pr-template-init-write.md` — Template ships + /devx-init writes it idempotently. Status: ready. From: epic-pr-template.
