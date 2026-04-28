@@ -221,24 +221,27 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
    - Push the fix. Go back to step 4.
    - File a `debug/debug-*.md` spec + `DEBUG.md` entry describing the CI-only failure pattern (so `/devx-learn` can eventually add it to local gates).
 
-### Phase 8: Auto-Merge (mode-gated) or Hand Off
+### Phase 8: Auto-Merge (gate-driven) or Hand Off
 
-**YOLO is fully autonomous — /devx merges its own PRs. Period.** No "leave it open for human review," no "prior PRs were merged manually so I'll follow that pattern." If the user wants to gate merges on human approval they bump out of YOLO. The only thing that stops a YOLO merge is a failing local CI gate, a non-empty workflow that returned non-success, or trust-gradient N not yet reached. Past PRs being merged by a human is irrelevant — that's an artifact of `/devx` not doing its job, not a project policy.
+**YOLO is fully autonomous — /devx merges its own PRs. Period.** No "leave it open for human review," no "prior PRs were merged manually so I'll follow that pattern." If the user wants to gate merges on human approval they bump out of YOLO. The only thing that stops a YOLO merge is the merge gate itself returning `merge:false`. Past PRs being merged by a human is irrelevant — that's an artifact of `/devx` not doing its job, not a project policy.
 
-Behavior by mode:
+The mode/coverage/CI/review/trust-gradient logic that decides whether this PR is mergeable lives in **one place**: the `devx merge-gate` CLI, which wraps `mergeGateFor()` from mrg101. Skill body never re-implements mode logic. Run:
 
-| Mode | If gates clear and trust-gradient N reached |
-|---|---|
-| YOLO | **Merge immediately.** Try `gh pr merge --squash --delete-branch` first (single-step). If GitHub rejects with "auto-merge not enabled" only when `--auto` is used, fall back to `--admin` if available, else just `--squash --delete-branch` directly. Do NOT use `--auto` alone in this repo — it requires "Allow auto-merge" repo setting which isn't on, and it silently no-ops. |
-| BETA | Merge if no reviewer blocking comments; otherwise wait. |
-| PROD | Merge if coverage gate clear; otherwise wait. |
-| LOCKDOWN | Do NOT merge. Leave PR open. Append to `MANUAL.md`: "PR <#> awaiting lockdown-resume before merge." |
+```
+devx merge-gate <hash>
+```
 
-If trust-gradient N has NOT been reached (promotion count < threshold from `devx.config.yaml → promotion.autonomy.count`):
-- Append to `INTERVIEW.md`: "Approve merge of PR <#>? (`y` / `n` / `hold`)".
-- Leave PR open; do NOT merge.
+It emits a JSON decision to stdout and exits with one of three codes:
 
-**Merge command (YOLO single-branch, this repo's setting):**
+| Exit | Decision shape | What you do |
+|---|---|---|
+| `0` | `{"merge": true}` | Run the merge command below. |
+| `1` | `{"merge": false, "reason": "...", "advice"?: [...]}` | Append `reason` to the spec status log; if `advice` includes `"file INTERVIEW for approval"`, write the INTERVIEW row and stop. Otherwise stop and let the underlying signal change (e.g., CI re-run, reviewer resolves comment, mode changes). |
+| `2` | `{"merge": false, "reason": "no PR yet" | "gh signal collection failed"}` | Investigation: missing PR → re-check Phase 7 actually opened one; `gh` failure → check auth (`gh auth status`) and re-run. Never auto-merge on exit 2 — uncertainty defaults to safe. |
+
+Pass `--coverage <pct>` (a value in `[0, 1]`) iff Phase 5's coverage runner produced one — under YOLO/BETA the gate ignores it; under PROD the gate uses it.
+
+**Merge command (after `devx merge-gate <hash>` returned exit 0):**
 ```
 gh pr merge <#> --squash --delete-branch
 ```
@@ -247,6 +250,8 @@ Then verify:
 gh pr view <#> --json state,mergeCommit
 ```
 Expect `state == "MERGED"` and a `mergeCommit.oid`. If not merged, surface the gh error verbatim and stop — do NOT silently leave the PR open.
+
+> Implementation note: `--auto` alone requires "Allow auto-merge" in repo settings (not on for this repo); the direct `--squash --delete-branch` form is what works here.
 
 After merge:
 1. `git fetch origin --prune && git pull --ff-only` in the main worktree to bring the merge commit into local `main`.
