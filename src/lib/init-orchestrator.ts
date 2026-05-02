@@ -66,8 +66,10 @@ import {
   type UpgradeResult,
 } from "./init-upgrade.js";
 import {
+  type PrTemplateResult,
   type WriteInitResult,
   writeInitFiles,
+  writePrTemplate,
 } from "./init-write.js";
 
 // ---------------------------------------------------------------------------
@@ -90,6 +92,10 @@ export interface FreshInitOutcome {
   state: InitState;
   questions: QuestionsResult;
   localWrites: WriteInitResult;
+  /** PR-template write outcome (prt101). Populated after localWrites and
+   *  before githubWrites so e2e tests can assert on the canonical Phase 1
+   *  shape on disk. */
+  prTemplate: PrTemplateResult;
   githubWrites: InitGhResult;
   personas: SeedPersonasResult;
   interview: SeedInterviewResult;
@@ -250,7 +256,20 @@ export async function runInit(opts: RunInitOpts): Promise<OrchestratorResult> {
     ...(opts.now ? { now: opts.now } : {}),
   });
 
-  // 2. GitHub-side writes (workflows + PR template; queues ops on degraded paths)
+  // 2. PR template (prt101) — Phase 1 site supersedes the Phase 0 ini503 site
+  //    that lived under writeInitGh. Default templates root is ../templates/
+  //    (parent of init/), but if the caller passed templatesRoot pointing at
+  //    .../init/ to drive the rest of init-* modules, climb one level so the
+  //    canonical pull_request_template.md is found at
+  //    `<templatesRoot>/pull_request_template.md`.
+  const prTemplateRoot = opts.templatesRoot
+    ? resolvePrTemplateRoot(opts.templatesRoot)
+    : undefined;
+  const prTemplate = writePrTemplate(opts.repoRoot, {
+    ...(prTemplateRoot ? { templatesRoot: prTemplateRoot } : {}),
+  });
+
+  // 3. GitHub-side writes (workflows + branch ops; PR template handled above)
   const githubWrites = writeInitGh({
     repoRoot: opts.repoRoot,
     config,
@@ -263,7 +282,7 @@ export async function runInit(opts: RunInitOpts): Promise<OrchestratorResult> {
     ...(opts.now ? { now: opts.now } : {}),
   });
 
-  // 3. Personas (N3-driven)
+  // 4. Personas (N3-driven)
   const personas = await seedPersonas({
     repoRoot: opts.repoRoot,
     whoFor: typeof questions.answers.n3 === "string" ? questions.answers.n3 : "",
@@ -272,14 +291,14 @@ export async function runInit(opts: RunInitOpts): Promise<OrchestratorResult> {
     ...(opts.resolveOverflow ? { resolveOverflow: opts.resolveOverflow } : {}),
   });
 
-  // 4. INTERVIEW seed (stack-templated)
+  // 5. INTERVIEW seed (stack-templated)
   const interview = seedInterview({
     repoRoot: opts.repoRoot,
     stack: state.detectedStack,
     ...(opts.templatesRoot ? { templatesRoot: opts.templatesRoot } : {}),
   });
 
-  // 5. Supervisor install + verify (idempotent; verify failure is informational)
+  // 6. Supervisor install + verify (idempotent; verify failure is informational)
   const configPath = localWrites.configPath;
   const supervisor: InitSupervisorResult = opts.skipSupervisor
     ? {
@@ -301,7 +320,7 @@ export async function runInit(opts: RunInitOpts): Promise<OrchestratorResult> {
         ...(opts.supervisorOpts ?? {}),
       });
 
-  // 6. Failure-mode bookkeeping. writeInitGh emits one ManualEntry per
+  // 7. Failure-mode bookkeeping. writeInitGh emits one ManualEntry per
   //    degraded path it took (no-remote, gh-not-auth, missing-scopes,
   //    private-free-tier). Each gets routed to the matching ini506 handler
   //    so init_partial flips and MANUAL.md gets the entry. The handlers are
@@ -332,6 +351,7 @@ export async function runInit(opts: RunInitOpts): Promise<OrchestratorResult> {
       state,
       questions,
       localWrites,
+      prTemplate,
       githubWrites,
       personas,
       interview,
@@ -373,6 +393,29 @@ function applyFailureBookkeeping(opts: ApplyFailureOpts): ApplyFailureOutcome {
   }
   const r = handleGhNotAuth(args);
   return { flagFlipped: r.flagFlipped, manualAppended: r.manualAppended };
+}
+
+// ---------------------------------------------------------------------------
+// PR-template root resolution
+//
+// The shared `templatesRoot` opt that callers thread through every init-*
+// module points at `_devx/templates/init/` (where workflows, personas, etc.
+// live). The canonical PR template lives one level up at
+// `_devx/templates/pull_request_template.md` (per the prt101 spec). When a
+// caller overrides templatesRoot for tests we honor the override but climb
+// one directory iff the override ends in `init/`. Otherwise we let the
+// caller-supplied root stand as-is (test fixtures that pre-stage a flat
+// templates dir).
+// ---------------------------------------------------------------------------
+
+function resolvePrTemplateRoot(initTemplatesRoot: string): string {
+  const trimmed = initTemplatesRoot.replace(/[/\\]+$/, "");
+  const lastSep = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  const base = lastSep === -1 ? trimmed : trimmed.slice(lastSep + 1);
+  if (base === "init") {
+    return trimmed.slice(0, lastSep === -1 ? 0 : lastSep);
+  }
+  return initTemplatesRoot;
 }
 
 // ---------------------------------------------------------------------------

@@ -3,12 +3,17 @@
 // Public surface:
 //   - writeInitGh(opts) — orchestrates the GitHub-side phases:
 //       1. Workflow files (devx-ci, devx-promotion, devx-deploy) — stack-conditional CI
-//       2. PR template (.github/pull_request_template.md)
-//       3. develop branch creation (gated by config.git.integration_branch)
-//       4. Default-branch flip to develop (gated; only when develop is integration_branch)
-//       5. Branch protection on main (gated by config.git.protect_main)
-//       6. Free-tier private fallback: pre-push git hook + MANUAL.md entry
-//       7. No-remote / gh-unauth fallback: queue ops to .devx-cache/pending-gh-ops.json
+//       2. develop branch creation (gated by config.git.integration_branch)
+//       3. Default-branch flip to develop (gated; only when develop is integration_branch)
+//       4. Branch protection on main (gated by config.git.protect_main)
+//       5. Free-tier private fallback: pre-push git hook + MANUAL.md entry
+//       6. No-remote / gh-unauth fallback: queue ops to .devx-cache/pending-gh-ops.json
+//
+// PR template note: the .github/pull_request_template.md write site moved to
+// init-write.ts (writePrTemplate) per prt101 + docs/DESIGN.md §185 source-
+// of-truth-precedence rule. init-orchestrator.ts now calls writePrTemplate
+// after writeInitFiles and before writeInitGh — this module no longer owns
+// the PR template.
 //
 // Idempotency: existing workflow files are diff-and-skipped (identical → no-op,
 // different → kept-as-is to preserve user customizations). Existing develop
@@ -152,7 +157,6 @@ export interface PendingGhOpsFile {
 
 export interface InitGhResult {
   workflows: WorkflowResult[];
-  prTemplate: WorkflowResult;
   develop: DevelopOutcome;
   defaultBranch: DefaultBranchOutcome;
   protection: ProtectionOutcome;
@@ -203,8 +207,6 @@ const STACK_TEMPLATE: Record<DetectedStack, string> = {
   mixed: "devx-ci-typescript.yml",
 };
 
-const PR_TEMPLATE_MODE_MARKER = "<!-- devx:mode -->";
-
 // ---------------------------------------------------------------------------
 // Public entrypoint
 // ---------------------------------------------------------------------------
@@ -243,15 +245,7 @@ export function writeInitGh(opts: InitGhOpts): InitGhResult {
     ),
   ];
 
-  // ---- 2. PR template ---------------------------------------------------
-
-  const prTemplate = writePrTemplate({
-    templatesRoot,
-    repoRoot,
-    mode: config.mode,
-  });
-
-  // ---- 3. Failure-mode probes -------------------------------------------
+  // ---- 2. Failure-mode probes -------------------------------------------
 
   const wantsSplit = (config.git?.integration_branch ?? null) === "develop";
   const wantsProtection = config.git?.protect_main !== false;
@@ -284,7 +278,6 @@ export function writeInitGh(opts: InitGhOpts): InitGhResult {
     writePendingOps(pendingGhOpsPath, pendingOps, now());
     return {
       workflows,
-      prTemplate,
       develop: { kind: wantsSplit ? "skipped-no-remote" : "skipped-single-branch" },
       defaultBranch: {
         kind: wantsSplit ? "skipped-no-remote" : "skipped-single-branch",
@@ -335,7 +328,6 @@ export function writeInitGh(opts: InitGhOpts): InitGhResult {
     writePendingOps(pendingGhOpsPath, pendingOps, now());
     return {
       workflows,
-      prTemplate,
       develop: { kind: wantsSplit ? "skipped-gh-unauth" : "skipped-single-branch" },
       defaultBranch: {
         kind: wantsSplit ? "skipped-gh-unauth" : "skipped-single-branch",
@@ -351,7 +343,7 @@ export function writeInitGh(opts: InitGhOpts): InitGhResult {
     };
   }
 
-  // ---- 4. develop branch + default-branch flip --------------------------
+  // ---- 3. develop branch + default-branch flip --------------------------
 
   let develop: DevelopOutcome;
   let defaultBranch: DefaultBranchOutcome;
@@ -371,7 +363,7 @@ export function writeInitGh(opts: InitGhOpts): InitGhResult {
         : { kind: "skipped-non-main-default", existing: state.defaultBranch };
   }
 
-  // ---- 5. Branch protection on main -------------------------------------
+  // ---- 4. Branch protection on main -------------------------------------
 
   let protection: ProtectionOutcome;
 
@@ -409,7 +401,7 @@ export function writeInitGh(opts: InitGhOpts): InitGhResult {
     }
   }
 
-  // ---- 6. Persist queue if anything got deferred ------------------------
+  // ---- 5. Persist queue if anything got deferred ------------------------
 
   if (pendingOps.length > 0) {
     writePendingOps(pendingGhOpsPath, pendingOps, now());
@@ -417,7 +409,6 @@ export function writeInitGh(opts: InitGhOpts): InitGhResult {
 
   return {
     workflows,
-    prTemplate,
     develop,
     defaultBranch,
     protection,
@@ -430,7 +421,7 @@ export function writeInitGh(opts: InitGhOpts): InitGhResult {
 }
 
 // ---------------------------------------------------------------------------
-// Workflow + PR template writes
+// Workflow file writes
 // ---------------------------------------------------------------------------
 
 function writeWorkflowFile(srcPath: string, destPath: string): WorkflowResult {
@@ -444,43 +435,6 @@ function writeWorkflowFile(srcPath: string, destPath: string): WorkflowResult {
     return { path: destPath, outcome: "skipped-identical" };
   }
   return { path: destPath, outcome: "kept-existing-different" };
-}
-
-interface PrTemplateOpts {
-  templatesRoot: string;
-  repoRoot: string;
-  mode: PartialConfig["mode"];
-}
-
-function writePrTemplate(opts: PrTemplateOpts): WorkflowResult {
-  const src = join(opts.templatesRoot, "pull_request_template.md");
-  const dest = join(opts.repoRoot, ".github", "pull_request_template.md");
-  const raw = readTemplate(src);
-  if (!raw.includes(PR_TEMPLATE_MODE_MARKER)) {
-    // Defensive — the shipped template must always carry the marker. If it
-    // doesn't, ship as-is so the user sees the broken template instead of
-    // a silent substitution.
-    return { path: dest, outcome: writeWorkflowOutcomeFor(dest, raw) };
-  }
-  // The marker stays literally — `/devx-init` may rewrite it on upgrade
-  // when mode flips, and downstream tools (e.g. /devx-mode) look for the
-  // marker by name. Render the active mode immediately above the marker so
-  // it shows up in the PR description even before any rewrite.
-  const filled = raw.replace(
-    PR_TEMPLATE_MODE_MARKER,
-    `**${opts.mode}**\n\n${PR_TEMPLATE_MODE_MARKER}`,
-  );
-  return { path: dest, outcome: writeWorkflowOutcomeFor(dest, filled) };
-}
-
-function writeWorkflowOutcomeFor(dest: string, content: string): WorkflowFileOutcome {
-  if (!existsSync(dest)) {
-    writeAtomic(dest, content);
-    return "wrote";
-  }
-  const existing = readFileSync(dest, "utf8").replace(/\r\n/g, "\n");
-  if (existing === content) return "skipped-identical";
-  return "kept-existing-different";
 }
 
 // ---------------------------------------------------------------------------

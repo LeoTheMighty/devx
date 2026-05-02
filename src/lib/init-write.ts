@@ -1,4 +1,4 @@
-// Local file-write orchestration for `/devx-init` (ini502).
+// Local file-write orchestration for `/devx-init` (ini502 + prt101).
 //
 // Public surface:
 //   - writeInitFiles(opts) — orchestrates the five write phases in order:
@@ -10,6 +10,12 @@
 //                             a conflict report when non-devx content sits
 //                             inside the managed markers)
 //       5. .gitignore        (managed devx block; idempotent)
+//   - writePrTemplate(repoRoot, opts?) — Phase 1 PR-template write site
+//     (.github/pull_request_template.md). Idempotent: wrote / skipped (marker
+//     present) / appended (file exists, no marker). Replaces ini503's old
+//     write site under init-gh.ts per docs/DESIGN.md §185 source-of-truth-
+//     precedence rule. Substitution of <!-- devx:auto:mode --> is /devx
+//     Phase 7's job (prt102), not /devx-init's.
 //   - renderInitConfig(...) — exposed for unit testing the YAML payload.
 //
 // Idempotency: existing backlog files are NEVER overwritten. CLAUDE.md merge
@@ -26,7 +32,9 @@
 // mid-write leaves the previous file untouched.
 //
 // Spec: dev/dev-ini502-2026-04-26T19:35-init-local-writes.md
+// Spec: dev/dev-prt101-2026-04-28T19:30-pr-template-init-write.md (writePrTemplate)
 // Epic: _bmad-output/planning-artifacts/epic-init-skill.md
+// Epic: _bmad-output/planning-artifacts/epic-pr-template.md
 
 import {
   existsSync,
@@ -51,6 +59,31 @@ import { writeAtomic } from "./supervisor-internal.js";
 
 export type ClaudeMdOutcome = "created" | "appended" | "updated" | "conflict" | "skipped";
 export type GitignoreOutcome = "created" | "appended" | "already-managed";
+
+/** PR-template write outcome. Three branches per prt101 AC:
+ *   - "wrote"    → file was absent; canonical template written.
+ *   - "skipped"  → file exists and already carries the `<!-- devx:mode -->`
+ *                  idempotency marker. No diff.
+ *   - "appended" → file exists but lacks the marker (user-authored or pre-devx
+ *                  content). A `## devx` section is appended under a fresh
+ *                  marker so the user's existing content is preserved. */
+export type PrTemplateAction = "wrote" | "skipped" | "appended";
+
+export interface PrTemplateResult {
+  action: PrTemplateAction;
+  /** Absolute path of the destination file. Set even on dryRun + skipped. */
+  path: string;
+}
+
+export interface WritePrTemplateOpts {
+  /** When true, compute the action without touching disk. Tests use this to
+   *  verify the branch decision without mutating fixtures. */
+  dryRun?: boolean;
+  /** Override the templates root. Defaults to `_devx/templates/` (parent of
+   *  the init/ subdir used by the rest of init-* modules), since the canonical
+   *  PR template lives at `_devx/templates/pull_request_template.md`. */
+  templatesRoot?: string;
+}
 
 export interface ConflictReport {
   kind: "claude-md-marker-conflict";
@@ -742,6 +775,62 @@ function writeGitignoreBlock(opts: GitignoreOpts): GitignoreOutcome {
   const separator = existing.endsWith("\n") ? "\n" : "\n\n";
   writeAtomic(path, existing + separator + ensureTrailingNewline(block));
   return "appended";
+}
+
+// ---------------------------------------------------------------------------
+// PR template (prt101)
+//
+// Idempotency marker convention (party-mode locked decision #4 in
+// epic-pr-template.md):
+//   - <!-- devx:mode -->        idempotency marker; presence in the on-disk
+//                               template means "/devx-init already wrote
+//                               this; do not overwrite". writePrTemplate
+//                               below detects this marker.
+//   - <!-- devx:auto:mode -->   substitution placeholder; /devx Phase 7
+//                               (prt102) replaces this with the active mode
+//                               at PR-open time. writePrTemplate carries it
+//                               verbatim — it does NOT substitute (substitution
+//                               is /devx's job, not /devx-init's).
+//
+// The two markers are NOT conflated. The Phase 0 ini503 site that conflated
+// them was deleted as part of prt101 per the source-of-truth-precedence rule.
+// ---------------------------------------------------------------------------
+
+const PR_TEMPLATE_IDEMPOTENCY_MARKER = "<!-- devx:mode -->";
+
+export function writePrTemplate(
+  repoRoot: string,
+  opts: WritePrTemplateOpts = {},
+): PrTemplateResult {
+  const templatesRoot = opts.templatesRoot ?? defaultPrTemplateRoot();
+  const dest = join(repoRoot, ".github", "pull_request_template.md");
+  const canonical = readTemplate(join(templatesRoot, "pull_request_template.md"));
+
+  if (!existsSync(dest)) {
+    if (!opts.dryRun) writeAtomic(dest, canonical);
+    return { action: "wrote", path: dest };
+  }
+
+  const existing = readFileSync(dest, "utf8").replace(/\r\n/g, "\n");
+  if (existing.includes(PR_TEMPLATE_IDEMPOTENCY_MARKER)) {
+    return { action: "skipped", path: dest };
+  }
+
+  // File exists but no marker: append a fresh `## devx` section carrying the
+  // canonical block (marker + spec link + mode placeholder + summary/AC/test
+  // plan/notes). User content above is preserved.
+  const separator = existing.endsWith("\n") ? "\n" : "\n\n";
+  const appended =
+    existing + separator + "## devx\n\n" + canonical;
+  if (!opts.dryRun) writeAtomic(dest, ensureTrailingNewline(appended));
+  return { action: "appended", path: dest };
+}
+
+function defaultPrTemplateRoot(): string {
+  // src/lib/init-write.ts → ../../_devx/templates  (sibling of init/)
+  // dist/lib/init-write.js → ../../_devx/templates
+  const here = fileURLToPath(import.meta.url);
+  return resolve(here, "..", "..", "..", "_devx", "templates");
 }
 
 // ---------------------------------------------------------------------------
