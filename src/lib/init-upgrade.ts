@@ -555,6 +555,10 @@ function defaultDetectCiWorkflow(ctx: SurfaceContext): boolean {
   );
 }
 
+// Detector path is unchanged across the prt101 migration: the on-disk
+// .github/pull_request_template.md location did not move. The writer moved
+// from src/lib/init-gh.ts → src/lib/init-write.ts (writePrTemplate); see
+// defaultRepairPrTemplate below for the new repair entrypoint.
 function defaultDetectPrTemplate(ctx: SurfaceContext): boolean {
   return existsSync(
     join(ctx.repoRoot, ".github", "pull_request_template.md"),
@@ -651,15 +655,9 @@ async function defaultRepairCiWorkflow(ctx: SurfaceContext): Promise<boolean> {
 }
 
 async function defaultRepairPrTemplate(ctx: SurfaceContext): Promise<boolean> {
-  const { writeInitGh } = await import("./init-gh.js");
-  const partialConfig = reconstructPartialConfig(ctx.doc);
-  const state = synthesizedInitState(ctx);
-  const result = writeInitGh({
-    repoRoot: ctx.repoRoot,
-    config: partialConfig,
-    state,
-  });
-  return result.prTemplate.outcome === "wrote";
+  const { writePrTemplate } = await import("./init-write.js");
+  const result = writePrTemplate(ctx.repoRoot);
+  return result.action === "wrote";
 }
 
 async function defaultRepairPersonas(ctx: SurfaceContext): Promise<boolean> {

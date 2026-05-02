@@ -240,6 +240,31 @@ describe("ini508 — empty fixture", () => {
     // No-remote path triggers ini506 bookkeeping → init_partial true.
     const cfg = readFileSync(join(repo, "devx.config.yaml"), "utf8");
     expect(cfg).toMatch(/init_partial:\s*true/);
+
+    // PR template (prt101): Phase 1 shape — `<!-- devx:mode -->` is line 1,
+    // `**Spec:**` is line 2, `**Mode:**` is line 3. The substitution placeholder
+    // `<!-- devx:auto:mode -->` is carried verbatim (substitution is /devx
+    // Phase 7's job, not /devx-init's). The Phase 0 shape (marker at the
+    // bottom under `## Mode`, mode rendered above the marker) is gone.
+    const prTemplatePath = join(repo, ".github", "pull_request_template.md");
+    expect(existsSync(prTemplatePath)).toBe(true);
+    const prBody = readFileSync(prTemplatePath, "utf8");
+    const prLines = prBody.split("\n");
+    expect(prLines[0]).toBe("<!-- devx:mode -->");
+    expect(prLines[1]).toBe("**Spec:** `<dev/dev-<hash>-<ts>-<slug>.md>`");
+    expect(prLines[2]).toBe(
+      "**Mode:** <!-- devx:auto:mode --> *(stamped at PR-open by /devx)*",
+    );
+    expect(prBody).toContain("<!-- devx:auto:mode -->");
+    // Old Phase 0 shape MUST NOT appear: no rendered mode literal anywhere
+    // (writePrTemplate does NOT substitute), and no "## Mode" section above
+    // the marker.
+    expect(prBody).not.toMatch(/\*\*(YOLO|BETA|PROD|LOCKDOWN)\*\*/);
+    expect(prBody).not.toContain("## Mode\n");
+
+    // Orchestrator's FreshInitOutcome surfaces the prTemplate write outcome.
+    expect(result.fresh?.prTemplate.action).toBe("wrote");
+    expect(result.fresh?.prTemplate.path).toBe(prTemplatePath);
   });
 
   it("idempotent re-run is a near no-op (kept M / added 0 / migrated 0)", async () => {

@@ -279,36 +279,10 @@ describe("workflow + PR template writes", () => {
     });
   }
 
-  it("writes the PR template with the active mode rendered above the marker", () => {
-    const root = repo("init-gh-pr-");
-    const { gh } = recordingGh([
-      (c) => (c.args[0] === "auth" ? ok() : null),
-      (c) =>
-        c.args[0] === "api" && /protection$/.test(c.args[1] ?? "")
-          ? fail("gh: HTTP 404: Branch not protected", 1)
-          : null,
-      (c) =>
-        c.args[0] === "api" && /^repos\/LeoTheMighty\/devx$/.test(c.args[1] ?? "")
-          ? ok('{"private":false,"plan":"unknown"}')
-          : null,
-    ]);
-    const result = writeInitGh({
-      repoRoot: root,
-      config: fakeConfig({ mode: "YOLO" }),
-      state: fakeState(root),
-      templatesRoot: TEMPLATES_ROOT,
-      gh,
-      git: defaultGit(),
-      now: NOW,
-    });
-    expect(result.prTemplate.outcome).toBe("wrote");
-    const body = readFileSync(
-      join(root, ".github", "pull_request_template.md"),
-      "utf8",
-    );
-    expect(body).toContain("**YOLO**");
-    expect(body).toContain("<!-- devx:mode -->");
-  });
+  // PR-template assertions removed — the .github/pull_request_template.md
+  // write site moved out of init-gh.ts (Phase 0 surface) into init-write.ts
+  // (Phase 1 surface, prt101). See test/init-pr-template-*.test.ts for the
+  // canonical coverage of the new shape + idempotency branches.
 });
 
 // ---------------------------------------------------------------------------
@@ -1022,22 +996,8 @@ describe("self-review gap fills", () => {
     expect(ci).toContain("setup-node");
   });
 
-  it("PR template second run with same mode reports skipped-identical", () => {
-    const root = repo("init-gh-pr-idem-");
-    const args = (gh: GhExec) => ({
-      repoRoot: root,
-      config: fakeConfig({ mode: "BETA" }),
-      state: fakeState(root),
-      templatesRoot: TEMPLATES_ROOT,
-      gh,
-      git: defaultGit(),
-      now: NOW,
-    });
-    const first = writeInitGh(args(recordingGh(greenProbeResponders()).gh));
-    const second = writeInitGh(args(recordingGh(greenProbeResponders()).gh));
-    expect(first.prTemplate.outcome).toBe("wrote");
-    expect(second.prTemplate.outcome).toBe("skipped-identical");
-  });
+  // PR template idempotency moved to test/init-pr-template-with-marker.test.ts
+  // when the writer migrated from init-gh.ts → init-write.ts (prt101).
 
   it("preserves existing branch-protection restrictions in the union", () => {
     const root = repo("init-gh-restrictions-");
