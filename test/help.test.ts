@@ -1,17 +1,19 @@
-// Help-listing tests (cli303 + ini506 + mrg102).
+// Help-listing tests (cli303 + ini506 + mrg102 + prt102).
 //
 // Three layers of coverage:
-//   1. Order: positions of the 13 command lines in `devx --help` are strictly
+//   1. Order: positions of the 14 command lines in `devx --help` are strictly
 //      monotonically increasing in the canonical [config, init, merge-gate,
-//      ask, kill, pause, restart, resume, status, serve, tail, ui, eject]
-//      order — the exact shape required by the AC (phase ASC; ties
+//      pr-body, ask, kill, pause, restart, resume, status, serve, tail, ui,
+//      eject] order — the exact shape required by the AC (phase ASC; ties
 //      alphabetical). ini506 added `init` as the second Phase-0 real command;
-//      mrg102 added `merge-gate` as the first (and only) Phase-1 real command.
+//      mrg102 added `merge-gate` as the first Phase-1 real command; prt102
+//      added `pr-body` as the second Phase-1 real command (sorts after
+//      merge-gate alphabetically within Phase 1).
 //   2. Annotation: each of the 10 stubs has its `(coming in Phase N —
-//      epic-<slug>)` annotation on its line; the three real commands
-//      (`config`, `init`, `merge-gate`) have no `(coming` annotation. Drift
-//      (e.g. an editor replacing the em-dash with a hyphen) fails this layer
-//      before reaching the snapshot.
+//      epic-<slug>)` annotation on its line; the four real commands
+//      (`config`, `init`, `merge-gate`, `pr-body`) have no `(coming`
+//      annotation. Drift (e.g. an editor replacing the em-dash with a
+//      hyphen) fails this layer before reaching the snapshot.
 //   3. Inline snapshot: full `--help` stdout pinned. Any wording change (the
 //      program description, an option label, a stub epic slug) must update
 //      the snapshot — that's the "atomic" property the spec asks for.
@@ -19,6 +21,7 @@
 // Spec: dev/dev-cli303-2026-04-26T19:35-cli-help-listing.md
 // Spec: dev/dev-ini506-2026-04-26T19:35-init-failure-modes.md (added `init`)
 // Spec: dev/dev-mrg102-2026-04-28T19:30-merge-gate-cli.md (added `merge-gate`)
+// Spec: dev/dev-prt102-2026-04-28T19:30-pr-template-substitution.md (added `pr-body`)
 
 import { describe, expect, it } from "vitest";
 
@@ -55,6 +58,7 @@ const expectedOrder = [
   "config",
   "init",
   "merge-gate",
+  "pr-body",
   "ask",
   "kill",
   "pause",
@@ -97,7 +101,7 @@ function lineIndexOf(out: string, name: string): number {
 }
 
 describe("cli303 — devx --help command listing", () => {
-  it("lists all 13 commands sorted by phase ASC; ties alphabetical", () => {
+  it("lists all 14 commands sorted by phase ASC; ties alphabetical", () => {
     const out = captureHelp();
     const positions = expectedOrder.map((name) => ({
       name,
@@ -128,9 +132,9 @@ describe("cli303 — devx --help command listing", () => {
     expect(out).not.toContain("- epic-");
   });
 
-  it("real commands (config, init, merge-gate) are listed without a (coming annotation", () => {
+  it("real commands (config, init, merge-gate, pr-body) are listed without a (coming annotation", () => {
     const out = captureHelp();
-    for (const name of ["config", "init", "merge-gate"]) {
+    for (const name of ["config", "init", "merge-gate", "pr-body"]) {
       const lineStart = lineIndexOf(out, name);
       expect(lineStart, `expected '${name}' to appear in --help`).toBeGreaterThanOrEqual(0);
       // Commander wraps long descriptions onto continuation lines indented to
@@ -170,6 +174,9 @@ describe("cli303 — devx --help command listing", () => {
         merge-gate [options] <hash>  Compute the mode-derived merge decision for a
                                      spec PR (Phase 1). Emits JSON; exit 0 = merge, 1
                                      = no-merge, 2 = signal trouble.
+        pr-body [options]            Render the canonical /devx PR body for a spec.
+                                     Substitutes mode + spec path + AC checklist
+                                     (Phase 1).
         ask                          (coming in Phase 2 — epic-devx-concierge-skill)
         kill                         (coming in Phase 2 — epic-devx-concierge-skill)
         pause                        (coming in Phase 2 — epic-devx-manage-minimal)

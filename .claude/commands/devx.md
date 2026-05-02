@@ -181,26 +181,21 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
    ```
    where `<branch-name>` is the worktree's branch (`<branch_prefix>dev-<hash>`).
 2. **If `git.pr_strategy == direct-to-main`** (single-branch YOLO only): skip the PR; the push to a feature branch is followed by a fast-forward merge into `main` once Phase 8 gates clear. Otherwise:
-   Open a PR targeting the resolved base (`integration_branch ?? default_branch`):
+   Phase 7 explicitly reads `.github/pull_request_template.md` (or falls back to the built-in canonical template baked into the CLI when the on-disk file is absent — older repos that predate prt101 or haven't run `/devx-init` upgrade since) by invoking the **`devx pr-body`** CLI (prt102). Never re-implement the substitution in the skill body — the CLI is the single source of truth. It substitutes the active mode + spec path + AC checklist (line-anchored to the canonical positions per locked decision #4 in `epic-pr-template.md` — placeholders inside code blocks must NOT substitute). Optional flags fill the free-text sections; omitted ones leave the placeholder visible AND emit `unresolved-placeholder: <name>` to stderr per locked decision #5.
+
    ```
-   gh pr create --base $BASE --head <branch-name> --title "<commit subject>" --body "$(cat <<'EOF'
-   ## Spec
-   `dev/dev-<hash>-<ts>-<slug>.md`
-
-   ## Summary
-   <1-3 bullets on what changed>
-
-   ## Acceptance criteria
-   <checkbox list from the spec>
-
-   ## Test plan
-   <bulleted list of what the local CI gates covered>
-
-   ## Mode
-   <current mode from devx.config.yaml>
-   EOF
-   )"
+   BODY=$(devx pr-body --spec dev/dev-<hash>-<ts>-<slug>.md \
+     --summary "<1–3 bullets on what changed>" \
+     --test-plan "<bulleted list of what local CI gates covered + any manual steps>" \
+     --notes "<surprises, deviations, follow-ups>" \
+     2> .devx-cache/pr-body.stderr)
+   gh pr create --base $BASE --head <branch-name> --title "<commit subject>" --body "$BODY"
    ```
+
+   - The first non-empty line of the rendered body is the `**Spec:**` line — load-bearing for the mobile companion app's PR card and for reviewers scanning github.com (epic-pr-template.md AC).
+   - The `**Mode:**` line carries the active mode (`YOLO` / `BETA` / `PROD` / `LOCKDOWN`), uppercased — reviewers see at a glance which gate auto-merge is applying.
+   - **Unresolved placeholders.** If `.devx-cache/pr-body.stderr` is non-empty after the CLI returns, append a status-log line per name to the spec file: `phase 7: pr body had unresolved placeholder <name>` (locked decision #5 — never silently render an empty section). The PR opens regardless; the audit trail is grep-able post-merge.
+   - **Fallback.** When `.github/pull_request_template.md` is absent (older repo predating prt101 or `/devx-init` upgrade not yet run), the CLI falls back to the built-in canonical template — never blocks PR open on a missing file.
 3. Append a status-log line with the PR URL.
 4. **Remote CI: detect, then wait if it exists, otherwise proceed immediately.**
 
