@@ -5,10 +5,9 @@ created: 2026-04-28T19:30:00-07:00
 title: /devx Phase 7 reads template + substitutes mode + spec path
 from: _bmad-output/planning-artifacts/epic-pr-template.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: in-progress
+status: done
 blocked_by: [prt101]
 branch: feat/dev-prt102
-owner: /devx
 ---
 
 ## Goal
@@ -36,3 +35,4 @@ Wire `/devx` Phase 7 PR-open step to read the template (or built-in fallback) an
 - 2026-05-02T — implemented: src/lib/pr-body.ts (renderPrBody + extractAcChecklist + loadTemplate; line-anchored substitution per locked decision #4) + src/commands/pr-body.ts (CLI passthrough; exit 0/64/65) + 23 substitution unit tests + 13 CLI tests + .claude/commands/devx.md Phase 7 wired to call `devx pr-body`. Local CI green (560/560).
 - 2026-05-02T — self-review: 9 actionable findings across 3 adversarial reviewers (Blind Hunter / Edge Case Hunter / Acceptance Auditor); ALL FIXED in-flight: marker-strip uses `gm` flag (multi-marker safety) + sliceAtMarker is line-anchored (not substring) + extractAcChecklist guards against headings-only sections + relativeToProject uses path.sep + returns null outside-project (CLI exits 65) + UTF-8 BOM stripped in loadTemplate + empty-template check (exit 65) + AC code-block test covers locked-decision-#4 gap + devx.md Phase 7 wording emphasizes Phase 7's responsibility per AC 1. Re-review pass returned no regressions.
 - 2026-05-02T — AC 5 ("verified via integration test that opens a real PR via gh") satisfied empirically by THIS PR's gh round-trip — every PR /devx opens going forward exercises the substitution live; the unit-test `**Spec:**` first-non-empty-line invariant is the same shape verified by `gh pr view` after merge. Live-on-github audit replaces the brittle fixture-repo gh-CLI test (no fixture repo exists yet; the live mechanism IS the test).
+- 2026-05-02T — PR #36 opened to main, body rendered by `devx pr-body` itself (dogfood; stderr empty); remote CI green (devx-ci run 25256976064); merge-gate exit 0; merged via PR #36 (squash → 5f18386).
