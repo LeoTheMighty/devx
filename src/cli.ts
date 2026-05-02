@@ -28,6 +28,7 @@ import * as initCommand from "./commands/init.js";
 import * as killCommand from "./commands/kill.js";
 import * as mergeGateCommand from "./commands/merge-gate.js";
 import * as pauseCommand from "./commands/pause.js";
+import * as planHelperCommand from "./commands/plan-helper.js";
 import * as prBodyCommand from "./commands/pr-body.js";
 import * as restartCommand from "./commands/restart.js";
 import * as resumeCommand from "./commands/resume.js";
@@ -50,6 +51,7 @@ const commands: CommandModule[] = [
   killCommand,
   mergeGateCommand,
   pauseCommand,
+  planHelperCommand,
   prBodyCommand,
   restartCommand,
   resumeCommand,
