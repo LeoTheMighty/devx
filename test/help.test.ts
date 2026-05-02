@@ -174,6 +174,9 @@ describe("cli303 — devx --help command listing", () => {
         merge-gate [options] <hash>  Compute the mode-derived merge decision for a
                                      spec PR (Phase 1). Emits JSON; exit 0 = merge, 1
                                      = no-merge, 2 = signal trouble.
+        plan-helper                  Helpers invoked by the /devx-plan skill body
+                                     (Phase 1). Subcommand-driven; mirrors \`devx
+                                     merge-gate\`'s passthrough pattern.
         pr-body [options]            Render the canonical /devx PR body for a spec.
                                      Substitutes mode + spec path + AC checklist
                                      (Phase 1).

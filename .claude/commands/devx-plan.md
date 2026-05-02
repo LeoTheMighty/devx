@@ -128,10 +128,19 @@ For **each** new epic:
 
 2. **Write spec files to `dev/`** — for each story, create `dev/dev-<6-hex-hash>-<YYYY-MM-DDTHH:MM>-<slug>.md` with frontmatter (hash, type=dev, created, title, from=`plan/plan-<epic-hash>.md`, status=ready, acceptance criteria, branch). See DESIGN.md § "Spec file convention."
 
-   **Branch field — compute from `devx.config.yaml`, not a hardcoded default.** Read `git.integration_branch` and `git.branch_prefix`:
-   - `integration_branch: null` (single-branch model) → `branch: <prefix>dev-<hash>` (e.g. `feat/dev-aud101`).
-   - `integration_branch: develop` (or any non-null value) → `branch: <integration_branch>/<prefix>dev-<hash>` (e.g. `develop/feat/dev-aud101`) — or whatever the project's documented convention is.
-   - **Do not** emit `develop/dev-<hash>` as a default. Every shipped Phase 0 story had to correct the branch on claim because the planner ignored config — captured in `LEARN.md § epic-bmad-audit / epic-config-schema / epic-cli-skeleton / epic-os-supervisor-scaffold`.
+   **Branch field — invoke `devx plan-helper derive-branch` (pln101), do not hand-compose.** The helper reads `git.integration_branch` and `git.branch_prefix` from the resolved `devx.config.yaml` and emits the canonical branch name. Skill body never re-implements the derivation — the CLI is the single source of truth (mirrors the mrg102 pattern). For each spec being written:
+
+   ```bash
+   BRANCH=$(devx plan-helper derive-branch dev <hash>)
+   ```
+
+   Reference behaviors (the helper's truth table — runtime values come from the helper, this list is for skill-reader orientation):
+   - `integration_branch: null` (single-branch) → `<prefix>dev-<hash>` (e.g. `feat/dev-aud101`).
+   - `integration_branch: develop` + `branch_prefix: develop/` → `develop/dev-aud101`.
+   - `integration_branch: develop` + `branch_prefix: feat/` → `develop/feat/dev-aud101`.
+   - Empty/whitespace `integration_branch` collapses to the single-branch path.
+
+   **Do not** emit `develop/dev-<hash>` as a hardcoded default. Closes the LEARN.md cross-epic regression class — every shipped Phase 0 story had to correct the branch on claim because the planner ignored config (captured in `LEARN.md § epic-bmad-audit / epic-config-schema / epic-cli-skeleton / epic-os-supervisor-scaffold`).
 
 3. **Append to `DEV.md`** — one line per spec file:
    ```markdown
