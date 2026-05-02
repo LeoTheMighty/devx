@@ -5,9 +5,10 @@ created: 2026-04-28T19:30:00-07:00
 title: /devx Phase 7 reads template + substitutes mode + spec path
 from: _bmad-output/planning-artifacts/epic-pr-template.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: ready
+status: in-progress
 blocked_by: [prt101]
 branch: feat/dev-prt102
+owner: /devx
 ---
 
 ## Goal
@@ -31,3 +32,4 @@ Wire `/devx` Phase 7 PR-open step to read the template (or built-in fallback) an
 ## Status log
 
 - 2026-04-28T19:30 — created by /devx-plan
+- 2026-05-02T — claimed by /devx; status flipped to in-progress; pushing claim commit to origin/main before opening PR (per `feedback_devx_push_claim_before_pr.md`).
