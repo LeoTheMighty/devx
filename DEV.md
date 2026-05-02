@@ -89,7 +89,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-mrgret-2026-04-28T19:30-retro-merge-gate-modes.md` — Retro + LEARN.md updates (interim retro discipline). Status: done. Blocked-by: mrg101, mrg102, mrg103. PR: https://github.com/LeoTheMighty/devx/pull/34 (merged 34a605b). Closes epic-merge-gate-modes 4/4.
 
 ### Epic 2 — PR template (spec link as first line + Mode stamp)
-- [/] `dev/dev-prt101-2026-04-28T19:30-pr-template-init-write.md` — Template ships + /devx-init writes it idempotently. Status: in-progress. From: epic-pr-template.
+- [x] `dev/dev-prt101-2026-04-28T19:30-pr-template-init-write.md` — Template ships + /devx-init writes it idempotently. Status: done. From: epic-pr-template. PR: https://github.com/LeoTheMighty/devx/pull/35 (merged ea4050f).
 - [ ] `dev/dev-prt102-2026-04-28T19:30-pr-template-substitution.md` — /devx Phase 7 reads template + substitutes mode + spec path. Status: ready. Blocked-by: prt101.
 - [ ] `dev/dev-prtret-2026-04-28T19:30-retro-pr-template.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: prt101, prt102.
 

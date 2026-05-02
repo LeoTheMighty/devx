@@ -5,7 +5,7 @@ created: 2026-04-28T19:30:00-07:00
 title: Template ships + /devx-init writes it idempotently
 from: _bmad-output/planning-artifacts/epic-pr-template.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: in-progress
+status: done
 branch: feat/dev-prt101
 ---
 
@@ -58,3 +58,5 @@ Add canonical `pull_request_template.md` text under `_devx/templates/`; extend `
 - 2026-05-02T — claimed by /devx; halted in Phase 4 on a conflict with the Phase 0 ini503 PR-template surface (`init-gh.ts:248`, `_devx/templates/init/pull_request_template.md`). Spec did not mention the existing surface; shipping as written would create two write sites both targeting `.github/pull_request_template.md`. Halt was correct per CLAUDE.md "No silent product decisions" + `docs/DESIGN.md §185` source-of-truth-precedence rule.
 - 2026-05-02T — spec amended (this revision) to add explicit Phase 0 surface-removal ACs + substitution-marker hygiene AC. Resolution = option (c) from the handoff snippet: source-of-truth-precedence-correct, with the migration spelled out as ACs so it's tracked, reviewed, and retro-able. Resuming /devx prt101 next.
 - 2026-05-02T — claimed by /devx (resumed); status flipped to in-progress; bringing the amended ACs onto main as part of the claim so the worktree branches off the resolved spec.
+- 2026-05-02T — implemented + self-reviewed (zero actionable findings); local CI green (524/524 tests including +10 new prt101 tests); PR #35 opened to main awaiting remote CI: https://github.com/LeoTheMighty/devx/pull/35.
+- 2026-05-02T — remote CI green (devx-ci run 25256408920); merge-gate exit 0; merged via PR #35 (squash → ea4050f).

@@ -291,7 +291,7 @@ plans:
         stories:
           - key: prt101
             title: Template ships + /devx-init writes it idempotently
-            status: backlog
+            status: done
           - key: prt102
             title: /devx Phase 7 reads template + substitutes mode + spec path
             status: backlog
