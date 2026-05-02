@@ -91,7 +91,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 ### Epic 2 — PR template (spec link as first line + Mode stamp)
 - [x] `dev/dev-prt101-2026-04-28T19:30-pr-template-init-write.md` — Template ships + /devx-init writes it idempotently. Status: done. From: epic-pr-template. PR: https://github.com/LeoTheMighty/devx/pull/35 (merged ea4050f).
 - [x] `dev/dev-prt102-2026-04-28T19:30-pr-template-substitution.md` — /devx Phase 7 reads template + substitutes mode + spec path. Status: done. Blocked-by: prt101. PR: https://github.com/LeoTheMighty/devx/pull/36 (merged 5f18386).
-- [/] `dev/dev-prtret-2026-04-28T19:30-retro-pr-template.md` — Retro + LEARN.md updates (interim retro discipline). Status: in-progress. Blocked-by: prt101, prt102.
+- [x] `dev/dev-prtret-2026-04-28T19:30-retro-pr-template.md` — Retro + LEARN.md updates (interim retro discipline). Status: done. Blocked-by: prt101, prt102. PR: https://github.com/LeoTheMighty/devx/pull/37 (merged c4fc396). Closes epic-pr-template 3/3.
 
 ### Epic 3 — /devx-plan skill (canonical PlanAgent)
 - [ ] `dev/dev-pln101-2026-04-28T19:30-plan-derive-branch.md` — deriveBranch() helper + devx plan-helper derive-branch CLI. Status: ready. From: epic-devx-plan-skill.

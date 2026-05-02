@@ -298,7 +298,7 @@ plans:
             blocked_by: [prt101]
           - key: prtret
             title: Retro + LEARN.md updates (interim retro discipline)
-            status: ready-for-dev
+            status: done
             blocked_by: [prt101, prt102]
 
       - key: epic-devx-plan-skill
