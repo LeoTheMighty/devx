@@ -191,14 +191,14 @@ skill is branch-model-aware; values below are this project's resolution.
 2. **Worktree**: `git worktree add .worktrees/dev-<hash> -b feat/dev-<hash>
    main`.
 3. **BMAD story**: `bmad-create-story` if no story file exists; otherwise
-   read the existing one. *Empirically across 6 shipped epics (Phase 0 +
-   Phase 1's first epic; 28/28 stories: aud × 3, cfg × 4, cli × 5, sup × 5,
-   ini × 8, mrg × 3) this step has been skipped because spec ACs already
-   cover what `bmad-create-story` would generate; the contract-vs-reality
-   drift is tracked in `LEARN.md § Cross-epic patterns` and reaffirmed
-   in every retro to date (audret + cfgret + cliret + supret + iniret +
-   mrgret). The actual /devx skill change (enforce / make conditional /
-   drop) remains user-review-required per
+   read the existing one. *Empirically across 7 shipped epics (Phase 0 +
+   Phase 1's first 2 epics; 30/30 stories: aud × 3, cfg × 4, cli × 5, sup × 5,
+   ini × 8, mrg × 3, prt × 2) this step has been skipped because spec ACs
+   already cover what `bmad-create-story` would generate; the contract-vs-
+   reality drift is tracked in `LEARN.md § Cross-epic patterns` and
+   reaffirmed in every retro to date (audret + cfgret + cliret + supret +
+   iniret + mrgret + prtret). The actual /devx skill change (enforce /
+   make conditional / drop) remains user-review-required per
    `self_healing.user_review_required_for: [skills]`.*
 4. **Implement**: `bmad-dev-story`, red-green-refactor, all tasks/subtasks.
 5. **Self-review**: `bmad-code-review` adversarially; fix all findings
@@ -248,11 +248,16 @@ Full contract: `.claude/commands/devx.md`.
 - **Self-review is non-skippable.** Every dev story runs `bmad-code-review`
   after implementation, fixes ALL findings (HIGH/MED/LOW) without asking,
   and re-runs to verify. Empirically (LEARN.md cross-epic patterns) this
-  catches real semantics bugs every time across 6 shipped epics — all 5
-  Phase 0 epics + Phase 1's first epic (mrg). It pays for itself on every
-  run. Skip this step and load-bearing bugs ship. The correct shape when
-  there's nothing to fix is explicit-zero ("self-review found nothing
-  actionable"), not omission — see `LEARN.md § epic-merge-gate-modes` E7.
+  catches real semantics bugs every time across 7 shipped epics — all 5
+  Phase 0 epics + Phase 1's first 2 epics (mrg + prt). It pays for itself
+  on every run. Skip this step and load-bearing bugs ship. The correct
+  shape when there's nothing to fix is explicit-zero ("self-review found
+  nothing actionable"), not omission — see `LEARN.md § epic-merge-gate-modes`
+  E7. For substantial-surface stories (>500 lines / multi-regex /
+  marker-bearing), prefer 3-agent parallel adversarial review (Blind
+  Hunter + Edge Case Hunter + Acceptance Auditor) over single-pass —
+  prt102 surfaced 9 findings via parallel framings where single-pass
+  would have caught maybe 3-4 (`LEARN.md § epic-pr-template` E3).
 
 ---
 
@@ -276,16 +281,25 @@ CLI (PR #20), CLI skeleton (PR #21), OS supervisor scaffold (PR #22),
 `/devx-init` skill (PR #30). 25 parent stories across the 5 epics; +225
 net tests in the ini epic alone (largest of any Phase 0 epic).
 
-## Status: Phase 1 — Single-agent core loop (in flight, 1/5 epics shipped)
+## Status: Phase 1 — Single-agent core loop (in flight, 2/5 epics shipped)
 
 epic-merge-gate-modes shipped (PRs #31 mrg101 + #32 mrg102 + #33 mrg103 +
-this PR mrgret). +92 net tests across the 3 stories. Delivers the single
+#34 mrgret). +92 net tests across the 3 stories. Delivers the single
 mode-derived merge-gate primitive consumed by `/devx` Phase 8 today (via
 `devx merge-gate <hash>`) and by the latent `/devx-manage` promotion path
 when split-branch users arrive (`promoteIntegrationToDefault`). mrg102
 specifically unblocks dvx101 + dvx106 in epic-devx-skill.
 
-4 epics remaining: epic-pr-template (independent), epic-devx-plan-skill
-(independent), epic-devx-skill (blocked-by mrg102 ✓ + prt102), epic-devx-
-manage-minimal (blocked-by dvxret). Mobile companion v0.1 runs in
-parallel from Phase 8.
+epic-pr-template shipped (PRs #35 prt101 + #36 prt102 + this PR prtret).
++46 net tests across the 2 stories (10 prt101 init-write tests +
+36 prt102 substitution + CLI tests). Delivers the canonical
+`pull_request_template.md` shipped via npm + idempotently written by
+`/devx-init`, plus the `devx pr-body` CLI consumed by `/devx` Phase 7 at
+PR-open time. prt102 specifically unblocks dvx101 + dvx106 in
+epic-devx-skill. PR #36's body itself was rendered by `devx pr-body` —
+the strongest possible AC 5 verification (the consumer ran on the same
+PR, not the next one).
+
+3 epics remaining: epic-devx-plan-skill (independent), epic-devx-skill
+(now fully unblocked: mrg102 ✓ + prt102 ✓), epic-devx-manage-minimal
+(blocked-by dvxret). Mobile companion v0.1 runs in parallel from Phase 8.
