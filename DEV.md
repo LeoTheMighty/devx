@@ -94,7 +94,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-prtret-2026-04-28T19:30-retro-pr-template.md` — Retro + LEARN.md updates (interim retro discipline). Status: done. Blocked-by: prt101, prt102. PR: https://github.com/LeoTheMighty/devx/pull/37 (merged c4fc396). Closes epic-pr-template 3/3.
 
 ### Epic 3 — /devx-plan skill (canonical PlanAgent)
-- [/] `dev/dev-pln101-2026-04-28T19:30-plan-derive-branch.md` — deriveBranch() helper + devx plan-helper derive-branch CLI. Status: in-progress. From: epic-devx-plan-skill.
+- [x] `dev/dev-pln101-2026-04-28T19:30-plan-derive-branch.md` — deriveBranch() helper + devx plan-helper derive-branch CLI. Status: done. From: epic-devx-plan-skill. PR: https://github.com/LeoTheMighty/devx/pull/38 (merged 6538bf0).
 - [ ] `dev/dev-pln102-2026-04-28T19:30-plan-emit-retro.md` — emitRetroStory() helper + retro-row co-emission discipline. Status: ready. Blocked-by: pln101.
 - [ ] `dev/dev-pln103-2026-04-28T19:30-plan-validate-emit.md` — devx plan-helper validate-emit cross-reference checker. Status: ready. Blocked-by: pln101, pln102.
 - [ ] `dev/dev-pln104-2026-04-28T19:30-plan-precedence-enforcement.md` — Source-of-truth-precedence enforcement at planning time. Status: ready. Blocked-by: pln103.

@@ -307,7 +307,7 @@ plans:
         stories:
           - key: pln101
             title: deriveBranch() helper + devx plan-helper derive-branch CLI
-            status: backlog
+            status: done
           - key: pln102
             title: emitRetroStory() helper + retro-row co-emission discipline
             status: backlog
