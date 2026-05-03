@@ -310,7 +310,7 @@ plans:
             status: done
           - key: pln102
             title: emitRetroStory() helper + retro-row co-emission discipline
-            status: backlog
+            status: done
             blocked_by: [pln101]
           - key: pln103
             title: devx plan-helper validate-emit cross-reference checker
