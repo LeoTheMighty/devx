@@ -151,15 +151,34 @@ For **each** new epic:
 
 5. **Update `epics.md`** — one-line summary + "user sees:" per epic.
 
-6. **Emit a retro story** — required by [`docs/ROADMAP.md` § Locked decisions — Interim retro discipline](../../docs/ROADMAP.md#locked-decisions-cross-epic). Until Phase 5's `epic-retro-agent` + `epic-learn-agent` ship, every epic ends with a `*ret` retrospective story:
-   - **Hash:** epic-prefix + `ret` (e.g. `audret`, `cfgret`, `a10ret`). 6-char convention.
-   - **Spec file:** `dev/dev-<hash>ret-<ts>-retro-<epic-slug>.md`. Frontmatter mirrors a normal dev spec; `blocked_by:` lists every story hash in the epic; goal = "Run `bmad-retrospective` on epic-<slug> and append findings to `LEARN.md § epic-<slug>`."
-   - **Acceptance criteria** (use the canonical template from existing retros, e.g. `dev/dev-audret-…`): invoke `bmad-retrospective`, append findings tagged with **confidence** (low/med/high) + **blast radius** (memory/skill/template/config/docs/code), apply low-blast items in the retro PR, file higher-blast items as MANUAL.md or new dev specs.
-   - **DEV.md row:** added at the bottom of the epic's section, blocked on every other story in the epic.
-   - **sprint-status.yaml:** add as a `backlog` story under the epic header, same as the others.
-   - **Plan-spec `spawned:`:** include the retro hash so re-emission preserves it.
+6. **Emit a retro story** — required by [`docs/ROADMAP.md` § Locked decisions — Interim retro discipline](../../docs/ROADMAP.md#locked-decisions-cross-epic). Until Phase 5's `epic-retro-agent` + `epic-learn-agent` ship, every epic ends with a `*ret` retrospective story.
+
+   **Invoke `devx plan-helper emit-retro-story` (pln102) once per chunked epic — do not hand-compose.** The CLI reads `devx.config.yaml` for mode/shape/thoroughness, derives the branch via `deriveBranch()` (pln101), renders the canonical retro spec body + DEV.md row + sprint-status.yaml row, and writes all three atomically (tmp + ordered renames per epic locked-decision #7). All three artifacts land in one batch — no half-emit possible.
+
+   ```bash
+   mkdir -p .devx-cache  # ensure the stderr sink exists on a fresh repo
+   OUT=$(devx plan-helper emit-retro-story \
+     --epic-slug <slug> \
+     --parents <h1,h2,...> \
+     --plan plan/plan-<...>.md \
+     2> .devx-cache/emit-retro.stderr)
+   # OUT: spec=<path> dev_md=DEV.md sprint_status=<path> [partial=<csv>]
+   # WARNs (if any) land in .devx-cache/emit-retro.stderr — grep for "WARN:"
+   # to detect partial emits and decide whether to escalate.
+   ```
+
+   Reference behaviors (the helper handles all of these — this list is for skill-reader orientation):
+   - **Hash:** 3-char prefix derived from `parents[0]` + `ret` (e.g. `mrg101 → mrgret`, `a10001 → a10ret`). Throws if parents don't share a 3-char prefix.
+   - **Spec file:** `dev/dev-<hash>ret-<ts>-retro-<epic-slug>.md` with full frontmatter (`hash`, `type=dev`, `created`, `title`, `from`, `plan`, `status=ready`, `blocked_by`, `branch`).
+   - **Goal + ACs:** matches the canonical template from `dev/dev-prtret-…` / `dev/dev-mrgret-…` (the Phase 1 form): `bmad-retrospective` invocation, findings tagged `[confidence]` + `[blast-radius]`, low-blast applied in retro PR, higher-blast filed as MANUAL/new specs, cross-epic patterns ≥3 retros promoted, sprint-status row present.
+   - **DEV.md row:** appended at the bottom of the epic's `### ` section, blocked on every other story in the epic.
+   - **sprint-status.yaml:** appended under the epic header, ordered after parent stories.
+   - **Atomicity:** if a rename fails after prior renames committed, the partial state is logged as `WARN: retro emission partial — manually verify <missing>` to stderr; the planner proceeds (better partial than zero — locked decision #7). The CLI exits 0 with a `partial=...` field in stdout so the skill body can decide whether to escalate.
+   - **`spawned:` propagation:** include the retro hash in the plan-spec's `spawned:` field so re-emission preserves it.
    - **LEARN.md:** if the file does not yet exist (pre-`/devx-init`), create it with a per-epic section stub. If it exists, add the new epic's section if missing.
    - **Sunset:** when Phase 5 lands, `epic-retro-agent` replaces this; on first run `epic-learn-agent` ingests `LEARN.md` into `LESSONS.md` and the `*ret` rows are removed in a sweep PR.
+
+   **Closes the LEARN.md cross-epic regression class:** "Retro stories absent from sprint-status.yaml" — Phase 0 hand-backfilled this 5/5 times; Phase 1+ co-emits 100% via this CLI.
 
 Run Phase 5 drafts in parallel — epic files are independent writes.
 
