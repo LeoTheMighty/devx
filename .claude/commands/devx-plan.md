@@ -208,7 +208,14 @@ For **each** draft epic, in dependency order (foundational first):
 
 5. **Propagate cross-epic decisions** — maintain an in-memory locked-decisions list fed into every subsequent party-mode + focus-group prompt.
 
-6. **Escalate unknowns, deferrals, non-trivial trade-offs** — pause and ask the user if party-mode surfaces:
+6. **Validate cross-references** — after the party-mode rewrite for each epic, invoke `devx plan-helper validate-emit <epic-slug>` (where `<epic-slug>` is the part after `epic-` in the filename — e.g. `devx-plan-skill` for `epic-devx-plan-skill.md`). The CLI exit codes carry distinct semantics:
+   - **Exit 0** — clean run; proceed to the next epic.
+   - **Exit 1** — at least one error-severity issue. The CLI's stderr lists each issue with `[error] [<check>] <location>: <message>` (e.g. `[error] [branch-mismatch] dev/dev-pln103-...md: spec for 'pln103' has branch='develop/dev-pln103'; deriveBranch yields 'feat/dev-pln103'`). **Abort the planning run** per locked decision #8 — print the validation errors to the user, do NOT roll back PRD/epic-file writes (those are append-only and valuable as-is), leave the run in a "validation-failed" state. The next /devx-plan invocation can pick up where this one left off, OR the user can hand-fix the cross-references and re-invoke.
+   - **Exit 2** — epic file not found at the resolved path. This is a slug typo (operator-fixable) — surface the message and ask the user to confirm the slug; do NOT abort the rest of the planning run. (Distinct from exit 1 because exit 1 means the planner emitted broken artifacts; exit 2 means the operator passed the wrong handle.)
+
+   The CLI also surfaces `[warn] [...]` issues for heuristic checks (e.g. backticked phrases in locked decisions that don't appear in the matching spec). Warns don't change the exit code; they're advisory and printed for the operator's eye.
+
+7. **Escalate unknowns, deferrals, non-trivial trade-offs** — pause and ask the user if party-mode surfaces:
    - A net-new user-visible surface.
    - A candidate deferral.
    - A non-trivial trade-off without convergence.

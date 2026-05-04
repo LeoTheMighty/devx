@@ -6,23 +6,30 @@
 //   - derive-branch <type> <hash> (pln101)
 //   - emit-retro-story --epic-slug <slug> --parents <h1,h2,...> --plan <path>
 //     (pln102)
-// Phase 1 follow-ups:
-//   - pln103 adds `validate-emit <epic-slug>`.
+//   - validate-emit <epic-slug> (pln103)
 //
-// Exit codes — same shape across subcommands:
-//   0  — success; derived value printed on stdout. Partial-but-acceptable
-//        outcomes (e.g. emit-retro-story's "spec wrote, sprint-status
-//        rename failed") are also exit 0 with a `WARN:` on stderr — the
-//        skill body greps stderr to detect partials. (Mirrors `devx
-//        pr-body`'s unresolved-placeholder pattern from prt102.)
-//   1  — invalid input or pre-write failure (missing devx.config.yaml,
-//        bad arg shape, epic not found in DEV.md / sprint-status.yaml,
-//        spec already exists). Reason on stderr; no fs side-effects.
-//   2  — usage error from commander (handled by commander itself).
+// Exit codes — vary per subcommand because validate-emit needs to distinguish
+// "epic missing" (operator typo, not a hard failure of the planning run) from
+// "validation failed" (the planner emitted half-broken artifacts):
+//
+//   derive-branch / emit-retro-story:
+//     0  — success; derived value printed on stdout. Partial-but-acceptable
+//          outcomes (emit-retro-story's "spec wrote, sprint-status rename
+//          failed") are also exit 0 with `WARN:` on stderr.
+//     1  — invalid input or pre-write failure. No fs side-effects.
+//     2  — commander usage error (handled by commander itself).
+//
+//   validate-emit:
+//     0  — epic found AND zero error-severity issues (warn-severity OK).
+//     1  — epic found AND ≥1 error-severity issue. Issues on stderr.
+//     2  — epic file not found (distinct from "found but invalid", so the
+//          /devx-plan skill body can route a typo'd slug back to the user
+//          rather than aborting forward progress per locked decision #8).
 //
 // Specs:
-//   dev/dev-pln101-2026-04-28T19:30-plan-derive-branch.md (derive-branch)
-//   dev/dev-pln102-2026-04-28T19:30-plan-emit-retro.md   (emit-retro-story)
+//   dev/dev-pln101-2026-04-28T19:30-plan-derive-branch.md  (derive-branch)
+//   dev/dev-pln102-2026-04-28T19:30-plan-emit-retro.md     (emit-retro-story)
+//   dev/dev-pln103-2026-04-28T19:30-plan-validate-emit.md  (validate-emit)
 // Epic: _bmad-output/planning-artifacts/epic-devx-plan-skill.md
 
 import { dirname } from "node:path";
@@ -40,6 +47,11 @@ import {
   emitRetroStory,
   writeRetroAtomically,
 } from "../lib/plan/emit-retro-story.js";
+import {
+  type ValidateEmitFs,
+  type ValidationIssue,
+  validateEmit,
+} from "../lib/plan/validate-emit.js";
 
 // Spec convention from CLAUDE.md: type ∈ {dev, plan, test, debug, focus, learn, qa}.
 const KNOWN_TYPES: ReadonlySet<string> = new Set([
@@ -296,6 +308,141 @@ export function runEmitRetroStory(
   return 0;
 }
 
+// ---------------------------------------------------------------------------
+// validate-emit — pln103
+// ---------------------------------------------------------------------------
+
+// Slug shape: same kebab-case constraint emitRetroStory enforces. We re-check
+// here so a malformed slug fails with exit 1 (operator-fixable typo) rather
+// than exit 2 (which the skill body interprets as "epic genuinely doesn't
+// exist, route to user").
+const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$/;
+
+export interface RunValidateEmitOpts {
+  out?: (s: string) => void;
+  err?: (s: string) => void;
+  /** Test seam: explicit project config path. */
+  projectPath?: string;
+  /** Test seam: project repo root. Defaults to dirname of resolved config. */
+  repoRoot?: string;
+  /** Test seam: partial fs override forwarded into validateEmit. */
+  fsOverride?: Partial<ValidateEmitFs>;
+}
+
+export function runValidateEmit(
+  args: string[],
+  opts: RunValidateEmitOpts = {},
+): number {
+  const out = opts.out ?? ((s) => process.stdout.write(s));
+  const err = opts.err ?? ((s) => process.stderr.write(s));
+
+  if (args.length !== 1) {
+    err("usage: devx plan-helper validate-emit <epic-slug>\n");
+    return 1;
+  }
+  const epicSlug = args[0];
+  if (epicSlug.length === 0) {
+    err("devx plan-helper validate-emit: epic slug is empty\n");
+    return 2;
+  }
+  // Normalize: accept `epic-foo` and strip the prefix, or accept `foo`
+  // directly. Saves the operator one substring slice and matches the way
+  // emit-retro-story takes `--epic-slug` (the part after `epic-`).
+  const slug = epicSlug.startsWith("epic-")
+    ? epicSlug.slice("epic-".length)
+    : epicSlug;
+  // Refuse `epic-epic-foo` rather than silently stripping once and looking
+  // up the (probably wrong) `epic-foo`. Adversarial-review-surfaced
+  // footgun: a coincidentally-existing `epic-foo.md` would mask the typo.
+  if (slug.startsWith("epic-")) {
+    err(
+      `devx plan-helper validate-emit: epic slug '${epicSlug}' has a doubled 'epic-' prefix; pass either '${slug}' or '${epicSlug.slice("epic-".length)}'\n`,
+    );
+    return 2;
+  }
+  if (!SLUG_RE.test(slug)) {
+    // Slug-shape violations are operator typos on input — exit 2 (skill
+    // body interprets exit 2 as "wrong handle, route back to user; don't
+    // abort the rest of the planning run"). Distinct from exit 1 which
+    // means "valid handle but the planner emitted broken artifacts."
+    err(
+      `devx plan-helper validate-emit: invalid epic slug '${epicSlug}' (must match ${SLUG_RE.source})\n`,
+    );
+    return 2;
+  }
+
+  const projectConfigPath = opts.projectPath ?? findProjectConfig();
+  if (!projectConfigPath) {
+    err(
+      "devx plan-helper validate-emit: devx.config.yaml not found (walked up from cwd)\n",
+    );
+    return 1;
+  }
+  const repoRoot = opts.repoRoot ?? dirname(projectConfigPath);
+
+  let merged: DeriveBranchConfig;
+  try {
+    const raw = loadMerged({ projectPath: projectConfigPath });
+    merged = (raw && typeof raw === "object" ? raw : {}) as DeriveBranchConfig;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    err(`devx plan-helper validate-emit: config load failed: ${msg}\n`);
+    return 1;
+  }
+
+  const result = validateEmit(
+    { repoRoot, epicSlug: slug, config: merged },
+    opts.fsOverride ?? {},
+  );
+
+  if (!result.epicFound) {
+    err(
+      `devx plan-helper validate-emit: epic file not found at ${result.epicPath}\n`,
+    );
+    return 2;
+  }
+
+  // Print issues. Format mirrors merge-gate's structured output: each issue
+  // on its own line so grep + line-count from the skill body works.
+  // Errors first, then warns; preserves discovery order within each group.
+  const errors = result.issues.filter((i) => i.severity === "error");
+  const warns = result.issues.filter((i) => i.severity === "warn");
+  for (const i of errors) {
+    err(`${formatIssue(i)}\n`);
+  }
+  for (const i of warns) {
+    err(`${formatIssue(i)}\n`);
+  }
+
+  if (errors.length > 0) {
+    err(
+      `epic-${slug}: ${errors.length} error${errors.length === 1 ? "" : "s"}` +
+        (warns.length > 0
+          ? `, ${warns.length} warning${warns.length === 1 ? "" : "s"}`
+          : "") +
+        "\n",
+    );
+    return 1;
+  }
+  // Clean run: print a single-line summary on stdout so the skill body has
+  // a positive signal to grep for. Mirrors derive-branch's stdout shape.
+  out(
+    `validate-emit ok: epic-${slug}` +
+      (warns.length > 0 ? ` (${warns.length} warning${warns.length === 1 ? "" : "s"})` : "") +
+      "\n",
+  );
+  return 0;
+}
+
+function formatIssue(i: ValidationIssue): string {
+  const tag = `[${i.severity}] [${i.check}]`;
+  return i.location ? `${tag} ${i.location}: ${i.message}` : `${tag} ${i.message}`;
+}
+
+// ---------------------------------------------------------------------------
+// commander wiring
+// ---------------------------------------------------------------------------
+
 export function register(program: Command): void {
   const sub = program
     .command("plan-helper")
@@ -349,6 +496,22 @@ export function register(program: Command): void {
         }
       },
     );
+
+  sub
+    .command("validate-emit")
+    .description(
+      "Validate cross-references emitted by /devx-plan Phase 5/6 for one epic. Catches half-broken artifacts (DEV.md row → missing spec, branch frontmatter ignoring devx.config.yaml, retro trifecta missing one of three rows, etc.) at planning time, before /devx tries to claim them.",
+    )
+    .argument(
+      "<epic-slug>",
+      "epic slug — `foo` or `epic-foo` (the part after `epic-` in the filename)",
+    )
+    .action((epicSlug: string) => {
+      const code = runValidateEmit([epicSlug], {});
+      if (code !== 0) {
+        process.exit(code);
+      }
+    });
 
   attachPhase(sub, 1);
 }
