@@ -5,7 +5,7 @@ created: 2026-04-28T19:30:00-07:00
 title: devx plan-helper validate-emit cross-reference checker
 from: _bmad-output/planning-artifacts/epic-devx-plan-skill.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: in-progress
+status: done
 blocked_by: [pln101, pln102]
 branch: feat/dev-pln103
 owner: /devx
@@ -37,3 +37,5 @@ Ship `devx plan-helper validate-emit <epic-slug>` to check cross-references afte
 
 - 2026-04-28T19:30 — created by /devx-plan
 - 2026-05-03T11:00 — claimed by /devx (epic-devx-plan-skill)
+- 2026-05-04T09:50 — PR #40 opened: https://github.com/LeoTheMighty/devx/pull/40
+- 2026-05-04T10:11 — merged via PR #40 (squash → dd306af)

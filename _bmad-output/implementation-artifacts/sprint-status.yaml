@@ -314,7 +314,7 @@ plans:
             blocked_by: [pln101]
           - key: pln103
             title: devx plan-helper validate-emit cross-reference checker
-            status: ready-for-dev
+            status: done
             blocked_by: [pln101, pln102]
           - key: pln104
             title: Source-of-truth-precedence enforcement at planning time
