@@ -5,7 +5,7 @@ created: 2026-04-28T19:30:00-07:00
 title: Phase 8 final-summary Next command block format
 from: _bmad-output/planning-artifacts/epic-devx-plan-skill.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: in-progress
+status: done
 blocked_by: [pln102]
 branch: feat/dev-pln106
 owner: /devx
@@ -37,3 +37,4 @@ Pin the format of `/devx-plan` Phase 8's `Next command:` block so users (and Con
 
 - 2026-04-28T19:30 — created by /devx-plan
 - 2026-05-05T10:25 — claimed by /devx; worktree feat/dev-pln106 from main
+- 2026-05-05T10:46 — merged via PR #43 (squash → d9345bd)

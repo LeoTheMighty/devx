@@ -326,7 +326,7 @@ plans:
             blocked_by: [pln103]
           - key: pln106
             title: Phase 8 final-summary Next command block format
-            status: backlog
+            status: done
             blocked_by: [pln102]
           - key: plnret
             title: Retro + LEARN.md updates (interim retro discipline)
