@@ -15,6 +15,17 @@
       "description": "Set to true by /devx-init's failure-mode handler (ini506) when init has deferred work (gh-not-auth, BMAD-install fail, no-remote). Other devx commands refuse to spawn in modes ≥ BETA while this flag is true. Cleared by `devx init --resume-gh` once all deferred ops succeed.",
       "type": "boolean"
     },
+    "_internal": {
+      "description": "Reserved for devx-internal flags. Not user-tunable; flipped by /devx itself or /devx-learn (Phase 5+) as part of canary rollouts. Idempotent extension per cfg201 contract; `additionalProperties: true` lets future devx versions add new internal flags without forcing existing configs to re-init (cfg203 silently accepts unknown subkeys here).",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "skip_create_story_canary": {
+          "description": "Phase 2 conditional bmad-create-story canary (dvx102). 'off' (default after dvx102 ships) — helper decision logged but NOT honored; v0 behavior preserved. 'active' — helper decision honored: invoke=false short-circuits Phase 2 entirely. 'default' — same as active but flag-deletable post-canary. Flip 'off'→'active' for one in-flight story to validate the conditional path; flip 'active'→'default' once the canary green-runs.",
+          "enum": ["off", "active", "default"]
+        }
+      }
+    },
     "mode": {
       "description": "Strategic axis #1 — what kind of risk surface this project sits on. Sets default gates across every subsystem (see docs/MODES.md).",
       "enum": ["YOLO", "BETA", "PROD", "LOCKDOWN"]
