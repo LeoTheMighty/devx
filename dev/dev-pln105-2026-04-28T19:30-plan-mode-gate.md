@@ -5,9 +5,10 @@ created: 2026-04-28T19:30:00-07:00
 title: Phase 6.5 mode gate is structurally explicit
 from: _bmad-output/planning-artifacts/epic-devx-plan-skill.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: ready
+status: in-progress
 blocked_by: [pln103]
 branch: feat/dev-pln105
+owner: /devx
 ---
 
 ## Goal
@@ -31,3 +32,4 @@ Make `/devx-plan` Phase 6.5 (focus-group) a structurally explicit predicate: `IF
 ## Status log
 
 - 2026-04-28T19:30 — created by /devx-plan
+- 2026-05-05T09:59 — claimed by /devx; worktree feat/dev-pln105 from main
