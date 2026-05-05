@@ -5,7 +5,8 @@ created: 2026-04-28T19:30:00-07:00
 title: Conditional bmad-create-story with canary flag
 from: _bmad-output/planning-artifacts/epic-devx-skill.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: ready
+status: in-progress
+owner: /devx-2026-05-05T1155-99036
 blocked_by: [dvx101]
 branch: feat/dev-dvx102
 ---
@@ -34,3 +35,4 @@ Make `/devx` Phase 2 (`bmad-create-story`) conditional on project_shape + AC cou
 ## Status log
 
 - 2026-04-28T19:30 — created by /devx-plan
+- 2026-05-05T11:55:13-06:00 — claimed by /devx in session /devx-2026-05-05T1155-99036

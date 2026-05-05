@@ -104,7 +104,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 
 ### Epic 4 — /devx skill (canonical DevAgent)
 - [x] `dev/dev-dvx101-2026-04-28T19:30-devx-claim-atomic.md` — Atomic claim + push-before-PR + spec lock. Status: done. From: epic-devx-skill. Blocked-by: mrg102, prt102. PR: https://github.com/LeoTheMighty/devx/pull/45 (merged fc4261e).
-- [ ] `dev/dev-dvx102-2026-04-28T19:30-devx-conditional-create-story.md` — Conditional bmad-create-story with canary flag. Status: ready. Blocked-by: dvx101.
+- [/] `dev/dev-dvx102-2026-04-28T19:30-devx-conditional-create-story.md` — Conditional bmad-create-story with canary flag. Status: in-progress. Blocked-by: dvx101.
 - [ ] `dev/dev-dvx103-2026-04-28T19:30-devx-self-review-discipline.md` — Phase 4 self-review status-log assertion. Status: ready. Blocked-by: dvx102.
 - [ ] `dev/dev-dvx104-2026-04-28T19:30-devx-coverage-gate.md` — Mode-derived coverage gate (Phase 5). Status: ready. Blocked-by: dvx101.
 - [ ] `dev/dev-dvx105-2026-04-28T19:30-devx-await-remote-ci.md` — Three-state remote-CI probe + ScheduleWakeup polling. Status: ready. Blocked-by: dvx101.
