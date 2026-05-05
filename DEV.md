@@ -98,7 +98,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-pln102-2026-04-28T19:30-plan-emit-retro.md` — emitRetroStory() helper + retro-row co-emission discipline. Status: done. Blocked-by: pln101. PR: https://github.com/LeoTheMighty/devx/pull/39 (merged efea1c2).
 - [x] `dev/dev-pln103-2026-04-28T19:30-plan-validate-emit.md` — devx plan-helper validate-emit cross-reference checker. Status: done. Blocked-by: pln101, pln102. PR: https://github.com/LeoTheMighty/devx/pull/40 (merged dd306af).
 - [x] `dev/dev-pln104-2026-04-28T19:30-plan-precedence-enforcement.md` — Source-of-truth-precedence enforcement at planning time. Status: done. Blocked-by: pln103. PR: https://github.com/LeoTheMighty/devx/pull/41 (merged aea6708).
-- [/] `dev/dev-pln105-2026-04-28T19:30-plan-mode-gate.md` — Phase 6.5 mode gate is structurally explicit. Status: in-progress. Blocked-by: pln103.
+- [x] `dev/dev-pln105-2026-04-28T19:30-plan-mode-gate.md` — Phase 6.5 mode gate is structurally explicit. Status: done. Blocked-by: pln103. PR: https://github.com/LeoTheMighty/devx/pull/42 (merged bd7400f).
 - [ ] `dev/dev-pln106-2026-04-28T19:30-plan-summary-format.md` — Phase 8 final-summary Next command block format. Status: ready. Blocked-by: pln102.
 - [ ] `dev/dev-plnret-2026-04-28T19:30-retro-devx-plan-skill.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: pln101, pln102, pln103, pln104, pln105, pln106.
 

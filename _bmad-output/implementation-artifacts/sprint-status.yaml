@@ -322,7 +322,7 @@ plans:
             blocked_by: [pln103]
           - key: pln105
             title: Phase 6.5 mode gate is structurally explicit
-            status: backlog
+            status: done
             blocked_by: [pln103]
           - key: pln106
             title: Phase 8 final-summary Next command block format
