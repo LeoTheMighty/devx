@@ -206,9 +206,39 @@ For **each** draft epic, in dependency order (foundational first):
 
 4. **Reconcile sprint-status.yaml** — splits/merges/renames/drops. Never silently drop — cuts become `deleted` with a one-line comment.
 
-5. **Propagate cross-epic decisions** — maintain an in-memory locked-decisions list fed into every subsequent party-mode + focus-group prompt.
+5. **Apply locked-decision overrides — source-of-truth precedence enforcement (pln104).**
 
-6. **Validate cross-references** — after the party-mode rewrite for each epic, invoke `devx plan-helper validate-emit <epic-slug>` (where `<epic-slug>` is the part after `epic-` in the filename — e.g. `devx-plan-skill` for `epic-devx-plan-skill.md`). The CLI exit codes carry distinct semantics:
+   Source-of-truth precedence (locked in [`docs/DESIGN.md § Source-of-truth precedence`](../../docs/DESIGN.md#source-of-truth-precedence)):
+
+   ```
+   spec ACs > epic locked decisions > plan frontmatter > devx.config.yaml > skill defaults
+   ```
+
+   When party-mode locks a decision X, the override path always pushes the higher-priority artifacts — the planner rewrites the spec ACs and the epic file's "Locked decisions" so the new decision is reflected at runtime where `/devx` reads. Without this step, Phase 6 produces an internally-inconsistent epic + spec set; the LEARN.md cross-epic pattern `[high] [docs] Source-of-truth precedence rule` (cfg202 + cli302) is what this step closes at planning time.
+
+   For each newly-locked decision X surfaced by party-mode, run this 4-step procedure (closes pln104's contract; the validate-emit step is factored out into step 6 below so it runs once over all of Phase 6's mutations rather than per-decision):
+
+   1. **Lock the decision** — capture decision X verbatim with its anchor (typically `<hash> AC bumped — <phrase>` for the spec(s) it affects).
+   2. **Compare** X against (a) the draft epic file's existing "Locked decisions" list, and (b) every affected dev spec's ACs (matched via the `<hash> AC bumped` anchor or by phrase).
+   3. **On conflict, update the epic** — supersede the prior locked decision in place (or append the new one if there was no prior); append a status-log line in the epic file's status log:
+
+      ```
+      [YYYY-MM-DDTHH:MM] party-mode override (epic-<slug>): <prior decision or "AC X"> superseded by <X> per <reason>
+      ```
+
+   4. **On conflict, propagate to the spec ACs** — rewrite the affected spec file's AC text to match X. Append a status-log line in the SPEC's `## Status log` section:
+
+      ```
+      [YYYY-MM-DDTHH:MM] party-mode override: AC '<old>' → '<new>' per <reason>
+      ```
+
+      The epic's locked-decisions section records the override; the spec's status log records the propagation. Both edits land in the same Phase 6 pass — never split across runs.
+
+   Maintain an in-memory locked-decisions list fed into every subsequent party-mode + focus-group prompt so later epics inherit instead of re-litigating.
+
+   `validate-emit` (next step) catches the structural drift where step 3 ran but step 4 didn't (or vice versa): a backticked phrase in a Locked decision that doesn't appear in the referenced spec body fires a `[warn] [locked-decision-token-missing-from-spec]`. Warns are surfaced for the operator's eye — promote to a fix-in-place if the warn names a token that's load-bearing for the new decision (the heuristic can't tell load-bearing from incidental, so the operator decides).
+
+6. **Validate cross-references** — after the override pass, invoke `devx plan-helper validate-emit <epic-slug>` (where `<epic-slug>` is the part after `epic-` in the filename — e.g. `devx-plan-skill` for `epic-devx-plan-skill.md`). The CLI exit codes carry distinct semantics:
    - **Exit 0** — clean run; proceed to the next epic.
    - **Exit 1** — at least one error-severity issue. The CLI's stderr lists each issue with `[error] [<check>] <location>: <message>` (e.g. `[error] [branch-mismatch] dev/dev-pln103-...md: spec for 'pln103' has branch='develop/dev-pln103'; deriveBranch yields 'feat/dev-pln103'`). **Abort the planning run** per locked decision #8 — print the validation errors to the user, do NOT roll back PRD/epic-file writes (those are append-only and valuable as-is), leave the run in a "validation-failed" state. The next /devx-plan invocation can pick up where this one left off, OR the user can hand-fix the cross-references and re-invoke.
    - **Exit 2** — epic file not found at the resolved path. This is a slug typo (operator-fixable) — surface the message and ask the user to confirm the slug; do NOT abort the rest of the planning run. (Distinct from exit 1 because exit 1 means the planner emitted broken artifacts; exit 2 means the operator passed the wrong handle.)
