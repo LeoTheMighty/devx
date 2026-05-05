@@ -348,7 +348,7 @@ Output, in order:
 9. **End-to-end traceability check** — per epic, confirm in one line: user action → every declared layer → result. Flag any broken chain.
 10. **Cross-epic locked decisions** — the running list.
 11. **DEV.md / sprint-status entries added** — counts (added, renamed, cut). Confirm one `*ret` retro story per epic.
-12. **Next command** — exact `/devx <hash-or-slug>` line(s) in dependency order, or `/devx next` to pick top of DEV.md.
+12. **Next command** — emit the canonical Next-command block (pln106). The exact line format, header, dependency annotation, parallel-safe annotation, and empty-DEV.md case are pinned in [§ Hand-off to /devx](#hand-off-to-devx) below — render from that template, do not paraphrase. Load-bearing for Concierge (Phase 2) which parses this block via `devx ask "what should I run next?"` without LLM reasoning.
 
 Do NOT push, commit, or run `/devx`. `/devx-plan` produces artifacts; `/devx` consumes them. Committing planning artifacts is the user's call.
 
@@ -378,14 +378,39 @@ Asymmetric: YOLO cheap/reversible/stylistic; ask on anything that shapes what th
 
 ## Hand-off to /devx
 
-Final summary's "Next command" is the bridge. Example:
+Final summary's "Next command(s)" block is the bridge from `/devx-plan` to `/devx`. The format is **pinned** (pln106) so Concierge (Phase 2) can parse it via `devx ask "what should I run next?"` without LLM reasoning, and so future regression tests can grep the rendered block byte-stably.
+
+### Canonical Next-command block format (pln106)
+
+The non-empty case (≥1 ready entries):
 
 ```
 Next command(s), in dependency order:
-  /devx <hash-of-first>
-  /devx <hash-of-second>        # depends on first
-  /devx next                    # picks top of DEV.md
+  /devx <hash>          # <one-line title>
+  /devx <hash>          # <one-line title>; depends on <hash>
+  /devx <hash>          # <one-line title>; parallel-safe with <hash>
+  /devx <hash>          # <one-line title>; depends on <hash>; parallel-safe with <hash>
 ```
+
+The empty case (DEV.md has no `[ ]` ready entries) — emitted bare with no leading indent (it's a standalone single-line entry, not a list item under a header):
+
+```
+/devx next  # picks top of DEV.md (currently empty)
+```
+
+**Format invariants** (load-bearing for downstream parsers):
+
+- **Header line.** Non-empty case opens with the literal `Next command(s), in dependency order:` (verbatim — comma + colon, no period at end). The empty case omits the header and emits only the single `/devx next` line.
+- **Indent.** Every non-empty-case entry line starts with exactly 2 leading spaces (rendered under the header). The empty case has zero leading spaces (it's standalone — the "header omitted" rule extends to dropping the indent that pairs with the header).
+- **Command token.** After the indent: `/devx`, then exactly one space, then either a hash (matches `[a-z0-9]{6}` — strictly 6 chars, lowercase + digits only) or the literal `next`. Renderers MUST validate the hash shape and reject otherwise.
+- **Comment separator.** After the hash/`next` token: ≥1 spaces, then `#`, then exactly one space, then the title. Non-empty entries use **exactly 10 spaces** between a 6-char hash and `#` for column-aligned visual readability — total chars before `#` are 24 (2-space indent + `/devx ` + 6-char hash + 10 spaces), so `#` lands at 0-indexed string position 24 / 1-indexed column 25. (The "≥1 spaces" is the loosest tolerance a forgiving parser would accept; renderers MUST emit exactly 10.) The empty case uses **exactly 2 spaces** between `next` and `#` per spec AC#3.
+- **Title.** A one-line title (no newlines, no leading/trailing whitespace) — the spec's `title:` frontmatter field, verbatim. Titles MUST NOT contain `;` (the annotation separator); MUST NOT contain `\n` (line break) — `/devx-plan` normalizes multi-line YAML scalars (`title: |`) to a single line by joining with a single space before rendering. Renderers MUST reject titles violating these rules.
+- **Dependency annotation.** Append `; depends on <hash>` after the title for entries that have at least one prerequisite. Name the most-recently-required parent in the dep graph (deepest single edge); the parser does not enumerate the full transitive list.
+- **Parallel-safe annotation.** Append `; parallel-safe with <hash>` for entries that can run concurrently with another sibling (no edge between them in the dep graph). Name one peer — the most recently emitted sibling without an edge to this entry.
+- **Both annotations.** When an entry carries both, emit `; depends on <a>; parallel-safe with <b>` (depends-first, then parallel-safe). Order is load-bearing for the parser.
+- **Empty-case literal.** When all epics drafted are already done OR DEV.md has no `[ ]` rows, emit exactly: `/devx next  # picks top of DEV.md (currently empty)` (no leading indent, 2 spaces between `next` and `#`). The trailing `(currently empty)` parenthesized literal is what Concierge greps for to distinguish "do this next" from "everything is shipped, idle."
+
+**Stability.** Changes to this canonical format require a paired update to `test/plan-final-summary-format.test.ts` per Murat's locked decision (soft enforcement via retro discipline; test is the reference renderer for downstream consumers).
 
 ## Key References
 
