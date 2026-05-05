@@ -318,7 +318,7 @@ plans:
             blocked_by: [pln101, pln102]
           - key: pln104
             title: Source-of-truth-precedence enforcement at planning time
-            status: backlog
+            status: done
             blocked_by: [pln103]
           - key: pln105
             title: Phase 6.5 mode gate is structurally explicit
