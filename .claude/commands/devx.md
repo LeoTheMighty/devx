@@ -84,14 +84,40 @@ Repeat per item, respecting `stop_after`:
 
 ### Phase 2: Create BMAD Story Context (if needed)
 
-1. Check if a BMAD story file already exists at `_bmad-output/implementation-artifacts/story-<hash>.md`. If yes, read it and skip to Phase 3.
-2. Otherwise invoke the `bmad-create-story` skill. Pass:
-   - the spec file contents,
-   - the parent epic file (from `from:`),
-   - the project's `CLAUDE.md`,
-   - `devx.config.yaml → stack.layers` so the story respects declared layers.
-3. Use YOLO mode for BMAD — auto-select defaults at interactive halts. The spec file's acceptance criteria are the source of truth; the BMAD story is the working artifact.
+Phase 2 invokes `devx devx-helper should-create-story <hash>` (dvx102) to compute the conditional `bmad-create-story` decision. The helper reads `devx.config.yaml → project.shape` + `_internal.skip_create_story_canary` + spec AC count + story-file presence and emits a JSON decision:
+
+```
+{
+  "hash": "<hash>",
+  "canary": "off" | "active" | "default",
+  "decision": { "invoke": boolean, "reason": "shape-not-empty-dream" | "story-file-exists" | "few-actionable-acs" | "project_shape=empty-dream + <N> ACs + no story file" },
+  "effective": { "action": "invoke" | "skip" | "read-existing", "statusLog": "phase 2: canary=..., shouldCreateStory=... → bmad-create-story <SKIPPED|INVOKED> [...]" },
+  "inputs": { "acCount": number, "hasStoryFile": boolean }
+}
+```
+
+The canary states (`devx.config.yaml → _internal.skip_create_story_canary`):
+- `"off"` (default after dvx102 ships) — helper decision is **logged but NOT honored**. v0 behavior preserved: read existing story if present, otherwise invoke `bmad-create-story`.
+- `"active"` — helper decision **IS honored**. `effective.action == "skip"` short-circuits Phase 2 entirely (the spec ACs are the working artifact). `"invoke"` runs `bmad-create-story`. `"read-existing"` reads the existing story file.
+- `"default"` — same as `"active"`; the flag is flag-deletable post-canary. /devx-learn (Phase 5+) flips `"active"`→`"default"` after one in-flight story green-runs the conditional path.
+
+Steps:
+
+1. Run `devx devx-helper should-create-story <hash>`. Parse JSON; capture `effective.action` and `effective.statusLog`.
+   - On exit 2 (`{"error":"rollback","stage":...}`): the helper couldn't resolve the spec or load config — surface the stderr, mark spec `blocked`, and stop.
+2. Append `effective.statusLog` to the spec file's status log (append-only, per CLAUDE.md "Working agreements"). The line shape is fixed by spec dvx102 AC #5: `phase 2: canary=<state>, shouldCreateStory=<reason> → bmad-create-story <SKIPPED|INVOKED> [(detail)]`.
+3. Branch on `effective.action`:
+   - `"skip"` — Skip the BMAD story entirely. Continue to Phase 3 with the spec ACs as the working artifact. (Reached only when `canary` is `"active"` or `"default"` AND the helper returned `invoke=false`.)
+   - `"read-existing"` — Read `_bmad-output/implementation-artifacts/story-<hash>.md` (it exists). Continue to Phase 3.
+   - `"invoke"` — Invoke the `bmad-create-story` skill. Pass:
+     - the spec file contents,
+     - the parent epic file (from `from:`),
+     - the project's `CLAUDE.md`,
+     - `devx.config.yaml → stack.layers` so the story respects declared layers.
+     Use YOLO mode for BMAD — auto-select defaults at interactive halts. The spec file's acceptance criteria are the source of truth; the BMAD story is the working artifact.
 4. Mark the item `ready-for-dev` in sprint-status.yaml.
+
+> Why a CLI helper instead of inlining the decision in prose: the LEARN.md cross-epic pattern (`[high] [skill]` 25/25 silent skip across Phase 0) is structural — every Phase 0 spec had `bmad-create-story` skipped without an explicit recorded reason. Routing through `devx devx-helper should-create-story` makes the decision (and its inputs) recorded, testable, and canary-gated. Skill body never re-implements the rule.
 
 ### Phase 3: Implement
 
