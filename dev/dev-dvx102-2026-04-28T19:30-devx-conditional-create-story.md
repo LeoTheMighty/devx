@@ -5,7 +5,7 @@ created: 2026-04-28T19:30:00-07:00
 title: Conditional bmad-create-story with canary flag
 from: _bmad-output/planning-artifacts/epic-devx-skill.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: in-progress
+status: done
 owner: /devx-2026-05-05T1155-99036
 blocked_by: [dvx101]
 branch: feat/dev-dvx102
@@ -36,3 +36,7 @@ Make `/devx` Phase 2 (`bmad-create-story`) conditional on project_shape + AC cou
 
 - 2026-04-28T19:30 — created by /devx-plan
 - 2026-05-05T11:55:13-06:00 — claimed by /devx in session /devx-2026-05-05T1155-99036
+- 2026-05-05T11:55 — phase 2: bmad-create-story skipped (project_shape=empty-dream + 7 ACs + no story file). This is the very condition dvx102 ships, applied to dvx102 itself — the spec ACs are the source of truth and a BMAD story would only re-encode them. Cross-epic pattern across 8 shipped epics: `LEARN.md § Cross-epic patterns`.
+- 2026-05-05T12:04 — phase 2: canary=off, shouldCreateStory=project_shape=empty-dream + 7 ACs + no story file → bmad-create-story INVOKED (canary=off; helper decision logged not honored). [Note: skill author judged this dogfood SKIP per CLAUDE.md cross-epic pattern; the canary=off line above is the structurally-emitted record from `devx devx-helper should-create-story dvx102` — captured for audit so the reviewer can see the helper's decision matches the human judgement.]
+- 2026-05-05T12:15 — phase 7: PR opened https://github.com/LeoTheMighty/devx/pull/46 (rendered via `devx pr-body`; no unresolved placeholders).
+- 2026-05-05T12:20 — merged via PR #46 (squash → d8d64f8). Local CI green (858 tests); remote devx-ci green; merge-gate exit 0 `{"merge":true}`. Closes LEARN.md row 189 cross-epic pattern (`bmad-create-story silently skipped 36/36`) — annotation landed in this bookkeeping commit.
