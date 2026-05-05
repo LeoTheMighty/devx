@@ -5,9 +5,10 @@ created: 2026-04-28T19:30:00-07:00
 title: Source-of-truth-precedence enforcement at planning time
 from: _bmad-output/planning-artifacts/epic-devx-plan-skill.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: ready
+status: in-progress
 blocked_by: [pln103]
 branch: feat/dev-pln104
+owner: /devx-2026-05-05
 ---
 
 ## Goal
@@ -31,3 +32,4 @@ When `/devx-plan` Phase 6 (party-mode) locks a decision conflicting with the pla
 ## Status log
 
 - 2026-04-28T19:30 — created by /devx-plan
+- 2026-05-05T00:00 — claimed by /devx (epic-devx-plan-skill)
