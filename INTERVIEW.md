@@ -148,6 +148,20 @@ loop can read.
 
 ---
 
+- [ ] **Q#8 — Lock the Phase 2 sequence into rot-detection → spec-locks → build-isolation → autoscaling.**
+  - Context: `docs/DESIGN.md §"Concurrency model — controller-pattern lineage"` (added 2026-05-02) names the K8s-controller analogy explicitly and sketches the autoscaling target. Phase 2 has several unspecced epics implied by the design (`epic-context-rot-detection`, `epic-spec-locks`, `epic-build-isolation`, `epic-controller-autoscaling`). Going N>1 (concurrent workers) without all four landed in order produces a system that races, corrupts dist/, and compounds context rot rather than catching it. The session 2026-05-02 walked through why each is a hard prerequisite and the natural ordering, but no INTERVIEW entry pins it — `/devx-plan` will see this for the first time when Phase 1 closes and could re-derive in any order if not constrained.
+  - Question: Confirm the Phase 2 ordering as a planning constraint that `/devx-plan` and `/devx-manage` must respect, AND confirm "soak N=1 for at least 2 weeks before planning N>1" as a separate gate?
+  - Blocks: every Phase 2 epic-emission decision; specifically prevents `/devx-plan` from emitting `epic-controller-autoscaling` before its three prerequisite epics.
+  - Options:
+    - (a) Lock the order: rot-detection → spec-locks → build-isolation → autoscaling. Soak N=1 ≥ 2 weeks before planning N>1. Codify both in `docs/ROADMAP.md` "Locked cross-epic decisions."
+    - (b) Lock the order without the soak gate; trust `/devx-plan` to time the autoscaling epic on its own.
+    - (c) Don't lock the order; let `/devx-plan` re-derive each time using the DESIGN.md narrative as input.
+    - (d) Different order — specify.
+  - Agent recommendation: (a) — the ordering isn't speculative; each epic literally requires the previous one's primitive (autoscaler can't manage workers it can't restart on rot; can't restart on rot without per-spec locks; can't run multiple workers with a shared dist/ build cache). The soak gate is the empirical step every Phase 0 retro flagged as missing-by-default and worth making structural. Cost of (a) is one paragraph in `docs/ROADMAP.md`; cost of (c) is re-deriving the same constraint at every Phase 2 planning pass + risk of picking the wrong order once.
+  → Answer:
+
+---
+
 ## Phase 0 / cli301 prerequisites
 
 Filled by `/devx` automatically when it tries to claim `cli301` and finds the

@@ -336,6 +336,84 @@ The single conversational surface for the user. **Always running, supervised by 
 
 Concierge is intentionally minimal-context — a router and notifier, not a reasoner. Anything requiring real reasoning is delegated to a freshly spawned worker via ManageAgent. This is how Concierge avoids context rot despite being long-lived.
 
+### Concurrency model — controller-pattern lineage
+
+The Kubernetes analogy in §Control plane isn't decorative — devx is, structurally, a **K8s controller for LLM workers**, with a markdown filesystem standing in for etcd. Every `ManageAgent` tick is the canonical level-triggered controller pattern: `read full state → diff against desired → act → write status → sleep → repeat`. Names matter; Phase 2's multi-worker scheduling epic should be planned in K8s vocabulary, because the proven pattern shortens the design search.
+
+#### The mapping is exact where it matters
+
+| Kubernetes | devx |
+|---|---|
+| Controller manager | `runManagerLoop()` (mgr101) |
+| Scheduler | `reconcile()` returning `desiredSpawns` (mgr103) |
+| etcd | `.devx-cache/state/manager.json` + the git working tree |
+| Pod spec | `dev/dev-<hash>-*.md` |
+| Desired state declaration | `DEV.md` (and the seven other backlogs) |
+| Pod | `claude /devx <hash>` subprocess |
+| kubelet (keeps the control plane alive) | launchd / systemd-user / Task Scheduler unit |
+| Pod restart backoff | `worker_crash_backoff_s: [10, 30, 90, 300]` |
+| Liveness probe | `heartbeat.json` freshness check |
+| Level-triggered reconciliation | mgr103 contract — re-read full state every tick |
+| PodDisruptionBudget (drain before kill) | mgr101 SIGTERM-clean AC |
+| CRDs | the `<type>` enum: dev / plan / test / debug / focus / learn / qa |
+| Operator pattern (one controller per CRD) | one controller per backlog (see "Controllers, not just agents" below) |
+| ResourceQuota | `manager.max_concurrent` + per-section budgets (Phase 2) |
+
+#### Where it productively bends
+
+Three load-bearing differences. Each is the place we should *not* reach for a K8s primitive:
+
+1. **Workers are NOT fungible.** A K8s pod is replaceable by an identical pod; replica index is a coordination artifact, not a semantic identity. A devx worker is bound to a `<hash>` and carries (a) a worktree, (b) a branch, (c) prompt-cache lineage, (d) an accumulating status log on the spec. You cannot roll-restart workers without losing context. mgr105's "respawn on plain crash" therefore increments `crash_count` *on the same hash* — the K8s "spawn a fresh replica" shape would be wrong here, and Phase 2's `epic-context-rot-detection` will need to inherit this constraint when it adds rot-driven restarts.
+
+2. **Cost model inverts.** K8s pods are cheap-per-spawn, expensive-in-aggregate (capacity reservation). LLM workers are free-while-idle, expensive-per-token. K8s autoscaling answers "how do I shed load without dropping requests"; devx autoscaling has to answer "how do I keep the laptop busy without burning the daily token budget." Different optimization function, even though the controller shape is identical.
+
+3. **The bottleneck is the human.** K8s never models "the operator is the bottleneck." devx does — `INTERVIEW.md` and `MANUAL.md` ARE that signal. The right autoscaling rule for devx includes *back-pressure on human queue depth*, which has no K8s equivalent and is genuinely devx-specific.
+
+#### Controllers, not just agents
+
+Reframe ManageAgent's worker-class enumeration as **one controller per backlog**, not "one agent doing everything." DEV-controller, TEST-controller, FOCUS-controller, LEARN-controller — same reconcile loop, different desired-state source, different spawn command. They share a process today (Phase 1 minimum); splitting into separate processes in a later phase is then a *deployment* change, not a refactor. This naming change costs nothing now and makes future scaling decisions trivial. Consequence: when Phase 2 plans `epic-multi-worker-scheduling`, the unit of scheduling is "spawn N workers of controller X," not "tell ManageAgent to do more things."
+
+#### Autoscaling sketch (Phase 2 target, not Phase 1)
+
+The Phase 1 `mgr101–106` minimum is hard-cap-1 by design. The Phase 2 autoscaler that grows out of it should follow this shape — and naming the epic `epic-controller-autoscaling` will pull the design toward the proven pattern:
+
+```
+desired_workers[type] =
+  min(
+    section_concurrency_budget[type],     # K8s ResourceQuota analog
+    unblocked_ready_count[type],          # the workload signal
+    daily_token_budget_remaining,         # global cluster quota analog
+  )
+
+# Back-pressure rule (no K8s equivalent — devx-specific):
+if interview_open_count > MAX_PENDING_INTERVIEW
+   or manual_open_count > MAX_PENDING_MANUAL:
+   desired_workers *= 0.5   # shed work; the user is the bottleneck
+```
+
+The reconcile loop shape stays identical; only the "how many to spawn this tick" function gets richer.
+
+#### Discipline: borrow the patterns, ignore the surface
+
+K8s has 50+ resource types. devx needs maybe 8 (the seven `<type>` enum values + INTERVIEW). The temptation to keep adding K8s-shaped things is real and should be resisted. Adopt:
+
+- ✅ Reconcile loop, level-triggered (already in mgr103 contract)
+- ✅ Status conditions on resources (already in spec status logs; could be machine-readable later)
+- ✅ Operator pattern (one controller per backlog — naming change above)
+- ✅ ResourceQuota analog (per-section concurrency budget — Phase 2)
+- ✅ Backoff + crash count (already mgr105)
+
+Don't adopt:
+
+- ❌ Services / Endpoints — workers don't need network discovery; git is the bus
+- ❌ ConfigMaps / Secrets — `devx.config.yaml` + system keychain are sufficient
+- ❌ RBAC — single-user laptop; no auth model
+- ❌ Custom schedulers / scheduling extenders — DAG-walk in 50 lines of TS is correct
+- ❌ Sidecars — workers are atomic
+- ❌ Service mesh — if proposed, hard stop
+
+The shorthand: **"controllers and reconcile loops, yes; etcd and ingresses, no."**
+
 ---
 
 ## Agent flow graph
