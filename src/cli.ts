@@ -23,6 +23,7 @@ import { Command } from "commander";
 
 import * as askCommand from "./commands/ask.js";
 import * as configCommand from "./commands/config.js";
+import * as devxHelperCommand from "./commands/devx-helper.js";
 import * as ejectCommand from "./commands/eject.js";
 import * as initCommand from "./commands/init.js";
 import * as killCommand from "./commands/kill.js";
@@ -46,6 +47,7 @@ interface CommandModule {
 const commands: CommandModule[] = [
   askCommand,
   configCommand,
+  devxHelperCommand,
   ejectCommand,
   initCommand,
   killCommand,
