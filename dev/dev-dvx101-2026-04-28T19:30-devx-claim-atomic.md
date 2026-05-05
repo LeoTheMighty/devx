@@ -5,7 +5,7 @@ created: 2026-04-28T19:30:00-07:00
 title: Atomic claim + push-before-PR + spec lock
 from: _bmad-output/planning-artifacts/epic-devx-skill.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: in-progress
+status: done
 owner: /devx-2026-05-05T1830
 blocked_by: [mrg102, prt102]
 branch: feat/dev-dvx101
@@ -43,3 +43,4 @@ Ship `src/lib/devx/claim.ts → claimSpec(hash, opts)` as the atomic claim opera
 - 2026-05-05T18:50 — phase 3: implemented src/lib/devx/claim.ts (claimSpec + flipDevMdRow + updateSpecForClaim + findSpecForHash) + src/commands/devx-helper.ts CLI passthrough + .claude/commands/devx.md Phase 1 wired
 - 2026-05-05T19:00 — phase 4: 3-agent parallel adversarial review (Blind Hunter + Edge Case Hunter + Acceptance Auditor); 11 actionable findings (3 HIGH, 5 MED, 3 LOW); ALL fixed in-place — push-target/worktree-base split for split-branch, rename-rollback generalized to N artifacts, openExclusive partial-write unlinks before rethrow, Status:ready lookahead replaces \\b, randomBytes(4) added to tmp tag, config-load failure now emits exit-2 JSON contract on stdout, lock-release surfaces non-ENOENT failures, git reset failures surfaced, revertWorkingTree failures logged, relativeFromRepo uses path.relative, AC-8 PARTIAL upgraded with interleaved-race test
 - 2026-05-05T19:05 — phase 5: local CI green (npm test → 805/805 passing in 23.8s; +14 net tests over the dvx101 surface)
+- 2026-05-05T19:15 — merged via PR #45 (squash → fc4261e). Remote CI green (devx-ci 25392828876, both ubuntu-latest + macos-latest). devx merge-gate dvx101 → {merge:true} exit 0.

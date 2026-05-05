@@ -339,7 +339,7 @@ plans:
         stories:
           - key: dvx101
             title: Atomic claim + push-before-PR + spec lock
-            status: backlog
+            status: done
             blocked_by: [mrg102, prt102]
           - key: dvx102
             title: Conditional bmad-create-story with canary flag
