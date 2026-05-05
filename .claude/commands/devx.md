@@ -63,19 +63,24 @@ Repeat per item, respecting `stop_after`:
    - If no runnable item exists → report and stop.
 2. **Read the spec file** — frontmatter + goal + ACs + status log.
 3. **Read cross-references** — `from:` (parent plan/epic), `blocked-by:`, `spawned:`.
-4. **Mark the item `in-progress`** — flip the DEV.md checkbox `[ ]` → `[/]`, update the spec file's frontmatter `status: in-progress` and `owner: /devx-<session-id>`, append a status-log line:
+4. **Atomically claim** via `devx devx-helper claim <hash>` (dvx101). The helper drives the six-step claim — lock + DEV.md flip + spec frontmatter + status log + commit on the base branch + push to `origin/<base>` + worktree create — in fixed order with per-stage rollback. Stdout is JSON `{branch, lockPath, claimSha}`; exit codes encode the outcome:
    ```
-   [YYYY-MM-DDTHH:MM] claimed by /devx in session <session-id>
+   if ! CLAIM_JSON=$(devx devx-helper claim "$HASH"); then
+     case $? in
+       1) echo "lock held — another /devx is on this hash"; exit 1 ;;
+       2) echo "rollback — see stderr"; exit 1 ;;
+       *) echo "usage error"; exit 1 ;;
+     esac
+   fi
    ```
+   On exit 0, parse `branch` + `lockPath` + `claimSha` from `$CLAIM_JSON` and proceed. On exit 2, the helper has already reverted the working tree (or, if the failure was post-push, surfaced the error and released the lock — operator manually retries `git worktree add` per the message).
+
+   **Why the helper instead of inlining git commands?** The locked decision is "claim commit pushed to `origin/main` BEFORE any subsequent `gh pr create`" (closes `feedback_devx_push_claim_before_pr.md`). Inlining the order in the skill body has been the regression vector across all 25 Phase 0 stories; the CLI wrapper makes the order non-skippable. Same pattern as `devx merge-gate` (mrg102) and `devx plan-helper derive-branch` (pln101).
+
    Checkbox conventions per [DESIGN.md §Checkbox conventions](../../docs/DESIGN.md#checkbox-conventions): `[ ]` ready · `[/]` in-progress · `[-]` blocked · `[x]` done. Status field is the source of truth; the checkbox mirrors it.
-5. **Create the worktree + branch** off the resolved base (`integration_branch ?? default_branch`), naming the branch `<branch_prefix>dev-<hash>`:
-   ```
-   BASE=${git.integration_branch:-${git.default_branch:-main}}
-   PREFIX=${git.branch_prefix:-feat/}      # develop/ when split is on, feat/ when single-branch
-   git worktree add .worktrees/dev-<hash> -b ${PREFIX}dev-<hash> $BASE
-   ```
-   If a worktree already exists at that path (previous run), `cd` into it after verifying the branch head. Don't delete it.
-6. **Enter the worktree**. All subsequent edits happen there. Backlog-file updates still target the main worktree (use absolute paths).
+5. **Enter the worktree**. The helper created `.worktrees/dev-<hash>` on the derived branch (`branch` field of the JSON result — same primitive as pln101's `deriveBranch`, single-branch projects produce `feat/dev-<hash>`). All subsequent edits happen there. Backlog-file updates still target the main worktree (use absolute paths).
+
+   If `devx devx-helper claim` exited 2 with stage `worktree`, the claim itself succeeded (commit pushed; lock released) but worktree create failed — re-run `git worktree add .worktrees/dev-<hash> -b <branch> <base>` by hand, then resume from Phase 2.
 
 ### Phase 2: Create BMAD Story Context (if needed)
 
