@@ -5,9 +5,10 @@ created: 2026-04-28T19:30:00-07:00
 title: Retro + LEARN.md updates (interim retro discipline)
 from: _bmad-output/planning-artifacts/epic-devx-plan-skill.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: ready
+status: in-progress
 blocked_by: [pln101, pln102, pln103, pln104, pln105, pln106]
 branch: feat/dev-plnret
+owner: /devx
 ---
 
 ## Goal
@@ -31,3 +32,4 @@ Run `bmad-retrospective` on epic-devx-plan-skill; append findings to `LEARN.md �
 ## Status log
 
 - 2026-04-28T19:30 — created by /devx-plan
+- 2026-05-05T — claimed by /devx (resumed after pln106 merge unblocked it); status flipped to in-progress; pushing claim commit to origin/main before opening PR (per `feedback_devx_push_claim_before_pr.md`).

@@ -100,7 +100,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-pln104-2026-04-28T19:30-plan-precedence-enforcement.md` — Source-of-truth-precedence enforcement at planning time. Status: done. Blocked-by: pln103. PR: https://github.com/LeoTheMighty/devx/pull/41 (merged aea6708).
 - [x] `dev/dev-pln105-2026-04-28T19:30-plan-mode-gate.md` — Phase 6.5 mode gate is structurally explicit. Status: done. Blocked-by: pln103. PR: https://github.com/LeoTheMighty/devx/pull/42 (merged bd7400f).
 - [x] `dev/dev-pln106-2026-04-28T19:30-plan-summary-format.md` — Phase 8 final-summary Next command block format. Status: done. Blocked-by: pln102. PR: https://github.com/LeoTheMighty/devx/pull/43 (merged d9345bd).
-- [ ] `dev/dev-plnret-2026-04-28T19:30-retro-devx-plan-skill.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: pln101, pln102, pln103, pln104, pln105, pln106.
+- [/] `dev/dev-plnret-2026-04-28T19:30-retro-devx-plan-skill.md` — Retro + LEARN.md updates (interim retro discipline). Status: in-progress. Blocked-by: pln101, pln102, pln103, pln104, pln105, pln106.
 
 ### Epic 4 — /devx skill (canonical DevAgent)
 - [ ] `dev/dev-dvx101-2026-04-28T19:30-devx-claim-atomic.md` — Atomic claim + push-before-PR + spec lock. Status: ready. From: epic-devx-skill. Blocked-by: mrg102, prt102.
