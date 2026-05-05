@@ -11,7 +11,7 @@ You are an autonomous planning agent that turns a plan-spec file (or raw require
 
 **End-user experience at the forefront.** Every epic must start with "what does the user see and do?" and trace that answer through every layer in the project's stack (frontend, backend, infra — whatever applies per `devx.config.yaml`). A plan that stops at any layer short of end-to-end is incomplete.
 
-**Draft-then-refine discipline.** Every epic is written twice. Phase 5 drafts all chunks quickly; Phase 6 runs party-mode sequentially on each chunk to cross-examine; Phase 6.5 runs the focus-group to consult user personas. Party-mode + focus-group are **mandatory for every epic** — even single-story epics get short passes (focus-group is skipped only in YOLO mode).
+**Draft-then-refine discipline.** Every epic is written twice. Phase 5 drafts all chunks quickly; Phase 6 runs party-mode sequentially on each chunk to cross-examine; Phase 6.5 runs the focus-group to consult user personas. Party-mode + focus-group are **mandatory for every epic** — even single-story epics get short passes. Phase 6.5's per-mode behavior (skip / advisory / binding-check / mandatory) is defined by the structural predicate at the top of [Phase 6.5](#phase-65-focus-group-refinement-user-lenses) (pln105) — do not paraphrase it elsewhere.
 
 **Mode: autonomous when simple, ask when not.** Take the clear path when requirements pin down the shape and one obvious path exists. Halt and ask when:
 
@@ -42,10 +42,10 @@ When the run completes in mode 1 or 2, flip the PLAN.md checkbox `[ ]` → `[/]`
 2. **Parallelize research fan-out** — applicable axes are independent; launch concurrently.
 3. **Full-stack coverage** — every plan addresses every layer declared in `devx.config.yaml → stack.layers`. If an epic doesn't touch a layer, say so explicitly with one line — don't leave it silent.
 4. **Chunk by user value, not by layer** — epics ship vertical slices. Every epic traces a user journey end-to-end.
-5. **Party-mode every epic, then focus-group every epic** — draft fast first, then team-lens critique (Phase 6), then user-lens critique (Phase 6.5). Party-mode is never skippable. Focus-group is skipped only in YOLO mode.
+5. **Party-mode every epic, then focus-group every epic** — draft fast first, then team-lens critique (Phase 6), then user-lens critique (Phase 6.5). Party-mode is never skippable. Focus-group's per-mode behavior is defined by the Phase 6.5 mode predicate (pln105) — defer to it, do not paraphrase here.
 6. **Ask when something isn't pinned down** — if the plan requires something not in the repo today and not in the requirements, ask. Don't invent UX, naming, or behavior for net-new surfaces.
 7. **Never silently defer** — deferrals are a user decision.
-8. **Respect mode** — read `devx.config.yaml → mode`. In LOCKDOWN, planning is paused — ask the user if they want to proceed anyway. In YOLO, skip Phase 6.5. In BETA/PROD, run the full loop.
+8. **Respect mode** — read `devx.config.yaml → mode` once at the top of the run. In LOCKDOWN, planning is paused at the top level — ask the user if they want to proceed anyway. Per-phase mode behavior (notably Phase 6.5's focus-group gating) is defined structurally in each phase via the pln105 predicate — defer to it.
 9. **Emit what `/devx` expects** — entries in `DEV.md`, spec files under `dev/`, entries in `_bmad-output/implementation-artifacts/sprint-status.yaml`, epic files under `_bmad-output/planning-artifacts/`.
 10. **Append, don't overwrite** — extend existing PRD / architecture / sprint-status / backlog files. Never clobber prior work.
 
@@ -255,9 +255,23 @@ For **each** draft epic, in dependency order (foundational first):
 
 ### Phase 6.5: Focus-Group Refinement (user lenses)
 
-**Skipped in YOLO mode.** In all other modes, after party-mode completes for an epic, run the focus-group consultation. Party-mode critiques whether the plan is *feasible*; focus-group critiques whether users will *want* it.
+**Mode predicate (structurally explicit, pln105):**
 
-For **each** epic just refined in Phase 6:
+```
+IF mode == "YOLO" THEN skip-with-one-line-summary ELSE run-focus-group-per-epic
+```
+
+Evaluate the predicate from `devx.config.yaml → mode` once at the start of the phase. The outcome decides everything below — no fall-through, no mid-phase mode flips. Party-mode (Phase 6) critiques whether the plan is *feasible*; focus-group (this phase) critiques whether users will *want* it.
+
+**Branch — `mode == "YOLO"`** → skip the phase entirely. Write **no** files: no session under `focus-group/sessions/`, no cross-references appended to epic files, no INTERVIEW filings for shared concerns, no MANUAL filings. The Phase 8 final summary renders the canonical literal verbatim:
+
+```
+Phase 6.5 (Focus-group): skipped — mode is YOLO per devx.config.yaml. Rerun /devx-plan after bumping mode to BETA+ to consult personas.
+```
+
+The phase is a no-op. Skipping focus-group does NOT skip Phase 7 (readiness) — Phase 7 runs unconditionally regardless of mode.
+
+**Branch — `mode == "BETA"`** → run focus-group per epic, advisory only. For **each** epic just refined in Phase 6:
 
 1. **Run the focus-group prompt** at `focus-group/prompts/new-feature-reaction.md`. Pass:
    - The refined epic file.
@@ -284,10 +298,30 @@ For **each** epic just refined in Phase 6:
    - New feature to add → new `dev/dev-*.md` spec + `DEV.md` entry.
    - Shared concern that would reshape the epic → pause and ask whether to incorporate.
 
-Mode-dependent enforcement:
-- **BETA**: advisory (log session; no gating).
-- **PROD**: binding — a critical shared concern requires user acknowledgment before Phase 7.
-- **LOCKDOWN**: mandatory for anything non-trivially scoped.
+Advisory means: log the session and any actionable items, but do **not** gate Phase 7 on user acknowledgment. The session file's existence is the BETA branch's primary observable.
+
+**Branch — `mode == "PROD"`** → run BETA branch (steps 1–7 above) **plus the binding-check**:
+
+- A critical shared concern across ≥2 personas requires user acknowledgment via INTERVIEW.md filing **before Phase 7** runs.
+- File the INTERVIEW.md entry in the canonical Q-shape (one entry per epic with a critical shared concern):
+
+  ```
+  ### Q — focus-group binding concern (epic-<slug>)
+  Shared concern across <N> personas: <one-line summary>.
+  Personas: <comma-separated list>.
+  Session: focus-group/sessions/session-<YYYY-MM-DD>-<epic-slug>-reaction.md.
+  Options:
+    (a) acknowledge — proceed to Phase 7 with the concern noted.
+    (b) reshape — pause planning; user revises requirements then re-invokes /devx-plan.
+    (c) defer — file as DEBUG.md item, proceed.
+  Recommendation: <one-line>.
+  ```
+
+  Phase 7 reads INTERVIEW.md for unanswered entries of this shape and aborts (validation-failed state — same abort-without-rollback semantic as locked decision #8) until the user answers. Per Murat's lock + locked decision #9 (`epic-devx-plan-skill.md` § Cross-epic locked decisions), test fixtures may pre-populate INTERVIEW.md with `→ Answer: (a) acknowledge` to mock user response — real user acknowledgment is out-of-scope for unit tests.
+
+**Branch — `mode == "LOCKDOWN"`** → run PROD branch (BETA + binding-check) and additionally treat focus-group as **mandatory for non-trivial-scope epics** (mirrors LOCKDOWN's general "ask user about everything" stance). One-line override available via `devx.config.yaml → focus_group.binding: false` for emergencies only — when the override is used, file a MANUAL.md entry recording the override + reason so the audit trail is grep-able post-merge.
+
+**LEARN.md cross-epic anchor (pln105).** Phase 6.5's mode gate is a binary predicate, not a vibe — closes the LEARN.md cross-epic pattern `[low] [skill] Phase 6.5 mode-gate prose ambiguity` that surfaced when the original draft `**Skipped in YOLO mode.**` prose left BETA/PROD/LOCKDOWN behavior to inference. Both branches (YOLO no-op + BETA+ session-write) are exercised by `test/plan-mode-gate.test.ts`; PROD's INTERVIEW filing is fixture-asserted with the canonical Q-shape above.
 
 ### Phase 7: Readiness Check
 
@@ -306,7 +340,11 @@ Output, in order:
 5. **Architecture changes** — if any.
 6. **Epics drafted (Phase 5)** — for each: `slug — user sees: <one line> — touches: {layers}`.
 7. **Epics refined via party-mode (Phase 6)** — one-line sharpest decision + confirmation required lenses each weighed in.
-8. **Epics refined via focus-group (Phase 6.5)** — one-line sharpest user-lens finding (skipped in YOLO).
+8. **Epics refined via focus-group (Phase 6.5)** — one-line sharpest user-lens finding per epic. When the Phase 6.5 mode predicate (pln105) evaluated to `mode == "YOLO"`, render the canonical literal verbatim — do not paraphrase:
+
+   ```
+   Phase 6.5 (Focus-group): skipped — mode is YOLO per devx.config.yaml. Rerun /devx-plan after bumping mode to BETA+ to consult personas.
+   ```
 9. **End-to-end traceability check** — per epic, confirm in one line: user action → every declared layer → result. Flag any broken chain.
 10. **Cross-epic locked decisions** — the running list.
 11. **DEV.md / sprint-status entries added** — counts (added, renamed, cut). Confirm one `*ret` retro story per epic.
