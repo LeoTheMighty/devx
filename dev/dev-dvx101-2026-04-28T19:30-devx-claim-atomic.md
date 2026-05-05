@@ -5,7 +5,8 @@ created: 2026-04-28T19:30:00-07:00
 title: Atomic claim + push-before-PR + spec lock
 from: _bmad-output/planning-artifacts/epic-devx-skill.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: ready
+status: in-progress
+owner: /devx-2026-05-05T1830
 blocked_by: [mrg102, prt102]
 branch: feat/dev-dvx101
 ---
@@ -38,3 +39,4 @@ Ship `src/lib/devx/claim.ts → claimSpec(hash, opts)` as the atomic claim opera
 ## Status log
 
 - 2026-04-28T19:30 — created by /devx-plan
+- 2026-05-05T18:30 — claimed by /devx in session /devx-2026-05-05T1830 (manual claim — this story IS claimSpec)
