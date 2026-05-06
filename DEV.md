@@ -106,7 +106,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-dvx101-2026-04-28T19:30-devx-claim-atomic.md` — Atomic claim + push-before-PR + spec lock. Status: done. From: epic-devx-skill. Blocked-by: mrg102, prt102. PR: https://github.com/LeoTheMighty/devx/pull/45 (merged fc4261e).
 - [x] `dev/dev-dvx102-2026-04-28T19:30-devx-conditional-create-story.md` — Conditional bmad-create-story with canary flag. Status: done. Blocked-by: dvx101. PR: https://github.com/LeoTheMighty/devx/pull/46 (merged d8d64f8).
 - [x] `dev/dev-dvx103-2026-04-28T19:30-devx-self-review-discipline.md` — Phase 4 self-review status-log assertion. Status: done. Blocked-by: dvx102. PR: https://github.com/LeoTheMighty/devx/pull/47 (merged b2a14f6).
-- [ ] `dev/dev-dvx104-2026-04-28T19:30-devx-coverage-gate.md` — Mode-derived coverage gate (Phase 5). Status: ready. Blocked-by: dvx101.
+- [/] `dev/dev-dvx104-2026-04-28T19:30-devx-coverage-gate.md` — Mode-derived coverage gate (Phase 5). Status: in-progress. Blocked-by: dvx101.
 - [ ] `dev/dev-dvx105-2026-04-28T19:30-devx-await-remote-ci.md` — Three-state remote-CI probe + ScheduleWakeup polling. Status: ready. Blocked-by: dvx101.
 - [ ] `dev/dev-dvx106-2026-04-28T19:30-devx-auto-merge-gate.md` — Phase 8 auto-merge wired through devx merge-gate. Status: ready. Blocked-by: dvx101, mrg102.
 - [ ] `dev/dev-dvx107-2026-04-28T19:30-devx-stop-after-handoff.md` — stop_after handling + Handoff Snippet on early stop. Status: ready. Blocked-by: dvx106.
