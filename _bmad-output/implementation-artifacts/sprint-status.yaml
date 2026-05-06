@@ -355,7 +355,7 @@ plans:
             blocked_by: [dvx101]
           - key: dvx105
             title: Three-state remote-CI probe + ScheduleWakeup polling
-            status: backlog
+            status: done
             blocked_by: [dvx101]
           - key: dvx106
             title: Phase 8 auto-merge wired through devx merge-gate
