@@ -169,18 +169,22 @@ projects:
 
 Steps:
 
-1. Compute the touched surface: `git diff --name-only develop..HEAD`.
+1. Compute the touched surface: `git diff --name-only <integration-branch>..HEAD`, where `<integration-branch>` is `git.integration_branch ?? git.default_branch` (typically `develop` on split-branch projects, `main` on single-branch — for this repo, `main`). The branch name MUST resolve dynamically; a hardcoded `develop` produces an empty diff on every single-branch /devx run.
 2. Determine which projects/layers are affected — for monorepo configs, intersect touched paths with each project's `path`. Single-project configs always run everything.
 3. For each affected project/layer, run in order:
    - `lint`
    - `test`
    - `coverage` (if defined)
    - `pre_push` (if defined)
-4. **Coverage gate** (mode-derived):
-   - YOLO — informational only; never blocks.
-   - BETA — warn if touched-surface coverage < 80%.
-   - PROD — block if touched-surface coverage < 100% (line-level diff of changed files against coverage report; `# devx:no-coverage <reason>` opts out a line).
-   - LOCKDOWN — block if < 100% OR if a browser-QA pass hasn't run.
+4. **Coverage gate** (mode-derived — verbatim per dvx104 AC #1; the dispatch lives in `coverageTouchedGate()` from `src/lib/devx/coverage-touched.ts`):
+   - YOLO → informational only; never blocks merge.
+   - BETA → warn if touched-surface coverage < 80% (still merges).
+   - PROD → block if touched-surface coverage < 100% (line-level diff of changed files against coverage report).
+   - LOCKDOWN → block if < 100% OR if a browser-QA pass hasn't run.
+
+   `# devx:no-coverage <reason>` (or the project-canonical marker from `devx.config.yaml → coverage.opt_out_marker`) on a touched line excludes it from the denominator — parsed by `parseOptOutMarkers()` in the same module. Opt-out wins over covered (a line that's both covered AND opted out is excluded from numerator and denominator), so an operator can't accidentally inflate the percentage by tagging a line that turned out to be covered anyway.
+
+   Coverage source: the `coverage:` runner output declared in `devx.config.yaml → projects[*].coverage` (or `stack.coverage` for single-project shape). No schema change in dvx104 — the runner is whatever the project already wired (vitest, flutter test --coverage, bun test --coverage, …).
 5. If any gate fails:
    - Read the error output carefully.
    - Fix the root cause (don't paper over).
