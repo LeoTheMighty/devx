@@ -41,14 +41,10 @@ Parse from the user's message after `/devx`:
 4. **Local CI must pass** before moving to the next item. Gates come from `devx.config.yaml`.
 5. **Target the integration branch**. Every PR opens against `git.integration_branch` (typically `develop`); when `null`, against `default_branch` (`main`) with `pr-to-main` or `direct-to-main` per `git.pr_strategy`. Agents never push to a branch the user did not configure as a target. With the develop/main split enabled, promotion to `main` is `/devx-manage`'s responsibility, gated per [`MODES.md`](../../docs/MODES.md); with single-branch, the merge gate IS the promotion gate.
 6. **Remote CI is ground truth IF configured.** When `.github/workflows/*.yml` exists and triggers on the feature branch, wait for GitHub Actions to complete and only proceed on success. When no workflow is configured (typical during early bootstrap), local CI from Phase 5 IS the gate — do NOT block waiting for phantom CI; do NOT defer to a human just because there's nothing on GitHub side to gate on.
-7. **Respect the mode — and actually act on it. YOLO means YOLO: this skill merges its own PRs.**
-   - `YOLO` — merge immediately on local-CI green (and on remote-CI green when CI is configured). No "leaving the PR for the user."
-   - `BETA` — merge on CI green + no blocking reviewer comments.
-   - `PROD` — merge on CI green + no blocking comments + coverage gate clear (focus-group pre-promotion is `/devx-manage`'s concern, not `/devx`'s).
-   - `LOCKDOWN` — do not merge. Open PR, leave it awaiting user action, stop.
-7. **Respect trust-gradient autonomy** — read `devx.config.yaml → promotion.autonomy.count`; the ladder's N is mode-derived. Until N reached, merge requires user approval (even if CI passes). After N, auto-merge per mode gate above. Note: this project starts at `initial_n: 0, count: 0` (full autonomy from commit 1) per its YOLO config — the trust gate does not apply here unless the user explicitly bumps it.
-8. **Status log is append-only** — every phase transition appends a line to the spec file's status log. Never rewrite log lines.
-9. **File out-of-scope work** — when implementing reveals test gaps, file `test/test-*.md` specs and append to `TEST.md`. When it reveals bugs, file `debug/debug-*.md` specs and append to `DEBUG.md`. Don't expand the current item's scope.
+7. **Respect the mode — and actually act on it. YOLO means YOLO: this skill merges its own PRs.** The mode-derived merge eligibility (which mode merges with green CI, which mode requires no blocking comments, which mode requires coverage, which mode never auto-merges) is **not enumerated here**. Single source of truth: `mergeGateFor()` in `src/lib/merge-gate.ts`, consumed at Phase 8 via `devx merge-gate <hash>`. Re-stating the table in the skill body has been the regression vector — agents read the prose, infer "leave the PR for the user," and skip the merge step. dvx106 removes the enumeration; the gate's JSON output is what Phase 8 dispatches on.
+8. **Respect trust-gradient autonomy** — read `devx.config.yaml → promotion.autonomy.count`; the ladder's N is mode-derived. Until N reached, merge requires user approval (even if CI passes). After N, auto-merge per the gate's decision. Note: this project starts at `initial_n: 0, count: 0` (full autonomy from commit 1) per its YOLO config — the trust gate does not apply here unless the user explicitly bumps it.
+9. **Status log is append-only** — every phase transition appends a line to the spec file's status log. Never rewrite log lines.
+10. **File out-of-scope work** — when implementing reveals test gaps, file `test/test-*.md` specs and append to `TEST.md`. When it reveals bugs, file `debug/debug-*.md` specs and append to `DEBUG.md`. Don't expand the current item's scope.
 
 ## Execution Loop
 
@@ -277,20 +273,26 @@ It emits a JSON decision to stdout and exits with one of three codes:
 | Exit | Decision shape | What you do |
 |---|---|---|
 | `0` | `{"merge": true}` | Run the merge command below. |
-| `1` | `{"merge": false, "reason": "...", "advice"?: [...]}` | Append `reason` to the spec status log; if `advice` includes `"file INTERVIEW for approval"`, write the INTERVIEW row and stop. Otherwise stop and let the underlying signal change (e.g., CI re-run, reviewer resolves comment, mode changes). |
-| `2` | `{"merge": false, "reason": "no PR yet" | "gh signal collection failed"}` | Investigation: missing PR → re-check Phase 7 actually opened one; `gh` failure → check auth (`gh auth status`) and re-run. Never auto-merge on exit 2 — uncertainty defaults to safe. |
+| `1` | `{"merge": false, "reason": "...", "advice": [...]}` | Dispatch on `advice` array — see "Advice routing" below. Always append the gate's `reason` to the spec status log first. |
+| `2` | `{"merge": false, "reason": "no PR yet" \| "gh signal collection failed"}` (no `advice` field — exit 2 is investigation, not a routing decision) | Investigation: missing PR → re-check Phase 7 actually opened one; `gh` failure → check auth (`gh auth status`) and re-run. Do NOT write a MANUAL.md row for exit 2 — these are transient. Never auto-merge on exit 2 — uncertainty defaults to safe. |
 
 Pass `--coverage <pct>` (a value in `[0, 1]`) iff Phase 5's coverage runner produced one — under YOLO/BETA the gate ignores it; under PROD the gate uses it.
+
+**Advice routing (exit 1).** The CLI emits exactly one of three keywords in the `advice` array — exact-string match, no prefix tolerance:
+
+- **`"file INTERVIEW for approval"`** — trust-gradient block (count < initialN). Append a row to `INTERVIEW.md` citing the PR + the spec hash; leave the PR open; stop. The user resolves the INTERVIEW (bumps `count` or approves directly) and re-invokes /devx.
+- **`"wait for CI"`** — CI is non-success or pending. Phase 7's polling should have caught this; if Phase 8 sees it, re-enter Phase 7 polling (call `devx devx-helper await-remote-ci <branch> --once` again, schedule the next ScheduleWakeup, loop). On terminal success, re-invoke `devx merge-gate <hash>`.
+- **`"manual merge required"`** — block needs human action that /devx can't take (lockdown active, blocking reviewer comments, coverage gap, unknown mode). Append a row to `MANUAL.md` describing what needs to happen + the PR URL; leave the PR open; stop.
 
 **Merge command (after `devx merge-gate <hash>` returned exit 0):**
 ```
 gh pr merge <#> --squash --delete-branch
 ```
-Then verify:
+Then verify — even if the merge command above returned non-zero:
 ```
 gh pr view <#> --json state,mergeCommit
 ```
-Expect `state == "MERGED"` and a `mergeCommit.oid`. If not merged, surface the gh error verbatim and stop — do NOT silently leave the PR open.
+Expect `state == "MERGED"` and a `mergeCommit.oid`. **`gh pr merge` invoked from inside a worktree commonly exits non-zero while the remote merge actually succeeds** (reaffirms `feedback_gh_pr_merge_in_worktree.md`) — never trust the gh exit code alone. The verify is authoritative: if `state == "MERGED"`, proceed with after-merge bookkeeping below regardless of what `gh pr merge` returned. If `state != "MERGED"`, surface the gh stderr verbatim and stop — do NOT silently leave the PR open.
 
 > Implementation note: `--auto` alone requires "Allow auto-merge" in repo settings (not on for this repo); the direct `--squash --delete-branch` form is what works here.
 
