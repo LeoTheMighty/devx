@@ -109,7 +109,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-dvx104-2026-04-28T19:30-devx-coverage-gate.md` — Mode-derived coverage gate (Phase 5). Status: done. Blocked-by: dvx101. PR: https://github.com/LeoTheMighty/devx/pull/48 (merged 5d46173).
 - [x] `dev/dev-dvx105-2026-04-28T19:30-devx-await-remote-ci.md` — Three-state remote-CI probe + ScheduleWakeup polling. Status: done. Blocked-by: dvx101. PR: https://github.com/LeoTheMighty/devx/pull/49 (merged 7a802e0).
 - [x] `dev/dev-dvx106-2026-04-28T19:30-devx-auto-merge-gate.md` — Phase 8 auto-merge wired through devx merge-gate. Status: done. Blocked-by: dvx101, mrg102. PR: https://github.com/LeoTheMighty/devx/pull/50 (merged 8382409).
-- [ ] `dev/dev-dvx107-2026-04-28T19:30-devx-stop-after-handoff.md` — stop_after handling + Handoff Snippet on early stop. Status: ready. Blocked-by: dvx106.
+- [/] `dev/dev-dvx107-2026-04-28T19:30-devx-stop-after-handoff.md` — stop_after handling + Handoff Snippet on early stop. Status: in-progress. Blocked-by: dvx106.
 - [ ] `dev/dev-dvxret-2026-04-28T19:30-retro-devx-skill.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: dvx101, dvx102, dvx103, dvx104, dvx105, dvx106, dvx107.
 
 ### Epic 5 — /devx-manage v0 (minimal scheduler + supervisor)
