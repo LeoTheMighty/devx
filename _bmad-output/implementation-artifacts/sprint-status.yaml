@@ -359,7 +359,7 @@ plans:
             blocked_by: [dvx101]
           - key: dvx106
             title: Phase 8 auto-merge wired through devx merge-gate
-            status: backlog
+            status: done
             blocked_by: [dvx101, mrg102]
           - key: dvx107
             title: stop_after handling + Handoff Snippet on early stop
