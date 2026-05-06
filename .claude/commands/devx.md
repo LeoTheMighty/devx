@@ -135,7 +135,9 @@ Steps:
 3. For ALL findings (HIGH, MEDIUM, LOW): **fix them automatically** — do NOT ask the user or create action items.
 4. After fixing, re-run the review to verify fixes are clean.
 5. Mark the story `done` in sprint-status.yaml.
-6. Append a status-log line to the spec file.
+6. **A status-log line MUST be appended after Phase 4 completes, regardless of issue count.** Omission is a regression: the line is the audit trail that proves adversarial self-review actually ran. Zero issues writes `phase 4: clean review (0 issues; re-ran with stricter framing — confirmed clean)`. Non-zero findings record the count and disposition: `phase 4: <N>-agent <single-pass|parallel adversarial> review; <X> findings (<H> HIGH, <M> MED, <L> LOW); ALL fixed in-place — <one-line summary of the most load-bearing fix>; re-review clean`.
+
+   The explicit-zero form (per CLAUDE.md "Self-review is non-skippable" + LEARN.md § epic-merge-gate-modes E7) is required because the failure mode dvx103 forecloses is silent omission — dvx102's status log is the motivating example (phase-2 + phase-7 lines were written but the phase-4 line was left implicit, losing the audit). `test/devx-status-log-discipline.test.ts` asserts every shipped non-retro non-grandfathered dev spec has a `phase 4:` line in its status log; new specs that ship without one will fail the assertion.
 
 ### Phase 5: Local CI Validation
 
