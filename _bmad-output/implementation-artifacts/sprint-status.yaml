@@ -347,7 +347,7 @@ plans:
             blocked_by: [dvx101]
           - key: dvx103
             title: Phase 4 self-review status-log assertion
-            status: backlog
+            status: done
             blocked_by: [dvx102]
           - key: dvx104
             title: Mode-derived coverage gate (Phase 5)
