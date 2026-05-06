@@ -5,7 +5,8 @@ created: 2026-04-28T19:30:00-07:00
 title: Three-state remote-CI probe + ScheduleWakeup polling
 from: _bmad-output/planning-artifacts/epic-devx-skill.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: ready
+status: in-progress
+owner: /devx-2026-05-06T1355-56602
 blocked_by: [dvx101]
 branch: feat/dev-dvx105
 ---
@@ -32,3 +33,4 @@ Ship `src/lib/devx/await-remote-ci.ts → awaitRemoteCi(branch)` as a three-stat
 ## Status log
 
 - 2026-04-28T19:30 — created by /devx-plan
+- 2026-05-06T13:55:20-06:00 — claimed by /devx in session /devx-2026-05-06T1355-56602
