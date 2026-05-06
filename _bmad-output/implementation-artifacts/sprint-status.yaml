@@ -363,7 +363,7 @@ plans:
             blocked_by: [dvx101, mrg102]
           - key: dvx107
             title: stop_after handling + Handoff Snippet on early stop
-            status: backlog
+            status: done
             blocked_by: [dvx106]
           - key: dvxret
             title: Retro + LEARN.md updates (interim retro discipline)
