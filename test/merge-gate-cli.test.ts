@@ -330,6 +330,7 @@ describe("runMergeGate — spec resolution", () => {
     expect(r.decision).toEqual({
       merge: false,
       reason: expect.stringContaining("no spec file for hash 'missing'"),
+      advice: ["manual merge required"],
     });
   });
 });
@@ -343,7 +344,11 @@ describe("runMergeGate — PR resolution", () => {
     destroy(fx);
   });
 
-  it("returns exit 2 + 'no PR yet' when gh pr list returns []", () => {
+  it("returns exit 2 + 'no PR yet' when gh pr list returns [] (no advice — investigation case)", () => {
+    // Exit 2 = signal-collection failure. dvx106 deliberately suppresses advice
+    // augmentation here: a transient "PR not opened yet by Phase 7" or "gh rate
+    // limit" should not write a MANUAL.md row. The skill body's exit-2 column
+    // dispatches on reason (re-check Phase 7 / re-run gh) rather than advice.
     const script: ExecScript = {
       responses: [{ match: "pr list", result: prListEmpty }],
       calls: [],
@@ -351,9 +356,10 @@ describe("runMergeGate — PR resolution", () => {
     const r = run(fx, "test01", makeExec(script));
     expect(r.code).toBe(2);
     expect(r.decision).toEqual({ merge: false, reason: "no PR yet" });
+    expect(r.decision).not.toHaveProperty("advice");
   });
 
-  it("returns exit 2 + 'gh signal collection failed' when gh pr list exits non-zero", () => {
+  it("returns exit 2 + 'gh signal collection failed' when gh pr list exits non-zero (no advice)", () => {
     const script: ExecScript = {
       responses: [
         { match: "pr list", result: { exitCode: 4, stdout: "", stderr: "auth error" } },
@@ -366,10 +372,11 @@ describe("runMergeGate — PR resolution", () => {
       merge: false,
       reason: "gh signal collection failed",
     });
+    expect(r.decision).not.toHaveProperty("advice");
     expect(r.stderr).toContain("auth error");
   });
 
-  it("returns exit 2 + safe default when gh pr list returns malformed JSON", () => {
+  it("returns exit 2 + safe default when gh pr list returns malformed JSON (no advice)", () => {
     const script: ExecScript = {
       responses: [
         { match: "pr list", result: { exitCode: 0, stdout: "not json", stderr: "" } },
@@ -382,9 +389,10 @@ describe("runMergeGate — PR resolution", () => {
       merge: false,
       reason: "gh signal collection failed",
     });
+    expect(r.decision).not.toHaveProperty("advice");
   });
 
-  it("returns exit 2 + safe default when gh pr view returns malformed JSON", () => {
+  it("returns exit 2 + safe default when gh pr view returns malformed JSON (no advice)", () => {
     const script: ExecScript = {
       responses: [
         { match: "pr list", result: prListOk(123) },
@@ -395,6 +403,7 @@ describe("runMergeGate — PR resolution", () => {
     const r = run(fx, "test01", makeExec(script));
     expect(r.code).toBe(2);
     expect(r.decision?.reason).toBe("gh signal collection failed");
+    expect(r.decision).not.toHaveProperty("advice");
   });
 
   it("uses frontmatter `pr` when present (skips gh pr list)", () => {
@@ -413,7 +422,7 @@ describe("runMergeGate — PR resolution", () => {
 });
 
 describe("runMergeGate — mode-derived decisions (full path)", () => {
-  it("YOLO + ci=success → merge:true, exit 0", () => {
+  it("YOLO + ci=success → merge:true, exit 0, no advice on green", () => {
     const fx = makeFixture({ mode: "YOLO" });
     const script: ExecScript = {
       responses: [
@@ -425,10 +434,16 @@ describe("runMergeGate — mode-derived decisions (full path)", () => {
     const r = run(fx, "test01", makeExec(script));
     expect(r.code).toBe(0);
     expect(r.decision).toEqual({ merge: true });
+    // Reaffirms feedback_yolo_auto_merge.md: YOLO + green CI is the
+    // bright-line auto-merge case. No advice array, no reason — the only
+    // routing fields /devx Phase 8 dispatches on. Additive telemetry on
+    // the decision shape is fine; advice/reason on green is not.
+    expect(r.decision).not.toHaveProperty("advice");
+    expect(r.decision).not.toHaveProperty("reason");
     destroy(fx);
   });
 
-  it("YOLO + one failed check → merge:false, exit 1, reason mentions CI", () => {
+  it("YOLO + one failed check → merge:false, exit 1, advice 'wait for CI'", () => {
     const fx = makeFixture({ mode: "YOLO" });
     const script: ExecScript = {
       responses: [
@@ -453,6 +468,7 @@ describe("runMergeGate — mode-derived decisions (full path)", () => {
     expect(r.code).toBe(1);
     expect(r.decision?.merge).toBe(false);
     expect(r.decision?.reason).toContain("CI");
+    expect(r.decision?.advice).toEqual(["wait for CI"]);
     destroy(fx);
   });
 
@@ -480,7 +496,7 @@ describe("runMergeGate — mode-derived decisions (full path)", () => {
     destroy(fx);
   });
 
-  it("BETA + ci=success + 2 CHANGES_REQUESTED reviewers → merge:false, exit 1", () => {
+  it("BETA + ci=success + 2 CHANGES_REQUESTED reviewers → merge:false, exit 1, advice 'manual merge required'", () => {
     const fx = makeFixture({ mode: "BETA" });
     const script: ExecScript = {
       responses: [
@@ -507,10 +523,11 @@ describe("runMergeGate — mode-derived decisions (full path)", () => {
     const r = run(fx, "test01", makeExec(script));
     expect(r.code).toBe(1);
     expect(r.decision?.reason).toContain("2 blocking reviewer comments");
+    expect(r.decision?.advice).toEqual(["manual merge required"]);
     destroy(fx);
   });
 
-  it("PROD + coverage.enabled=true + no --coverage → merge:false, 'coverage data missing'", () => {
+  it("PROD + coverage.enabled=true + no --coverage → merge:false, 'coverage data missing', advice 'manual merge required'", () => {
     const fx = makeFixture({ mode: "PROD", coverageEnabled: true });
     const script: ExecScript = {
       responses: [
@@ -522,6 +539,7 @@ describe("runMergeGate — mode-derived decisions (full path)", () => {
     const r = run(fx, "test01", makeExec(script));
     expect(r.code).toBe(1);
     expect(r.decision?.reason).toContain("coverage data missing");
+    expect(r.decision?.advice).toEqual(["manual merge required"]);
     destroy(fx);
   });
 
@@ -557,10 +575,11 @@ describe("runMergeGate — mode-derived decisions (full path)", () => {
     const r = run(fx, "test01", makeExec(script), { coverage: 1.0 });
     expect(r.code).toBe(1);
     expect(r.decision?.reason).toContain("coverage data missing");
+    expect(r.decision?.advice).toEqual(["manual merge required"]);
     destroy(fx);
   });
 
-  it("LOCKDOWN mode → merge:false, fixed reason", () => {
+  it("LOCKDOWN mode → merge:false, fixed reason, advice 'manual merge required'", () => {
     const fx = makeFixture({ mode: "LOCKDOWN" });
     const script: ExecScript = {
       responses: [
@@ -572,6 +591,7 @@ describe("runMergeGate — mode-derived decisions (full path)", () => {
     const r = run(fx, "test01", makeExec(script));
     expect(r.code).toBe(1);
     expect(r.decision?.reason).toBe("lockdown active; manual merge required");
+    expect(r.decision?.advice).toEqual(["manual merge required"]);
     destroy(fx);
   });
 
@@ -591,7 +611,7 @@ describe("runMergeGate — mode-derived decisions (full path)", () => {
     destroy(fx);
   });
 
-  it("a single pending check → ciConclusion=pending → blocked under YOLO", () => {
+  it("a single pending check → ciConclusion=pending → blocked under YOLO with advice 'wait for CI'", () => {
     // Locked decision: non-success conclusions other than `cancelled` (here:
     // a still-running check) are treated as failure for the gate's purposes.
     const fx = makeFixture({ mode: "YOLO" });
@@ -617,6 +637,7 @@ describe("runMergeGate — mode-derived decisions (full path)", () => {
     const r = run(fx, "test01", makeExec(script));
     expect(r.code).toBe(1);
     expect(r.decision?.reason).toContain("pending");
+    expect(r.decision?.advice).toEqual(["wait for CI"]);
     destroy(fx);
   });
 });

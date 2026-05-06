@@ -44,6 +44,7 @@ import type { Command } from "commander";
 
 import { findProjectConfig, loadMerged } from "../lib/config-io.js";
 import { attachPhase } from "../lib/help.js";
+import { deriveMergeAdvice } from "../lib/devx/auto-merge-action.js";
 import {
   type GateDecision,
   type GateSignals,
@@ -213,12 +214,35 @@ export function blockingReviewCount(reviews: GhReview[]): number {
   return n;
 }
 
+/**
+ * Emit the gate's JSON decision. dvx106:
+ *
+ *   • Exit 0 (merge:true) → emit `{merge:true}` verbatim. No advice.
+ *   • Exit 1 (real gate decision: trust-gradient, CI, lockdown, coverage,
+ *     comments, unknown mode, no-spec-file) → augment with one of three
+ *     advice keywords via `deriveMergeAdvice` so the skill body's Phase 8
+ *     dispatch table can route purely on `advice`.
+ *   • Exit 2 (signal-collection failure: "no PR yet", "gh signal collection
+ *     failed") → emit decision verbatim WITHOUT advice. Exit 2 means the
+ *     gate could not determine — this is an investigation case (re-check
+ *     Phase 7, retry gh, fix auth). Routing exit-2 cases to advice keywords
+ *     would either spin Phase 8 in a poll loop ("wait for CI") or write a
+ *     premature MANUAL.md row for a transient gh outage. The skill body's
+ *     exit-2 column dispatches on reason directly.
+ */
 function emitDecision(
   decision: GateDecision,
   exitCode: number,
   out: (s: string) => void,
 ): number {
-  out(`${JSON.stringify(decision)}\n`);
+  let toEmit: GateDecision = decision;
+  if (exitCode === 1 && !decision.merge) {
+    const advice = deriveMergeAdvice(decision);
+    if (advice.length > 0) {
+      toEmit = { ...decision, advice };
+    }
+  }
+  out(`${JSON.stringify(toEmit)}\n`);
   return exitCode;
 }
 
