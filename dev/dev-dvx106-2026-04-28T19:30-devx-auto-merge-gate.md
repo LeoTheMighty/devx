@@ -5,7 +5,8 @@ created: 2026-04-28T19:30:00-07:00
 title: Phase 8 auto-merge wired through devx merge-gate
 from: _bmad-output/planning-artifacts/epic-devx-skill.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: ready
+status: in-progress
+owner: /devx-2026-05-06T1456-80319
 blocked_by: [dvx101, mrg102]
 branch: feat/dev-dvx106
 ---
@@ -34,3 +35,4 @@ Wire `/devx` Phase 8 to invoke `devx merge-gate <hash>` (mrg102) instead of inli
 ## Status log
 
 - 2026-04-28T19:30 — created by /devx-plan
+- 2026-05-06T14:56:42-06:00 — claimed by /devx in session /devx-2026-05-06T1456-80319
