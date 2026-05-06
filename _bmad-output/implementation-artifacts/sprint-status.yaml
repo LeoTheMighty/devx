@@ -351,7 +351,7 @@ plans:
             blocked_by: [dvx102]
           - key: dvx104
             title: Mode-derived coverage gate (Phase 5)
-            status: backlog
+            status: done
             blocked_by: [dvx101]
           - key: dvx105
             title: Three-state remote-CI probe + ScheduleWakeup polling
