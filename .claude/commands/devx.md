@@ -234,24 +234,33 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
    - **Unresolved placeholders.** If `.devx-cache/pr-body.stderr` is non-empty after the CLI returns, append a status-log line per name to the spec file: `phase 7: pr body had unresolved placeholder <name>` (locked decision #5 — never silently render an empty section). The PR opens regardless; the audit trail is grep-able post-merge.
    - **Fallback.** When `.github/pull_request_template.md` is absent (older repo predating prt101 or `/devx-init` upgrade not yet run), the CLI falls back to the built-in canonical template — never blocks PR open on a missing file.
 3. Append a status-log line with the PR URL.
-4. **Remote CI: detect, then wait if it exists, otherwise proceed immediately.**
+4. **Remote CI: detect, then wait if it exists, otherwise proceed immediately.** The full state machine — workflow detect, `gh run list` probe, headSha verification, in-progress polling — lives in the **`devx devx-helper await-remote-ci`** CLI (dvx105). Skill body never re-implements the dispatch.
 
-   First, probe whether a workflow has been wired up:
+   The skill body uses `--once` and drives the polling itself via `ScheduleWakeup` 120s delays — this keeps the prompt cache warm (Anthropic cache TTL = 5min; 120s × 2 ≤ 5min). Internal-sleep mode (no `--once`) blocks the agent for the full poll duration; only use it from non-harness consumers.
+
    ```
-   gh run list --branch <branch-name> --limit 1 --json databaseId,status,conclusion,url,headSha,workflowName
+   devx devx-helper await-remote-ci <branch-name> --once
    ```
 
-   - **No runs returned AND `.github/workflows/` is empty (or missing)** → there is no remote CI to wait for. Local CI from Phase 5 IS the gate. Append a status-log line `no remote CI workflow detected — local gates are authoritative` and proceed to Phase 8 immediately. Do NOT block on phantom CI; do NOT defer to a human.
-   - **No runs returned but `.github/workflows/*.yml` exists** → CI was wired but didn't trigger (typical causes: workflow `on:` filters exclude this branch, or GitHub is slow to schedule). Wait up to 60s with one `ScheduleWakeup` retry; if still no run, file an `INTERVIEW.md` entry asking the user to confirm the workflow's `on:` filters cover `<branch-name>`, mark the PR `awaiting-approval`, and stop. Do NOT auto-merge in this state — silent CI is a config bug, not a green light.
-   - **Runs returned** → verify `headSha == git rev-parse HEAD`. Poll until `status == "completed"` using `ScheduleWakeup` with 120s delays to stay cache-warm. Then evaluate `conclusion`.
+   Stdout is a single JSON ProbeState. Branch on `state`:
 
-5. If `conclusion == "success"` (or remote CI was absent per the bullet above): proceed to Phase 8.
+   - **`{"state":"no-workflow"}`** → there is no remote CI to wait for. Local CI from Phase 5 IS the gate. Append `phase 7: no remote CI workflow detected — local gates are authoritative` to the spec status log and proceed to Phase 8 immediately. Do NOT block on phantom CI; do NOT defer to a human.
+   - **`{"state":"empty"}`** (workflows present but `gh run list` returned nothing) → wait one `ScheduleWakeup` 120s retry (call this CLI again on wake-up); if the second probe is still `empty`, file an `INTERVIEW.md` entry asking the user to confirm the workflow's `on:` filters cover `<branch-name>`, mark the PR `awaiting-approval`, append `phase 7: workflow-no-run after retry — INTERVIEW filed` to the spec status log, and stop. Do NOT auto-merge — silent CI is a config bug, not a green light.
+   - **`{"state":"sha-mismatch","runHeadSha":...,"headSha":...}`** → the run we found is for a different commit (rare; usually means an unpushed local change shifted HEAD after PR-open). File an `INTERVIEW.md` entry citing both shas, mark the PR `awaiting-approval`, append `phase 7: sha-mismatch (run=<runHeadSha> vs HEAD=<headSha>) — INTERVIEW filed` to the spec status log, and stop.
+   - **`{"state":"in-progress",...}`** → schedule a `ScheduleWakeup` 120s, then re-invoke this CLI on wake-up. Loop until terminal.
+   - **`{"state":"completed","conclusion":...,"runId":...}`** → evaluate `conclusion` per step 5.
+
+   Exit code 2 with `{"error":"probe-failed","stage":...}` → operator-actionable failure. Stage is one of `"gh-run-list"` (gh exited non-zero — auth / network / rate limit), `"gh-parse"` (malformed gh JSON or run with invalid fields — databaseId, conclusion, headSha), `"git-rev-parse"` (the local branch ref couldn't resolve to a 40-char hex sha), or `"unknown"` (catch-all for argument validation / unhandled internal failures). Append `phase 7: probe-failed (<stage>)` to the spec status log, surface the stderr, run `gh auth status` if stage is `gh-run-list`, and stop. Never auto-merge on exit 2 — uncertainty defaults to safe.
+
+5. If `conclusion == "success"` (or `state == "no-workflow"` per the bullet above): proceed to Phase 8.
 6. If `conclusion != "success"`:
-   - `gh run view <run-id> --log-failed`
+   - `gh run view <runId> --log-failed`
    - Identify the failing check (lint? test? coverage? something local didn't catch?).
    - Fix the root cause in a new commit on the branch. Do NOT rewrite history.
    - Push the fix. Go back to step 4.
    - File a `debug/debug-*.md` spec + `DEBUG.md` entry describing the CI-only failure pattern (so `/devx-learn` can eventually add it to local gates).
+
+   > Implementation note: `devx devx-helper await-remote-ci <branch>` (without `--once`) wraps the full state machine and blocks via real `setTimeout` until terminal. Useful from non-harness consumers (e.g. CI runners that aren't an LLM) and as the canonical reference impl. The `/devx` skill body always uses `--once` because the agent's cache stays warm only when the harness drives the wait via `ScheduleWakeup`, not when the CLI internally sleeps for 120s.
 
 ### Phase 8: Auto-Merge (gate-driven) or Hand Off
 

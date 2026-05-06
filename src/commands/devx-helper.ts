@@ -9,7 +9,7 @@
 // Phase 1 surface:
 //   • dvx101: `devx devx-helper claim <hash>`
 //   • dvx102: `devx devx-helper should-create-story <hash>`
-//   • dvx105: `devx devx-helper await-remote-ci <branch>` (later)
+//   • dvx105: `devx devx-helper await-remote-ci <branch> [--once]`
 //
 // Each subcommand is registered conditionally so the /devx skill body
 // can rely on the absence/presence of a subcommand as a canary signal.
@@ -35,7 +35,21 @@
 //            stderr has detail.
 //     • 64 → usage error. stderr only.
 //
-// Spec: dev/dev-dvx101-... + dev/dev-dvx102-...
+//   `await-remote-ci`:
+//     • 0  → terminal (or single-shot probe complete). JSON shape varies
+//            by mode:
+//              --once : ProbeState (one of no-workflow / empty /
+//                       sha-mismatch / in-progress / completed).
+//              else   : AwaitState (one of no-workflow / workflow-no-run /
+//                       completed).
+//     • 2  → gh probe failure. JSON `{error, stage}` on stdout where
+//            `stage ∈ {"gh-run-list","gh-parse","git-rev-parse","unknown"}`;
+//            stderr has detail. Operator-actionable (auth / network /
+//            parse). `"unknown"` is the catch-all for non-GhProbeError
+//            throws — argument validation, unhandled internal failures.
+//     • 64 → usage error. stderr only.
+//
+// Spec: dev/dev-dvx101-... + dev/dev-dvx102-... + dev/dev-dvx105-...
 // Epic: _bmad-output/planning-artifacts/epic-devx-skill.md
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -52,6 +66,12 @@ import {
   LockHeldError,
   claimSpec,
 } from "../lib/devx/claim.js";
+import {
+  type AwaitRemoteCiOpts,
+  GhProbeError,
+  awaitRemoteCi,
+  probeRemoteCi,
+} from "../lib/devx/await-remote-ci.js";
 import {
   type ShouldCreateStoryConfig,
   effectivePhase2Action,
@@ -368,6 +388,102 @@ function defaultSessionId(): string {
 }
 
 // ---------------------------------------------------------------------------
+// await-remote-ci (dvx105)
+// ---------------------------------------------------------------------------
+
+export interface RunAwaitRemoteCiOpts {
+  /** Test seam: route stdout off process.stdout. */
+  out?: (s: string) => void;
+  /** Test seam: route stderr off process.stderr. */
+  err?: (s: string) => void;
+  /** Test seam: explicit project repo root (skip findProjectConfig walk). */
+  repoRoot?: string;
+  /** Test seam: forward through to probeRemoteCi / awaitRemoteCi. */
+  awaitOpts?: Partial<AwaitRemoteCiOpts>;
+}
+
+/**
+ * Drive the remote-CI probe. Returns the exit code; emits exactly-one
+ * JSON object on stdout and human-readable detail on stderr.
+ *
+ * `--once` mode runs `probeRemoteCi` (single shot, may return transient
+ * `in-progress`) — the skill body's ScheduleWakeup-driven outer loop is
+ * the canonical consumer. Without `--once`, runs `awaitRemoteCi` which
+ * blocks (real sleep) until terminal.
+ */
+export async function runAwaitRemoteCi(
+  args: string[],
+  opts: RunAwaitRemoteCiOpts = {},
+): Promise<number> {
+  const out = opts.out ?? ((s) => process.stdout.write(s));
+  const err = opts.err ?? ((s) => process.stderr.write(s));
+
+  // Hand-parse so test seams aren't dependent on commander state. Two
+  // accepted shapes: `<branch>` and `<branch> --once` (or `--once <branch>`).
+  let once = false;
+  const positional: string[] = [];
+  for (const a of args) {
+    if (a === "--once") {
+      once = true;
+    } else if (a.startsWith("--")) {
+      err(`devx devx-helper await-remote-ci: unknown flag '${a}'\n`);
+      return 64;
+    } else {
+      positional.push(a);
+    }
+  }
+  if (positional.length !== 1) {
+    err("usage: devx devx-helper await-remote-ci <branch> [--once]\n");
+    return 64;
+  }
+  const branch = positional[0];
+  if (branch.trim() === "") {
+    err("devx devx-helper await-remote-ci: branch must be non-empty\n");
+    return 64;
+  }
+
+  let repoRoot: string;
+  if (opts.repoRoot) {
+    repoRoot = opts.repoRoot;
+  } else {
+    const projectConfigPath = findProjectConfig();
+    if (!projectConfigPath) {
+      err(
+        "devx devx-helper await-remote-ci: devx.config.yaml not found (walked up from cwd)\n",
+      );
+      return 64;
+    }
+    repoRoot = dirname(projectConfigPath);
+  }
+
+  const awaitOpts: AwaitRemoteCiOpts = {
+    repoRoot,
+    ...(opts.awaitOpts ?? {}),
+  };
+
+  try {
+    if (once) {
+      const probe = await probeRemoteCi(branch, awaitOpts);
+      out(`${JSON.stringify(probe)}\n`);
+      return 0;
+    }
+    const result = await awaitRemoteCi(branch, awaitOpts);
+    out(`${JSON.stringify(result)}\n`);
+    return 0;
+  } catch (e) {
+    if (e instanceof GhProbeError) {
+      out(`${JSON.stringify({ error: "probe-failed", stage: e.stage })}\n`);
+      err(`devx devx-helper await-remote-ci: ${e.message}\n`);
+      return 2;
+    }
+    const msg = e instanceof Error ? e.message : String(e);
+    out(`${JSON.stringify({ error: "probe-failed", stage: "unknown" })}\n`);
+    err(`devx devx-helper await-remote-ci: unexpected error: ${msg}\n`);
+    return 2;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // commander wiring
 // ---------------------------------------------------------------------------
 
@@ -399,6 +515,21 @@ export function register(program: Command): void {
     .argument("<hash>", "spec hash (e.g. 'dvx102')")
     .action(async (hash: string) => {
       const code = await runShouldCreateStory([hash], {});
+      if (code !== 0) {
+        process.exit(code);
+      }
+    });
+
+  sub
+    .command("await-remote-ci")
+    .description(
+      "Probe remote CI for a branch (dvx105). Without --once: blocks (real sleep) until terminal — emits AwaitState JSON {state: 'no-workflow' | 'workflow-no-run' | 'completed', ...}. With --once: single shot — emits ProbeState JSON (may include transient 'in-progress'/'empty'/'sha-mismatch'). Skill body Phase 7 uses --once + ScheduleWakeup 120s loop to stay cache-warm.",
+    )
+    .argument("<branch>", "branch name (e.g. 'feat/dev-dvx105')")
+    .option("--once", "single-shot probe; do not block on in-progress")
+    .action(async (branch: string, options: { once?: boolean }) => {
+      const args = options.once ? [branch, "--once"] : [branch];
+      const code = await runAwaitRemoteCi(args, {});
       if (code !== 0) {
         process.exit(code);
       }
