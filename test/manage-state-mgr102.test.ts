@@ -409,7 +409,7 @@ describe("readManagerState explicitly projects allowed fields", () => {
       }),
       "utf8",
     );
-    const s = readManagerState(cacheDir) as Record<string, unknown>;
+    const s = readManagerState(cacheDir) as unknown as Record<string, unknown>;
     expect(s.evil_field).toBeUndefined();
     expect(s.__maybe__).toBeUndefined();
     expect(s.generation).toBe(3);
