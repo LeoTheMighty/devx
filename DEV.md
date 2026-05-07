@@ -110,7 +110,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-dvx105-2026-04-28T19:30-devx-await-remote-ci.md` — Three-state remote-CI probe + ScheduleWakeup polling. Status: done. Blocked-by: dvx101. PR: https://github.com/LeoTheMighty/devx/pull/49 (merged 7a802e0).
 - [x] `dev/dev-dvx106-2026-04-28T19:30-devx-auto-merge-gate.md` — Phase 8 auto-merge wired through devx merge-gate. Status: done. Blocked-by: dvx101, mrg102. PR: https://github.com/LeoTheMighty/devx/pull/50 (merged 8382409).
 - [x] `dev/dev-dvx107-2026-04-28T19:30-devx-stop-after-handoff.md` — stop_after handling + Handoff Snippet on early stop. Status: done. Blocked-by: dvx106. PR: https://github.com/LeoTheMighty/devx/pull/51 (merged c1d1699).
-- [/] `dev/dev-dvxret-2026-04-28T19:30-retro-devx-skill.md` — Retro + LEARN.md updates (interim retro discipline). Status: in-progress. Blocked-by: dvx101, dvx102, dvx103, dvx104, dvx105, dvx106, dvx107.
+- [x] `dev/dev-dvxret-2026-04-28T19:30-retro-devx-skill.md` — Retro + LEARN.md updates (interim retro discipline). Status: done. Blocked-by: dvx101, dvx102, dvx103, dvx104, dvx105, dvx106, dvx107. PR: https://github.com/LeoTheMighty/devx/pull/52 (merged c594811). Closes epic-devx-skill 8/8. Phase 1 progress: 4/5 epics shipped + retroed.
 
 ### Epic 5 — /devx-manage v0 (minimal scheduler + supervisor)
 - [ ] `dev/dev-mgr101-2026-04-28T19:30-manage-scaffold.md` — Manager scaffold + devx manage --once single-tick CLI. Status: ready. From: epic-devx-manage-minimal. Blocked-by: dvxret.
