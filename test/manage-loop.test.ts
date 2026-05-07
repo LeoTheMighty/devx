@@ -57,6 +57,7 @@ describe("runManagerOnce", () => {
     const { lines, out } = captureOut();
     const result: TickResult = await runManagerOnce({
       cacheDir,
+      cwd: cacheDir,
       now: () => new Date("2026-05-07T10:00:00.000Z"),
       out,
     });
@@ -95,11 +96,13 @@ describe("runManagerOnce", () => {
 
     await runManagerOnce({
       cacheDir,
+      cwd: cacheDir,
       now: () => new Date(dates[n++]!),
       out,
     });
     const second = await runManagerOnce({
       cacheDir,
+      cwd: cacheDir,
       now: () => new Date(dates[n++]!),
       out,
     });
@@ -129,6 +132,7 @@ describe("runManagerOnce", () => {
     const { out } = captureOut();
     await runManagerOnce({
       cacheDir,
+      cwd: cacheDir,
       now: () => new Date("2026-05-07T11:00:00.000Z"),
       out,
     });
@@ -174,7 +178,7 @@ describe("TICK_SUMMARY_RE (mgr101 AC #7 — pinned format for all 3 branches)", 
 describe("runManagerLoop", () => {
   it("throws when tickIntervalS is not a positive finite number", async () => {
     const ac = new AbortController();
-    const baseOpts = { signal: ac.signal, cacheDir };
+    const baseOpts = { signal: ac.signal, cacheDir, cwd: cacheDir };
     await expect(runManagerLoop({ ...baseOpts, tickIntervalS: 0 })).rejects.toThrow(
       /positive finite number/,
     );
@@ -192,7 +196,7 @@ describe("runManagerLoop", () => {
   it("throws when tickIntervalS exceeds the 24h ceiling (likely a ms-vs-s mistake)", async () => {
     const ac = new AbortController();
     await expect(
-      runManagerLoop({ tickIntervalS: 90000, signal: ac.signal, cacheDir }),
+      runManagerLoop({ tickIntervalS: 90000, signal: ac.signal, cacheDir, cwd: cacheDir }),
     ).rejects.toThrow(/24h ceiling/);
   });
 
@@ -212,6 +216,7 @@ describe("runManagerLoop", () => {
       tickIntervalS: 0.01, // 10ms — tight for tests
       signal: ac.signal,
       cacheDir,
+      cwd: cacheDir,
       now,
       out,
     });
@@ -230,6 +235,7 @@ describe("runManagerLoop", () => {
       tickIntervalS: 60,
       signal: ac.signal,
       cacheDir,
+      cwd: cacheDir,
       out,
     });
 
@@ -249,6 +255,7 @@ describe("runManagerLoop", () => {
       tickIntervalS: 0.01,
       signal: ac.signal,
       cacheDir,
+      cwd: cacheDir,
       out,
     });
 
