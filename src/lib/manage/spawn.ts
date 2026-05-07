@@ -68,6 +68,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import {
+  type CrashRecord,
   type ManagerState,
   type RosterEntry,
   readManagerState,
@@ -278,24 +279,127 @@ export async function spawnWorker(
   };
   registerRosterEntry(cacheDir, newEntry, model);
 
-  // Minimal on-exit handler: clear the roster slot for this PID. mgr105
-  // extends with crash_count + last_exit_code + backoff index. Errors are
-  // swallowed because the handler runs after a (potentially crashed)
-  // child — we don't want to crash the manager on a state-file IO blip
-  // that the next tick will reconcile anyway.
-  child.on("exit", () => {
+  // mgr105 — on-exit handler does three things in one atomic state write:
+  //   1. clears the roster slot for this PID (mgr104 baseline);
+  //   2. on success (`code === 0`), clears any prior crash record for this
+  //      spec_hash — a green run resets the backoff counter (Technical
+  //      notes on the spec: "crash_count resets on a successful run");
+  //   3. on failure (non-zero `code` OR signal-terminated), increments the
+  //      crash record's `crash_count`, sets `last_exit_at` to nowFn(), and
+  //      stores `last_exit_code` (number for plain exits, `signal:<NAME>`
+  //      string for signal-terminated children).
+  //
+  // Errors are swallowed (best-effort) because the handler runs after a
+  // potentially-crashed child — we don't want to crash the manager on a
+  // state-file IO blip that the next tick will reconcile anyway.
+  //
+  // The `handled` once-flag de-duplicates between `'exit'` and `'error'`:
+  // Node may fire both for the same failure (most commonly when the
+  // executable resolves but exec(2) fails — `'error'` then `'exit'` with
+  // null code + null signal). Without the flag, we'd double-increment
+  // crash_count. EC-M12 fix.
+  let handled = false;
+  const handleExit = (
+    code: number | string | null,
+    signal: NodeJS.Signals | null,
+  ): void => {
+    if (handled) return;
+    handled = true;
     try {
-      const cur = readManagerState(cacheDir);
-      const filtered = cur.roster.filter((r) => r.pid !== myPid);
-      writeManagerState(cacheDir, { ...cur, roster: filtered });
+      applyExitToState(cacheDir, hash, code, signal, nowFn);
     } catch {
       // best-effort
     }
-  });
+  };
+  child.on("exit", (code, signal) => handleExit(code, signal));
+  // 'error' fires when the spawn fails async (executable not found post-
+  // fork, EACCES on the binary, etc.). Without a listener, Node treats
+  // unhandled 'error' as a fatal exception in the parent — crashing the
+  // manager. We synthesize a `-1` exit so the slot is cleared and a
+  // crashes record is upserted; the next tick respects backoff like any
+  // other crash.
+  child.on("error", () => handleExit(-1, null));
 
   if (opts.onSpawn) opts.onSpawn(child);
 
   return { pid: myPid };
+}
+
+// ---------------------------------------------------------------------------
+// Public helpers (consumed by loop.ts mgr105 PID-recovery sweep)
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply a worker exit (real or synthetic) to manager state in one atomic
+ * write. Pure of fork/spawn — only state-file IO. The PID-recovery sweep in
+ * `loop.ts` calls this with a synthetic `code === "manager-restart-detected"`
+ * for roster slots whose PIDs are no longer alive (lost-exit recovery).
+ *
+ * Behavior:
+ *   - Roster: drop every entry matching `spec_hash` (clears the slot
+ *     unconditionally — same on success or crash).
+ *   - Success path (`code === 0`, no signal): drop the crashes-record entry
+ *     for `spec_hash` if any. Resets backoff for future runs.
+ *   - Crash path (non-zero code OR signal OR string-coded synthetic exit):
+ *     upsert the crashes-record entry — increment crash_count, set
+ *     last_exit_at = nowFn(), set last_exit_code (number for code, signal
+ *     `signal:<NAME>` for signal-only, string verbatim for synthetic).
+ */
+export function applyExitToState(
+  cacheDir: string,
+  spec_hash: string,
+  code: number | string | null,
+  signal: NodeJS.Signals | null,
+  now: () => Date,
+): void {
+  const cur = readManagerState(cacheDir);
+  const nextRoster = cur.roster.filter((r) => r.spec_hash !== spec_hash);
+  const exitCode = computeExitCode(code, signal);
+  const isSuccess = exitCode === 0;
+  const prevCrashes = cur.crashes ?? [];
+  let nextCrashes: CrashRecord[];
+  if (isSuccess) {
+    nextCrashes = prevCrashes.filter((c) => c.spec_hash !== spec_hash);
+  } else {
+    const others = prevCrashes.filter((c) => c.spec_hash !== spec_hash);
+    const prior = prevCrashes.find((c) => c.spec_hash === spec_hash);
+    const updated: CrashRecord = {
+      spec_hash,
+      crash_count: (prior?.crash_count ?? 0) + 1,
+      last_exit_at: now().toISOString(),
+      last_exit_code: exitCode,
+    };
+    nextCrashes = [...others, updated];
+  }
+  const next: ManagerState = { ...cur, roster: nextRoster };
+  if (nextCrashes.length > 0) next.crashes = nextCrashes;
+  else delete next.crashes;
+  writeManagerState(cacheDir, next);
+}
+
+/**
+ * Translate Node's child-exit `(code, signal)` pair into the value stored on
+ * `CrashRecord.last_exit_code`. Synthetic string codes from the PID-recovery
+ * sweep (e.g. `"manager-restart-detected"`) pass through verbatim.
+ *
+ * Order matters (BH-L12 defensive ordering): if Node ever surfaces both a
+ * `code === 0` AND a signal (rare but observed across some Node patches),
+ * we want the signal to dominate — a SIGKILL'd child with code=0 should
+ * NOT clear the crashes record via the success path. By probing string-
+ * code → signal → number-code → fallback, we make the signal-terminated
+ * case observable as a crash even when the kernel reports code=0.
+ */
+function computeExitCode(
+  code: number | string | null,
+  signal: NodeJS.Signals | null,
+): number | string {
+  if (typeof code === "string" && code.length > 0) return code;
+  if (signal) return `signal:${signal}`;
+  if (typeof code === "number" && Number.isFinite(code)) return code;
+  // Both null and signal absent — defensive default. Treat as crash so the
+  // backoff path fires; Node's docs guarantee at least one of code/signal,
+  // so this is unreachable in practice.
+  return -1;
 }
 
 // ---------------------------------------------------------------------------
