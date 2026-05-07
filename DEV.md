@@ -120,3 +120,6 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [ ] `dev/dev-mgr105-2026-04-28T19:30-manage-crash-restart.md` — Plain-crash restart logic + max-restarts-per-spec gate. Status: ready. Blocked-by: mgr104.
 - [ ] `dev/dev-mgr106-2026-04-28T19:30-manage-lock-heartbeat.md` — Manager lock + heartbeat + SIGTERM-clean. Status: ready. Blocked-by: mgr101.
 - [ ] `dev/dev-mgrret-2026-04-28T19:30-retro-devx-manage-minimal.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: mgr101, mgr102, mgr103, mgr104, mgr105, mgr106.
+
+### Follow-ups filed during Phase 1 retros
+- [ ] `dev/dev-roc101-2026-05-07T08:50-devx-resume-owner-check.md` — /devx Phase 1 resume-detection: `devx devx-helper verify-claim <hash>` + skill-body wire-up. Status: ready. From: dvxret (LEARN.md § epic-devx-skill E13). Blocked-by: dvxret. Load-bearing for mgr104's worker-spawn discipline; stopgap docs change applied in dvxret PR (CLAUDE.md "Working agreements" — "Verify claim ownership before resuming").

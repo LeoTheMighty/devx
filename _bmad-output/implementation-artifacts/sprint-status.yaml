@@ -335,7 +335,7 @@ plans:
 
       - key: epic-devx-skill
         title: /devx skill (canonical DevAgent)
-        status: backlog
+        status: done
         stories:
           - key: dvx101
             title: Atomic claim + push-before-PR + spec lock
@@ -367,7 +367,7 @@ plans:
             blocked_by: [dvx106]
           - key: dvxret
             title: Retro + LEARN.md updates (interim retro discipline)
-            status: backlog
+            status: done
             blocked_by: [dvx101, dvx102, dvx103, dvx104, dvx105, dvx106, dvx107]
 
       - key: epic-devx-manage-minimal
@@ -402,3 +402,8 @@ plans:
             title: Retro + LEARN.md updates (interim retro discipline)
             status: backlog
             blocked_by: [mgr101, mgr102, mgr103, mgr104, mgr105, mgr106]
+          - key: roc101
+            title: /devx Phase 1 resume-detection — verify-claim CLI + skill-body wire-up
+            status: backlog
+            blocked_by: [dvxret]
+            note: filed during dvxret retro 2026-05-07 per LEARN.md § epic-devx-skill E13
