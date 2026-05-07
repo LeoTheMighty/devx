@@ -115,7 +115,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 ### Epic 5 — /devx-manage v0 (minimal scheduler + supervisor)
 - [x] `dev/dev-mgr101-2026-04-28T19:30-manage-scaffold.md` — Manager scaffold + devx manage --once single-tick CLI. Status: done. From: epic-devx-manage-minimal. Blocked-by: dvxret. PR: https://github.com/LeoTheMighty/devx/pull/53 (merged efa23bf).
 - [x] `dev/dev-mgr102-2026-04-28T19:30-manage-state-files.md` — State persistence: schedule.json + manager.json + heartbeat.json with atomic writes. Status: done. Blocked-by: mgr101. PR: https://github.com/LeoTheMighty/devx/pull/54 (merged 4366ae5).
-- [/] `dev/dev-mgr103-2026-04-28T19:30-manage-reconcile.md` — Reconcile loop: read backlogs + compute diff + detect unblocks. Status: in-progress. Blocked-by: mgr102.
+- [x] `dev/dev-mgr103-2026-04-28T19:30-manage-reconcile.md` — Reconcile loop: read backlogs + compute diff + detect unblocks. Status: done. Blocked-by: mgr102. PR: https://github.com/LeoTheMighty/devx/pull/55 (merged ca42895).
 - [ ] `dev/dev-mgr104-2026-04-28T19:30-manage-spawn-worker.md` — Spawn one worker (hard cap N=1) + claude /devx <hash> subprocess. Status: ready. Blocked-by: mgr103.
 - [ ] `dev/dev-mgr105-2026-04-28T19:30-manage-crash-restart.md` — Plain-crash restart logic + max-restarts-per-spec gate. Status: ready. Blocked-by: mgr104.
 - [ ] `dev/dev-mgr106-2026-04-28T19:30-manage-lock-heartbeat.md` — Manager lock + heartbeat + SIGTERM-clean. Status: ready. Blocked-by: mgr101.

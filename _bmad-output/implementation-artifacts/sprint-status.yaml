@@ -384,7 +384,7 @@ plans:
             blocked_by: [mgr101]
           - key: mgr103
             title: Reconcile loop with hard cap N=1 enforcement
-            status: backlog
+            status: done
             blocked_by: [mgr102]
           - key: mgr104
             title: Spawn one worker (claude /devx <hash> subprocess)
