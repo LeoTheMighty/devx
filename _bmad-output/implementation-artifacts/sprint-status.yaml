@@ -396,7 +396,7 @@ plans:
             blocked_by: [mgr104]
           - key: mgr106
             title: Manager lock + heartbeat + SIGTERM-clean
-            status: backlog
+            status: done
             blocked_by: [mgr101]
           - key: mgrret
             title: Retro + LEARN.md updates (interim retro discipline)
