@@ -1,18 +1,17 @@
-// `devx manage` — Manager loop / single-tick CLI (mgr101 scaffold).
+// `devx manage` — Manager loop / single-tick CLI (mgr101 + mgr102/103/104).
 //
 //   devx manage --once   acquires the manager lock, runs one tick, releases
 //                        the lock, exits 0.
 //   devx manage          (no flags) runs the loop until SIGTERM/SIGINT;
 //                        AbortSignal drains the current tick and exits 0.
 //
-// mgr102/103/104/105/106 fill in atomic-write hardening, reconcile(),
-// spawn(), crash-restart, and stale-PID lock detection. This story ships
-// only the surface area — the launchd / systemd / Task-Scheduler units
-// from sup402/3/4 already point at `devx manage`, so once this lands the
-// supervisor units start invoking a real command instead of failing to
-// resolve a missing subcommand.
+// mgr105/106 fill in crash-restart, max-restarts gate, and stale-PID lock
+// detection. The launchd / systemd / Task-Scheduler units from sup402/3/4
+// already point at `devx manage`, so this command running closes the
+// single-agent loop end-to-end.
 //
 // Spec: dev/dev-mgr101-2026-04-28T19:30-manage-scaffold.md
+//       dev/dev-mgr104-2026-04-28T19:30-manage-spawn-worker.md (model wiring)
 // Epic: _bmad-output/planning-artifacts/epic-devx-manage-minimal.md
 
 import type { Command } from "commander";
@@ -23,6 +22,7 @@ import { runManagerLoop, runManagerOnce } from "../lib/manage/loop.js";
 import { ManagerLockHeldError, acquireManagerLock } from "../lib/manage/lock.js";
 
 const DEFAULT_TICK_INTERVAL_S = 60;
+const DEFAULT_DEV_MODEL = "claude-sonnet-4-6";
 
 function readTickIntervalS(): number {
   let merged: unknown;
@@ -37,6 +37,23 @@ function readTickIntervalS(): number {
   const v = (manager as Record<string, unknown>).heartbeat_interval_s;
   if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
   return DEFAULT_TICK_INTERVAL_S;
+}
+
+function readDevModel(): string {
+  let merged: unknown;
+  try {
+    merged = loadMerged();
+  } catch {
+    return DEFAULT_DEV_MODEL;
+  }
+  if (!merged || typeof merged !== "object") return DEFAULT_DEV_MODEL;
+  const capacity = (merged as Record<string, unknown>).capacity;
+  if (!capacity || typeof capacity !== "object") return DEFAULT_DEV_MODEL;
+  const models = (capacity as Record<string, unknown>).models;
+  if (!models || typeof models !== "object") return DEFAULT_DEV_MODEL;
+  const v = (models as Record<string, unknown>).dev;
+  if (typeof v === "string" && v.length > 0) return v;
+  return DEFAULT_DEV_MODEL;
 }
 
 interface ManageOpts {
@@ -59,7 +76,7 @@ export async function runManageCommand(opts: ManageOpts): Promise<number> {
       throw err;
     }
     try {
-      await runManagerOnce();
+      await runManagerOnce({ model: readDevModel() });
     } finally {
       handle.release();
     }
@@ -88,6 +105,7 @@ export async function runManageCommand(opts: ManageOpts): Promise<number> {
     await runManagerLoop({
       tickIntervalS: readTickIntervalS(),
       signal: ac.signal,
+      model: readDevModel(),
     });
   } finally {
     process.off("SIGTERM", onSignal);
@@ -101,7 +119,7 @@ export function register(program: Command): void {
   const cmd = program
     .command("manage")
     .description(
-      "Run the /devx-manage scheduler loop (Phase 1 minimal: hard cap N=1; reconcile + spawn land in mgr103/104)",
+      "Run the /devx-manage scheduler loop (Phase 1 minimal: hard cap N=1; reconcile + spawn wired)",
     )
     .option("--once", "Run a single tick and exit", false)
     .action(async (opts: ManageOpts) => {

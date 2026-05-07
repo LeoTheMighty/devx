@@ -181,8 +181,7 @@ describe("cli303 — devx --help command listing", () => {
                                      1). Subcommand-driven; mirrors \`devx merge-gate\`
                                      + \`devx plan-helper\`.
         manage [options]             Run the /devx-manage scheduler loop (Phase 1
-                                     minimal: hard cap N=1; reconcile + spawn land in
-                                     mgr103/104)
+                                     minimal: hard cap N=1; reconcile + spawn wired)
         merge-gate [options] <hash>  Compute the mode-derived merge decision for a
                                      spec PR (Phase 1). Emits JSON; exit 0 = merge, 1
                                      = no-merge, 2 = signal trouble.
