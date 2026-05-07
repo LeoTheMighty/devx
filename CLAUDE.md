@@ -191,15 +191,19 @@ skill is branch-model-aware; values below are this project's resolution.
 2. **Worktree**: `git worktree add .worktrees/dev-<hash> -b feat/dev-<hash>
    main`.
 3. **BMAD story**: `bmad-create-story` if no story file exists; otherwise
-   read the existing one. *Empirically across 8 shipped epics (Phase 0 +
-   Phase 1's first 3 epics; 36/36 stories: aud × 3, cfg × 4, cli × 5, sup × 5,
-   ini × 8, mrg × 3, prt × 2, pln × 6) this step has been skipped because
-   spec ACs already cover what `bmad-create-story` would generate; the
-   contract-vs-reality drift is tracked in `LEARN.md § Cross-epic patterns`
-   and reaffirmed in every retro to date (audret + cfgret + cliret + supret
-   + iniret + mrgret + prtret + plnret). The actual /devx skill change
-   (enforce / make conditional / drop) remains user-review-required per
-   `self_healing.user_review_required_for: [skills]`.*
+   read the existing one. *Empirically across 9 shipped epics (Phase 0 +
+   Phase 1's first 4 epics; 43/43 stories: aud × 3, cfg × 4, cli × 5, sup × 5,
+   ini × 8, mrg × 3, prt × 2, pln × 6, dvx × 7) this step has been skipped
+   because spec ACs already cover what `bmad-create-story` would generate;
+   the contract-vs-reality drift is tracked in `LEARN.md § Cross-epic
+   patterns` and reaffirmed in every retro to date (audret + cfgret + cliret
+   + supret + iniret + mrgret + prtret + plnret + dvxret). **Structurally
+   closed at the contract level by dvx102** (`shouldCreateStory()` +
+   `_internal.skip_create_story_canary` flag + `devx devx-helper
+   should-create-story` CLI), but the canary ships off — v0 behavior
+   preserved. The behavior shift (flip canary to `"active"`) remains
+   user-review-required per `self_healing.user_review_required_for:
+   [skills]`.*
 4. **Implement**: `bmad-dev-story`, red-green-refactor, all tasks/subtasks.
 5. **Self-review**: `bmad-code-review` adversarially; fix all findings
    automatically; re-review.
@@ -245,6 +249,19 @@ Full contract: `.claude/commands/devx.md`.
 - **Status log is append-only.** Add lines; don't rewrite history.
 - **Worktrees are isolation, not staging.** Don't run a non-`/devx` flow inside
   a worktree; don't share a worktree across agents.
+- **Verify claim ownership before resuming.** A spec marked `in-progress` with
+  an existing `.worktrees/dev-<hash>/` is **not** necessarily yours. Before any
+  edit in the worktree, check `.devx-cache/locks/spec-<hash>.lock` (and the
+  spec's `owner:` frontmatter) — if the recorded session token isn't yours,
+  halt without touching the worktree. Why: `/devx` Phase 1 today only handles
+  fresh claim; resume-detection has no structural ownership check, so a fresh
+  session can silently stomp on a live peer's work. Surfaced 2026-05-07 in
+  dvxret (a fresh post-`/clear` `/devx` invocation pulled `dvxret` from
+  DEV.md while another live session held the claim — the user interrupted
+  before any worktree edit landed). Structural fix tracked under
+  `dev/dev-roc101-...-devx-resume-owner-check.md` (blocked-by dvxret); this
+  rule is the stopgap until the skill-body update lands. See
+  `LEARN.md § epic-devx-skill` E13.
 - **Self-review is non-skippable.** Every dev story runs `bmad-code-review`
   after implementation, fixes ALL findings (HIGH/MED/LOW) without asking,
   and re-runs to verify. Empirically (LEARN.md cross-epic patterns) this
@@ -284,7 +301,7 @@ CLI (PR #20), CLI skeleton (PR #21), OS supervisor scaffold (PR #22),
 `/devx-init` skill (PR #30). 25 parent stories across the 5 epics; +225
 net tests in the ini epic alone (largest of any Phase 0 epic).
 
-## Status: Phase 1 — Single-agent core loop (in flight, 3/5 epics shipped)
+## Status: Phase 1 — Single-agent core loop (in flight, 4/5 epics shipped)
 
 epic-merge-gate-modes shipped (PRs #31 mrg101 + #32 mrg102 + #33 mrg103 +
 #34 mrgret). +92 net tests across the 3 stories. Delivers the single
@@ -304,21 +321,42 @@ the strongest possible AC 5 verification (the consumer ran on the same
 PR, not the next one).
 
 epic-devx-plan-skill shipped (PRs #38 pln101 + #39 pln102 + #40 pln103 +
-#41 pln104 + #42 pln105 + #43 pln106 + this PR plnret). +207 net tests
+#41 pln104 + #42 pln105 + #43 pln106 + #44 plnret). +207 net tests
 across the 6 stories — 2nd-largest growth of any epic to date (ini was
-+225 in Phase 0); largest of any Phase 1 epic so far. Delivers the
-`/devx-plan` skill body wired to three new CLI primitives: `devx
-plan-helper derive-branch <type> <hash>` (pln101 — kills the
-hardcoded-`develop/dev-<hash>` regression class structurally), `devx
-plan-helper emit-retro-story` (pln102 — co-emits all three retro
-artifacts atomically; closes MP0.2), `devx plan-helper validate-emit
-<epic-slug>` (pln103 — six structural checks + one warn-severity
-heuristic; aborts the planning run on error). Phase 6 source-of-truth
-override flow + Phase 6.5 mode predicate + Phase 8 Next-command block
-format are all structurally pinned. plnret PR (this PR) is the third
-Phase 1 retro PR; like every Phase 1 PR since prt102 merged it's
-rendered via `devx pr-body` and gated via `devx merge-gate`.
++225 in Phase 0). Delivers the `/devx-plan` skill body wired to three
+new CLI primitives: `devx plan-helper derive-branch <type> <hash>`
+(pln101 — kills the hardcoded-`develop/dev-<hash>` regression class
+structurally), `devx plan-helper emit-retro-story` (pln102 — co-emits
+all three retro artifacts atomically; closes MP0.2), `devx plan-helper
+validate-emit <epic-slug>` (pln103 — six structural checks + one
+warn-severity heuristic; aborts the planning run on error). Phase 6
+source-of-truth override flow + Phase 6.5 mode predicate + Phase 8
+Next-command block format are all structurally pinned.
 
-2 epics remaining: epic-devx-skill (still fully unblocked: mrg102 ✓ +
-prt102 ✓ + pln epic ✓), epic-devx-manage-minimal (blocked-by dvxret).
-Mobile companion v0.1 runs in parallel from Phase 8.
+epic-devx-skill shipped (PRs #45 dvx101 + #46 dvx102 + #47 dvx103 + #48
+dvx104 + #49 dvx105 + #50 dvx106 + #51 dvx107 + this PR dvxret). +255
+net tests across the 7 stories — **largest growth of any Phase 1 epic**
+(mrg ~92, prt ~46, pln ~207); within Phase 0+1 only ini's +225 was
+previously the high-water mark. Delivers the v1 `/devx` skill body
+wired through 5 new CLI primitives: `devx devx-helper claim`
+(dvx101 — atomic 6-step claim with rollback; closes
+`feedback_devx_push_claim_before_pr.md` structurally), `devx
+devx-helper should-create-story` (dvx102 — canary-gated Phase 2
+conditional, ships off; closes the LEARN cross-epic 43/43 silent-skip
+contract), `devx devx-helper await-remote-ci`
+(dvx105 — three-state remote-CI probe with ScheduleWakeup polling),
+`devx merge-gate <hash>` enriched with `advice` array routing
+(dvx106 — Phase 8 dispatch removes per-mode "Behavior by mode" table
+from skill body entirely), `parseHandoffSnippet` test-only validator
+(dvx107 — pins skill-body Handoff Snippet template against silent
+prose drift). Plus `coverageTouchedGate` (dvx104, library-only) and
+`Phase 4 status-log discipline test` (dvx103 — frozen pre-discipline
+grandfather list). dvxret PR (this PR) is the fourth Phase 1 retro
+PR; every Phase 1 PR since prt102 merged is rendered via `devx
+pr-body` and gated via `devx merge-gate`. Filed `dev-roc101` follow-up
+(resume-detection / verify-claim) as load-bearing for Phase 2's
+mgr104 worker-spawn discipline — see LEARN.md § epic-devx-skill E13.
+
+1 epic remaining: epic-devx-manage-minimal (was blocked-by dvxret;
+unblocked after this PR merges). Mobile companion v0.1 runs in parallel
+from Phase 8.
