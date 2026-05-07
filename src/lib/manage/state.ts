@@ -63,6 +63,26 @@ export interface RosterEntry {
   last_exit_code?: number;
 }
 
+/**
+ * Per-spec crash bookkeeping (mgr105). Decoupled from RosterEntry because the
+ * roster slot is cleared on exit (PID is gone), but the crash record must
+ * persist so reconcile() can apply backoff + max-restarts on the next tick.
+ * Cleared when (a) a worker for the same spec exits cleanly (code === 0), or
+ * (b) the loop applies a desiredBlocking action (the spec gets marked
+ * blocked in DEV.md, so a future user-driven re-claim starts fresh).
+ *
+ * `last_exit_code` accepts a string for the synthetic
+ * `"manager-restart-detected"` event (Dev-lens locked decision: PID-existence
+ * sweep on init recovers lost exit events when the manager itself crashed
+ * mid-window).
+ */
+export interface CrashRecord {
+  spec_hash: string;
+  crash_count: number;
+  last_exit_at: string;
+  last_exit_code: number | string;
+}
+
 export interface LockRecord {
   pid: number;
   acquired_at: string;
@@ -76,6 +96,8 @@ export interface ManagerState {
   model?: string;
   ticks?: TickEntry[];
   roster: RosterEntry[];
+  /** mgr105+: per-spec crash bookkeeping. Absent on fresh state. */
+  crashes?: CrashRecord[];
   lock?: LockRecord;
 }
 
@@ -214,6 +236,30 @@ function isLockRecord(v: unknown): v is LockRecord {
   if (!v || typeof v !== "object") return false;
   const l = v as Record<string, unknown>;
   return isFiniteNumber(l.pid) && typeof l.acquired_at === "string";
+}
+
+function isCrashRecord(v: unknown): v is CrashRecord {
+  if (!v || typeof v !== "object") return false;
+  const c = v as Record<string, unknown>;
+  if (typeof c.spec_hash !== "string" || c.spec_hash.length === 0) return false;
+  if (
+    !isFiniteNumber(c.crash_count) ||
+    !Number.isInteger(c.crash_count) ||
+    (c.crash_count as number) < 0
+  ) {
+    return false;
+  }
+  if (typeof c.last_exit_at !== "string") return false;
+  // last_exit_code accepts a finite number OR a non-empty string (the synthetic
+  // "manager-restart-detected" sentinel + future "signal:SIGKILL" shape).
+  const code = c.last_exit_code;
+  if (
+    !(typeof code === "number" && Number.isFinite(code)) &&
+    !(typeof code === "string" && code.length > 0)
+  ) {
+    return false;
+  }
+  return true;
 }
 
 // ─── Crash-mid-write recovery (AC #3) ───────────────────────────────────
@@ -431,6 +477,7 @@ export function readManagerState(cacheDir: string = DEFAULT_CACHE_DIR): ManagerS
   if (typeof obj.last_tick_at === "string") out.last_tick_at = obj.last_tick_at;
   if (typeof obj.model === "string") out.model = obj.model;
   if (Array.isArray(obj.ticks)) out.ticks = obj.ticks.filter(isTickEntry);
+  if (Array.isArray(obj.crashes)) out.crashes = (obj.crashes as unknown[]).filter(isCrashRecord);
   if (isLockRecord(obj.lock)) out.lock = obj.lock;
   return out;
 }

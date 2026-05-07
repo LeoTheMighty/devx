@@ -30,7 +30,7 @@ import {
   type DevRow,
   type SpecType,
 } from "../backlog/parse.js";
-import type { ManagerState, RosterEntry } from "./state.js";
+import type { CrashRecord, ManagerState, RosterEntry } from "./state.js";
 
 // ---------------------------------------------------------------------------
 // Phase 1 hard cap
@@ -67,10 +67,24 @@ export interface StatusLogUpdate {
   line: string;
 }
 
+/**
+ * mgr105 — instructs the loop to mark a spec `blocked` (DEV.md `[/]`→`[-]`,
+ * spec frontmatter status, status-log line, INTERVIEW.md entry) because its
+ * `crash_count` reached `manager.max_restarts_per_spec`. Reconcile stays pure;
+ * the loop does the file edits.
+ */
+export interface DesiredBlocking {
+  spec_hash: string;
+  crash_count: number;
+  last_exit_code: number | string;
+}
+
 export interface ReconcileResult {
   desiredSpawns: DesiredSpawn[];
   desiredKills: DesiredKill[];
   statusLogUpdates: StatusLogUpdate[];
+  /** mgr105+: max-restarts-per-spec exceeded. */
+  desiredBlocking: DesiredBlocking[];
 }
 
 export interface ReconcileOpts {
@@ -87,9 +101,29 @@ export interface ReconcileOpts {
    * disappeared (mid-edit), and the next tick reconciles. Tests cover both.
    */
   killAbsent?: boolean;
+  /**
+   * mgr105 — `manager.max_restarts_per_spec` (default 5). After this many
+   * consecutive crashes on the same spec, reconcile emits a desiredBlocking
+   * action instead of a desiredSpawn.
+   */
+  maxRestarts?: number;
+  /**
+   * mgr105 — `manager.worker_crash_backoff_s` (default `[10, 30, 90, 300]`).
+   * Index = `min(crash_count - 1, len - 1)`. A spec with `crash_count > 0`
+   * is only spawnable when wall-clock `now >= last_exit_at + backoffSeconds[i]`.
+   */
+  backoffSeconds?: number[];
+  /**
+   * mgr105 — wall-clock injection for backoff arithmetic. Defaults to
+   * `() => new Date()`. Tests pass a fake clock to drive deterministic
+   * crash-cycle assertions without sleeping.
+   */
+  now?: () => Date;
 }
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
+const DEFAULT_MAX_RESTARTS = 5;
+const DEFAULT_BACKOFF_SECONDS: readonly number[] = [10, 30, 90, 300];
 
 // ---------------------------------------------------------------------------
 // Reconcile
@@ -101,6 +135,11 @@ export function reconcile(
   opts: ReconcileOpts = {},
 ): ReconcileResult {
   const roster = state?.roster ?? [];
+  const crashes = state?.crashes ?? [];
+  const crashByHash = new Map<string, CrashRecord>();
+  for (const c of crashes) {
+    if (!crashByHash.has(c.spec_hash)) crashByHash.set(c.spec_hash, c);
+  }
   const devByHash = new Map<string, DevRow>();
   for (const row of snapshot.dev) {
     // First-write-wins: if a hash appears twice in DEV.md (shouldn't happen
@@ -166,23 +205,83 @@ export function reconcile(
     }
   }
 
+  // ── Compute desiredBlocking + filter spawn-eligibility (mgr105) ────────
+  // For every spec with a crash record + status the manager is responsible
+  // for (ready OR in-progress with a stale claim — see "stale claim
+  // restart" note below): if its crash_count has hit max_restarts, emit a
+  // desiredBlocking action; the loop applies the file edits + clears the
+  // crash record. Iteration order is DEV.md row order so the loop's
+  // INTERVIEW.md write order matches what users see in the backlog.
+  //
+  // Stale-claim restart: a spec marked `[/]` in-progress with a crashes
+  // record is the post-crash state — `/devx`'s claim flipped DEV.md to
+  // `[/]`, the worker died, the manager's on-exit handler stamped a
+  // crashes entry, and the DEV.md row never reverted. The manager owns
+  // the respawn (and the eventual blocking) for these. Specs in-progress
+  // WITHOUT a crash record are owned by the live `/devx` session — leave
+  // those alone.
+  const desiredBlocking: DesiredBlocking[] = [];
+  const maxRestarts = clampMaxRestarts(opts.maxRestarts);
+  const backoff = normalizeBackoff(opts.backoffSeconds);
+  const nowFn = opts.now ?? (() => new Date());
+  const blockingHashes = new Set<string>();
+  const seenForBlocking = new Set<string>();
+  for (const row of snapshot.dev) {
+    if (seenForBlocking.has(row.hash)) continue;
+    seenForBlocking.add(row.hash);
+    const canonical = devByHash.get(row.hash) ?? row;
+    if (canonical.struck) continue;
+    const c = crashByHash.get(canonical.hash);
+    if (!c) continue;
+    if (canonical.status !== "ready" && canonical.status !== "in-progress") continue;
+    if (c.crash_count >= maxRestarts) {
+      desiredBlocking.push({
+        spec_hash: canonical.hash,
+        crash_count: c.crash_count,
+        last_exit_code: c.last_exit_code,
+      });
+      blockingHashes.add(canonical.hash);
+    }
+  }
+
   // ── Compute candidate spawn ────────────────────────────────────────────
   // Living roster = roster entries we're NOT killing this tick.
   const killedPids = new Set(desiredKills.map((k) => k.pid));
   const livingRoster = roster.filter((r) => !killedPids.has(r.pid));
 
   if (livingRoster.length >= HARD_CAP_PHASE_1) {
-    return { desiredSpawns: [], desiredKills, statusLogUpdates };
+    return {
+      desiredSpawns: [],
+      desiredKills,
+      statusLogUpdates,
+      desiredBlocking,
+    };
   }
 
   // Eligible specs: status === "ready", not already in roster, all
   // blocked_by hashes resolved (status === "done" — superseded/deleted
   // counts as "not blocking" since the dependency is settled). In-progress
-  // dependencies are still blocking — we wait for them to land.
+  // dependencies are still blocking — we wait for them to land. mgr105
+  // adds two extra filters: maxed-out crashed specs (about to be blocked
+  // this tick) and specs inside their backoff window.
   const rosterHashes = new Set(livingRoster.map((r) => r.spec_hash));
-  const candidate = pickSpawnCandidate(snapshot.dev, devByHash, rosterHashes);
+  const nowMs = nowFn().getTime();
+  const candidate = pickSpawnCandidate(
+    snapshot.dev,
+    devByHash,
+    rosterHashes,
+    crashByHash,
+    blockingHashes,
+    backoff,
+    nowMs,
+  );
   if (!candidate) {
-    return { desiredSpawns: [], desiredKills, statusLogUpdates };
+    return {
+      desiredSpawns: [],
+      desiredKills,
+      statusLogUpdates,
+      desiredBlocking,
+    };
   }
 
   // `||` not `??` — empty-string state.model (corrupt manager.json or schema
@@ -196,7 +295,56 @@ export function reconcile(
     },
   ];
 
-  return { desiredSpawns, desiredKills, statusLogUpdates };
+  return { desiredSpawns, desiredKills, statusLogUpdates, desiredBlocking };
+}
+
+/**
+ * mgr105 — pure backoff-window predicate. Exposed for direct unit testing
+ * per Murat-lens AC: "backoff respect is unit-tested via reconcile.ts's pure
+ * decision (given `{last_exit_at, crash_count, now}` → 'spawn' or 'wait')."
+ *
+ * Returns `"spawn"` if the spec's backoff window has elapsed (or the spec
+ * has no crash record / zero crashes), `"wait"` otherwise. Treats malformed
+ * `last_exit_at` strings as "spawn" (fail-open) — a corrupted record
+ * shouldn't permanently park a spec; the next exit refreshes the field.
+ */
+export function backoffDecision(input: {
+  crash: CrashRecord | null | undefined;
+  now: number;
+  backoffSeconds?: number[];
+}): "spawn" | "wait" {
+  if (!input.crash) return "spawn";
+  if (input.crash.crash_count <= 0) return "spawn";
+  const backoff = normalizeBackoff(input.backoffSeconds);
+  const idx = Math.min(input.crash.crash_count - 1, backoff.length - 1);
+  const waitS = backoff[idx];
+  const last = Date.parse(input.crash.last_exit_at);
+  if (!Number.isFinite(last)) return "spawn";
+  return input.now >= last + waitS * 1000 ? "spawn" : "wait";
+}
+
+function normalizeBackoff(input: number[] | undefined): number[] {
+  if (!input || !Array.isArray(input) || input.length === 0) {
+    return [...DEFAULT_BACKOFF_SECONDS];
+  }
+  // Filter out negatives / non-finite entries so a malformed config doesn't
+  // collapse the wait window to zero (treating "wait -10s" as already
+  // elapsed). If filtering empties the array, fall back to defaults.
+  const cleaned = input.filter((n) => typeof n === "number" && Number.isFinite(n) && n >= 0);
+  if (cleaned.length === 0) return [...DEFAULT_BACKOFF_SECONDS];
+  return cleaned;
+}
+
+function clampMaxRestarts(input: number | undefined): number {
+  // Reject undefined / NaN / negative values → use the project default.
+  // Accept 0 by clamping to 1: a user who set `max_restarts_per_spec: 0`
+  // meaning "block on first crash" gets that intent honored (count >= 1
+  // → block at the first crash). Without this clamp, 0 silently fell
+  // through to the default of 5 — BH-MED 5 silent-config-override.
+  if (typeof input !== "number" || !Number.isFinite(input) || input < 0) {
+    return DEFAULT_MAX_RESTARTS;
+  }
+  return Math.max(1, Math.floor(input));
 }
 
 // ---------------------------------------------------------------------------
@@ -257,6 +405,10 @@ function pickSpawnCandidate(
   dev: DevRow[],
   devByHash: Map<string, DevRow>,
   rosterHashes: Set<string>,
+  crashByHash: Map<string, CrashRecord>,
+  blockingHashes: Set<string>,
+  backoffSeconds: number[],
+  nowMs: number,
 ): DevRow | null {
   // First-write-wins on duplicates: skip any row whose hash already had a
   // canonical record stored (devByHash holds the first occurrence). This
@@ -268,10 +420,30 @@ function pickSpawnCandidate(
     if (seen.has(row.hash)) continue;
     seen.add(row.hash);
     const canonical = devByHash.get(row.hash) ?? row;
-    if (canonical.status !== "ready") continue;
+    // mgr105 stale-claim restart: in-progress specs with a crash record
+    // are eligible for spawn (the manager owns the respawn after the
+    // worker died and the DEV.md row didn't revert). In-progress without
+    // a crash record stays off-limits — that's a live `/devx` session.
+    const crash = crashByHash.get(canonical.hash);
+    if (canonical.status !== "ready") {
+      if (canonical.status !== "in-progress") continue;
+      if (!crash) continue;
+    }
     if (rosterHashes.has(canonical.hash)) continue;
     if (canonical.struck) continue;
     if (!blockersResolved(canonical, devByHash)) continue;
+    // mgr105: skip specs about to be blocked this tick (max-restarts
+    // exceeded) — they're getting flipped to status=blocked by the loop.
+    if (blockingHashes.has(canonical.hash)) continue;
+    // mgr105: skip specs inside their post-crash backoff window. Caller
+    // emits no statusLogUpdate here — the next exit (or successful run)
+    // refreshes the picture; a wait window is the expected normal path.
+    const decision = backoffDecision({
+      crash,
+      now: nowMs,
+      backoffSeconds,
+    });
+    if (decision === "wait") continue;
     return canonical;
   }
   return null;

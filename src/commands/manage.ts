@@ -23,18 +23,26 @@ import { ManagerLockHeldError, acquireManagerLock } from "../lib/manage/lock.js"
 
 const DEFAULT_TICK_INTERVAL_S = 60;
 const DEFAULT_DEV_MODEL = "claude-sonnet-4-6";
+const DEFAULT_MAX_RESTARTS = 5;
+const DEFAULT_BACKOFF_S: readonly number[] = [10, 30, 90, 300];
 
-function readTickIntervalS(): number {
+function readManagerSection(): Record<string, unknown> | null {
   let merged: unknown;
   try {
     merged = loadMerged();
   } catch {
-    return DEFAULT_TICK_INTERVAL_S;
+    return null;
   }
-  if (!merged || typeof merged !== "object") return DEFAULT_TICK_INTERVAL_S;
+  if (!merged || typeof merged !== "object") return null;
   const manager = (merged as Record<string, unknown>).manager;
-  if (!manager || typeof manager !== "object") return DEFAULT_TICK_INTERVAL_S;
-  const v = (manager as Record<string, unknown>).heartbeat_interval_s;
+  if (!manager || typeof manager !== "object") return null;
+  return manager as Record<string, unknown>;
+}
+
+function readTickIntervalS(): number {
+  const manager = readManagerSection();
+  if (!manager) return DEFAULT_TICK_INTERVAL_S;
+  const v = manager.heartbeat_interval_s;
   if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
   return DEFAULT_TICK_INTERVAL_S;
 }
@@ -54,6 +62,31 @@ function readDevModel(): string {
   const v = (models as Record<string, unknown>).dev;
   if (typeof v === "string" && v.length > 0) return v;
   return DEFAULT_DEV_MODEL;
+}
+
+function readMaxRestarts(): number {
+  const manager = readManagerSection();
+  if (!manager) return DEFAULT_MAX_RESTARTS;
+  const v = manager.max_restarts_per_spec;
+  // Accept 0 as "block on first crash" (clamps to 1 in clampMaxRestarts).
+  // Reject negative / non-finite — those are config errors, fall back to
+  // the project default.
+  if (typeof v === "number" && Number.isFinite(v) && v >= 0) {
+    return Math.max(1, Math.floor(v));
+  }
+  return DEFAULT_MAX_RESTARTS;
+}
+
+function readBackoffSeconds(): number[] {
+  const manager = readManagerSection();
+  if (!manager) return [...DEFAULT_BACKOFF_S];
+  const v = manager.worker_crash_backoff_s;
+  if (!Array.isArray(v)) return [...DEFAULT_BACKOFF_S];
+  const cleaned = v.filter(
+    (n): n is number => typeof n === "number" && Number.isFinite(n) && n >= 0,
+  );
+  if (cleaned.length === 0) return [...DEFAULT_BACKOFF_S];
+  return cleaned;
 }
 
 interface ManageOpts {
@@ -76,7 +109,11 @@ export async function runManageCommand(opts: ManageOpts): Promise<number> {
       throw err;
     }
     try {
-      await runManagerOnce({ model: readDevModel() });
+      await runManagerOnce({
+        model: readDevModel(),
+        maxRestarts: readMaxRestarts(),
+        backoffSeconds: readBackoffSeconds(),
+      });
     } finally {
       handle.release();
     }
@@ -106,6 +143,8 @@ export async function runManageCommand(opts: ManageOpts): Promise<number> {
       tickIntervalS: readTickIntervalS(),
       signal: ac.signal,
       model: readDevModel(),
+      maxRestarts: readMaxRestarts(),
+      backoffSeconds: readBackoffSeconds(),
     });
   } finally {
     process.off("SIGTERM", onSignal);

@@ -193,6 +193,10 @@ describe("runManagerOnce + spawn integration (mgr104 AC #6)", () => {
       // returned a spawn (defensive — fixture above shouldn't but the
       // belt-and-suspenders matters).
       disableSpawn: true,
+      // mgr105 — pre-seeded synthetic PID (12345) isn't a real process; the
+      // PID-recovery sweep would otherwise reap the slot and turn this into
+      // a "no work" tick. Stub the probe to keep the synthetic worker alive.
+      pidAlive: () => true,
     });
 
     expect(result.outcome).toBe("maintained");
@@ -276,6 +280,9 @@ describe("runManagerOnce + spawn integration (mgr104 AC #6)", () => {
       cwd: tmpRoot,
       out: () => {},
       spawnFn: trackingSpawnFn,
+      // mgr105 — pre-seeded synthetic PID 1234 isn't real; opt out of the
+      // sweep so the maintained-branch assertion still applies.
+      pidAlive: () => true,
     });
     expect(result.outcome).toBe("maintained");
     expect(spawnFnCalls).toBe(0);
