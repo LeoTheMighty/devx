@@ -392,7 +392,7 @@ plans:
             blocked_by: [mgr103]
           - key: mgr105
             title: Plain-crash restart logic + max-restarts-per-spec gate
-            status: backlog
+            status: done
             blocked_by: [mgr104]
           - key: mgr106
             title: Manager lock + heartbeat + SIGTERM-clean

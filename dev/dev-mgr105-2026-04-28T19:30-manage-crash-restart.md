@@ -5,7 +5,7 @@ created: 2026-04-28T19:30:00-07:00
 title: Plain-crash restart logic + max-restarts-per-spec gate
 from: _bmad-output/planning-artifacts/epic-devx-manage-minimal.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: in-progress
+status: done
 owner: /devx-2026-05-07T1250-30203
 blocked_by: [mgr104]
 branch: feat/dev-mgr105
@@ -35,3 +35,4 @@ Implement crash detection + backoff respawn + max-restarts-per-spec gate. Closes
 - 2026-05-07T12:50:29-06:00 — claimed by /devx in session /devx-2026-05-07T1250-30203
 - 2026-05-07T12:51 — phase 2: canary=off, shouldCreateStory=project_shape=empty-dream + 7 ACs + no story file → bmad-create-story SKIPPED (LEARN cross-epic pattern: 44/44 silent-skip; spec ACs are working artifact; canary stays off until /devx-learn flips active)
 - 2026-05-07T13:22 — phase 4: 3-agent parallel adversarial review (Blind Hunter + Edge Case Hunter + Acceptance Auditor); Auditor returned all 7 ACs SATISFIED; BH+EC found 19 actionable issues (4 HIGH / 6 MED / 9 LOW); ALL fixed in-place — most load-bearing: appendInterviewRow EACCES-wipe (writeFileSync would clobber the file on a non-ENOENT read; now propagates), status-log dedup-by-prefix not full summary (heterogeneous retries collapse), INTERVIEW row dedup by spec_hash (idempotent retries), orphan crashes-record GC (terminal status drops the record), frontmatter-scoped status: regex (body code-block status: untouched), Q# uniqueness walk-past, child.on('error') registered with once-flag dedup, computeExitCode signal-first ordering, clampMaxRestarts(0)→1; mgr106-blocked race classes (registerRosterEntry lost-write, crashes-clear concurrent write) accepted with comments; +44 net tests (1261 passing); re-review clean
+- 2026-05-07T13:30 — merged via PR #57 (squash → f64dddc)
