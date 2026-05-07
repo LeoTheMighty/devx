@@ -40,6 +40,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runManagerOnce } from "../src/lib/manage/loop.js";
+import { type SpawnFn } from "../src/lib/manage/spawn.js";
 import { readManagerState, writeManagerState } from "../src/lib/manage/state.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -250,10 +251,10 @@ describe("runManagerOnce + spawn integration (mgr104 AC #6)", () => {
     const { enforceHardCap } = await import("../src/lib/manage/reconcile.js");
 
     let spawnFnCalls = 0;
-    const trackingSpawnFn = ((..._args: unknown[]) => {
+    const trackingSpawnFn: SpawnFn = (..._args: unknown[]) => {
       spawnFnCalls += 1;
       throw new Error("spawn should NEVER be called when hard cap throws");
-    }) as unknown as Parameters<typeof runManagerOnce>[0]["spawnFn"];
+    };
 
     // Direct enforceHardCap test — exact error message verbatim per AC.
     expect(() =>
