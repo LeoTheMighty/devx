@@ -376,7 +376,7 @@ plans:
         stories:
           - key: mgr101
             title: Manager scaffold + devx manage --once single-tick CLI
-            status: backlog
+            status: done
             blocked_by: [dvxret]
           - key: mgr102
             title: State persistence (schedule/manager/heartbeat) with atomic writes

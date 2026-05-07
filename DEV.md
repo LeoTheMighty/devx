@@ -113,7 +113,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-dvxret-2026-04-28T19:30-retro-devx-skill.md` — Retro + LEARN.md updates (interim retro discipline). Status: done. Blocked-by: dvx101, dvx102, dvx103, dvx104, dvx105, dvx106, dvx107. PR: https://github.com/LeoTheMighty/devx/pull/52 (merged c594811). Closes epic-devx-skill 8/8. Phase 1 progress: 4/5 epics shipped + retroed.
 
 ### Epic 5 — /devx-manage v0 (minimal scheduler + supervisor)
-- [/] `dev/dev-mgr101-2026-04-28T19:30-manage-scaffold.md` — Manager scaffold + devx manage --once single-tick CLI. Status: in-progress. From: epic-devx-manage-minimal. Blocked-by: dvxret.
+- [x] `dev/dev-mgr101-2026-04-28T19:30-manage-scaffold.md` — Manager scaffold + devx manage --once single-tick CLI. Status: done. From: epic-devx-manage-minimal. Blocked-by: dvxret. PR: https://github.com/LeoTheMighty/devx/pull/53 (merged efa23bf).
 - [ ] `dev/dev-mgr102-2026-04-28T19:30-manage-state-files.md` — State persistence: schedule.json + manager.json + heartbeat.json with atomic writes. Status: ready. Blocked-by: mgr101.
 - [ ] `dev/dev-mgr103-2026-04-28T19:30-manage-reconcile.md` — Reconcile loop: read backlogs + compute diff + detect unblocks. Status: ready. Blocked-by: mgr102.
 - [ ] `dev/dev-mgr104-2026-04-28T19:30-manage-spawn-worker.md` — Spawn one worker (hard cap N=1) + claude /devx <hash> subprocess. Status: ready. Blocked-by: mgr103.
