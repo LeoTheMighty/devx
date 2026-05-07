@@ -27,6 +27,7 @@ import * as devxHelperCommand from "./commands/devx-helper.js";
 import * as ejectCommand from "./commands/eject.js";
 import * as initCommand from "./commands/init.js";
 import * as killCommand from "./commands/kill.js";
+import * as manageCommand from "./commands/manage.js";
 import * as mergeGateCommand from "./commands/merge-gate.js";
 import * as pauseCommand from "./commands/pause.js";
 import * as planHelperCommand from "./commands/plan-helper.js";
@@ -51,6 +52,7 @@ const commands: CommandModule[] = [
   ejectCommand,
   initCommand,
   killCommand,
+  manageCommand,
   mergeGateCommand,
   pauseCommand,
   planHelperCommand,
