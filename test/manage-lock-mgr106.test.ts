@@ -125,6 +125,38 @@ describe("acquireManagerLock — PID-recycling cross-check (mgr106 AC #7)", () =
       }),
     ).toThrow(ManagerLockHeldError);
   });
+
+  it("does NOT false-positive recycle when startedAt is within 2s grace of acquired_at", () => {
+    // CI regression: ps -o etime= has 1-second resolution. A process that
+    // started < 1s ago reports elapsed=0 → probePidStartedAt returns
+    // now() — slightly later than acquired_at written milliseconds prior.
+    // Without a grace window, every same-process re-acquire would
+    // false-positive as recycled. Pin the grace at 2s.
+    const acquiredAt = new Date("2026-05-07T10:00:00.000Z");
+    plantLock({ pid: 4242, acquired_at: acquiredAt.toISOString() });
+    expect(() =>
+      acquireManagerLock(cacheDir, {
+        pidAlive: () => true,
+        // startedAt 1.5s AFTER acquired_at — within grace, must be held.
+        pidStartedAt: () => new Date(acquiredAt.getTime() + 1_500),
+        warn: () => {},
+      }),
+    ).toThrow(ManagerLockHeldError);
+  });
+
+  it("DOES reap when startedAt is more than 2s after acquired_at", () => {
+    // Confirm the grace window's upper bound: a 3s delta still triggers
+    // recycling reap. (Real PID recycling involves seconds-to-minutes.)
+    const acquiredAt = new Date("2026-05-07T10:00:00.000Z");
+    plantLock({ pid: 4242, acquired_at: acquiredAt.toISOString() });
+    const handle = acquireManagerLock(cacheDir, {
+      pidAlive: () => true,
+      pidStartedAt: () => new Date(acquiredAt.getTime() + 3_000),
+      warn: () => {},
+    });
+    expect(handle).toBeDefined();
+    handle.release();
+  });
 });
 
 describe("acquireManagerLock — bounded retry (mgr106 AC #2)", () => {

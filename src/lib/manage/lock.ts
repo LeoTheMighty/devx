@@ -222,12 +222,22 @@ function classifyExistingLock(
     };
   }
   // PID alive — cross-check against PID-recycling.
+  //
+  // Grace window: `ps -o etime=` has 1-second resolution. A process that
+  // started < 1s ago reports elapsed=0, so probePidStartedAt returns
+  // `now()` — which is later than `acquired_at` if any time passed
+  // between the lock write and the probe (always true). Without a grace
+  // window, every same-process re-acquire would false-positive as
+  // recycled. RECYCLING_GRACE_MS subsumes etime's 1s resolution + clock
+  // jitter; real PID recycling involves seconds-to-minutes deltas (the
+  // PID counter has to wrap or the process has to be reaped + a new fork
+  // claim the slot), so a 2s threshold doesn't compromise detection.
   const startedAt = pidStartedAt(body.pid);
   const acquiredAt = new Date(body.acquired_at);
   if (
     startedAt &&
     Number.isFinite(acquiredAt.getTime()) &&
-    startedAt.getTime() > acquiredAt.getTime()
+    startedAt.getTime() > acquiredAt.getTime() + RECYCLING_GRACE_MS
   ) {
     return {
       kind: "stale",
@@ -239,6 +249,8 @@ function classifyExistingLock(
   }
   return { kind: "held" };
 }
+
+const RECYCLING_GRACE_MS = 2_000;
 
 function parseLockBody(raw: string): LockBody | null {
   let parsed: unknown;
