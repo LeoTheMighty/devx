@@ -5,7 +5,8 @@ created: 2026-04-28T19:30:00-07:00
 title: State persistence: schedule.json + manager.json + heartbeat.json with atomic writes
 from: _bmad-output/planning-artifacts/epic-devx-manage-minimal.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: ready
+status: in-progress
+owner: /devx-2026-05-07T0940-37390
 blocked_by: [mgr101]
 branch: feat/dev-mgr102
 ---
@@ -32,3 +33,4 @@ Ship `src/lib/manage/state.ts` with schemas + IO for `.devx-cache/state/`. Atomi
 ## Status log
 
 - 2026-04-28T19:30 — created by /devx-plan
+- 2026-05-07T09:40:58-06:00 — claimed by /devx in session /devx-2026-05-07T0940-37390
