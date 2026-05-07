@@ -53,7 +53,11 @@ describe("readManagerState", () => {
     }
   });
 
-  it("filters bad-shape ticks entries (mgr101 sanitization for v0)", () => {
+  it("filters bad-shape ticks entries — outcome accepts any non-empty string (mgr102 forward-compat)", () => {
+    // mgr102 loosened the closed-set outcome check to a non-empty-string
+    // check so future mgr103/104/Phase-2 outcomes ("crashed", "respawned",
+    // …) round-trip cleanly through older readers. Bad-shape rejections
+    // (null, primitive, missing fields, non-string outcome) still apply.
     const path = managerStatePath(cacheDir);
     mkdirSync(join(cacheDir, "state"), { recursive: true });
     writeFileSync(
@@ -66,7 +70,9 @@ describe("readManagerState", () => {
           null, // bad shape
           "garbage", // bad shape
           { generation: 2, ts: "2026-05-07T10:01:00.000Z", outcome: "spawned" },
-          { generation: 3, ts: "x", outcome: "unknown-outcome" }, // bad outcome
+          { generation: 3, ts: "x", outcome: "future-outcome" }, // accepted (mgr102+)
+          { generation: 4, ts: "x", outcome: "" }, // rejected (empty string)
+          { generation: 5, ts: "x", outcome: 42 }, // rejected (non-string)
         ],
       }),
       "utf8",
@@ -75,6 +81,7 @@ describe("readManagerState", () => {
     expect(state.ticks).toEqual([
       { generation: 1, ts: "2026-05-07T10:00:00.000Z", outcome: "no-work" },
       { generation: 2, ts: "2026-05-07T10:01:00.000Z", outcome: "spawned" },
+      { generation: 3, ts: "x", outcome: "future-outcome" },
     ]);
   });
 
