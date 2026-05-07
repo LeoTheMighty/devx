@@ -380,7 +380,7 @@ plans:
             blocked_by: [dvxret]
           - key: mgr102
             title: State persistence (schedule/manager/heartbeat) with atomic writes
-            status: backlog
+            status: done
             blocked_by: [mgr101]
           - key: mgr103
             title: Reconcile loop with hard cap N=1 enforcement
