@@ -297,11 +297,17 @@ cliDescribe("`devx manage --once` smoke (mgr101 AC #6)", () => {
   it("exits 1 with stderr message when the manager lock is already held", () => {
     const cwd = mkdtempSync(join(tmpdir(), "devx-mgr-cli-held-"));
     try {
-      // Simulate a held lock by pre-creating the file.
+      // mgr106 added stale-PID + recycling detection: a lock holding a
+      // not-running PID is REAPED, not treated as held. To exercise the
+      // genuinely-held path we plant the test-runner's own PID (alive
+      // when the subprocess probes it) with a recent acquired_at — the
+      // test-runner's process started LONG before "now", so the recycling
+      // cross-check sees `started_at < acquired_at` → not recycled →
+      // genuinely held.
       mkdirSync(join(cwd, ".devx-cache", "locks"), { recursive: true });
       writeFileSync(
         join(cwd, ".devx-cache", "locks", "manager.lock"),
-        JSON.stringify({ pid: 99999, acquired_at: new Date().toISOString() }),
+        JSON.stringify({ pid: process.pid, acquired_at: new Date().toISOString() }),
         "utf8",
       );
       const r = spawnSync("node", [CLI_DIST, "manage", "--once"], {
@@ -310,6 +316,33 @@ cliDescribe("`devx manage --once` smoke (mgr101 AC #6)", () => {
       });
       expect(r.status).toBe(1);
       expect(r.stderr).toContain("manager lock already held");
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("reaps a stale lock (mgr106) and proceeds to acquire + run the tick", () => {
+    // mgr106 contract: a lock holding a NON-running PID is detected as
+    // stale, reaped with a WARN to stderr, and the manager proceeds to
+    // run its tick normally. PID 999_999_999 is too high to exist on any
+    // real system (max_pid_t on Linux is ~4M; macOS ~99999).
+    const cwd = mkdtempSync(join(tmpdir(), "devx-mgr-cli-stale-"));
+    try {
+      mkdirSync(join(cwd, ".devx-cache", "locks"), { recursive: true });
+      writeFileSync(
+        join(cwd, ".devx-cache", "locks", "manager.lock"),
+        JSON.stringify({ pid: 999_999_999, acquired_at: new Date().toISOString() }),
+        "utf8",
+      );
+      const r = spawnSync("node", [CLI_DIST, "manage", "--once"], {
+        cwd,
+        encoding: "utf8",
+      });
+      expect(r.status).toBe(0);
+      expect(r.stdout).toMatch(/^tick 1: no work\n?$/);
+      expect(r.stderr).toContain("not running");
+      // Lock was reaped on acquire AND released on exit → file is gone.
+      expect(existsSync(join(cwd, ".devx-cache", "locks", "manager.lock"))).toBe(false);
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }
