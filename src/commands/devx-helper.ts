@@ -132,14 +132,43 @@ export async function runClaim(
   const out = opts.out ?? ((s) => process.stdout.write(s));
   const err = opts.err ?? ((s) => process.stderr.write(s));
 
-  if (args.length !== 1) {
-    err("usage: devx devx-helper claim <hash>\n");
+  // Hand-parse (mirrors runVerifyClaim) so test seams aren't dependent on
+  // commander state. Accepted shapes: `<hash>` and `<hash> --type debug`
+  // (flag position-independent).
+  let type: string | undefined;
+  const positional: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--type") {
+      // A flag-shaped "value" means the real value was omitted — don't
+      // swallow the next flag as the type.
+      if (i + 1 >= args.length || args[i + 1].startsWith("--")) {
+        err("devx devx-helper claim: --type requires a value\n");
+        return 64;
+      }
+      type = args[i + 1];
+      i++;
+    } else if (a.startsWith("--")) {
+      err(`devx devx-helper claim: unknown flag '${a}'\n`);
+      return 64;
+    } else {
+      positional.push(a);
+    }
+  }
+  if (positional.length !== 1) {
+    err("usage: devx devx-helper claim <hash> [--type dev|debug]\n");
     return 64;
   }
-  const hash = args[0];
+  const hash = positional[0];
   if (!HASH_RE.test(hash)) {
     err(
       `devx devx-helper claim: invalid hash '${hash}' (expected hex/alnum 3-12 chars)\n`,
+    );
+    return 64;
+  }
+  if (type !== undefined && type !== "dev" && type !== "debug") {
+    err(
+      `devx devx-helper claim: invalid --type '${type}' (expected 'dev' or 'debug')\n`,
     );
     return 64;
   }
@@ -175,6 +204,7 @@ export async function runClaim(
       sessionId,
       repoRoot,
       config: merged,
+      ...(type !== undefined ? { type } : {}),
       ...(opts.claimOpts ?? {}),
     });
     out(`${JSON.stringify(result)}\n`);
@@ -348,17 +378,27 @@ export async function runVerifyClaim(
   // on commander state. Accepted shapes: `<hash>` and
   // `<hash> --session-token <token>` (flag position-independent).
   let sessionToken: string | undefined;
+  let type: string | undefined;
   const positional: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--session-token") {
-      if (i + 1 >= args.length) {
+      // Flag-shaped "value" = the real value was omitted; don't swallow
+      // the next flag as the token.
+      if (i + 1 >= args.length || args[i + 1].startsWith("--")) {
         err(
           "devx devx-helper verify-claim: --session-token requires a value\n",
         );
         return 64;
       }
       sessionToken = args[i + 1];
+      i++;
+    } else if (a === "--type") {
+      if (i + 1 >= args.length || args[i + 1].startsWith("--")) {
+        err("devx devx-helper verify-claim: --type requires a value\n");
+        return 64;
+      }
+      type = args[i + 1];
       i++;
     } else if (a.startsWith("--")) {
       err(`devx devx-helper verify-claim: unknown flag '${a}'\n`);
@@ -369,7 +409,13 @@ export async function runVerifyClaim(
   }
   if (positional.length !== 1) {
     err(
-      "usage: devx devx-helper verify-claim <hash> [--session-token <token>]\n",
+      "usage: devx devx-helper verify-claim <hash> [--session-token <token>] [--type dev|debug]\n",
+    );
+    return 64;
+  }
+  if (type !== undefined && type !== "dev" && type !== "debug") {
+    err(
+      `devx devx-helper verify-claim: invalid --type '${type}' (expected 'dev' or 'debug')\n`,
     );
     return 64;
   }
@@ -405,6 +451,7 @@ export async function runVerifyClaim(
     const result = verifyClaim(hash, {
       sessionToken: sessionToken ?? defaultSessionId(),
       repoRoot,
+      ...(type !== undefined ? { type } : {}),
       ...(opts.verifyOpts ?? {}),
     });
     switch (result.status) {
@@ -573,11 +620,14 @@ export function register(program: Command): void {
   sub
     .command("claim")
     .description(
-      "Atomically claim a DEV.md spec for /devx: lock + DEV.md flip + spec frontmatter + status log + claim commit + push + worktree. Closes feedback_devx_push_claim_before_pr.md structurally.",
+      "Atomically claim a backlog spec for /devx: lock + backlog-row flip (DEV.md, or DEBUG.md with --type debug) + spec frontmatter + status log + claim commit + push + worktree. Closes feedback_devx_push_claim_before_pr.md structurally.",
     )
     .argument("<hash>", "spec hash (e.g. 'dvx101')")
-    .action(async (hash: string) => {
-      const code = await runClaim([hash], {});
+    .option("--type <type>", "spec type: 'dev' (default) or 'debug' (v2d101 debug loop)")
+    .action(async (hash: string, options: { type?: string }) => {
+      const args =
+        options.type !== undefined ? [hash, "--type", options.type] : [hash];
+      const code = await runClaim(args, {});
       if (code !== 0) {
         process.exit(code);
       }
@@ -608,16 +658,22 @@ export function register(program: Command): void {
       "--session-token <token>",
       "current session's token (raw sessionId or /devx-<sessionId> owner shape); auto-derived when omitted",
     )
-    .action(async (hash: string, options: { sessionToken?: string }) => {
-      const args =
-        options.sessionToken !== undefined
-          ? [hash, "--session-token", options.sessionToken]
-          : [hash];
-      const code = await runVerifyClaim(args, {});
-      if (code !== 0) {
-        process.exit(code);
-      }
-    });
+    .option("--type <type>", "spec type: 'dev' (default) or 'debug' (v2d101 debug loop)")
+    .action(
+      async (hash: string, options: { sessionToken?: string; type?: string }) => {
+        const args = [hash];
+        if (options.sessionToken !== undefined) {
+          args.push("--session-token", options.sessionToken);
+        }
+        if (options.type !== undefined) {
+          args.push("--type", options.type);
+        }
+        const code = await runVerifyClaim(args, {});
+        if (code !== 0) {
+          process.exit(code);
+        }
+      },
+    );
 
   sub
     .command("check-hold")

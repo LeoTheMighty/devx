@@ -97,9 +97,17 @@ function phase9Body(skill: string): string {
   return next ? rest.slice(0, next.index) : rest;
 }
 
-/** Extract the `**stop_after**` argument bullet from the Arguments section. */
+/**
+ * Extract the `**stop_after**` argument entry from the routing/arguments
+ * section. v2d101 reshaped the section from a `- **stop_after**` bullet
+ * list ("## Arguments") into a numbered "## Routing (the dispatcher)" list
+ * (`5. **stop_after**: …`) — accept both shapes so the pin survives the
+ * dispatcher re-home while still locking the contract content.
+ */
 function stopAfterArgumentBullet(skill: string): string {
-  const m = skill.match(/^- \*\*stop_after\*\*[^\n]*(?:\n  [^\n]*)*/m);
+  const m = skill.match(
+    /^(?:- |\d+\. )\*\*stop_after\*\*[^\n]*(?:\n {2,}[^\n]*)*/m,
+  );
   if (!m) throw new Error("stop_after argument bullet not found");
   return m[0];
 }
@@ -114,8 +122,9 @@ describe("devx skill — Arguments section documents stop_after (dvx107 AC #1)",
     expect(bullet).toMatch(/`until-blocked`/);
     expect(bullet).toMatch(/`all`/);
     // Default must be this-item — single-shot is the safe default for an
-    // unspecified invocation.
-    expect(bullet).toMatch(/Default:\s*`this-item`/);
+    // unspecified invocation. Both phrasings pin the same contract:
+    // "Default: `this-item`" (v1) / "`this-item` (default)" (v2 dispatcher).
+    expect(bullet).toMatch(/Default:\s*`this-item`|`this-item`\s*\(default\)/);
   });
 
   it("Arguments section documents loop-back semantics for n-items / all", () => {
@@ -123,7 +132,7 @@ describe("devx skill — Arguments section documents stop_after (dvx107 AC #1)",
     // AC #1: "Supports loop-back to Phase 1 for next ready item under
     // n-items / all". We assert both keywords AND the loop-back verb appear
     // in the same bullet so the contract is locally readable.
-    expect(bullet).toMatch(/loop[- ]?back|loop back|claim another/i);
+    expect(bullet).toMatch(/loop[- ]?back|loop back|loops back|claim another/i);
   });
 });
 
