@@ -13,3 +13,6 @@
 
 ## Notes for reviewers
 <surprises, deviations, follow-ups>
+
+## 🗺 Review tour
+<tour links + orientation fallback>

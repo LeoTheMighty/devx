@@ -29,7 +29,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "commander": "^12.1.0"
+    "commander": "^12.1.0",
+    "diff2html": "3.4.48",
+    "marked": "12.0.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
