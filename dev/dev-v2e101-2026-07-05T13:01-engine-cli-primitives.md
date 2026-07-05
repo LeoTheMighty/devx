@@ -5,7 +5,8 @@ created: 2026-07-05T13:01:00-06:00
 title: V2.1-A — engine CLI primitives (workstream, gates, revise, next)
 from: v2/06-phases.md
 plan: v2/
-status: ready
+status: in-progress
+owner: /devx-2026-07-05T1003-34264
 blocked_by: [v2s101]
 branch: feat/dev-v2e101
 ---
@@ -65,3 +66,4 @@ CLI-passthrough + adversarial tests, per `v2/02-engine.md`.
 ## Status log
 
 - 2026-07-05T13:01 — created from v2/06-phases.md § V2.1 epic A.
+- 2026-07-05T10:03:35-06:00 — claimed by /devx in session /devx-2026-07-05T1003-34264
