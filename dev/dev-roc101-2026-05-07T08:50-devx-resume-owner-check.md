@@ -5,7 +5,8 @@ created: 2026-05-07T08:50:00-06:00
 title: /devx Phase 1 resume-detection — verify claim ownership via session-token check
 from: dev/dev-dvxret-2026-04-28T19:30-retro-devx-skill.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: ready
+status: in-progress
+owner: /devx-2026-07-05T0953-22822
 blocked_by: [dvxret]
 branch: feat/dev-roc101
 ---
@@ -94,3 +95,4 @@ fix: a CLI primitive + skill-body wire-up.
   E13. Structural fix for the resume-collision incident; stopgap is the
   CLAUDE.md "Verify claim ownership before resuming" working agreement
   shipped in dvxret PR.
+- 2026-07-05T09:53:48-06:00 — claimed by /devx in session /devx-2026-07-05T0953-22822

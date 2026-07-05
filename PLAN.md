@@ -12,7 +12,11 @@ Each maps to a phase in [`ROADMAP.md`](./docs/ROADMAP.md). Pick one off the top 
 
 - [x] `plan/plan-a01000-2026-04-26T19:30-foundation.md` — Phase 0 — Foundation (`/devx-init`, config schema, OS supervisor scaffolds, CLI skeleton, BMAD audit). Status: planned (25 dev specs spawned across 5 epics; tracked in DEV.md § Phase 0). Blocked-by: —.
 - [-] `plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md` — Phase 1 — Single-agent core loop (`/devx-plan`, `/devx`, minimal `/devx-manage`). Status: deferred. Blocked-by: a01000.
-- [ ] `plan/plan-c4f1a2-2026-04-26T19:00-control-plane.md` — Phase 2 — Full control plane (event stream, rot detection, restart-from-status-log, crash recovery, Concierge, watchdogs). Status: ready. Blocked-by: — *(strictly b01000, but bootstrap path is to start here per session 2026-04-26)*.
+- ~~`plan/plan-c4f1a2-2026-04-26T19:00-control-plane.md` — Phase 2 — Full control plane.~~ Status: superseded 2026-07-05 — scope absorbed by the v2 migration (`v2/04-overnight-loop.md` + `v2/05-dispatcher.md`; restart-from-status-log falls out of the iteration contract). Kept for audit.
+
+## v2 — Native engine migration (2026-07-05)
+
+- [/] `v2/` — BMAD → native engine, review tours, universal dispatcher, overnight loop. Status: in-flight (dev items v2s101…v2o101 emitted to DEV.md § Phase V2). Source of truth: `v2/06-phases.md`; decisions: `v2/07-decisions.md`.
 - [-] `plan/plan-d01000-2026-04-26T19:30-parallelism.md` — Phase 3 — Parallelism & coordination (locks, intents, capacity, permissions). Status: deferred. Blocked-by: c4f1a2.
 - [-] `plan/plan-e01000-2026-04-26T19:30-observability-surfaces.md` — Phase 4 — Observability surfaces (TUI, web dashboard, mobile relay). Status: deferred. Blocked-by: c4f1a2. Parallel-with: f01000.
 - [-] `plan/plan-f01000-2026-04-26T19:30-test-debug-learn.md` — Phase 5 — Test, debug, retro, learn. Status: deferred. Blocked-by: c4f1a2.
