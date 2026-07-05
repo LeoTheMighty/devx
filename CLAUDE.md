@@ -404,7 +404,7 @@ tours, universal dispatcher, overnight loop); `dev-roc101`
 and is inherited by the v2 dispatcher.
 Mobile companion v0.1 runs in parallel from Phase 8.
 
-## Status: v2 migration (in flight)
+## Status: v2 migration (closed 2026-07-05)
 
 Shipped so far: v2s101 (engine templates seed, PR #59), roc101
 (verify-claim resume-owner check, PR #60), mgrret (final BMAD-era retro,

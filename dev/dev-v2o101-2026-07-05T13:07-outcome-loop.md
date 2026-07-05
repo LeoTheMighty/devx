@@ -5,7 +5,7 @@ created: 2026-07-05T13:07:00-06:00
 title: V2.6 — outcome loop + migration retro
 from: v2/06-phases.md
 plan: v2/
-status: in-review
+status: done
 owner: /devx-2026-07-05T1628-89669
 blocked_by: [v2l101]
 branch: feat/dev-v2o101
@@ -44,3 +44,4 @@ Per `v2/06-phases.md § V2.6` and `v2/02-engine.md` §4.10.
 - 2026-07-05T17:20 — DEVIATION (recorded per AA#1, no-silent-decisions): AC 1's `/devx outcome <hash>` SKILL half (a `Stage: Outcome` section in `.claude/commands/devx.md` prescribing arm-at-close + score-when-due) is deliberately NOT in this worker's diff — `.claude/` skill-body edits are user-foreground per the harness permission gate (v2/06-phases.md sequencing principle 4); the coordinating session owns that slice, exactly as v2t101/v2d101/v2l101 split their skill edits. The CLI half is complete and both next-tables route `/devx outcome <hash>` correctly; until the skill section lands, the dispatcher's routing line + the CLI's own usage output carry the flow.
 - 2026-07-05T17:30 — phase 5: local CI green — npm test: 102 files, 2039 tests passing (baseline 1974 at claim; +65 net: 51 engine-outcome + 5 engine-next due-awareness incl. garbage-status + 8 next-dispatch row-5.5/gatherer + 2 prose-budget S-1 − 1 consolidated), typecheck green, E-1 + E-2 evals green (`npx tsx` both exit 0). Frontmatter flipped to in-review.
 - 2026-07-05T17:30 — coordinator slice: Stage: Outcome skill section (arm/score delegation, verdict mechanics, sources-not-vibes, unattended→INTERVIEW rule) + 2 discipline pins; closes the recorded AA#1 deviation.
+- 2026-07-05T18:00 — PR https://github.com/LeoTheMighty/devx/pull/68 merged (d5caf94); worktree removed; lock released. V2.6 closed — the v2 migration is complete.

@@ -16,7 +16,7 @@ Each maps to a phase in [`ROADMAP.md`](./docs/ROADMAP.md). Pick one off the top 
 
 ## v2 — Native engine migration (2026-07-05)
 
-- [/] `v2/` — BMAD → native engine, review tours, universal dispatcher, overnight loop. Status: in-flight (dev items v2s101…v2o101 emitted to DEV.md § Phase V2). Source of truth: `v2/06-phases.md`; decisions: `v2/07-decisions.md`.
+- [x] `v2/` — BMAD → native engine, review tours, universal dispatcher, overnight loop. Status: done (closed 2026-07-05, PRs #59–#68 in one day; retro: `_devx/retros/v2-migration-2026-07-05.md`; outcome scored: v2x101 keep 3/3). Source of truth: `v2/06-phases.md`; decisions: `v2/07-decisions.md`.
 - [-] `plan/plan-d01000-2026-04-26T19:30-parallelism.md` — Phase 3 — Parallelism & coordination (locks, intents, capacity, permissions). Status: deferred. Blocked-by: c4f1a2.
 - [-] `plan/plan-e01000-2026-04-26T19:30-observability-surfaces.md` — Phase 4 — Observability surfaces (TUI, web dashboard, mobile relay). Status: deferred. Blocked-by: c4f1a2. Parallel-with: f01000.
 - [-] `plan/plan-f01000-2026-04-26T19:30-test-debug-learn.md` — Phase 5 — Test, debug, retro, learn. Status: deferred. Blocked-by: c4f1a2.
