@@ -5,7 +5,7 @@ created: 2026-07-05T13:01:00-06:00
 title: V2.1-A — engine CLI primitives (workstream, gates, revise, next)
 from: v2/06-phases.md
 plan: v2/
-status: in-progress
+status: in-review
 owner: /devx-2026-07-05T1003-34264
 blocked_by: [v2s101]
 branch: feat/dev-v2e101
@@ -67,3 +67,5 @@ CLI-passthrough + adversarial tests, per `v2/02-engine.md`.
 
 - 2026-07-05T13:01 — created from v2/06-phases.md § V2.1 epic A.
 - 2026-07-05T10:03:35-06:00 — claimed by /devx in session /devx-2026-07-05T1003-34264
+- 2026-07-05T10:40 — implemented: 8 engine lib modules (src/lib/engine/: frontmatter, verdict, config, context, expectations, gate-prd, gate-coverage, gate-evals, revise, next) + 4 CLI commands (workstream new, gate prd|coverage|evals, revise, next) registered in cli.ts; 9 test files, +200 tests (196 initial + 4 pinning self-review fixes); prose-budget canary seeded with the 9 v2s101 templates + empty STAGE_SKILL_SECTIONS constant for v2e102. Frontmatter writes go through eemeli/yaml parseDocument (comment/key-order/unknown-field-preserving) rather than extending the three flat-scalar regex parsers — nested gate_status/outcome maps are beyond their shape; rationale in the module header. engine.* keys read defensively with §7 defaults (no config/schema edit — v2x101). Branch rebased onto origin/main pre-work to pick up roc101's retroactive v2s101 phase-4 line (main was red at claim time).
+- 2026-07-05T10:40 — phase 4: self-review — 5 findings (3 blind / 2 edge / 0 acceptance), all fixed: (1) yaml default 80-col line folding would reflow long v1-authored scalars on first gate flip → toString({lineWidth: 0}); (2) createWorkstream --hash path bypassed the fs seam for spec lookup → routed through findSpecForHashInFs; (3) gate evals passed vacuously on zero E-blocks → explicit FAIL; (4) placeholder regex false-positived on comparator prose ("p95 < 8s and retries > 3") → inner-edge \S refinement; (5) empty runner output rendered a blank failure quote → "(no output captured)" sentinel. Each pinned by a dedicated test. (Pre-review, the frontmatter round-trip test itself caught a splitFrontmatter delimiter-newline duplication — fixed before review started.)
