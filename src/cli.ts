@@ -25,19 +25,23 @@ import * as askCommand from "./commands/ask.js";
 import * as configCommand from "./commands/config.js";
 import * as devxHelperCommand from "./commands/devx-helper.js";
 import * as ejectCommand from "./commands/eject.js";
+import * as gateCommand from "./commands/gate.js";
 import * as initCommand from "./commands/init.js";
 import * as killCommand from "./commands/kill.js";
 import * as manageCommand from "./commands/manage.js";
 import * as mergeGateCommand from "./commands/merge-gate.js";
+import * as nextCommand from "./commands/next.js";
 import * as pauseCommand from "./commands/pause.js";
 import * as planHelperCommand from "./commands/plan-helper.js";
 import * as prBodyCommand from "./commands/pr-body.js";
 import * as restartCommand from "./commands/restart.js";
 import * as resumeCommand from "./commands/resume.js";
+import * as reviseCommand from "./commands/revise.js";
 import * as serveCommand from "./commands/serve.js";
 import * as statusCommand from "./commands/status.js";
 import * as tailCommand from "./commands/tail.js";
 import * as uiCommand from "./commands/ui.js";
+import * as workstreamCommand from "./commands/workstream.js";
 
 import { installPhaseSortedHelp } from "./lib/help.js";
 
@@ -50,19 +54,23 @@ const commands: CommandModule[] = [
   configCommand,
   devxHelperCommand,
   ejectCommand,
+  gateCommand,
   initCommand,
   killCommand,
   manageCommand,
   mergeGateCommand,
+  nextCommand,
   pauseCommand,
   planHelperCommand,
   prBodyCommand,
   restartCommand,
   resumeCommand,
+  reviseCommand,
   serveCommand,
   statusCommand,
   tailCommand,
   uiCommand,
+  workstreamCommand,
 ];
 
 function readPackageVersion(): string {

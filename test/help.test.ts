@@ -1,16 +1,18 @@
-// Help-listing tests (cli303 + ini506 + mrg102 + prt102 + dvx101).
+// Help-listing tests (cli303 + ini506 + mrg102 + prt102 + dvx101 + v2e101).
 //
 // Three layers of coverage:
-//   1. Order: positions of the 16 command lines in `devx --help` are strictly
+//   1. Order: positions of the 20 command lines in `devx --help` are strictly
 //      monotonically increasing in the canonical [config, init, devx-helper,
-//      manage, merge-gate, pr-body, ask, kill, pause, restart, resume, status,
-//      serve, tail, ui, eject] order — the exact shape required by the AC
-//      (phase ASC; ties alphabetical). ini506 added `init` as the second
-//      Phase-0 real command; mrg102 added `merge-gate` as the first Phase-1
-//      real command; prt102 added `pr-body` as the second Phase-1 real
-//      command; dvx101 added `devx-helper` (sorts to the head of Phase 1
-//      alphabetically); mgr101 adds `manage` (sorts between `devx-helper` and
-//      `merge-gate` in Phase 1).
+//      gate, manage, merge-gate, next, pr-body, revise, workstream, ask,
+//      kill, pause, restart, resume, status, serve, tail, ui, eject] order —
+//      the exact shape required by the AC (phase ASC; ties alphabetical).
+//      ini506 added `init` as the second Phase-0 real command; mrg102 added
+//      `merge-gate` as the first Phase-1 real command; prt102 added `pr-body`
+//      as the second Phase-1 real command; dvx101 added `devx-helper` (sorts
+//      to the head of Phase 1 alphabetically); mgr101 adds `manage` (sorts
+//      between `devx-helper` and `merge-gate` in Phase 1); v2e101 adds the
+//      four engine commands (`gate`, `next`, `revise`, `workstream`), which
+//      interleave alphabetically within Phase 1.
 //   2. Annotation: each of the 10 stubs has its `(coming in Phase N —
 //      epic-<slug>)` annotation on its line; the five real commands
 //      (`config`, `init`, `devx-helper`, `merge-gate`, `pr-body`) have no
@@ -26,6 +28,7 @@
 // Spec: dev/dev-prt102-2026-04-28T19:30-pr-template-substitution.md (added `pr-body`)
 // Spec: dev/dev-dvx101-2026-04-28T19:30-devx-claim-atomic.md (added `devx-helper`)
 // Spec: dev/dev-mgr101-2026-04-28T19:30-manage-scaffold.md (added `manage`)
+// Spec: dev/dev-v2e101-2026-07-05T13:01-engine-cli-primitives.md (added `gate`, `next`, `revise`, `workstream`)
 
 import { describe, expect, it } from "vitest";
 
@@ -62,9 +65,13 @@ const expectedOrder = [
   "config",
   "init",
   "devx-helper",
+  "gate",
   "manage",
   "merge-gate",
+  "next",
   "pr-body",
+  "revise",
+  "workstream",
   "ask",
   "kill",
   "pause",
@@ -180,17 +187,30 @@ describe("cli303 — devx --help command listing", () => {
         devx-helper                  Helpers invoked by the /devx skill body (Phase
                                      1). Subcommand-driven; mirrors \`devx merge-gate\`
                                      + \`devx plan-helper\`.
+        gate                         Engine gate validators (v2). prd = Gate 1
+                                     (mechanical PRD checks); coverage = Gates 2/3
+                                     (two-mode tri-state verify); evals = Gate 4 (RED
+                                     runner). Exit 0 pass / 1 fail / 2 error.
         manage [options]             Run the /devx-manage scheduler loop (Phase 1
                                      minimal: hard cap N=1; reconcile + spawn wired)
         merge-gate [options] <hash>  Compute the mode-derived merge decision for a
                                      spec PR (Phase 1). Emits JSON; exit 0 = merge, 1
                                      = no-merge, 2 = signal trouble.
+        next [hash]                  Print the single next command for a workstream
+                                     from its stage + gate_status (v1: workstream
+                                     rows; repo-level rows land in v2d101).
         plan-helper                  Helpers invoked by the /devx-plan skill body
                                      (Phase 1). Subcommand-driven; mirrors \`devx
                                      merge-gate\`'s passthrough pattern.
         pr-body [options]            Render the canonical /devx PR body for a spec.
                                      Substitutes mode + spec path + AC checklist
                                      (Phase 1).
+        revise [options] <hash>      Apply the v2 cascade-reset table for a touched
+                                     workstream artifact (prd/expectations → 4 flags;
+                                     design → 3; plan → 2) and print the replay path.
+        workstream                   Workstream operations (v2 engine). \`new <slug>\`
+                                     scaffolds _devx/workstreams/<slug>/ + the plan
+                                     spec's engine frontmatter.
         ask                          (coming in Phase 2 — epic-devx-concierge-skill)
         kill                         (coming in Phase 2 — epic-devx-concierge-skill)
         pause                        (coming in Phase 2 — epic-devx-manage-minimal)
