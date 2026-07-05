@@ -5,7 +5,8 @@ created: 2026-07-05T13:02:00-06:00
 title: V2.1-B — stage skill bodies (prd / design / plan / red)
 from: v2/06-phases.md
 plan: v2/
-status: ready
+status: in-progress
+owner: /devx-2026-07-05T1044-87192
 blocked_by: [v2e101]
 branch: feat/dev-v2e102
 ---
@@ -48,3 +49,4 @@ body, calling the v2e101 primitives, per `v2/02-engine.md` §4. USER-FOREGROUND
 ## Status log
 
 - 2026-07-05T13:02 — created from v2/06-phases.md § V2.1 epic B.
+- 2026-07-05T10:44:39-06:00 — claimed by /devx in session /devx-2026-07-05T1044-87192
