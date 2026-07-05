@@ -130,7 +130,7 @@ Source of truth: `v2/06-phases.md`. BMAD exits per `v2/01-bmad-capture.md`;
 mgrret (above) is the final BMAD invocation. One item ≈ one phase ≈ one PR
 (v2e102/v2x101 skill edits are user-foreground).
 
-- [/] `dev/dev-v2s101-2026-07-05T13:00-v2-scaffold-templates.md` — V2.0-b/c engine template scaffold + backlog wiring. Status: in-progress. From: v2/06-phases.md.
+- [x] `dev/dev-v2s101-2026-07-05T13:00-v2-scaffold-templates.md` — V2.0-b/c engine template scaffold + backlog wiring. Status: done. From: v2/06-phases.md. PR: https://github.com/LeoTheMighty/devx/pull/59 (merged 9dd187d).
 - [ ] `dev/dev-v2e101-2026-07-05T13:01-engine-cli-primitives.md` — V2.1-A engine CLI primitives (workstream new, gate prd/coverage/evals, revise, next v1, prose canary). Status: ready. Blocked-by: v2s101.
 - [ ] `dev/dev-v2e102-2026-07-05T13:02-stage-skill-bodies.md` — V2.1-B stage skill bodies (/devx prd|design|plan|red). Status: ready. Blocked-by: v2e101. User-foreground.
 - [ ] `dev/dev-v2x101-2026-07-05T13:03-execute-rehome-bmad-eject.md` — V2.2 execute re-home + BMAD ejection. Status: ready. Blocked-by: v2e102, mgrret. User-foreground.
