@@ -5,7 +5,8 @@ created: 2026-07-05T13:03:00-06:00
 title: V2.2 — execute re-home + BMAD ejection
 from: v2/06-phases.md
 plan: v2/
-status: ready
+status: in-progress
+owner: /devx-2026-07-05T1105-3281
 blocked_by: [v2e102, mgrret]
 branch: feat/dev-v2x101
 ---
@@ -54,3 +55,4 @@ branch: feat/dev-v2x101
 ## Status log
 
 - 2026-07-05T13:03 — created from v2/06-phases.md § V2.2.
+- 2026-07-05T11:05:36-06:00 — claimed by /devx in session /devx-2026-07-05T1105-3281
