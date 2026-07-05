@@ -5,7 +5,8 @@ created: 2026-07-05T13:07:00-06:00
 title: V2.6 — outcome loop + migration retro
 from: v2/06-phases.md
 plan: v2/
-status: ready
+status: in-progress
+owner: /devx-2026-07-05T1628-89669
 blocked_by: [v2l101]
 branch: feat/dev-v2o101
 ---
@@ -36,3 +37,4 @@ Per `v2/06-phases.md § V2.6` and `v2/02-engine.md` §4.10.
 ## Status log
 
 - 2026-07-05T13:07 — created from v2/06-phases.md § V2.6.
+- 2026-07-05T16:28:14-06:00 — claimed by /devx in session /devx-2026-07-05T1628-89669
