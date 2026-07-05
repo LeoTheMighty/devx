@@ -5,7 +5,8 @@ created: 2026-07-05T13:05:00-06:00
 title: V2.4 — universal /devx dispatcher + debug loop + init v2
 from: v2/06-phases.md
 plan: v2/
-status: ready
+status: in-progress
+owner: /devx-2026-07-05T1247-2860
 blocked_by: [v2x101]
 branch: feat/dev-v2d101
 ---
@@ -52,3 +53,4 @@ intent classification + first-class debug loop + any-repo init. Per
 ## Status log
 
 - 2026-07-05T13:05 — created from v2/06-phases.md § V2.4.
+- 2026-07-05T12:47:47-06:00 — claimed by /devx in session /devx-2026-07-05T1247-2860
