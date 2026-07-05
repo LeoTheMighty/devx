@@ -123,3 +123,18 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 
 ### Follow-ups filed during Phase 1 retros
 - [/] `dev/dev-roc101-2026-05-07T08:50-devx-resume-owner-check.md` — /devx Phase 1 resume-detection: `devx devx-helper verify-claim <hash>` + skill-body wire-up. Status: in-progress. From: dvxret (LEARN.md § epic-devx-skill E13). Blocked-by: dvxret. Load-bearing for mgr104's worker-spawn discipline; stopgap docs change applied in dvxret PR (CLAUDE.md "Working agreements" — "Verify claim ownership before resuming").
+
+## Phase V2 — Native engine migration (plan: v2/)
+
+Source of truth: `v2/06-phases.md`. BMAD exits per `v2/01-bmad-capture.md`;
+mgrret (above) is the final BMAD invocation. One item ≈ one phase ≈ one PR
+(v2e102/v2x101 skill edits are user-foreground).
+
+- [ ] `dev/dev-v2s101-2026-07-05T13:00-v2-scaffold-templates.md` — V2.0-b/c engine template scaffold + backlog wiring. Status: ready. From: v2/06-phases.md.
+- [ ] `dev/dev-v2e101-2026-07-05T13:01-engine-cli-primitives.md` — V2.1-A engine CLI primitives (workstream new, gate prd/coverage/evals, revise, next v1, prose canary). Status: ready. Blocked-by: v2s101.
+- [ ] `dev/dev-v2e102-2026-07-05T13:02-stage-skill-bodies.md` — V2.1-B stage skill bodies (/devx prd|design|plan|red). Status: ready. Blocked-by: v2e101. User-foreground.
+- [ ] `dev/dev-v2x101-2026-07-05T13:03-execute-rehome-bmad-eject.md` — V2.2 execute re-home + BMAD ejection. Status: ready. Blocked-by: v2e102, mgrret. User-foreground.
+- [ ] `dev/dev-v2t101-2026-07-05T13:04-review-tour.md` — V2.3 static HTML review tour (build/publish/pr-body/address + devx: hold). Status: ready. Blocked-by: v2x101.
+- [ ] `dev/dev-v2d101-2026-07-05T13:05-universal-dispatcher.md` — V2.4 universal /devx dispatcher + debug loop + init v2. Status: ready. Blocked-by: v2x101.
+- [ ] `dev/dev-v2l101-2026-07-05T13:06-overnight-loop.md` — V2.5 overnight loop (gnhf fold-in: iteration contract, failure ladder, budgets, morning report). Status: ready. Blocked-by: v2d101, roc101.
+- [ ] `dev/dev-v2o101-2026-07-05T13:07-outcome-loop.md` — V2.6 outcome loop + migration retro. Status: ready. Blocked-by: v2l101.
