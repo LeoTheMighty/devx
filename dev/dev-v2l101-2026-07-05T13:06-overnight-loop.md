@@ -5,7 +5,8 @@ created: 2026-07-05T13:06:00-06:00
 title: V2.5 — overnight loop (gnhf fold-in)
 from: v2/06-phases.md
 plan: v2/
-status: ready
+status: in-progress
+owner: /devx-2026-07-05T1350-57819
 blocked_by: [v2d101, roc101]
 branch: feat/dev-v2l101
 ---
@@ -62,3 +63,4 @@ failure ladder + hang immunity bolted onto the manager. Per
 ## Status log
 
 - 2026-07-05T13:06 — created from v2/06-phases.md § V2.5.
+- 2026-07-05T13:50:00-06:00 — claimed by /devx in session /devx-2026-07-05T1350-57819
