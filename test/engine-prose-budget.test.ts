@@ -22,7 +22,8 @@ import { REAL_REPO_ROOT } from "./fixtures/engine-repo.js";
 // globbed — so a new prose surface is a conscious, reviewed addition to
 // the budget.
 const STAGE_SKILL_SECTIONS: string[] = [
-  // v2e102: /devx prd, /devx design, /devx plan, /devx red sections.
+  // v2e102: the four engine stages live in the /devx-plan skill body.
+  ".claude/commands/devx-plan.md",
 ];
 
 const ENGINE_TEMPLATES_DIR = join(REAL_REPO_ROOT, "_devx", "templates", "engine");

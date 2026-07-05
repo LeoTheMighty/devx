@@ -55,6 +55,12 @@ export function parseExpectations(content: string): EBlock[] {
   const lines = content.split("\n");
   const blocks: EBlock[] = [];
   let current: EBlock | null = null;
+  // Field values wrap at the house ~78-char line width (v2e102 dogfood
+  // finding: a wrapped EARS sentence must parse as one value). A captured
+  // field keeps absorbing indented continuation lines until a blank line,
+  // a new bullet, or a heading ends it.
+  let openKey: keyof EBlock | null = null;
+  let openDuplicate = false;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const h = line.match(E_HEADING_RE);
@@ -71,25 +77,42 @@ export function parseExpectations(content: string): EBlock[] {
         verifiedBy: null,
       };
       blocks.push(current);
+      openKey = null;
       continue;
     }
     if (line.startsWith("## ")) {
       // A non-E `## ` heading ends the current block's field scan.
       current = null;
+      openKey = null;
       continue;
     }
     if (!current) continue;
+    let matched = false;
     for (const { key, re } of FIELD_RES) {
       const m = line.match(re);
       if (m) {
+        matched = true;
+        openKey = key;
         // First occurrence wins; a duplicated field line inside one block
         // keeps the original (gate-prd doesn't police duplicates — the
         // template never produces them and the first value is the intent).
-        if (current[key] === null) {
+        openDuplicate = current[key] !== null;
+        if (!openDuplicate) {
           (current as unknown as Record<string, string>)[key] = m[1].trim();
         }
         break;
       }
+    }
+    if (matched) continue;
+    if (/^\s*$/.test(line) || /^\s*[-*]\s/.test(line) || line.startsWith("#")) {
+      // Blank line, unrecognized bullet, or heading closes the open field.
+      openKey = null;
+      continue;
+    }
+    if (openKey && /^\s{2,}\S/.test(line) && !openDuplicate) {
+      // Indented continuation of the open field's wrapped value.
+      const joined = `${current[openKey] ?? ""} ${line.trim()}`.trim();
+      (current as unknown as Record<string, string>)[openKey] = joined;
     }
   }
   return blocks;

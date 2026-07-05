@@ -66,25 +66,15 @@ const handoff = body.slice(
   handoffStart + 1 + handoffEndMatch.index,
 );
 
-// Phase 8 Next-command item: searched by content (`**Next command**`), not
-// by ordinal — list renumbering must not break the slice (Blind Hunter
-// LOW-6 / Edge Case Hunter F7).
-const phase8Start = findHeadingOffset(/^### Phase 8\b/m, "Phase 8");
-const nextCommandMatch = /\n\d+\. \*\*Next command\*\*/.exec(
-  body.slice(phase8Start),
+// v2 (v2e102): the Next-command render lives in the RED stage's final
+// summary step. Slice the RED stage section; the emission step within it
+// is the consumer of the Hand-off canonical format.
+const redStart = findHeadingOffset(/^## Stage: RED\b/m, "## Stage: RED");
+const redEndMatch = /\n## /.exec(body.slice(redStart + 1));
+const phase8NextCommand = body.slice(
+  redStart,
+  redEndMatch === null ? body.length : redStart + 1 + redEndMatch.index,
 );
-if (nextCommandMatch === null) {
-  throw new Error(
-    "could not locate `**Next command**` numbered item within Phase 8 — list re-numbered? content drift?",
-  );
-}
-const nextCommandStart = phase8Start + nextCommandMatch.index + 1;
-const nextCommandBody = body.slice(nextCommandStart);
-const nextCommandEnd = nextCommandBody.search(/\n\d+\. \*\*|\n## /);
-const phase8NextCommand =
-  nextCommandEnd === -1
-    ? nextCommandBody
-    : nextCommandBody.slice(0, nextCommandEnd);
 
 // ---------------------------------------------------------------------------
 // 1) Phase 8 Next-command item references the canonical format in Hand-off.
