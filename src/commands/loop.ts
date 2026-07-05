@@ -47,7 +47,13 @@ export function parseIntFlag(v: string | undefined): number | undefined {
   return Number.parseInt(v.trim(), 10);
 }
 
-export async function runLoopCommand(opts: LoopCliOpts): Promise<number> {
+export async function runLoopCommand(
+  opts: LoopCliOpts,
+  /** Test seam (review finding LOW-9): lets the signal→AbortController
+   *  wiring be exercised without standing up a real loop run. */
+  deps: { runLoop?: typeof runLoop } = {},
+): Promise<number> {
+  const runLoopFn = deps.runLoop ?? runLoop;
   const configPath = findProjectConfig();
   const repoRoot = configPath !== null ? dirname(configPath) : process.cwd();
 
@@ -81,7 +87,7 @@ export async function runLoopCommand(opts: LoopCliOpts): Promise<number> {
   }
 
   try {
-    const result = await runLoop({ repoRoot, flags, signal: ac.signal });
+    const result = await runLoopFn({ repoRoot, flags, signal: ac.signal });
     return result.exitCode;
   } finally {
     process.off("SIGTERM", onSignal);

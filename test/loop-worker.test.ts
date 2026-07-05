@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { estimateTokens, makeClaudeWorker } from "../src/lib/loop/worker.js";
+import { WorkerTimeoutError, estimateTokens, makeClaudeWorker } from "../src/lib/loop/worker.js";
 
 const REPORT =
   '```json\n{"success":true,"summary":"s","key_changes_made":[],"key_learnings":["l"],"acs_met":false}\n```';
@@ -94,5 +94,61 @@ describe("iteration wall-clock ceiling (BH/EC hang immunity)", () => {
     const started = Date.now();
     await expect(worker("p", { cwd: process.cwd() })).rejects.toThrow(/iteration ceiling/);
     expect(Date.now() - started).toBeLessThan(10_000);
+  }, 15_000);
+
+  it("the timeout rejection carries the estimated tokens for the captured output (MED-8)", async () => {
+    const worker = makeClaudeWorker({
+      claudeBin: process.execPath,
+      // Prints ~400 chars of output, then hangs — that spend must not
+      // vanish from the night's accounting when the ceiling kills it.
+      // Ceiling is generous vs node's startup time so the write always
+      // lands BEFORE the kill, even under full-suite parallel load (a
+      // 500ms ceiling flaked when child startup exceeded it).
+      extraArgs: ["-e", `process.stdout.write("x".repeat(400)); setInterval(() => {}, 1000);`],
+      iterationTimeoutMs: 5_000,
+    });
+    let caught: unknown;
+    try {
+      await worker("a prompt of some length", { cwd: process.cwd() });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(WorkerTimeoutError);
+    const err = caught as WorkerTimeoutError;
+    expect(err.tokens.estimated).toBe(true);
+    expect(err.tokens.input).toBeGreaterThan(0);
+    expect(err.tokens.output).toBeGreaterThanOrEqual(100); // 400 chars / 4
+  }, 15_000);
+});
+
+describe("final-report anchoring (LOW-12 — grace-kill arms only on a TRAILING report)", () => {
+  it("a schema-valid report EARLY in the output followed by more content does not arm the grace-kill", async () => {
+    // Report first, then more output, then a hang. If the early report
+    // armed the kill, we'd resolve with graceKilled=true; instead the
+    // iteration ceiling must be what ends the session (rejection).
+    const worker = makeClaudeWorker({
+      claudeBin: process.execPath,
+      extraArgs: [
+        "-e",
+        `process.stdout.write(${JSON.stringify(REPORT)}); process.stdout.write("\\n...still working on cleanup...\\n"); setInterval(() => {}, 1000);`,
+      ],
+      graceKillMs: 100,
+      iterationTimeoutMs: 1_500,
+    });
+    await expect(worker("p", { cwd: process.cwd() })).rejects.toThrow(/iteration ceiling/);
+  }, 15_000);
+
+  it("a report as the FINAL content still arms the grace-kill (existing contract intact)", async () => {
+    const worker = makeClaudeWorker({
+      claudeBin: process.execPath,
+      extraArgs: [
+        "-e",
+        `process.stdout.write("preamble work log\\n"); process.stdout.write(${JSON.stringify(REPORT)}); setInterval(() => {}, 1000);`,
+      ],
+      graceKillMs: 200,
+      iterationTimeoutMs: 30_000,
+    });
+    const r = await worker("p", { cwd: process.cwd() });
+    expect(r.graceKilled).toBe(true);
   }, 15_000);
 });

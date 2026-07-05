@@ -15,6 +15,11 @@
 //     driver releases the claim, flips the spec `[-]` blocked, PRESERVES the
 //     worktree, records the path).
 //   * MAX_CONSECUTIVE_ABANDONED_ITEMS (3) ⇒ stop-loop (systemic problem).
+//     The streak counts PROGRESS-LESS abandonments plus failure-shaped tail
+//     hand-offs (gh/CI outage — the driver maps tail `handed-off-failure`
+//     through afterItemAbandoned too); an abandoned item that committed ≥1
+//     successful iteration does NOT count (it was just big — the system
+//     demonstrably works). merged / handed-off-ok reset the streak.
 //
 // The reducer (nextLadderState) and the decision (ladderDecision) are
 // separate on purpose: the driver applies the reducer first, then asks for
@@ -89,6 +94,31 @@ export function firstPermanentErrorMatch(text: string): string | null {
     if (m) return m[0];
   }
   return null;
+}
+
+/** How much of the transcript tail the driver scans for permanent-error
+ *  markers. An API-level credit/auth failure is always the LAST thing a
+ *  dying `claude -p` prints; marker text in the middle of a transcript is
+ *  far more likely the worked-on code itself (this very file's marker list,
+ *  a test fixture, quoted docs). */
+export const PERMANENT_ERROR_SCAN_TAIL_CHARS = 2000;
+
+/**
+ * Tail-bounded variant of {@link firstPermanentErrorMatch} (review finding
+ * MED-3): scanning the WHOLE transcript false-positives whenever the code
+ * under work contains marker strings (e.g. an iteration editing ladder.ts
+ * echoes "credit balance is too low" into its transcript). Real
+ * credit/auth exhaustion terminates the session, so the marker lands in
+ * the final ~screenful. Callers must additionally corroborate (non-zero
+ * exit OR no parseable report, after the report retry also failed) before
+ * classifying permanent.
+ */
+export function firstPermanentErrorMatchInTail(
+  text: string,
+  tailChars: number = PERMANENT_ERROR_SCAN_TAIL_CHARS,
+): string | null {
+  if (typeof text !== "string" || text === "") return null;
+  return firstPermanentErrorMatch(text.slice(-Math.max(1, tailChars)));
 }
 
 /**
@@ -174,12 +204,29 @@ export function nextLadderState(
   };
 }
 
-/** Fold an item abandonment into the run-level streak. */
-export function afterItemAbandoned(state: LadderState): LadderState {
+/**
+ * Fold an item abandonment into the run-level streak.
+ *
+ * `madeProgress` (review finding MED-4): an abandoned item that had ≥1
+ * successful COMMITTED iteration does NOT increment the systemic streak —
+ * a good iteration proves the worker/API/git pipeline works and the item
+ * was simply bigger than its budget. Without this, three big-but-
+ * progressing items would trip the "systemic problem" 3-stop and abort a
+ * healthy night. The per-item counters still reset either way. A
+ * progress-less abandonment (all iterations failed/errored) increments as
+ * before. Note this is preserve-not-reset: progress on one item doesn't
+ * erase evidence from neighbouring progress-less items.
+ */
+export function afterItemAbandoned(
+  state: LadderState,
+  opts: { madeProgress: boolean },
+): LadderState {
   return {
     consecutiveFailures: 0,
     consecutiveErrors: 0,
-    consecutiveAbandonedItems: state.consecutiveAbandonedItems + 1,
+    consecutiveAbandonedItems: opts.madeProgress
+      ? state.consecutiveAbandonedItems
+      : state.consecutiveAbandonedItems + 1,
   };
 }
 

@@ -7,6 +7,7 @@
 
 import { execFileSync } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
   mkdtempSync,
   readFileSync,
@@ -17,10 +18,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { parseUntil, pickNextItem, runLoop } from "../src/lib/loop/driver.js";
+import { defaultSleep, parseUntil, pickNextItem, runLoop } from "../src/lib/loop/driver.js";
 import { readEvents, readLoopState } from "../src/lib/loop/state.js";
-import { type WorkerRunFn } from "../src/lib/loop/worker.js";
-import { type TailFn } from "../src/lib/loop/tail.js";
+import { WorkerTimeoutError, type WorkerRunFn } from "../src/lib/loop/worker.js";
+import { type HandOffKind, type TailFn } from "../src/lib/loop/tail.js";
 
 // ---------------------------------------------------------------------------
 // Fixture: bare origin + clone with DEV.md + specs
@@ -378,8 +379,14 @@ describe("runLoop scenarios", () => {
     expect(wtSpec).toContain("Learning: it is hard");
     expect(wtSpec).toContain("[FAIL] loop iteration 3: try 3 failed");
 
-    // The abandon landed as a commit on main.
+    // The abandon landed as a commit on main AND was pushed to origin
+    // (LOW-11: no loop-owned main commit may be left unpushed silently).
     expect(g(fixture.repoRoot, "log", "-1", "--format=%s")).toContain("abandon bbb222");
+    expect(
+      execFileSync("git", ["--git-dir", fixture.origin, "log", "-1", "--format=%s"], {
+        encoding: "utf8",
+      }),
+    ).toContain("abandon bbb222");
   });
 
   it("hard errors ride the backoff ladder; permanent errors abort the loop NOW", async () => {
@@ -499,6 +506,17 @@ describe("runLoop scenarios", () => {
     expect(readFileSync(join(fixture.repoRoot, "DEV.md"), "utf8")).toMatch(/- \[\/\] `dev\/dev-jjj000/);
     const report = readFileSync(r.reportPath!, "utf8");
     expect(report).toContain("in progress at loop exit");
+    // LOW-11: the exit entry is COMMITTED on main (not left as dirt) and
+    // pushed to origin.
+    expect(g(fixture.repoRoot, "log", "-1", "--format=%s")).toContain(
+      "jjj000 in progress at loop exit",
+    );
+    expect(g(fixture.repoRoot, "status", "--porcelain")).toBe("");
+    expect(
+      execFileSync("git", ["--git-dir", fixture.origin, "log", "-1", "--format=%s"], {
+        encoding: "utf8",
+      }),
+    ).toContain("jjj000 in progress at loop exit");
   });
 
   it("push failure at acs_met = abort-item-after-preserving (abandon, commits intact)", async () => {
@@ -542,6 +560,7 @@ describe("runLoop scenarios", () => {
     ]);
     const tail: TailFn = async () => ({
       outcome: "handed-off",
+      kind: "handed-off-ok",
       prUrl: "https://github.com/x/y/pull/12",
       prNumber: 12,
       detail: "remote CI concluded 'failure' — not merging",
@@ -595,7 +614,7 @@ describe("runLoop scenarios", () => {
 // ---------------------------------------------------------------------------
 
 describe("runLoop review-fix scenarios", () => {
-  it("permanent-error marker in raw worker OUTPUT aborts the loop without a retry spawn (BH/EC-HIGH)", async () => {
+  it("permanent-error marker in the output TAIL + failed retry aborts the loop (BH/EC-HIGH, reshaped by MED-3)", async () => {
     fixture = makeFixture([{ hash: "ppp111" }, { hash: "qqq222" }]);
     const { worker, prompts } = scriptedWorker([
       { kind: "raw", raw: "API Error: Your credit balance is too low to access the Anthropic API.\n" },
@@ -603,10 +622,38 @@ describe("runLoop review-fix scenarios", () => {
     const r = await runLoop(baseOpts(fixture, { worker, tail: mergedTail().tail }));
     expect(r.exitCode).toBe(2);
     expect(r.summary?.abortReason).toMatch(/permanent error/i);
-    // No retry spawn against the dead API: exactly ONE worker call.
-    expect(prompts).toHaveLength(1);
+    // MED-3: the report retry ALWAYS runs first (a marker can be the
+    // worked-on code); permanent classification lands only after the retry
+    // also failed — exactly TWO worker calls, then abort.
+    expect(prompts).toHaveLength(2);
     // The second item was never claimed.
     expect(r.summary?.items.map((i) => i.hash)).toEqual(["ppp111"]);
+  });
+
+  it("marker mid-transcript with a recoverable report is NORMAL handling, not permanent (MED-3)", async () => {
+    fixture = makeFixture([{ hash: "mkr001" }]);
+    // Iteration 1: the worker edited marker-bearing code (the marker text
+    // appears mid-transcript, >2000 chars from the end) and forgot its
+    // JSON; the retry recovers a valid report. Must NOT abort the loop.
+    const { worker, prompts } = scriptedWorker([
+      {
+        kind: "raw",
+        raw:
+          "updated ladder.ts markers: credit balance is too low added\n" +
+          "x".repeat(3000) +
+          "\nran tests, all green — oops, forgot the JSON block",
+        files: { "m.txt": "m" },
+      },
+      {
+        kind: "report",
+        report: { summary: "recovered", key_changes_made: ["m.txt"], acs_met: true },
+      },
+    ]);
+    const r = await runLoop(baseOpts(fixture, { worker, tail: mergedTail().tail }));
+    expect(r.exitCode).toBe(0);
+    expect(r.summary?.abortReason).toBeNull();
+    expect(r.summary!.items[0].outcome).toBe("merged");
+    expect(prompts).toHaveLength(2);
   });
 
   it("3 consecutive abandoned items stop the whole loop (AA-F3): exit 2, 4th item untouched", async () => {
@@ -626,7 +673,7 @@ describe("runLoop review-fix scenarios", () => {
     ]);
     const r = await runLoop(baseOpts(fixture, { merged, worker, tail: mergedTail().tail }));
     expect(r.exitCode).toBe(2);
-    expect(r.summary?.abortReason).toMatch(/3 consecutive abandoned items/);
+    expect(r.summary?.abortReason).toMatch(/3 consecutive items abandoned or handed off failing/);
     expect(r.summary?.items.map((i) => i.outcome)).toEqual([
       "abandoned",
       "abandoned",
@@ -708,6 +755,369 @@ describe("runLoop review-fix scenarios", () => {
     expect(r.summary!.items[0].iterationsFailed).toBe(2);
   });
 
+  it("repair-iteration failure salvages the preserved work via a commit re-attempt (MED-2)", async () => {
+    fixture = makeFixture([{ hash: "sal001" }]);
+    // pre-commit hook blocks worktree commits while the flag exists —
+    // the "transiently failing" commit seam.
+    const hooksDir = join(fixture.base, "hooks");
+    const flagPath = join(fixture.base, "commit-blocked");
+    execFileSync("mkdir", ["-p", hooksDir]);
+    writeFileSync(
+      join(hooksDir, "pre-commit"),
+      `#!/bin/sh\ncase "$PWD" in *".worktrees/"*) [ -f "${flagPath}" ] && { echo "hook says no" >&2; exit 1; } ;; esac\nexit 0\n`,
+      { mode: 0o755 },
+    );
+    writeFileSync(flagPath, "1", "utf8");
+    g(fixture.repoRoot, "config", "core.hooksPath", hooksDir);
+
+    const { worker, prompts } = scriptedWorker([
+      // 1: success + precious files → loop commit FAILS → preserved + repair pending.
+      { kind: "report", files: { "precious.txt": "prior work\n" }, report: { summary: "wrote precious", key_changes_made: ["precious"] } },
+      // 2: the repair iteration HARD-ERRORS. Pre-MED-2 this reset away the
+      //    preserved work; now the loop re-attempts the commit first.
+      { kind: "throw", message: "TypeError: boom mid-repair" },
+      // 3: reported failure → 3rd consecutive failure → abandon (worktree preserved).
+      { kind: "report", report: { success: false, summary: "still stuck" } },
+    ]);
+    // The transient unblock: the flag clears while iteration 2's worker
+    // runs, so the salvage re-attempt after its hard error succeeds.
+    const unblocking: WorkerRunFn = async (prompt, opts) => {
+      if (prompts.length === 1) rmSync(flagPath, { force: true });
+      return worker(prompt, opts);
+    };
+    const { sleep } = instantSleep();
+    const r = await runLoop(baseOpts(fixture, { worker: unblocking, sleep, tail: mergedTail().tail }));
+
+    const item = r.summary!.items[0];
+    expect(item.outcome).toBe("abandoned");
+    // The prior iteration's work is COMMITTED in the preserved worktree,
+    // not discarded.
+    const wt = join(fixture.repoRoot, ".worktrees", "dev-sal001");
+    expect(readFileSync(join(wt, "precious.txt"), "utf8")).toBe("prior work\n");
+    expect(g(wt, "log", "--format=%s")).toContain("salvage work preserved across a commit failure");
+    expect(g(wt, "status", "--porcelain")).toBe("");
+    // The [ERROR] entry says the salvage happened.
+    const wtSpec = readFileSync(join(wt, fixture.specRel({ hash: "sal001" })), "utf8");
+    expect(wtSpec).toContain("preserved work committed via salvage re-attempt");
+    // Iteration 3 was a NORMAL prompt (pendingRepair cleared by the salvage).
+    expect(prompts[2]).not.toContain("REPAIR-ONLY");
+    const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
+    expect(events).toContain("iteration:repair-salvage-committed");
+  });
+
+  it("salvage re-attempt that ALSO fails resets and records the discarded-diff stat (MED-2)", async () => {
+    fixture = makeFixture([{ hash: "sal002" }]);
+    const hooksDir = join(fixture.base, "hooks");
+    execFileSync("mkdir", ["-p", hooksDir]);
+    // Commits in worktrees fail unconditionally — the failure is permanent.
+    writeFileSync(
+      join(hooksDir, "pre-commit"),
+      `#!/bin/sh\ncase "$PWD" in *".worktrees/"*) echo "hook says no" >&2; exit 1;; esac\nexit 0\n`,
+      { mode: 0o755 },
+    );
+    g(fixture.repoRoot, "config", "core.hooksPath", hooksDir);
+
+    // max_consecutive_failures 2 ⇒ the hard-erroring repair iteration is
+    // the 2nd failure and abandons — leaving the worktree (and its spec's
+    // uncommitted [ERROR] entry) for inspection.
+    const merged = { ...MERGED, loop: { ...MERGED.loop, max_consecutive_failures: 2 } };
+    const { worker } = scriptedWorker([
+      { kind: "report", files: { "doomed.txt": "will be discarded\n" }, report: { summary: "wrote doomed", key_changes_made: ["d"] } },
+      { kind: "throw", message: "TypeError: boom mid-repair" },
+    ]);
+    const { sleep } = instantSleep();
+    const r = await runLoop(baseOpts(fixture, { merged, worker, sleep, tail: mergedTail().tail }));
+
+    const item = r.summary!.items[0];
+    expect(item.outcome).toBe("abandoned");
+    const wt = join(fixture.repoRoot, ".worktrees", "dev-sal002");
+    // The preserved work WAS discarded (both commit attempts failed)…
+    expect(existsSync(join(wt, "doomed.txt"))).toBe(false);
+    // …and the [ERROR] entry says exactly what was lost.
+    const wtSpec = readFileSync(join(wt, fixture.specRel({ hash: "sal002" })), "utf8");
+    expect(wtSpec).toMatch(/salvage re-attempt also failed; discarded preserved work: \d+ tracked files/);
+    const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
+    expect(events).toContain("iteration:repair-salvage-failed");
+  });
+
+  it("abandoned items WITH committed progress don't trip the systemic 3-stop (MED-4)", async () => {
+    fixture = makeFixture([
+      { hash: "big001" },
+      { hash: "big002" },
+      { hash: "big003" },
+      { hash: "big004" },
+    ]);
+    // 1 iteration/item: every item makes one good committed iteration and
+    // then abandons on the iteration budget — big, not broken.
+    const merged = { ...MERGED, loop: { ...MERGED.loop, max_iterations_per_item: 1 } };
+    const { worker } = scriptedWorker([
+      { kind: "report", files: { "inc.txt": "1" }, report: { summary: "inch", key_changes_made: ["inc"] } },
+    ]);
+    const r = await runLoop(baseOpts(fixture, { merged, worker, tail: mergedTail().tail }));
+    // All FOUR items ran (no abort at 3) and the loop stopped normally.
+    expect(r.exitCode).toBe(0);
+    expect(r.summary?.abortReason).toBeNull();
+    expect(r.summary?.items.map((i) => i.outcome)).toEqual([
+      "abandoned",
+      "abandoned",
+      "abandoned",
+      "abandoned",
+    ]);
+    expect(r.summary?.items.every((i) => i.iterationsGood === 1)).toBe(true);
+  });
+
+  it("3 consecutive handed-off-FAILURE tails trip the systemic stop; the next item is untouched (MED-6)", async () => {
+    fixture = makeFixture([
+      { hash: "out001" },
+      { hash: "out002" },
+      { hash: "out003" },
+      { hash: "out004" },
+    ]);
+    const { worker } = scriptedWorker([
+      { kind: "report", files: { "o.txt": "o" }, report: { summary: "done", key_changes_made: ["o"], acs_met: true } },
+    ]);
+    // gh outage shape: every tail fails to create the PR.
+    const tail: TailFn = async () => ({
+      outcome: "handed-off",
+      kind: "handed-off-failure",
+      prUrl: null,
+      prNumber: null,
+      detail: "gh pr create failed (exit 4): connection refused",
+    });
+    const r = await runLoop(baseOpts(fixture, { worker, tail }));
+    expect(r.exitCode).toBe(2);
+    expect(r.summary?.abortReason).toMatch(/3 consecutive items abandoned or handed off failing/);
+    expect(r.summary?.items.map((i) => i.outcome)).toEqual([
+      "handed-off",
+      "handed-off",
+      "handed-off",
+    ]);
+    // The 4th item was never claimed — no stranded claims during an outage.
+    expect(readFileSync(join(fixture.repoRoot, "DEV.md"), "utf8")).toContain(
+      "- [ ] `dev/dev-out004",
+    );
+  });
+
+  it("a handed-off-OK tail resets the failure-hand-off streak (MED-6)", async () => {
+    fixture = makeFixture([
+      { hash: "mix001" },
+      { hash: "mix002" },
+      { hash: "mix003" },
+      { hash: "mix004" },
+    ]);
+    const { worker } = scriptedWorker([
+      { kind: "report", files: { "m.txt": "m" }, report: { summary: "done", key_changes_made: ["m"], acs_met: true } },
+    ]);
+    const kinds: HandOffKind[] = [
+      "handed-off-failure",
+      "handed-off-failure",
+      "handed-off-ok", // CI-red shape — the system worked; resets the rail
+      "handed-off-failure",
+    ];
+    let call = 0;
+    const tail: TailFn = async () => ({
+      outcome: "handed-off",
+      kind: kinds[Math.min(call++, kinds.length - 1)],
+      prUrl: null,
+      prNumber: null,
+      detail: "scripted",
+    });
+    const r = await runLoop(baseOpts(fixture, { worker, tail }));
+    // No systemic abort: fail, fail, ok(reset), fail never reaches 3.
+    expect(r.exitCode).toBe(0);
+    expect(r.summary?.abortReason).toBeNull();
+    expect(r.summary?.items).toHaveLength(4);
+  });
+
+  it("3 consecutive claim failures stop the loop instead of walking the backlog (MED-7)", async () => {
+    fixture = makeFixture([
+      { hash: "clm001" },
+      { hash: "clm002" },
+      { hash: "clm003" },
+      { hash: "clm004" },
+      { hash: "clm005" },
+    ]);
+    const { worker } = scriptedWorker([]);
+    const claim = async (): Promise<never> => {
+      throw new Error("locks dir unwritable");
+    };
+    const r = await runLoop(baseOpts(fixture, { worker, claim, tail: mergedTail().tail }));
+    expect(r.exitCode).toBe(0);
+    expect(r.summary?.stopReason).toMatch(/3 consecutive claim failures/);
+    expect(r.summary?.items.map((i) => i.outcome)).toEqual([
+      "claim-failed",
+      "claim-failed",
+      "claim-failed",
+    ]);
+    // Rows 4+5 untouched — the loop did NOT churn the rest of the backlog.
+    const devMd = readFileSync(join(fixture.repoRoot, "DEV.md"), "utf8");
+    expect(devMd).toContain("- [ ] `dev/dev-clm004");
+    expect(devMd).toContain("- [ ] `dev/dev-clm005");
+  });
+
+  it("a successful claim resets the claim-failure counter (MED-7)", async () => {
+    fixture = makeFixture([
+      { hash: "cnt001" },
+      { hash: "cnt002" },
+      { hash: "cnt003" },
+      { hash: "cnt004" },
+    ]);
+    const { worker } = scriptedWorker([
+      { kind: "report", files: { "c.txt": "c" }, report: { summary: "done", key_changes_made: ["c"], acs_met: true } },
+    ]);
+    // Fail, fail, succeed (reset), fail, fail — never 3 consecutive.
+    const { claimSpec } = await import("../src/lib/devx/claim.js");
+    let call = 0;
+    const failing = new Set([1, 2, 4, 5]);
+    const fx = fixture;
+    const claim = async (hash: string, type: string) => {
+      call++;
+      if (failing.has(call)) throw new Error(`synthetic claim outage ${call}`);
+      return claimSpec(hash, {
+        sessionId: "cnt-test",
+        repoRoot: fx.repoRoot,
+        config: MERGED,
+        type,
+      });
+    };
+    const r = await runLoop(baseOpts(fixture, { worker, claim, tail: mergedTail().tail }));
+    expect(r.summary?.stopReason).not.toMatch(/claim failures/);
+    const outcomes = r.summary!.items.map((i) => i.outcome);
+    expect(outcomes.filter((o) => o === "claim-failed")).toHaveLength(3);
+    expect(outcomes.filter((o) => o === "merged")).toHaveLength(1);
+  });
+
+  it("a timed-out worker's estimated tokens still land in the budgets (MED-8)", async () => {
+    fixture = makeFixture([{ hash: "tmo001" }]);
+    const worker: WorkerRunFn = async () => {
+      throw new WorkerTimeoutError("worker session exceeded the 60min iteration ceiling and was killed", {
+        input: 500,
+        output: 700,
+        estimated: true,
+      });
+    };
+    const { sleep } = instantSleep();
+    const r = await runLoop(baseOpts(fixture, { worker, sleep, tail: mergedTail().tail }));
+    const item = r.summary!.items[0];
+    expect(item.outcome).toBe("abandoned"); // 3 hard errors
+    // 3 iterations × (500 in + 700 out), all accounted.
+    expect(item.tokens.input).toBe(1500);
+    expect(item.tokens.output).toBe(2100);
+    expect(item.tokens.estimated).toBe(true);
+    expect(r.summary!.totals.input).toBe(1500);
+    expect(r.summary!.totals.output).toBe(2100);
+  });
+
+  it("abort before the report retry skips the second spawn (LOW-13)", async () => {
+    fixture = makeFixture([{ hash: "abt001" }]);
+    const ac = new AbortController();
+    const prompts: string[] = [];
+    const worker: WorkerRunFn = async (prompt) => {
+      prompts.push(prompt);
+      ac.abort(); // SIGTERM lands while the worker runs; output has no JSON
+      return {
+        rawOutput: "some progress but no report",
+        exitCode: 0,
+        graceKilled: false,
+        tokens: { input: 10, output: 10, estimated: true },
+      };
+    };
+    const r = await runLoop(
+      baseOpts(fixture, { worker, tail: mergedTail().tail, signal: ac.signal }),
+    );
+    // No retry spawn against a draining run.
+    expect(prompts).toHaveLength(1);
+    expect(r.summary!.items[0].outcome).toBe("in-progress-at-exit");
+  });
+
+  it("lock-release failure is evented and WARNed in the morning report (LOW-10)", async () => {
+    fixture = makeFixture([{ hash: "lck001" }]);
+    const locksDir = join(fixture.cacheDir, "locks");
+    const { worker } = scriptedWorker([
+      { kind: "report", report: { success: false, summary: "doomed" } },
+    ]);
+    // Make the locks dir read-only after the LAST iteration so ownsClaim
+    // can still read the lock but the abandon's unlink fails.
+    let calls = 0;
+    const chmodWorker: WorkerRunFn = async (p, o) => {
+      const res = await worker(p, o);
+      calls++;
+      if (calls === 3) chmodSync(locksDir, 0o555);
+      return res;
+    };
+    try {
+      const r = await runLoop(baseOpts(fixture, { worker: chmodWorker, tail: mergedTail().tail }));
+      const item = r.summary!.items[0];
+      expect(item.outcome).toBe("abandoned");
+      expect(
+        item.warnings?.some((w) => w.includes("spec lock could not be released")),
+      ).toBe(true);
+      expect(readFileSync(r.reportPath!, "utf8")).toContain(
+        "WARN: spec lock could not be released",
+      );
+      const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
+      expect(events).toContain("item:lock-release-failed");
+    } finally {
+      chmodSync(locksDir, 0o755);
+    }
+  });
+
+  it("exitInProgress halts without touching main when claim ownership was lost (LOW-11 / roc101)", async () => {
+    fixture = makeFixture([{ hash: "own001" }]);
+    const fx = fixture;
+    const { worker } = scriptedWorker([
+      { kind: "report", files: { "w.txt": "w" }, report: { summary: "step", key_changes_made: ["w"] } },
+    ]);
+    // A peer "steals" the claim mid-run: the lock file vanishes after
+    // iteration 1; the token-budget stop then exits mid-item.
+    const stealingWorker: WorkerRunFn = async (prompt, opts) => {
+      const res = await worker(prompt, opts);
+      rmSync(join(fx.cacheDir, "locks", "spec-own001.lock"), { force: true });
+      return res;
+    };
+    const r = await runLoop(
+      baseOpts(fixture, { worker: stealingWorker, tail: mergedTail().tail, flags: { maxTokens: 100 } }),
+    );
+    const item = r.summary!.items[0];
+    expect(item.outcome).toBe("in-progress-at-exit");
+    expect(item.detail).toContain("claim ownership lost");
+    // Main spec untouched, no loop-owned exit commit on main.
+    const spec = readFileSync(join(fx.repoRoot, fx.specRel({ hash: "own001" })), "utf8");
+    expect(spec).not.toContain("loop stopped mid-item");
+    expect(g(fx.repoRoot, "log", "-1", "--format=%s")).toContain("claim own001");
+  });
+
+  it("main-push failure after a loop-owned commit is tolerated with a report WARN (LOW-11)", async () => {
+    fixture = makeFixture([{ hash: "psh001" }]);
+    // pre-push hook: reject pushes once the flag exists (the claim's own
+    // push happens before the flag is created).
+    const hooksDir = join(fixture.base, "hooks");
+    const flagPath = join(fixture.base, "push-blocked");
+    execFileSync("mkdir", ["-p", hooksDir]);
+    writeFileSync(
+      join(hooksDir, "pre-push"),
+      `#!/bin/sh\n[ -f "${flagPath}" ] && { echo "origin down" >&2; exit 1; }\nexit 0\n`,
+      { mode: 0o755 },
+    );
+    g(fixture.repoRoot, "config", "core.hooksPath", hooksDir);
+    const { worker } = scriptedWorker([
+      { kind: "report", report: { success: false, summary: "doomed" } },
+    ]);
+    const flaggingWorker: WorkerRunFn = async (p, o) => {
+      const res = await worker(p, o);
+      writeFileSync(flagPath, "1", "utf8");
+      return res;
+    };
+    const r = await runLoop(baseOpts(fixture, { worker: flaggingWorker, tail: mergedTail().tail }));
+    const item = r.summary!.items[0];
+    expect(item.outcome).toBe("abandoned");
+    // The abandon commit landed locally; the push failure became a WARN,
+    // not a crash.
+    expect(g(fixture.repoRoot, "log", "-1", "--format=%s")).toContain("abandon psh001");
+    expect(item.warnings?.some((w) => w.includes("main is ahead of origin"))).toBe(true);
+    expect(readFileSync(r.reportPath!, "utf8")).toContain("WARN: main is ahead of origin");
+  });
+
   it("merged items carry real diff stats (BH-MED-6) and don't sweep user-staged work on main (BH-MED-5)", async () => {
     fixture = makeFixture([{ hash: "dif001" }]);
     // The user left something staged in the main worktree overnight.
@@ -732,5 +1142,34 @@ describe("runLoop review-fix scenarios", () => {
     expect(lastCommitFiles).not.toContain("user-wip.txt");
     // ...and the staged work is still staged, untouched.
     expect(g(fixture.repoRoot, "diff", "--cached", "--name-only")).toContain("user-wip.txt");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// defaultSleep (LOW-9 — the backoff/CI-poll sleep must wake on abort)
+// ---------------------------------------------------------------------------
+
+describe("defaultSleep", () => {
+  it("resolves immediately when the signal aborts mid-sleep (SIGTERM during backoff)", async () => {
+    const ac = new AbortController();
+    const started = Date.now();
+    const p = defaultSleep(60_000, ac.signal);
+    setTimeout(() => ac.abort(), 20);
+    await p;
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it("resolves immediately on an already-aborted signal", async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const started = Date.now();
+    await defaultSleep(60_000, ac.signal);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  it("sleeps the full duration without a signal", async () => {
+    const started = Date.now();
+    await defaultSleep(30);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(25);
   });
 });

@@ -51,8 +51,6 @@ export interface ItemResult {
   tokens: TokenTotals;
   /** PR URL when one was opened. */
   prUrl?: string;
-  /** Review-tour link when the tail produced one. */
-  tourUrl?: string;
   /** Preserved worktree path (always recorded for abandoned items). */
   worktreePath?: string;
   /** Last failure summary (abandoned / handed-off-red items). */
@@ -61,6 +59,10 @@ export interface ItemResult {
   diff?: DiffStat;
   /** Free-form detail (e.g. merge-gate reason, push-failure detail). */
   detail?: string;
+  /** Loop-owned WARN lines (lock-release failure, main-push failure, …) —
+   *  the report is where a swallowed cleanup failure gets its one honest
+   *  surface (review findings LOW-10/LOW-11). */
+  warnings?: string[];
 }
 
 export interface RunSummary {
@@ -128,11 +130,21 @@ function itemSection(item: ItemResult): string {
     `- Iterations: ${item.iterationsGood} good / ${item.iterationsFailed} failed · tokens ${fmtTokens(item.tokens)}`,
   );
   if (item.prUrl) lines.push(`- PR: ${item.prUrl}`);
-  if (item.tourUrl) lines.push(`- Tour: ${item.tourUrl}`);
+  if (item.outcome === "merged") {
+    // Honest-unavailable lines (review finding LOW-14): the overnight loop
+    // does not generate review tours and does not parse test counts out of
+    // the tail — say so explicitly rather than plumbing fields nothing
+    // ever sets.
+    lines.push(
+      `- Tour: not generated (overnight loop) — run \`devx tour ${item.hash}\` if you want one`,
+    );
+    lines.push(`- Test delta: not tracked (v1 bound)`);
+  }
   if (item.diff) lines.push(`- Diff: ${fmtDiff(item.diff)}`);
   if (item.worktreePath) lines.push(`- Preserved worktree: \`${item.worktreePath}\``);
   if (item.lastFailure) lines.push(`- Last failure: ${item.lastFailure}`);
   if (item.detail) lines.push(`- Detail: ${item.detail}`);
+  for (const w of item.warnings ?? []) lines.push(`- WARN: ${w}`);
   return lines.join("\n");
 }
 

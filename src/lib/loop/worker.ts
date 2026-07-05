@@ -27,7 +27,7 @@ import {
   spawn as nodeSpawn,
 } from "node:child_process";
 
-import { extractReportJson, validateIterationReport } from "./iteration.js";
+import { hasFinalReport } from "./iteration.js";
 
 export const DEFAULT_GRACE_KILL_MS = 15_000;
 const DEFAULT_CLAUDE_BIN = "claude";
@@ -55,6 +55,24 @@ export type WorkerRunFn = (
   prompt: string,
   opts: { cwd: string; signal?: AbortSignal },
 ) => Promise<WorkerRunResult>;
+
+/**
+ * Thrown when a worker session hits the iteration wall-clock ceiling.
+ * Carries the tokens ESTIMATED from the prompt + everything captured
+ * before the kill (review finding MED-8): a timed-out session consumed
+ * real API budget — rejecting with a bare Error dropped that spend from
+ * the night's accounting, letting N timeouts silently exceed
+ * max_total_tokens. The driver folds `tokens` into its budgets on the
+ * timeout path.
+ */
+export class WorkerTimeoutError extends Error {
+  readonly tokens: WorkerTokens;
+  constructor(message: string, tokens: WorkerTokens) {
+    super(message);
+    this.name = "WorkerTimeoutError";
+    this.tokens = tokens;
+  }
+}
 
 export type SpawnFn = (
   cmd: string,
@@ -146,15 +164,28 @@ export function makeClaudeWorker(opts: ClaudeWorkerOpts = {}): WorkerRunFn {
         }
       };
 
-      // Arm the grace-kill once the captured output contains a VALID final
+      // Arm the grace-kill once the captured output ENDS with a valid final
       // report — a worker that reported but won't exit (stray dev server
       // holding stdio open) gets its tree reaped after graceKillMs.
+      // Positional, not anywhere-in-output (review finding LOW-12): a
+      // schema-valid report echoed early (quoted prompt example, pasted
+      // fixture) followed by more output means the session is still
+      // mid-work — killing there would reap an honest worker. The seam
+      // invariant lives on hasFinalReport (iteration.ts). Because output
+      // streams in chunks, the timer RE-VERIFIES at fire time: content that
+      // arrived after arming un-finalizes the report, so the timer disarms
+      // (a later trailing report re-arms via capture; the iteration ceiling
+      // still bounds a session that never finalizes).
       const maybeArmGraceKill = (): void => {
         if (graceTimer !== null || settled) return;
-        const parsed = extractReportJson(output);
-        if (parsed === null) return;
-        if (!validateIterationReport(parsed).ok) return;
+        if (!hasFinalReport(output)) return;
         graceTimer = setTimeout(() => {
+          if (settled) return;
+          if (!hasFinalReport(output)) {
+            // The report is no longer the trailing content — still working.
+            graceTimer = null;
+            return;
+          }
           graceKilled = true;
           killTree();
         }, graceKillMs);
@@ -194,9 +225,12 @@ export function makeClaudeWorker(opts: ClaudeWorkerOpts = {}): WorkerRunFn {
         settled = true;
         cleanup();
         if (timedOut) {
+          // Carry the estimated spend on the rejection — the session
+          // consumed budget before the kill (review finding MED-8).
           reject(
-            new Error(
+            new WorkerTimeoutError(
               `worker session exceeded the ${Math.round(iterationTimeoutMs / 60000)}min iteration ceiling and was killed`,
+              estimateTokens(prompt, output),
             ),
           );
           return;

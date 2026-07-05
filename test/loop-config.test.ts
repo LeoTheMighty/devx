@@ -120,3 +120,26 @@ describe("loopModeGate (D-6)", () => {
     }
   });
 });
+
+describe("heartbeatIntervalMsFrom (LOW-15 — one knob for writer cadence AND reader window)", () => {
+  it("defaults to 60s on missing/garbage config or manager block", async () => {
+    const { heartbeatIntervalMsFrom } = await import("../src/lib/loop/config.js");
+    for (const blob of [undefined, null, 42, [], {}, { manager: null }, { manager: { heartbeat_interval_s: "x" } }, { manager: { heartbeat_interval_s: 0 } }, { manager: { heartbeat_interval_s: -5 } }]) {
+      expect(heartbeatIntervalMsFrom(blob)).toBe(60_000);
+    }
+  });
+
+  it("reads manager.heartbeat_interval_s — the same knob devx next's freshness window uses", async () => {
+    const { heartbeatIntervalMsFrom } = await import("../src/lib/loop/config.js");
+    expect(heartbeatIntervalMsFrom({ manager: { heartbeat_interval_s: 10 } })).toBe(10_000);
+    expect(heartbeatIntervalMsFrom({ manager: { heartbeat_interval_s: 120 } })).toBe(120_000);
+  });
+
+  it("clamps to sensible bounds [5s, 600s]", async () => {
+    const { heartbeatIntervalMsFrom, HEARTBEAT_MIN_S, HEARTBEAT_MAX_S } = await import(
+      "../src/lib/loop/config.js"
+    );
+    expect(heartbeatIntervalMsFrom({ manager: { heartbeat_interval_s: 1 } })).toBe(HEARTBEAT_MIN_S * 1000);
+    expect(heartbeatIntervalMsFrom({ manager: { heartbeat_interval_s: 10_000 } })).toBe(HEARTBEAT_MAX_S * 1000);
+  });
+});

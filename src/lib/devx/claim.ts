@@ -24,7 +24,9 @@
 //   • Step 4 fails (commit). Working-tree edits are reverted via
 //     `git checkout -- DEV.md <spec>`. Lock released. Throws (exit 2).
 //   • Step 5 fails (push). Local commit reverted via
-//     `git reset --hard HEAD~1`. Lock released. Throws (exit 2).
+//     `git reset --soft HEAD~1` + restore of ONLY the claim's two files
+//     (never `--hard` — that would wipe unrelated user WIP repo-wide;
+//     v2l101 review HIGH finding). Lock released. Throws (exit 2).
 //   • Step 6 fails (worktree). Per locked decision: claim is real (commit
 //     pushed), so we DO NOT silently revert. Lock released so a follow-up
 //     /devx can manually create the worktree. Throws (exit 2).
@@ -695,10 +697,16 @@ export async function claimSpec(
     // Pre-push commit is local-only; reverting is safe and matches the
     // party-mode locked decision (a) "reset local DEV.md to the pre-claim
     // state via `git reset HEAD~1` if the claim commit hasn't been pushed".
-    // `--hard` reverts the working tree atomically — the source of truth
-    // for "post-revert state". (Don't pre-call revertWorkingTree() here;
-    // reset --hard supersedes it.)
-    const resetResult = exec("git", ["reset", "--hard", "HEAD~1"], {
+    //
+    // v2l101 review HIGH finding: this rollback used `reset --hard HEAD~1`,
+    // which reverts the ENTIRE working tree — an overnight `devx loop`
+    // claim hitting a failing push would destroy the user's uncommitted
+    // WIP repo-wide. The claim only ever touched two files, so the
+    // rollback must be scoped to exactly those: `--soft` moves HEAD back
+    // without touching index or working tree, then the claim's two files
+    // are un-staged and restored to their captured pre-claim content via
+    // revertWorkingTree(). Everything else in the tree stays untouched.
+    const resetResult = exec("git", ["reset", "--soft", "HEAD~1"], {
       cwd: opts.repoRoot,
     });
     if (resetResult.exitCode !== 0) {
@@ -706,10 +714,22 @@ export async function claimSpec(
       // claim commit still on main. Surface this to the operator instead
       // of swallowing; without the warning they'd see only "git push
       // failed" and miss that the local branch needs `git reset` by hand.
+      // Do NOT revert the working tree in this branch — HEAD still carries
+      // the claim commit, and rewriting the files under it would leave a
+      // confusing HEAD-vs-tree mismatch on top of the failed reset.
       process.stderr.write(
         `devx claim: WARN — git push origin ${pushTarget} failed AND the rollback reset failed (exit ${resetResult.exitCode}): ${resetResult.stderr.trim()}; ` +
-          `local main has the claim commit at HEAD. Run \`git reset --hard HEAD~1\` (or restore origin) by hand.\n`,
+          `local main has the claim commit at HEAD. Run \`git reset --soft HEAD~1\` (or restore origin) by hand.\n`,
       );
+    } else {
+      // Un-stage the two claim files (back to the pre-claim HEAD's index
+      // state), then restore their pre-claim working-tree content.
+      // Best-effort on the restore-staged — even if it fails, the content
+      // rewrite below is what the next claim reads.
+      exec("git", ["restore", "--staged", "--", relativeDevMd, relativeSpec], {
+        cwd: opts.repoRoot,
+      });
+      revertWorkingTree();
     }
     releaseLock();
     throw new ClaimError(

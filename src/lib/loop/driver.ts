@@ -61,7 +61,12 @@ import {
 } from "../devx/verify-claim.js";
 import { type DeriveBranchConfig } from "../plan/derive-branch.js";
 
-import { loopConfigFrom, loopModeGate, type LoopConfig } from "./config.js";
+import {
+  heartbeatIntervalMsFrom,
+  loopConfigFrom,
+  loopModeGate,
+  type LoopConfig,
+} from "./config.js";
 import {
   buildCommitRepairPrompt,
   buildIterationPrompt,
@@ -89,7 +94,7 @@ import {
   afterItemCompleted,
   classifyIteration,
   emptyLadderState,
-  firstPermanentErrorMatch,
+  firstPermanentErrorMatchInTail,
   ladderDecision,
   nextLadderState,
   shouldStopAfterAbandonment,
@@ -112,8 +117,13 @@ import {
   type EntryPrefix,
 } from "./spec-io.js";
 import { writeMorningReport, type ItemResult, type RunSummary, type TokenTotals } from "./report.js";
-import { defaultTail, type TailFn } from "./tail.js";
-import { makeClaudeWorker, type WorkerRunFn, type WorkerTokens } from "./worker.js";
+import { defaultTail, type HandOffKind, type TailFn } from "./tail.js";
+import {
+  WorkerTimeoutError,
+  makeClaudeWorker,
+  type WorkerRunFn,
+  type WorkerTokens,
+} from "./worker.js";
 
 // ---------------------------------------------------------------------------
 // Public surface
@@ -196,7 +206,13 @@ export function parseUntil(hhmm: string, now: Date): Date | null {
   return target;
 }
 
-function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
+/**
+ * Interruptible sleep — resolves after `ms` OR immediately when the signal
+ * aborts (so a SIGTERM during a 4-minute backoff or a CI poll wakes the
+ * loop at once instead of blocking the drain). Exported for direct tests
+ * of the abort-listener wiring (review finding LOW-9).
+ */
+export function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     if (signal?.aborted) {
       resolve();
@@ -470,9 +486,13 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
 
   writeState("running");
   event("loop:start", { mode, budgets, pid: process.pid });
+  // Heartbeat cadence derives from manager.heartbeat_interval_s — the same
+  // knob `devx next` uses for its freshness window (interval × 3), so a
+  // config edit can't put the writer's cadence outside the reader's window
+  // and flap a live loop between running/dead (review finding LOW-15).
   const hbInterval = setInterval(
     () => writeState("running"),
-    opts.heartbeatIntervalMs ?? 60_000,
+    opts.heartbeatIntervalMs ?? heartbeatIntervalMsFrom(merged),
   );
   hbInterval.unref?.();
 
@@ -484,6 +504,12 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
   let stopReason: string | null = null;
   const excluded = new Set<string>();
   const isAttempted = (r: ItemResult): boolean => r.outcome !== "claim-failed";
+  // Review finding MED-7: without a bound, a SYSTEMIC claim failure (locks
+  // dir unwritable, origin push refused, git broken) walks the entire
+  // backlog doing a full commit+rollback cycle per row. Three in a row is
+  // systemic — stop and report.
+  const MAX_CONSECUTIVE_CLAIM_FAILURES = 3;
+  let consecutiveClaimFailures = 0;
 
   const outerStop = (): string | null => {
     if (signal?.aborted) return "stopped by signal";
@@ -545,8 +571,14 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
           tokens: emptyTokens(),
           detail,
         });
+        consecutiveClaimFailures++;
+        if (consecutiveClaimFailures >= MAX_CONSECUTIVE_CLAIM_FAILURES) {
+          stopReason = `${consecutiveClaimFailures} consecutive claim failures — systemic claim problem, stopping the loop (last: ${detail})`;
+          break;
+        }
         continue;
       }
+      consecutiveClaimFailures = 0;
       event("item:claimed", { hash: pick.hash, branch: claim.branch, claimSha: claim.claimSha });
       out(`loop: claimed ${pick.hash} on ${claim.branch}`);
 
@@ -602,13 +634,26 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
         abortReason = result.loopAbort;
         break;
       }
-      if (result.item.outcome === "abandoned") {
-        ladder = afterItemAbandoned(ladder);
+      // The systemic rail (review findings MED-4 + MED-6):
+      //   - abandoned WITHOUT any committed progress   → streak +1
+      //   - abandoned WITH ≥1 good committed iteration → streak unchanged
+      //     (the pipeline demonstrably works; the item was just big)
+      //   - handed-off-failure (gh/CI outage shape)    → streak +1 — a dead
+      //     gh must trip the 3-stop instead of stranding maxItems claims
+      //   - merged / handed-off-ok                     → streak reset
+      if (result.item.outcome === "abandoned" || result.handoffKind === "handed-off-failure") {
+        ladder =
+          result.item.outcome === "abandoned"
+            ? afterItemAbandoned(ladder, { madeProgress: result.item.iterationsGood >= 1 })
+            : afterItemAbandoned(ladder, { madeProgress: false });
         if (shouldStopAfterAbandonment(ladder)) {
-          abortReason = `${ladder.consecutiveAbandonedItems} consecutive abandoned items — systemic problem, stopping the loop`;
+          abortReason = `${ladder.consecutiveAbandonedItems} consecutive items abandoned or handed off failing — systemic problem, stopping the loop`;
           break;
         }
-      } else if (result.item.outcome === "merged" || result.item.outcome === "handed-off") {
+      } else if (
+        result.item.outcome === "merged" ||
+        result.item.outcome === "handed-off"
+      ) {
         ladder = afterItemCompleted(ladder);
       }
       if (result.item.outcome === "in-progress-at-exit") {
@@ -704,6 +749,10 @@ interface RunItemResult {
   item: ItemResult;
   /** Non-null ⇒ the whole loop must abort now (permanent error). */
   loopAbort: string | null;
+  /** Set when the item's outcome is "handed-off" — routes the systemic
+   *  rail (review finding MED-6): only handed-off-ok resets the streak;
+   *  handed-off-failure (gh/CI outage shape) increments it. */
+  handoffKind?: HandOffKind;
 }
 
 async function runItem(args: RunItemArgs): Promise<RunItemResult> {
@@ -734,6 +783,9 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
   let failed = 0;
   let pendingRepair: string | null = null;
   let lastFailure: string | null = null;
+  /** Loop-owned WARN lines that must reach the morning report (lock-release
+   *  failure, main-push failure — review findings LOW-10/LOW-11). */
+  const itemWarnings: string[] = [];
 
   const worktreeSpecPath = join(worktree, pick.path);
   const mainSpecPath = join(repoRoot, pick.path);
@@ -771,6 +823,9 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     iterationsGood: good,
     iterationsFailed: failed,
     tokens: itemTokens,
+    // NB: same array reference on purpose — warnings pushed AFTER a
+    // snapshot (e.g. during finalizeMerged) still reach the report.
+    ...(itemWarnings.length > 0 ? { warnings: itemWarnings } : {}),
     ...(baseSha !== null ? { diff: diffStat(exec, worktree, baseSha) } : {}),
   });
 
@@ -848,8 +903,83 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
   const releaseSpecLock = (): void => {
     try {
       unlinkSync(lockPath);
-    } catch {
-      // already gone / unreadable — the report points at the path anyway
+    } catch (e) {
+      // ENOENT = already gone (fine). Anything else (EACCES, EPERM, …)
+      // means the lock file is STILL on disk and every future claim of
+      // this spec sees LockHeldError forever — that must not be swallowed
+      // silently (review finding LOW-10): event it and put a WARN line
+      // with the path in the morning report.
+      const code = (e as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") return;
+      event("item:lock-release-failed", { lockPath, error: serializeError(e) });
+      itemWarnings.push(
+        `spec lock could not be released (${code ?? "unknown"}) — remove ${relToRepo(lockPath, repoRoot)} by hand or the next claim of ${pick.hash} will refuse`,
+      );
+      out(`loop: WARN — failed to release spec lock ${lockPath}`);
+    }
+  };
+
+  /**
+   * Push main after a loop-owned commit on it (abandon / exit / mark-done
+   * paths — review finding LOW-11). Never forces. Failure is tolerated —
+   * the commit is local and the morning report gets a "main ahead of
+   * origin" WARN so the human knows to push.
+   */
+  const pushMain = (): void => {
+    const push = exec("git", ["push"], {
+      cwd: repoRoot,
+      env: { GIT_TERMINAL_PROMPT: "0" },
+    });
+    if (push.exitCode !== 0) {
+      event("item:main-push-failed", { stderr: push.stderr.trim() });
+      itemWarnings.push(
+        `main is ahead of origin — push failed after a loop-owned commit: ${firstLineOf(push.stderr) || "(no stderr)"}`,
+      );
+    }
+  };
+
+  /**
+   * Rollback for a failed iteration — extending the commit-failure repair
+   * guarantee past a single iteration (review finding MED-2). When a
+   * repair iteration itself fails or hard-errors, the tree still holds the
+   * PRIOR successful iteration's preserved work; blindly resetting would
+   * discard it. So while pendingRepair is set, re-attempt the commit ONCE
+   * (the original failure may have been transient — a stale index.lock, a
+   * hook flake): if it lands, the preserved work is safe on the branch and
+   * nothing is reset. Only when the re-attempt also fails do we reset —
+   * and then the discarded-diff stat is recorded for the [FAIL]/[ERROR]
+   * entry. Clears pendingRepair on every path (BH-HIGH-1 posture).
+   *
+   * Returns a note for the status-log entry, or null. Throws only when the
+   * reset itself fails (caller abandons the item).
+   */
+  const rollbackIteration = (): string | null => {
+    if (pendingRepair === null) {
+      resetHard(exec, worktree);
+      return null;
+    }
+    try {
+      const res = commitAll(
+        exec,
+        worktree,
+        `${pick.type === "debug" ? "fix" : "feat"}(${pick.hash}): salvage work preserved across a commit failure\n\nloop iteration ${iteration}; spec ${pick.path}`,
+      );
+      pendingRepair = null;
+      if (res.committed) {
+        event("iteration:repair-salvage-committed", { iteration, head: res.head });
+        return "prior iteration's preserved work committed via salvage re-attempt (original commit failure was transient)";
+      }
+      // Nothing to commit — the tree held no preserved work after all.
+      resetHard(exec, worktree);
+      return null;
+    } catch (e) {
+      event("iteration:repair-salvage-failed", { iteration, error: serializeError(e) });
+      const discarded = uncommittedDiffNote(exec, worktree);
+      resetHard(exec, worktree);
+      pendingRepair = null;
+      return discarded !== null
+        ? `salvage re-attempt also failed; discarded preserved work: ${discarded}`
+        : "salvage re-attempt also failed; preserved work discarded";
     }
   };
 
@@ -890,6 +1020,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     }
     releaseSpecLock();
     commitOnMain(`chore(loop): abandon ${pick.hash} (${reason})`);
+    pushMain();
     out(`loop: abandoned ${pick.hash} — ${reason}; worktree preserved at ${worktree}`);
     return {
       item: {
@@ -905,7 +1036,29 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
 
   const exitInProgress = (why: string): RunItemResult => {
     event("item:in-progress-at-exit", { hash: pick.hash, why, worktree });
+    // Same roc101 ownership posture as abandonItem (review finding LOW-11):
+    // if the claim was taken over / cleared mid-run, the main-worktree spec
+    // is no longer ours to write.
+    if (!ownsClaim()) {
+      event("item:exit-ownership-lost", { hash: pick.hash });
+      out(`loop: claim for ${pick.hash} is no longer this run's — leaving main spec untouched at exit`);
+      return {
+        item: {
+          ...baseItem(),
+          outcome: "in-progress-at-exit",
+          worktreePath: relToRepo(worktree, repoRoot),
+          ...(lastFailure !== null ? { lastFailure } : {}),
+          detail: `${why}; claim ownership lost mid-run — main spec left untouched`,
+        },
+        loopAbort: null,
+      };
+    }
     appendMainEntry("", `loop stopped mid-item (${why}); worktree + claim preserved`);
+    // Commit + push the appended entry: an uncommitted main-worktree edit
+    // left overnight is exactly the kind of surprise dirt the loop must
+    // not leave behind (review finding LOW-11).
+    commitOnMain(`chore(loop): ${pick.hash} in progress at loop exit (${why})`);
+    pushMain();
     return {
       item: {
         ...baseItem(),
@@ -982,17 +1135,20 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       const validated = parsed !== null ? validateIterationReport(parsed) : null;
       if (validated !== null && validated.ok) {
         report = validated.report;
-      } else if (firstPermanentErrorMatch(raw) !== null) {
-        // BH-HIGH-2: a `claude -p` hitting credit/auth exhaustion exits with
-        // the marker text in its OUTPUT, not in a thrown error. Surface it
-        // as a worker error carrying the matched text so classifyIteration's
-        // permanent-error rung actually fires — and do NOT burn a retry
-        // spawn against a dead API.
-        workerError = new Error(
-          `worker output matches a permanent-error marker: ${firstPermanentErrorMatch(raw)}`,
-        );
+      } else if (signal?.aborted) {
+        // Review finding LOW-13: the abort check is hoisted ABOVE the
+        // report-retry spawn — never start a second worker session against
+        // a run that's already draining. The post-block abort handling
+        // rolls back and exits as stopped-mid-item.
+        workerError = new Error("aborted before the report retry");
       } else {
-        // Retry protocol: one cheap re-ask for JUST the JSON.
+        // Retry protocol: one cheap re-ask for JUST the JSON. The retry is
+        // NEVER preempted by permanent-error marker sniffing (review
+        // finding MED-3): marker text mid-transcript is routinely the
+        // worked-on code itself (an iteration editing ladder.ts echoes
+        // "credit balance is too low"), and a recoverable report must win
+        // over a marker guess. One cheap spawn against a genuinely dead
+        // API fails fast and costs nothing.
         const errors =
           validated !== null && !validated.ok
             ? validated.errors
@@ -1009,14 +1165,21 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         if (revalidated !== null && revalidated.ok) {
           report = revalidated.report;
         } else {
-          const retryMarker = firstPermanentErrorMatch(retry.rawOutput);
+          // Permanent-error classification applies only NOW — after the
+          // retry also failed — and only against the transcript TAIL:
+          // real credit/auth exhaustion is the last thing a dying session
+          // prints. Corroboration ("report absent") is structural in this
+          // branch: both attempts produced no parseable report.
+          const marker =
+            firstPermanentErrorMatchInTail(retry.rawOutput) ??
+            firstPermanentErrorMatchInTail(raw);
           const exitNote =
             r.exitCode !== null && r.exitCode !== 0
               ? `; worker exited ${r.exitCode}: ${tailOf(raw, 300)}`
               : "";
           workerError =
-            retryMarker !== null
-              ? new Error(`worker output matches a permanent-error marker: ${retryMarker}`)
+            marker !== null
+              ? new Error(`worker output matches a permanent-error marker: ${marker}`)
               : new Error(
                   `worker report unparseable after retry (${errors.map((e) => e.message).join("; ")})${exitNote}`,
                 );
@@ -1024,12 +1187,20 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       }
     } catch (e) {
       workerError = e instanceof Error ? e : new Error(String(e));
+      // Review finding MED-8: a timed-out worker consumed real API budget
+      // before the kill — fold its estimated spend into the accounting so
+      // N timeouts can't silently blow past the token budgets.
+      if (e instanceof WorkerTimeoutError) {
+        addTokens(itemTokens, e.tokens);
+        addTokens(args.totals, e.tokens);
+      }
     }
     if (signal?.aborted && report === null) {
       // The abort tore the worker down mid-flight — don't count it as a
-      // failure; roll back and exit as stopped-mid-item.
+      // failure; roll back (salvaging any commit-failure-preserved work
+      // first, review finding MED-2) and exit as stopped-mid-item.
       try {
-        resetHard(exec, worktree);
+        rollbackIteration();
       } catch {
         // preserved dirty tree is the pre-flight's problem on resume
       }
@@ -1113,16 +1284,24 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
             : report!.summary;
         lastFailure = summaryText;
         prior.push({ iteration, success: false, summary: summaryText });
+        // rollbackIteration salvages commit-failure-preserved work with a
+        // re-attempted commit before any reset (MED-2) and clears
+        // pendingRepair on every path (BH-HIGH-1: a stale pendingRepair
+        // would poison every following iteration with a repair prompt
+        // against a clean tree).
+        let note: string | null = null;
         try {
-          resetHard(exec, worktree);
+          note = rollbackIteration();
         } catch (e) {
           return abandonItem(`rollback failed: ${errorChainText(e)}`);
         }
-        // BH-HIGH-1: the preserved commit-failure changes (if any) were just
-        // discarded by the reset — a stale pendingRepair would poison every
-        // following iteration with a repair prompt against a clean tree.
-        pendingRepair = null;
-        recordIteration("[FAIL]", `loop iteration ${iteration}: ${summaryText}`, [], report?.key_learnings ?? [], true);
+        recordIteration(
+          "[FAIL]",
+          `loop iteration ${iteration}: ${summaryText}${note !== null ? ` (${note})` : ""}`,
+          [],
+          report?.key_learnings ?? [],
+          true,
+        );
         out(`loop: ${pick.hash} iteration ${iteration} [FAIL] — ${summaryText}`);
         break;
       }
@@ -1132,13 +1311,20 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         const msg = workerError !== null ? errorChainText(workerError) : "unknown hard error";
         lastFailure = msg;
         prior.push({ iteration, success: false, summary: msg });
+        // Same salvage-before-reset + pendingRepair discipline as above.
+        let note: string | null = null;
         try {
-          resetHard(exec, worktree);
+          note = rollbackIteration();
         } catch (e) {
           return abandonItem(`rollback failed after error: ${errorChainText(e)}`);
         }
-        pendingRepair = null; // see BH-HIGH-1 note above — reset discards the repair target
-        recordIteration("[ERROR]", `loop iteration ${iteration}: ${msg}`, [], [], true);
+        recordIteration(
+          "[ERROR]",
+          `loop iteration ${iteration}: ${msg}${note !== null ? ` (${note})` : ""}`,
+          [],
+          [],
+          true,
+        );
         out(`loop: ${pick.hash} iteration ${iteration} [ERROR] — ${msg}`);
         break;
       }
@@ -1220,12 +1406,20 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       const snapshot = baseItem();
       finalizeMerged(tailOutcome.prUrl);
       return {
-        item: { ...snapshot, outcome: "merged", prUrl: tailOutcome.prUrl },
+        item: {
+          ...snapshot,
+          // Warnings pushed DURING finalize (lock release, main push) must
+          // still reach the report even though the snapshot predates them.
+          ...(itemWarnings.length > 0 ? { warnings: itemWarnings } : {}),
+          outcome: "merged",
+          prUrl: tailOutcome.prUrl,
+        },
         loopAbort: null,
       };
     }
     // handed-off: PR exists (or creation failed) — the claim + worktree stay
-    // for the morning; the report carries the reason.
+    // for the morning; the report carries the reason. The kind routes the
+    // driver's systemic rail (review finding MED-6).
     return {
       item: {
         ...baseItem(),
@@ -1236,6 +1430,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         ...(lastFailure !== null ? { lastFailure } : {}),
       },
       loopAbort: null,
+      handoffKind: tailOutcome.kind,
     };
   }
 
@@ -1290,11 +1485,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     }
     releaseSpecLock();
     commitOnMain(`chore: mark ${pick.hash} done after loop merge (${prUrl})`);
-    const push = exec("git", ["push"], {
-      cwd: repoRoot,
-      env: { GIT_TERMINAL_PROMPT: "0" },
-    });
-    if (push.exitCode !== 0) event("item:main-push-failed", { stderr: push.stderr.trim() });
+    pushMain();
     out(`loop: ${pick.hash} merged + reconciled (${prUrl})`);
   }
 
@@ -1343,6 +1534,39 @@ function relToRepo(p: string, repoRoot: string): string {
 
 function firstLineOf(s: string): string {
   return s.split("\n").find((l) => l.trim() !== "")?.trim() ?? s.trim();
+}
+
+/**
+ * Best-effort description of the uncommitted work a reset is about to
+ * discard (review finding MED-2 — the [ERROR] entry must say what was
+ * lost when the salvage re-attempt also failed). Never throws.
+ */
+function uncommittedDiffNote(exec: Exec, cwd: string): string | null {
+  try {
+    const env = { GIT_TERMINAL_PROMPT: "0" };
+    let files = 0;
+    let added = 0;
+    let deleted = 0;
+    const d = exec("git", ["diff", "--numstat", "HEAD"], { cwd, env });
+    if (d.exitCode === 0) {
+      for (const line of d.stdout.split("\n")) {
+        if (line.trim() === "") continue;
+        const [a, del] = line.split("\t");
+        files++;
+        if (a !== "-" && del !== "-") {
+          added += Number.parseInt(a ?? "0", 10) || 0;
+          deleted += Number.parseInt(del ?? "0", 10) || 0;
+        }
+      }
+    }
+    const u = exec("git", ["ls-files", "--others", "--exclude-standard"], { cwd, env });
+    const untracked =
+      u.exitCode === 0 ? u.stdout.split("\n").filter((l) => l.trim() !== "").length : 0;
+    if (files === 0 && untracked === 0) return null;
+    return `${files} tracked files (+${added}/-${deleted})${untracked > 0 ? ` + ${untracked} untracked` : ""}`;
+  } catch {
+    return null;
+  }
 }
 
 function tailOf(s: string, n: number): string {

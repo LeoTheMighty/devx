@@ -85,6 +85,7 @@ const MERGED = {
 
 const noopTail: TailFn = async () => ({
   outcome: "handed-off",
+  kind: "handed-off-ok",
   prUrl: null,
   prNumber: null,
   detail: "chaos test tail",

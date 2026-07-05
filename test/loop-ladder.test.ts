@@ -11,6 +11,7 @@ import {
   classifyIteration,
   emptyLadderState,
   firstPermanentErrorMatch as ladderFirstMatch,
+  firstPermanentErrorMatchInTail,
   isPermanentErrorMessage,
   ladderDecision,
   nextLadderState,
@@ -136,8 +137,28 @@ describe("nextLadderState", () => {
     expect(nextLadderState(state(0, 1), "commit-failure")).toEqual(state(1, 0, 0));
   });
 
-  it("abandonment resets per-item counters and bumps the run streak", () => {
-    expect(afterItemAbandoned(state(3, 1, 1))).toEqual(state(0, 0, 2));
+  it("progress-less abandonment resets per-item counters and bumps the run streak", () => {
+    expect(afterItemAbandoned(state(3, 1, 1), { madeProgress: false })).toEqual(state(0, 0, 2));
+  });
+
+  it("abandonment WITH committed progress does NOT bump the run streak (MED-4: big ≠ broken)", () => {
+    // ≥1 successful committed iteration proves the pipeline works — the
+    // item was just bigger than its budget. Streak preserved, not reset:
+    // neighbouring progress-less abandonments keep their evidence.
+    expect(afterItemAbandoned(state(3, 1, 1), { madeProgress: true })).toEqual(state(0, 0, 1));
+    expect(afterItemAbandoned(state(2, 0, 0), { madeProgress: true })).toEqual(state(0, 0, 0));
+  });
+
+  it("three big-but-progressing abandonments never reach the 3-stop", () => {
+    let s = state(0, 0, 0);
+    for (let i = 0; i < 3; i++) {
+      s = afterItemAbandoned(s, { madeProgress: true });
+      expect(shouldStopAfterAbandonment(s)).toBe(false);
+    }
+    // ...while three progress-less ones do.
+    let bad = state(0, 0, 0);
+    for (let i = 0; i < 3; i++) bad = afterItemAbandoned(bad, { madeProgress: false });
+    expect(shouldStopAfterAbandonment(bad)).toBe(true);
   });
 
   it("a completed item resets the abandoned streak", () => {
@@ -259,5 +280,27 @@ describe("firstPermanentErrorMatch (BH-HIGH-2 — markers scanned against raw wo
   it("returns null for healthy / transient output and empty strings", () => {
     expect(ladderFirstMatch("")).toBeNull();
     expect(ladderFirstMatch("429 rate limited, retrying")).toBeNull();
+  });
+});
+
+describe("firstPermanentErrorMatchInTail (MED-3 — tail-bounded marker scan)", () => {
+  it("ignores marker text buried mid-transcript (worked-on code echoing markers)", () => {
+    // A worker editing ladder.ts echoes the marker list into its transcript,
+    // then does 3000 chars of honest work after it.
+    const raw =
+      "editing ladder.ts: /credit balance is too low/i added to markers\n" +
+      "x".repeat(3000) +
+      "\nall tests green";
+    expect(firstPermanentErrorMatchInTail(raw)).toBeNull();
+    // The whole-text scan would have matched — that's the false positive.
+    expect(ladderFirstMatch(raw)).toMatch(/credit balance is too low/i);
+  });
+
+  it("matches a marker in the final ~2000 chars (a dying session prints it last)", () => {
+    const raw =
+      "y".repeat(5000) +
+      "\nAPI Error: Your credit balance is too low to access the Anthropic API.\n";
+    expect(firstPermanentErrorMatchInTail(raw)).toMatch(/credit balance is too low/i);
+    expect(firstPermanentErrorMatchInTail("")).toBeNull();
   });
 });

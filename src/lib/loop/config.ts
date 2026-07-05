@@ -83,6 +83,37 @@ export function loopConfigFrom(merged: unknown): LoopConfig {
   return out;
 }
 
+/** Bounds for the loop's state.json heartbeat cadence (review finding
+ *  LOW-15). Lower bound keeps a garbage config from busy-writing state.json;
+ *  upper bound keeps `devx next`'s freshness window (interval × 3) from
+ *  growing so large a dead loop looks alive for hours. */
+export const HEARTBEAT_MIN_S = 5;
+export const HEARTBEAT_MAX_S = 600;
+export const HEARTBEAT_DEFAULT_S = 60;
+
+/**
+ * Derive the loop's heartbeat interval (ms) from
+ * `manager.heartbeat_interval_s` — the SAME knob `devx next` reads to size
+ * its liveness freshness window (src/lib/next/gather.ts, window =
+ * interval × 3). Deriving both from one knob means a config edit can't put
+ * the writer's cadence outside the reader's window and flap a live loop
+ * between running/dead. Non-numeric / non-positive values fall back to the
+ * 60s default; valid values clamp to [HEARTBEAT_MIN_S, HEARTBEAT_MAX_S].
+ */
+export function heartbeatIntervalMsFrom(merged: unknown): number {
+  let seconds = HEARTBEAT_DEFAULT_S;
+  if (merged && typeof merged === "object" && !Array.isArray(merged)) {
+    const manager = (merged as Record<string, unknown>).manager;
+    if (manager && typeof manager === "object" && !Array.isArray(manager)) {
+      const v = (manager as Record<string, unknown>).heartbeat_interval_s;
+      if (typeof v === "number" && Number.isFinite(v) && v > 0) {
+        seconds = Math.min(Math.max(v, HEARTBEAT_MIN_S), HEARTBEAT_MAX_S);
+      }
+    }
+  }
+  return Math.round(seconds * 1000);
+}
+
 export interface LoopModeGate {
   allowed: boolean;
   /** Normalized (uppercased) mode string read from the config. */

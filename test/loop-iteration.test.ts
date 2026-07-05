@@ -11,6 +11,7 @@ import {
   buildIterationPrompt,
   buildReportRetryPrompt,
   extractReportJson,
+  hasFinalReport,
   validateIterationReport,
 } from "../src/lib/loop/iteration.js";
 
@@ -256,5 +257,33 @@ describe("extractReportJson — validate-first preference (EC-MED-7)", () => {
     const invalid = { success: "yes" };
     const text = `report ${JSON.stringify(VALID)} and quoting ${JSON.stringify(invalid)}`;
     expect(extractReportJson(text)).toEqual(VALID);
+  });
+});
+
+describe("hasFinalReport (LOW-12 — the grace-kill's positional seam invariant)", () => {
+  const fenced = (obj: unknown): string => `\`\`\`json\n${JSON.stringify(obj)}\n\`\`\``;
+
+  it("true when a valid report is the final fenced block (trailing whitespace ok)", () => {
+    expect(hasFinalReport(`work log...\n${fenced(VALID)}\n\n  `)).toBe(true);
+  });
+
+  it("true when a valid BARE object is the final content", () => {
+    expect(hasFinalReport(`done. ${JSON.stringify(VALID)}`)).toBe(true);
+  });
+
+  it("false when a valid report is followed by more content (early echoed example)", () => {
+    expect(hasFinalReport(`${fenced(VALID)}\n...still working on cleanup...`)).toBe(false);
+    expect(hasFinalReport(`${JSON.stringify(VALID)} and now running the tests`)).toBe(false);
+  });
+
+  it("false when the trailing block is decorative (parses but does not validate)", () => {
+    const decorative = { name: "pkg", version: "1.0.0" };
+    expect(hasFinalReport(`${fenced(VALID)}\nquoting package.json:\n${fenced(decorative)}`)).toBe(false);
+  });
+
+  it("false for empty / report-less output", () => {
+    expect(hasFinalReport("")).toBe(false);
+    expect(hasFinalReport("no json here")).toBe(false);
+    expect(hasFinalReport("unbalanced { brace")).toBe(false);
   });
 });

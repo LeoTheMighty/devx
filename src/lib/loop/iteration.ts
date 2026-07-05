@@ -199,6 +199,49 @@ export function extractReportJson(text: string): unknown | null {
   return lastRegionParsed;
 }
 
+/**
+ * True only when the FINAL non-whitespace content of `text` is a
+ * schema-valid iteration report — either a trailing fenced ```json block
+ * or a trailing bare JSON object.
+ *
+ * Seam invariant (review finding LOW-12): the worker's grace-kill arms on
+ * this predicate, NOT on "a valid report appears anywhere in the output".
+ * The prompt contract is "END your reply with a single fenced json block";
+ * a schema-valid report echoed EARLY (the worker quoting the prompt's
+ * example, pasting a fixture) followed by more output means the session is
+ * still mid-work — arming the kill there would reap an honest worker and
+ * discard its in-flight iteration. extractReportJson stays permissive
+ * (recovery after exit); this predicate is the strict positional check.
+ */
+export function hasFinalReport(text: string): boolean {
+  if (typeof text !== "string") return false;
+  const t = text.trimEnd();
+  if (t === "") return false;
+
+  // Trailing fenced block: locate the LAST closing fence at the very end,
+  // then its opener, and validate the inner payload.
+  if (t.endsWith("```")) {
+    const openIdx = t.lastIndexOf("```", t.length - 4);
+    if (openIdx === -1) return false;
+    const m = /^```(?:json)?[^\S\n]*\n([\s\S]*)```$/.exec(t.slice(openIdx));
+    if (!m) return false;
+    const parsed = tryParseObject(m[1]);
+    return parsed !== null && validateIterationReport(parsed).ok;
+  }
+
+  // Trailing bare object: the last balanced {...} region must end exactly
+  // at the trimmed end of the text.
+  if (t.endsWith("}")) {
+    const regions = balancedObjectRegions(t);
+    const last = regions[regions.length - 1];
+    if (last === undefined || !t.endsWith(last)) return false;
+    const parsed = tryParseObject(last);
+    return parsed !== null && validateIterationReport(parsed).ok;
+  }
+
+  return false;
+}
+
 function tryParseObject(s: string): unknown | null {
   try {
     const v = JSON.parse(s.trim());

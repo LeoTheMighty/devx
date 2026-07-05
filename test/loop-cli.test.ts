@@ -46,3 +46,29 @@ describe("parseIntFlag (EC-LOW-12 — strict digits only)", () => {
     expect(parseIntFlag(undefined)).toBeUndefined();
   });
 });
+
+describe("signal → AbortController wiring (LOW-9)", () => {
+  it("SIGTERM while the loop runs aborts the driver's signal and the command returns", async () => {
+    const { runLoopCommand } = await import("../src/commands/loop.js");
+    const { runLoop } = await import("../src/lib/loop/driver.js");
+    let captured: AbortSignal | undefined;
+    const fake: typeof runLoop = async (opts) => {
+      captured = opts.signal;
+      // Behave like a running loop: return only once the signal aborts.
+      await new Promise<void>((resolve) => {
+        if (!opts.signal || opts.signal.aborted) return resolve();
+        opts.signal.addEventListener("abort", () => resolve(), { once: true });
+      });
+      return { exitCode: 0, summary: null, reportPath: null };
+    };
+    // dry-run keeps the sleep inhibitor out of the picture.
+    const pending = runLoopCommand({ dryRun: true }, { runLoop: fake });
+    await new Promise((r) => setTimeout(r, 20)); // let the handlers install
+    expect(captured).toBeDefined();
+    expect(captured!.aborted).toBe(false);
+    process.emit("SIGTERM", "SIGTERM");
+    const code = await pending;
+    expect(captured!.aborted).toBe(true);
+    expect(code).toBe(0);
+  });
+});

@@ -19,6 +19,17 @@
 // Spec: dev/dev-dvx101-2026-04-28T19:30-devx-claim-atomic.md
 // Epic: _bmad-output/planning-artifacts/epic-devx-skill.md
 
+import { execFileSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -650,7 +661,7 @@ describe("claimSpec — rollback paths", () => {
     ).toBe(false);
   });
 
-  it("git push failure → reset --hard HEAD~1 + release lock", async () => {
+  it("git push failure → reset --SOFT HEAD~1 + scoped two-file restore + release lock (v2l101 HIGH)", async () => {
     const { fs, state, baseOpts } = makeFixture();
     const calls: ExecCall[] = [];
     const exec = (cmd: string, args: string[]): ExecResult => {
@@ -666,15 +677,102 @@ describe("claimSpec — rollback paths", () => {
     await expect(
       claimSpec("dvx101", { ...baseOpts, fs, exec }),
     ).rejects.toMatchObject({ name: "ClaimError", stage: "git-push" });
-    // git reset --hard HEAD~1 was invoked.
+    // NEVER `reset --hard` — that would wipe unrelated user WIP repo-wide.
     const resetCall = calls.find(
       (c) => c.cmd === "git" && c.args[0] === "reset",
     );
-    expect(resetCall?.args).toEqual(["reset", "--hard", "HEAD~1"]);
+    expect(resetCall?.args).toEqual(["reset", "--soft", "HEAD~1"]);
+    expect(
+      calls.some((c) => c.cmd === "git" && c.args.includes("--hard")),
+    ).toBe(false);
+    // The two claim files were un-staged (pathspec-scoped restore).
+    const restoreCall = calls.find(
+      (c) => c.cmd === "git" && c.args[0] === "restore" && c.args[1] === "--staged",
+    );
+    expect(restoreCall?.args).toContain("DEV.md");
+    expect(
+      restoreCall?.args.some((a) => a.startsWith("dev/dev-dvx101")),
+    ).toBe(true);
+    // Working-tree content restored to pre-claim for BOTH files.
+    expect(state.files.get(`${REPO}/DEV.md`)).toBe(SAMPLE_DEV_MD);
+    expect(
+      state.files.get(
+        `${REPO}/dev/dev-dvx101-2026-04-28T19:30-devx-claim-atomic.md`,
+      ),
+    ).toBe(SAMPLE_SPEC);
     // Lock released.
     expect(
       state.files.has(`${REPO}/.devx-cache/locks/spec-dvx101.lock`),
     ).toBe(false);
+  });
+
+  it("REAL git: push failure rolls back the claim WITHOUT touching unrelated dirty WIP (v2l101 HIGH)", async () => {
+    // Real repo + origin; a pre-push hook rejects everything, and the main
+    // worktree is seeded with the user's uncommitted WIP. The old
+    // `reset --hard HEAD~1` rollback destroyed that WIP repo-wide.
+    const base = mkdtempSync(join(tmpdir(), "devx-claim-rollback-"));
+    try {
+      const origin = join(base, "origin.git");
+      const repoRoot = join(base, "repo");
+      execFileSync("git", ["init", "--bare", "-q", "-b", "main", origin]);
+      execFileSync("git", ["clone", "-q", origin, repoRoot]);
+      const g = (...args: string[]): string =>
+        execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" }).trim();
+      g("config", "user.email", "t@t");
+      g("config", "user.name", "t");
+      g("config", "commit.gpgsign", "false");
+      mkdirSync(join(repoRoot, "dev"), { recursive: true });
+      const specRel = "dev/dev-abc123-2026-07-05T13:00-thing.md";
+      const specOriginal =
+        "---\nhash: abc123\ntype: dev\ncreated: 2026-07-05T13:00:00-06:00\ntitle: Thing\nstatus: ready\n---\n\n## Goal\n\nx\n\n## Status log\n\n- created.\n";
+      const devMdOriginal = `# DEV\n\n- [ ] \`${specRel}\` — Thing. Status: ready.\n`;
+      writeFileSync(join(repoRoot, specRel), specOriginal, "utf8");
+      writeFileSync(join(repoRoot, "DEV.md"), devMdOriginal, "utf8");
+      writeFileSync(join(repoRoot, "notes.txt"), "committed content\n", "utf8");
+      writeFileSync(join(repoRoot, ".gitignore"), ".devx-cache/\n.worktrees/\n", "utf8");
+      g("add", "-A");
+      g("commit", "-q", "-m", "base");
+      g("push", "-q", "-u", "origin", "main");
+      const preClaimHead = g("rev-parse", "HEAD");
+
+      // The user's WIP: a dirty tracked file + an untracked file.
+      writeFileSync(join(repoRoot, "notes.txt"), "PRECIOUS user WIP\n", "utf8");
+      writeFileSync(join(repoRoot, "scratch.txt"), "untracked scratch\n", "utf8");
+
+      // Reject every push.
+      const hooksDir = join(base, "hooks");
+      mkdirSync(hooksDir, { recursive: true });
+      writeFileSync(join(hooksDir, "pre-push"), "#!/bin/sh\necho no >&2\nexit 1\n", {
+        mode: 0o755,
+      });
+      g("config", "core.hooksPath", hooksDir);
+
+      await expect(
+        claimSpec("abc123", {
+          sessionId: "rollback-test",
+          repoRoot,
+          config: {
+            git: { default_branch: "main", branch_prefix: "feat/", integration_branch: null },
+          },
+        }),
+      ).rejects.toMatchObject({ name: "ClaimError", stage: "git-push" });
+
+      // Claim fully rolled back: HEAD, DEV.md, spec.
+      expect(g("rev-parse", "HEAD")).toBe(preClaimHead);
+      expect(readFileSync(join(repoRoot, "DEV.md"), "utf8")).toBe(devMdOriginal);
+      expect(readFileSync(join(repoRoot, specRel), "utf8")).toBe(specOriginal);
+      // The user's WIP survived — the load-bearing assertion.
+      expect(readFileSync(join(repoRoot, "notes.txt"), "utf8")).toBe("PRECIOUS user WIP\n");
+      expect(readFileSync(join(repoRoot, "scratch.txt"), "utf8")).toBe("untracked scratch\n");
+      // Nothing left staged from the claim.
+      expect(g("diff", "--cached", "--name-only")).toBe("");
+      // Lock released.
+      expect(
+        existsSync(join(repoRoot, ".devx-cache", "locks", "spec-abc123.lock")),
+      ).toBe(false);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 
   it("worktree-create failure post-push → claim is durable, lock released, no silent revert", async () => {

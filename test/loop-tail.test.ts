@@ -226,7 +226,7 @@ describe("defaultTail", () => {
     if (r.outcome === "handed-off") expect(r.detail).toMatch(/not merged/);
   });
 
-  it("gh pr create failure hands off with the stderr detail", async () => {
+  it("gh pr create failure hands off with the stderr detail — FAILURE-shaped (MED-6)", async () => {
     const { exec } = scriptedExec({
       respond: (cmd, args) => {
         if (cmd === "gh" && args[1] === "list") return { stdout: "[]" };
@@ -236,6 +236,157 @@ describe("defaultTail", () => {
     });
     const r = await defaultTail(ITEM, ctx(exec));
     expect(r.outcome).toBe("handed-off");
-    if (r.outcome === "handed-off") expect(r.detail).toContain("not logged in");
+    if (r.outcome === "handed-off") {
+      expect(r.detail).toContain("not logged in");
+      expect(r.kind).toBe("handed-off-failure");
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MED-5: ALL runs for the head SHA gate the merge — a green workflow must
+// not shadow a red/running sibling. MED-6: hand-off kinds route the driver's
+// systemic rail.
+// ---------------------------------------------------------------------------
+
+function run(over: Partial<{ databaseId: number; status: string; conclusion: string | null; workflowName: string; headSha: string }>) {
+  return {
+    databaseId: 1,
+    status: "completed",
+    conclusion: "success",
+    url: "https://ci/x",
+    headSha: "a".repeat(40),
+    workflowName: "devx-ci",
+    ...over,
+  };
+}
+
+describe("defaultTail — multi-run CI gate (MED-5)", () => {
+  it("lists runs with --limit 20 (not 1)", async () => {
+    withWorkflows();
+    const { exec, calls } = scriptedExec(ghHappyPath());
+    await defaultTail(ITEM, ctx(exec));
+    const list = calls.find((c) => c.cmd === "gh" && c.args[0] === "run" && c.args[1] === "list")!;
+    const limitIdx = list.args.indexOf("--limit");
+    expect(list.args[limitIdx + 1]).toBe("20");
+  });
+
+  it("green + RED for the same head SHA ⇒ handed off (ok kind), never merged", async () => {
+    withWorkflows();
+    const { exec, calls } = scriptedExec(
+      ghHappyPath({
+        runList: JSON.stringify([
+          run({ databaseId: 1, workflowName: "lint", conclusion: "success" }),
+          run({ databaseId: 2, workflowName: "test", conclusion: "failure" }),
+        ]),
+      }),
+    );
+    const r = await defaultTail(ITEM, ctx(exec));
+    expect(r.outcome).toBe("handed-off");
+    if (r.outcome === "handed-off") {
+      expect(r.detail).toContain("'failure'");
+      expect(r.detail).toContain("test"); // names the red workflow
+      expect(r.kind).toBe("handed-off-ok"); // a deliberate red = the system worked
+    }
+    expect(calls.some((c) => c.cmd === "gh" && c.args[1] === "merge")).toBe(false);
+  });
+
+  it("green + RUNNING ⇒ keeps polling; merges only once every run is green", async () => {
+    withWorkflows();
+    let probes = 0;
+    const base = ghHappyPath();
+    const { exec, calls } = scriptedExec({
+      respond: (cmd, args) => {
+        if (cmd === "gh" && args[0] === "run" && args[1] === "list") {
+          probes++;
+          return {
+            stdout: JSON.stringify(
+              probes < 3
+                ? [
+                    run({ databaseId: 1, workflowName: "lint" }),
+                    run({ databaseId: 2, workflowName: "test", status: "in_progress", conclusion: null }),
+                  ]
+                : [
+                    run({ databaseId: 1, workflowName: "lint" }),
+                    run({ databaseId: 2, workflowName: "test", conclusion: "success" }),
+                  ],
+            ),
+          };
+        }
+        return base.respond(cmd, args);
+      },
+    });
+    const r = await defaultTail(ITEM, ctx(exec, { ciTimeoutMs: 5_000, ciPollMs: 1 }));
+    expect(probes).toBeGreaterThanOrEqual(3);
+    expect(r.outcome).toBe("merged");
+    expect(calls.some((c) => c.cmd === "gh" && c.args[1] === "merge")).toBe(true);
+  });
+
+  it("green + running forever ⇒ FAILURE-shaped hand-off at the poll ceiling", async () => {
+    withWorkflows();
+    const { exec } = scriptedExec(
+      ghHappyPath({
+        runList: JSON.stringify([
+          run({ databaseId: 1, workflowName: "lint" }),
+          run({ databaseId: 2, workflowName: "test", status: "in_progress", conclusion: null }),
+        ]),
+      }),
+    );
+    const r = await defaultTail(ITEM, ctx(exec, { ciTimeoutMs: 5, ciPollMs: 1 }));
+    expect(r.outcome).toBe("handed-off");
+    if (r.outcome === "handed-off") {
+      expect(r.detail).toMatch(/did not complete/);
+      expect(r.kind).toBe("handed-off-failure");
+    }
+  });
+
+  it("runs for a DIFFERENT head SHA don't gate (stale runs ignored; polls until ceiling)", async () => {
+    withWorkflows();
+    const { exec } = scriptedExec(
+      ghHappyPath({
+        runList: JSON.stringify([
+          run({ databaseId: 1, conclusion: "failure", headSha: "b".repeat(40) }),
+        ]),
+      }),
+    );
+    const r = await defaultTail(ITEM, ctx(exec, { ciTimeoutMs: 5, ciPollMs: 1 }));
+    // The red run is for an older commit — it neither fails nor passes THIS
+    // push; with no runs for our sha the tail waits and then hands off.
+    expect(r.outcome).toBe("handed-off");
+    if (r.outcome === "handed-off") {
+      expect(r.detail).toContain("no-runs-for-head-sha");
+      expect(r.kind).toBe("handed-off-failure");
+    }
+  });
+
+  it("gh run list exiting non-zero is a FAILURE-shaped hand-off (probe throw ≈ outage)", async () => {
+    withWorkflows();
+    const base = ghHappyPath();
+    const { exec } = scriptedExec({
+      respond: (cmd, args) => {
+        if (cmd === "gh" && args[0] === "run") return { exitCode: 4, stderr: "connection refused" };
+        return base.respond(cmd, args);
+      },
+    });
+    const r = await defaultTail(ITEM, ctx(exec));
+    expect(r.outcome).toBe("handed-off");
+    if (r.outcome === "handed-off") {
+      expect(r.detail).toContain("CI probe failed");
+      expect(r.kind).toBe("handed-off-failure");
+    }
+  });
+
+  it("hold + merge-gate refusals are OK-shaped hand-offs (deliberate signals reset the rail)", async () => {
+    withWorkflows();
+    const hold = await defaultTail(
+      ITEM,
+      ctx(scriptedExec(ghHappyPath({ holdBody: '{"comments":[{"body":"devx: hold"}],"reviews":[]}' })).exec),
+    );
+    expect(hold.outcome).toBe("handed-off");
+    if (hold.outcome === "handed-off") expect(hold.kind).toBe("handed-off-ok");
+
+    const gated = await defaultTail(ITEM, ctx(scriptedExec(ghHappyPath()).exec, { mode: "LOCKDOWN" }));
+    expect(gated.outcome).toBe("handed-off");
+    if (gated.outcome === "handed-off") expect(gated.kind).toBe("handed-off-ok");
   });
 });
