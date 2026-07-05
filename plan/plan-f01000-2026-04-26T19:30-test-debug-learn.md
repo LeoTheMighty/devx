@@ -3,7 +3,7 @@ hash: f01000
 type: plan
 created: 2026-04-26T19:30:00-07:00
 title: "Phase 5 — Test, debug, retro, learn"
-status: deferred
+status: blocked
 from: docs/ROADMAP.md#phase-5--test-debug-retro-learn-week-56
 spawned: []
 mode: YOLO
@@ -43,3 +43,4 @@ To be elicited by `/devx-plan` when this plan is claimed. Cross-references [`SEL
 ## Status log
 
 - 2026-04-26T19:30 — Phase 5 placeholder created
+- 2026-07-05T13:50 — status normalized 'deferred' → 'blocked' (canonical checkbox vocabulary; drift surfaced by devx next).

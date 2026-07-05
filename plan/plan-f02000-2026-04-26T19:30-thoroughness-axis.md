@@ -3,7 +3,7 @@ hash: f02000
 type: plan
 created: 2026-04-26T19:30:00-07:00
 title: "Cross-cutting — thoroughness axis wiring"
-status: deferred
+status: blocked
 from: docs/DESIGN.md#thoroughness-levels
 spawned: []
 mode: YOLO
@@ -37,3 +37,4 @@ To be elicited by `/devx-plan` when this plan is claimed.
 ## Status log
 
 - 2026-04-26T19:30 — Cross-cutting placeholder created
+- 2026-07-05T13:50 — status normalized 'deferred' → 'blocked' (canonical checkbox vocabulary; drift surfaced by devx next).

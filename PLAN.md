@@ -11,7 +11,7 @@ Conventions per [`docs/DESIGN.md § Checkbox conventions`](./docs/DESIGN.md#chec
 Each maps to a phase in [`ROADMAP.md`](./docs/ROADMAP.md). Pick one off the top once its blockers clear; `/devx-plan` expands it into `dev/*.md` sub-specs that flow into `DEV.md`.
 
 - [x] `plan/plan-a01000-2026-04-26T19:30-foundation.md` — Phase 0 — Foundation (`/devx-init`, config schema, OS supervisor scaffolds, CLI skeleton, BMAD audit). Status: planned (25 dev specs spawned across 5 epics; tracked in DEV.md § Phase 0). Blocked-by: —.
-- [-] `plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md` — Phase 1 — Single-agent core loop (`/devx-plan`, `/devx`, minimal `/devx-manage`). Status: deferred. Blocked-by: a01000.
+- [x] `plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md` — Phase 1 — Single-agent core loop (`/devx-plan`, `/devx`, minimal `/devx-manage`). Status: done (closed 2026-07-05, 5/5 epics). Blocked-by: a01000.
 - ~~`plan/plan-c4f1a2-2026-04-26T19:00-control-plane.md` — Phase 2 — Full control plane.~~ Status: superseded 2026-07-05 — scope absorbed by the v2 migration (`v2/04-overnight-loop.md` + `v2/05-dispatcher.md`; restart-from-status-log falls out of the iteration contract). Kept for audit.
 
 ## v2 — Native engine migration (2026-07-05)
@@ -34,4 +34,4 @@ Independent of phase sequencing — pick up once their named blockers clear.
 
 ## Mobile (Phase 8 — runs parallel from Phase 2 onward)
 
-- [/] `plan/plan-7a2d1f-2026-04-23T13:00-mobile-companion-v01.md` — Mobile companion v0.1 → real-time. Status: in-planning (epics + stories already emitted to DEV.md; mobile-v0.1 through mobile-v1.0 sub-roadmap inside the plan file).
+- [/] `plan/plan-7a2d1f-2026-04-23T13:00-mobile-companion-v01.md` — Mobile companion v0.1 → real-time. Status: in-planning (frontmatter-aligned; epics + stories already emitted to DEV.md; mobile-v0.1 through mobile-v1.0 sub-roadmap inside the plan file).

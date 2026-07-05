@@ -3,7 +3,7 @@ hash: a03000
 type: plan
 created: 2026-04-26T19:30:00-07:00
 title: "Cross-cutting — realtime stream + Live Activities (mobile v0.3.5)"
-status: deferred
+status: blocked
 from: docs/MOBILE.md#realtime-updates--three-tier-architecture
 spawned: []
 mode: YOLO
@@ -39,3 +39,4 @@ To be elicited by `/devx-plan` when this plan is claimed.
 ## Status log
 
 - 2026-04-26T19:30 — Cross-cutting placeholder created
+- 2026-07-05T13:50 — status normalized 'deferred' → 'blocked' (canonical checkbox vocabulary; drift surfaced by devx next).

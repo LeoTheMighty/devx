@@ -3,7 +3,7 @@ hash: 7a2d1f
 type: plan
 created: 2026-04-23T13:00:00-07:00
 title: Mobile companion v0.1 through real-time sync
-status: in-planning
+status: in-progress
 spawned:
   - _bmad-output/planning-artifacts/epic-flutter-scaffold-ios-device.md
   - _bmad-output/planning-artifacts/epic-github-connection-read.md
@@ -27,3 +27,4 @@ Ship the devx Flutter companion app end-to-end: scaffold → on-device iOS insta
 - 2026-04-23T13:00 — party-mode run per epic (team lenses)
 - 2026-04-23T13:00 — focus-group SKIPPED (YOLO mode)
 - 2026-04-23T13:00 — readiness check clean
+- 2026-07-05T13:50 — status normalized 'in-planning' → 'in-progress' (canonical checkbox vocabulary; drift surfaced by devx next).

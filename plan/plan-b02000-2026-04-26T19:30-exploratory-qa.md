@@ -3,7 +3,7 @@ hash: b02000
 type: plan
 created: 2026-04-26T19:30:00-07:00
 title: "Phase 7 — Exploratory QA: browser-use subprocesses"
-status: deferred
+status: blocked
 from: docs/ROADMAP.md#phase-7--exploratory-qa-week-78
 spawned: []
 mode: YOLO
@@ -42,3 +42,4 @@ To be elicited by `/devx-plan` when this plan is claimed.
 ## Status log
 
 - 2026-04-26T19:30 — Phase 7 placeholder created
+- 2026-07-05T13:50 — status normalized 'deferred' → 'blocked' (canonical checkbox vocabulary; drift surfaced by devx next).

@@ -3,7 +3,7 @@ hash: e01000
 type: plan
 created: 2026-04-26T19:30:00-07:00
 title: "Phase 4 — Observability surfaces: TUI, web dashboard, mobile relay"
-status: deferred
+status: blocked
 from: docs/ROADMAP.md#phase-4--observability-surfaces-week-45-parallel-with-phase-5
 spawned: []
 mode: YOLO
@@ -41,3 +41,4 @@ To be elicited by `/devx-plan` when this plan is claimed. Architecture decisions
 ## Status log
 
 - 2026-04-26T19:30 — Phase 4 placeholder created
+- 2026-07-05T13:50 — status normalized 'deferred' → 'blocked' (canonical checkbox vocabulary; drift surfaced by devx next).

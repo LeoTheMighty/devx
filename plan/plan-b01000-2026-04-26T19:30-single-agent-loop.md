@@ -3,7 +3,7 @@ hash: b01000
 type: plan
 created: 2026-04-26T19:30:00-07:00
 title: "Phase 1 — Single-agent core loop: /devx-plan + /devx + minimal /devx-manage"
-status: in-planning
+status: done
 from: docs/ROADMAP.md#phase-1--single-agent-core-loop-week-2
 spawned:
   - mrg101
@@ -77,3 +77,4 @@ Elicited by `/devx-plan` on 2026-04-28 — 5 epics + 24 parent stories + 5 retro
 
 - 2026-04-26T19:30 — Phase 1 placeholder created
 - 2026-04-28T19:30 — claimed by /devx-plan; expanded into 5 epics (epic-merge-gate-modes, epic-pr-template, epic-devx-plan-skill, epic-devx-skill, epic-devx-manage-minimal) + 24 parent stories + 5 retros. PRD addendum + epics.md addendum + DEV.md Phase 1 section + sprint-status plan-b01000 entry all written. Status: deferred → in-planning. Q1=(c) merge-gate-modes rename + unified primitive; Q2=(c) bmad-create-story conditional + canary; Q3=hard-cap N=1.
+- 2026-07-05T13:45 — status reconciled to done (drift surfaced by devx next first live run; phase shipped long since).
