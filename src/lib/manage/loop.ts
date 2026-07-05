@@ -546,12 +546,17 @@ function blockSpecFile(
  * line YAML scalars (`status: |\n  blocked`) are out of scope; logging the
  * miss to stderr would be noisy — the spec author can fix the frontmatter
  * shape if they hit this. EC-H5 acknowledged.
+ *
+ * Exported for v2l101's loop driver (abandon-item flips the spec to
+ * `blocked` with the exact same discipline) — wrap-don't-duplicate.
  */
-function replaceFrontmatterStatus(content: string, value: string): string {
+export function replaceFrontmatterStatus(content: string, value: string): string {
   // Match leading `---\n...---\n` with `s` flag (dotAll) for multi-line
   // body. The frontmatter must START at the file head — a body `---` that
-  // isn't preceded by a frontmatter is correctly NOT matched.
-  const fmRe = /^(---\n)([\s\S]*?)(\n---\n)/;
+  // isn't preceded by a frontmatter is correctly NOT matched. CRLF-tolerant
+  // (`\r?\n`) so a Windows-editor-saved spec still flips (v2l101 EC-MED-5);
+  // a status line's own trailing `\r` survives via the `(.*)` capture.
+  const fmRe = /^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n)/;
   const m = fmRe.exec(content);
   if (!m) return content;
   const [, head, body, tail] = m;
@@ -564,7 +569,13 @@ function replaceFrontmatterStatus(content: string, value: string): string {
   return head + newBody + tail + content.slice(m[0].length);
 }
 
-function flipDevMdCheckbox(devMdPath: string, hash: string): void {
+/**
+ * Flip the backlog row for `hash` to `[-]` (blocked). Only flips `[ ]`,
+ * `[/]`, or already-`[-]` rows — `[x]` (merged) is never clobbered. Also
+ * exported for v2l101's loop driver (abandon-item). The path parameter
+ * takes any backlog file (DEV.md or DEBUG.md — the row shape is identical).
+ */
+export function flipDevMdCheckbox(devMdPath: string, hash: string): void {
   let content: string;
   try {
     content = readFileSync(devMdPath, "utf8");
