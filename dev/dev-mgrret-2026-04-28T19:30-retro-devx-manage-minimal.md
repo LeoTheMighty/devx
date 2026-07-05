@@ -5,7 +5,8 @@ created: 2026-04-28T19:30:00-07:00
 title: Retro + LEARN.md updates (interim retro discipline)
 from: _bmad-output/planning-artifacts/epic-devx-manage-minimal.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: ready
+status: in-progress
+owner: /devx-2026-07-05T0953-22651
 blocked_by: [mgr101, mgr102, mgr103, mgr104, mgr105, mgr106]
 branch: feat/dev-mgrret
 ---
@@ -31,3 +32,4 @@ Run `bmad-retrospective` on epic-devx-manage-minimal; append findings to `LEARN.
 ## Status log
 
 - 2026-04-28T19:30 — created by /devx-plan
+- 2026-07-05T09:53:40-06:00 — claimed by /devx in session /devx-2026-07-05T0953-22651

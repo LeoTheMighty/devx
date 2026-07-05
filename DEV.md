@@ -119,7 +119,7 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-mgr104-2026-04-28T19:30-manage-spawn-worker.md` — Spawn one worker (hard cap N=1) + claude /devx <hash> subprocess. Status: done. Blocked-by: mgr103. PR: https://github.com/LeoTheMighty/devx/pull/56 (merged 3be0b9f).
 - [x] `dev/dev-mgr105-2026-04-28T19:30-manage-crash-restart.md` — Plain-crash restart logic + max-restarts-per-spec gate. Status: done. Blocked-by: mgr104. PR: https://github.com/LeoTheMighty/devx/pull/57 (merged f64dddc).
 - [x] `dev/dev-mgr106-2026-04-28T19:30-manage-lock-heartbeat.md` — Manager lock + heartbeat + SIGTERM-clean. Status: done. Blocked-by: mgr101. PR: https://github.com/LeoTheMighty/devx/pull/58 (merged 1a0fff4).
-- [ ] `dev/dev-mgrret-2026-04-28T19:30-retro-devx-manage-minimal.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: mgr101, mgr102, mgr103, mgr104, mgr105, mgr106.
+- [/] `dev/dev-mgrret-2026-04-28T19:30-retro-devx-manage-minimal.md` — Retro + LEARN.md updates (interim retro discipline). Status: in-progress. Blocked-by: mgr101, mgr102, mgr103, mgr104, mgr105, mgr106.
 
 ### Follow-ups filed during Phase 1 retros
 - [ ] `dev/dev-roc101-2026-05-07T08:50-devx-resume-owner-check.md` — /devx Phase 1 resume-detection: `devx devx-helper verify-claim <hash>` + skill-body wire-up. Status: ready. From: dvxret (LEARN.md § epic-devx-skill E13). Blocked-by: dvxret. Load-bearing for mgr104's worker-spawn discipline; stopgap docs change applied in dvxret PR (CLAUDE.md "Working agreements" — "Verify claim ownership before resuming").
