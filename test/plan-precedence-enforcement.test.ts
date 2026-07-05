@@ -106,7 +106,7 @@ function precedenceFixture(opts: {
 - [ ] AC depends on the override target.
 
 ### fixret — Retro
-- [ ] Run bmad-retrospective.
+- [ ] Run the native retro stage.
 
 ## Status log
 

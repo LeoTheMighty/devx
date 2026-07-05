@@ -263,7 +263,7 @@ Every agent class maps 1:1 to a slash command, but the slash commands can also b
 - Input: next item in `TEST.md`.
 - Work: author unit/integration/**scripted Playwright** tests, enforce 100% coverage on touched surface.
 - Output: merged test code, regression items appended to `DEBUG.md` when a test reveals a bug.
-- Leans on the BMAD `tea` module (test architecture) for strategy, ATDD, trace, NFR.
+- Test-strategy discipline (ATDD, trace, NFR) is designed natively when this agent lands — see `v2/07-decisions.md` O-4. (The BMAD-era plan leaned on the `tea` module; that module was ejected with the v2 migration and is explicitly *not* the template.)
 - **Does not** run exploratory browser QA — that's `/devx-focus`'s job via a subprocess LLM-driven browser agent. See [`QA.md`](./QA.md) for the Layer 1 / Layer 2 split.
 
 ### `DebugAgent` — `/devx-debug`
@@ -277,7 +277,7 @@ Every agent class maps 1:1 to a slash command, but the slash commands can also b
 - **Simulated mode:** consults the persistent persona panel in `focus-group/personas/` about a proposed change. Invoked during `/devx-plan` after party-mode, before `develop → main` promotion, and on demand.
 - **Empirical mode:** ingests real user telemetry + `INTERVIEW.md` answers + explicit feedback + `qa/*.md` results from exploratory browser runs; synthesizes patterns, cross-references with panel predictions, and evolves persona reaction libraries.
 - **Output:** `focus-group/sessions/session-*.md` (per consultation), rolling summary in `FOCUS.md`, new items in `DEV.md`/`DEBUG.md`/`INTERVIEW.md`, persona edits queued in `LESSONS.md`.
-- Built on BMAD's `advanced-elicitation` "User Persona Focus Group" method (method #4) as the interaction primitive. Browser QA subprocess-spawned per [`QA.md`](./QA.md); persona prompts for QA seeded directly from `focus-group/personas/*.md`.
+- The interaction primitive (reactions → concerns → priorities panel flow) was seeded from BMAD's "User Persona Focus Group" elicitation method and is now a native devx prompt under `focus-group/prompts/`. Browser QA subprocess-spawned per [`QA.md`](./QA.md); persona prompts for QA seeded directly from `focus-group/personas/*.md`.
 - Full contract: [`FOCUS_GROUP.md`](./FOCUS_GROUP.md).
 
 ### `LearnAgent` — `/devx-learn`
@@ -652,7 +652,7 @@ Each link in the chain is a frontmatter field (`from:`, `spawned:`) plus a `git 
 
 ## The `/devx-init` experience
 
-This is where most users will form their first impression of devx. Raw BMAD's full menu is overwhelming for a first-time user. `/devx-init` must be the **simple guy to talk to** — a 5-question interview that gets you on the rails without forcing you to understand PRD vs. architecture vs. sprint-status on day one.
+This is where most users will form their first impression of devx. A wall of agents and workflow menus is overwhelming for a first-time user (the BMAD-era menu was the cautionary example). `/devx-init` must be the **simple guy to talk to** — a 5-question interview that gets you on the rails without forcing you to understand PRD vs. design vs. plan stages on day one.
 
 ### The 8 questions
 
@@ -660,14 +660,14 @@ This is where most users will form their first impression of devx. Raw BMAD's fu
 2. **Who are you building it for?** — free-form archetypes, or "propose some." Drives focus-group panel creation ([`FOCUS_GROUP.md`](./FOCUS_GROUP.md)). `/devx-init` expands answers into 4–6 full persona profiles under `focus-group/personas/` before finishing, so the panel is ready the moment `/devx-plan` starts.
 3. **Is any user's data in this project something you'd feel bad losing?** — "no" / "a few beta users" / "yes, real users." Sets risk **mode** ([`MODES.md`](./MODES.md)): YOLO / BETA / PROD. Detected existing repos with production signals default to PROD and ask for confirmation.
 4. **What shape is this project in?** — empty-dream / bootstrapped-rewriting / mature-refactor-and-add / mature-yolo-rewrites / production-careful. Sets `project.shape` ([§ Project shapes](#project-shapes-orthogonal-to-mode)). Detected from repo state when not asked.
-5. **Solo or team?** — solo, small team, shipping to end users, internal tool. Shapes which BMAD personas get prioritized and whether onboarding primitives for a second dev are scaffolded.
+5. **Solo or team?** — solo, small team, shipping to end users, internal tool. Shapes which critique lenses get prioritized and whether onboarding primitives for a second dev are scaffolded.
 6. **Stack?** — optional but useful. Detected automatically from an existing repo (package.json, Cargo.toml, pubspec.yaml, …). If empty repo, ask.
 7. **Infra preferences?** — GitHub Actions vs. other CI, Playwright vs. other browser harness, logs/metrics provider (or "wire later"). Defaults are opinionated: GitHub Actions, Playwright, "wire later" for observability.
 8. **What's the first slice?** — one sentence about the first shippable thing. This becomes the first spec file in `DEV.md`, so the user can immediately run `/devx` and see the loop work end-to-end.
 
 ### What it sets up
 
-- BMAD install (`core` + `bmm` + `tea`).
+- Engine scaffold — the packaged stage templates copied into `_devx/` (the engine is native to the devx package; no framework install).
 - Eight backlog files + the six spec subdirectories.
 - `focus-group/` directory with `personas/`, `sessions/`, `prompts/`, and `index.md` (see [`FOCUS_GROUP.md`](./FOCUS_GROUP.md)).
 - `.github/workflows/devx.yml` with lint + test + coverage gates.
@@ -722,16 +722,11 @@ Same command, different intake:
 │   ├── personas/
 │   ├── sessions/
 │   └── prompts/
-├── _bmad/                 ← BMAD framework (don't edit)
-├── _bmad-output/          ← BMAD-generated planning + implementation artifacts
-│   ├── planning-artifacts/
-│   │   ├── prd.md
-│   │   ├── architecture.md
-│   │   ├── epics.md
-│   │   └── epic-*.md
-│   └── implementation-artifacts/
-│       ├── sprint-status.yaml
-│       └── story-*.md
+├── _devx/                 ← engine assets (shipped by the devx package)
+│   ├── workstreams/       ← per-workstream artifacts (prd, design, plan, evals…)
+│   ├── templates/engine/  ← stage templates
+│   └── config-schema.json
+├── _bmad-output/          ← frozen BMAD-era archive, if the repo predates v2 (read-only)
 ├── .worktrees/            ← live agent worktrees (gitignored)
 ├── .devx-cache/           ← telemetry snapshots, tool caches (gitignored)
 ├── .github/workflows/
@@ -757,14 +752,14 @@ devx/
 
 ---
 
-## Relationship to BMAD output artifacts
+## Relationship to workstream artifacts (v2 engine)
 
-`_bmad-output/planning-artifacts/` and `_bmad-output/implementation-artifacts/` are still the source of truth for **detailed** planning — the full PRD, the architecture diagrams, the sprint-status yaml. devx's backlog files are a **lightweight index** on top of them.
+`_devx/workstreams/<slug>/` is the source of truth for **detailed** planning — the full prd.md, expectations.md, design.md, plan.md, and RED-gate evals per workstream (see `v2/02-engine.md` §3). devx's backlog files are a **lightweight index** on top of them.
 
-- A `PLAN.md` entry points at `plan/plan-9c1d4a-epic-auth.md`, which in turn references `_bmad-output/planning-artifacts/epic-auth.md` (the big BMAD-shaped epic file).
-- A `DEV.md` entry points at `dev/dev-a3f2b9-*.md`, which in turn references `_bmad-output/implementation-artifacts/story-a3f2b9.md` (the big BMAD-shaped story file).
+- A `PLAN.md` entry points at `plan/plan-9c1d4a-epic-auth.md` (the workstream's index node), whose artifacts live in `_devx/workstreams/epic-auth/`.
+- A `DEV.md` entry points at `dev/dev-a3f2b9-*.md`, whose ACs are the working artifact for execution (one plan phase ≙ one dev spec ≙ one PR).
 
-This split exists because BMAD's artifacts are information-dense (good for agents doing the work) but hard to scan at a glance (bad for triage). The devx spec files are scan-first; the BMAD artifacts are the full details.
+This split exists because planning artifacts are information-dense (good for agents doing the work) but hard to scan at a glance (bad for triage). The devx spec files are scan-first; the workstream artifacts are the full details. *(Pre-v2, the detailed artifacts were BMAD-shaped files under `_bmad-output/` — that directory is now a frozen archive; links in shipped specs keep resolving.)*
 
 ---
 
@@ -1006,7 +1001,7 @@ The trust-gradient is only credible if the user has primitives to inspect and in
 - `devx status` — summary: active agents, pending backlogs per file, usage headroom, heartbeat age.
 - `devx pause` / `devx resume` — pause Manager (lets in-flight workers finish, blocks new spawns).
 - `devx config <key> [value]` — get/set config keys (writes to `devx.config.yaml`). Full key reference: [`CONFIG.md`](./CONFIG.md).
-- `devx eject` — uninstalls devx-specific state (`.devx-cache/`, `.worktrees/`, devx slash commands) while leaving backlogs, spec files, and BMAD artifacts intact. Lock-in escape hatch.
+- `devx eject` — uninstalls devx-specific state (`.devx-cache/`, `.worktrees/`, devx slash commands) while leaving a working repo with readable history, backlogs, specs, and workstream artifacts (D-2). Lock-in escape hatch.
 
 ## Line-level touched-surface coverage
 
@@ -1020,7 +1015,7 @@ gate = (len(covered_touched) / len(touched_lines)) >= 1.00
 
 Opt-out per line: `# devx:no-coverage <reason>` (or language-appropriate comment prefix).
 
-Auto-detected flaky tests: any test that fails then passes within 24h on the same commit triggers a `TEST.md` entry invoking the TEA `testarch-test-review` workflow.
+Auto-detected flaky tests: any test that fails then passes within 24h on the same commit triggers a `TEST.md` entry for a test-quality review pass.
 
 ## Fast-ship vs. careful promotion gates
 
@@ -1046,12 +1041,12 @@ When `user_edits > lesson_applications`, adds a soft signal to `MANUAL.md`:
 
 Prevents the failure mode where the user becomes the tuning layer instead of the product-building layer.
 
-## Contract between devx and BMAD
+## The engine contract (formerly "Contract between devx and BMAD")
 
-devx treats BMAD as a library, not a cage. Specifically:
+The engine is native and ships in the devx package (`v2/02-engine.md`); markdown + git are ground truth; `devx eject` leaves a working repo with readable history, backlogs, specs, and workstream artifacts (`v2/07-decisions.md` D-2). Specifically:
 
-- devx commands **invoke BMAD workflows** (`workflow.xml`, `create-prd/workflow.yaml`, `dev-story/workflow.yaml`, etc.) the same way `/dev` and `/dev-plan` do today.
-- devx **does not modify** files under `_bmad/`. BMAD upgrades are safe.
-- devx **reads and writes** `_bmad-output/` in the same shape BMAD does. If you stopped using devx tomorrow, raw BMAD commands would still work against your artifacts.
+- devx commands drive the native stage pipeline (PRD → Design → Plan → RED → Execute → Verify) via `devx` CLI gates + thin skill bodies — nothing proprietary sits in the loop.
+- Every artifact the engine produces is a plain markdown/yaml file in the repo; if you stopped using devx tomorrow, any human or agent could still read and continue from them.
+- `_bmad-output/`, where present, is a frozen archive from the BMAD era (Phases 0–1, when devx invoked BMAD workflows as a library — see `v2/01-bmad-capture.md`). It is never read or written by v2 code.
 
-This is the escape hatch: if devx is the wrong shape for a particular project, users can fall back to raw `/bmad-*` commands without losing any work.
+This is the escape hatch: if devx is the wrong shape for a particular project, `devx eject` removes the tooling and loses no work.

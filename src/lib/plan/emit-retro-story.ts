@@ -1,21 +1,19 @@
 // Pure helpers + atomic-emit driver for the per-epic retro story emitted by
-// `/devx-plan` Phase 5 (pln102). Closes the LEARN.md cross-epic regression
-// where Phase 0 had to hand-backfill `*ret` rows into sprint-status.yaml in
-// every retro PR (5/5 retros — see CLAUDE.md "How /devx runs" + LEARN.md
-// cross-epic patterns row "retros-absent-from-sprint-status").
+// `/devx-plan` Phase 5 (pln102; retargeted by v2x101).
 //
 // Two surfaces:
 //
 //   emitRetroStory(epicSlug, parentHashes, opts)
-//     Pure. Returns {specPath, specBody, devMdRow, sprintStatusRow}. No I/O.
-//     Goes through every test in plan-emit-retro-story.test.ts without
-//     touching disk.
+//     Pure. Returns {specPath, specBody, devMdRow}. No I/O. Goes through
+//     every test in plan-emit-retro-story.test.ts without touching disk.
 //
 //   writeRetroAtomically(emit, opts)
 //     I/O driver. Implements epic locked-decision #7 from
-//     `_bmad-output/planning-artifacts/epic-devx-plan-skill.md`:
-//       (a) write all three to *.tmp files first
-//       (b) rename in fixed order: spec → DEV.md → sprint-status.yaml
+//     `_bmad-output/planning-artifacts/epic-devx-plan-skill.md` (narrowed
+//     by v2x101 D-7 — sprint-status.yaml is retired; the frozen copy in
+//     `_bmad-output/` is never written again):
+//       (a) write both artifacts to *.tmp files first
+//       (b) rename in fixed order: spec → DEV.md
 //       (c) on any rename failure the prior renames are committed; the
 //           partial state is logged to stderr as "WARN: retro emission
 //           partial — manually verify <missing>". Don't delete partial
@@ -26,7 +24,11 @@
 // skill body, mirroring the mrg102 → merge-gate / pln101 → derive-branch
 // pattern).
 //
+// The retro spec's ACs point at the native retro stage — `/devx retro`,
+// the `## Stage: Retro` section in `.claude/commands/devx.md` (v2x101 D-3).
+//
 // Spec: dev/dev-pln102-2026-04-28T19:30-plan-emit-retro.md
+// Spec: dev/dev-v2x101 (execute re-home + ejection; full filename under dev/)
 
 import {
   existsSync,
@@ -79,10 +81,6 @@ export interface EmitRetroStoryResult {
   /** Single line to append under the matching epic in DEV.md (no leading
    *  or trailing newline; the writer adds the newline boundary). */
   devMdRow: string;
-  /** YAML chunk to insert under the epic's stories: list in
-   *  sprint-status.yaml. Four lines, 10/12-space indented to match the
-   *  existing structure. No trailing newline. */
-  sprintStatusRow: string;
 }
 
 const RETRO_TITLE = "Retro + LEARN.md updates (interim retro discipline)";
@@ -150,9 +148,8 @@ export function emitRetroStory(
     thoroughness: opts.thoroughness,
   });
   const devMdRow = `- [ ] \`${specPath}\` — ${RETRO_TITLE}. Status: ready. Blocked-by: ${parentHashes.join(", ")}.`;
-  const sprintStatusRow = renderSprintStatusRow(retroHash, parentHashes);
 
-  return { specPath, specBody, devMdRow, sprintStatusRow };
+  return { specPath, specBody, devMdRow };
 }
 
 interface RenderSpecOpts {
@@ -168,12 +165,18 @@ interface RenderSpecOpts {
 }
 
 function renderSpecBody(o: RenderSpecOpts): string {
+  // `from:` = the plan spec that spawned this retro (v2x101: the old
+  // `_bmad-output/planning-artifacts/epic-<slug>.md` parent pointer dangled
+  // forever post-ejection — no new epic file is ever written to the frozen
+  // archive). `plan:` intentionally repeats it: `from` is the request-history
+  // parent link, `plan` is the planning-artifact pointer; for retros both
+  // point at the same plan spec.
   return `---
 hash: ${o.retroHash}
 type: dev
 created: ${o.iso}
 title: ${RETRO_TITLE}
-from: _bmad-output/planning-artifacts/epic-${o.epicSlug}.md
+from: ${o.planPath}
 plan: ${o.planPath}
 status: ready
 blocked_by: [${o.parentHashes.join(", ")}]
@@ -182,17 +185,16 @@ branch: ${o.branch}
 
 ## Goal
 
-Run \`bmad-retrospective\` on epic-${o.epicSlug}; append findings to \`LEARN.md § epic-${o.epicSlug}\`.
+Run the native retro stage (\`/devx retro\` — the \`## Stage: Retro\` section of \`.claude/commands/devx.md\`) on epic-${o.epicSlug}; append findings to \`LEARN.md § epic-${o.epicSlug}\`.
 
 ## Acceptance criteria
 
-- [ ] \`bmad-retrospective\` invoked against shipped stories (${o.parentHashes.join(", ")}).
+- [ ] \`/devx retro\` stage run against shipped stories (${o.parentHashes.join(", ")}).
 - [ ] Findings appended to \`LEARN.md § epic-${o.epicSlug}\` (create section if absent).
 - [ ] Each finding tagged \`[confidence]\` (low/med/high) + \`[blast-radius]\` (memory/skill/template/config/docs/code).
 - [ ] Low-blast findings applied in retro PR.
 - [ ] Higher-blast findings filed as MANUAL.md or new specs.
 - [ ] Cross-epic patterns hitting ≥3 retros total promoted into \`LEARN.md § Cross-epic patterns\`.
-- [ ] Sprint-status row for \`${o.retroHash}\` present (this row is emitted at planning time by pln102; /devx flips status to done at Phase 8.6 cleanup).
 
 ## Technical notes
 
@@ -203,19 +205,6 @@ Run \`bmad-retrospective\` on epic-${o.epicSlug}; append findings to \`LEARN.md 
 
 - ${o.iso} — created by /devx-plan
 `;
-}
-
-function renderSprintStatusRow(
-  retroHash: string,
-  parentHashes: string[],
-): string {
-  // 10-space indent for `- key:`, 12-space indent for sub-fields. Matches the
-  // existing sprint-status.yaml structure (every story row in the file uses
-  // these exact indents — see e.g. `mrgret` block lines 283-286).
-  return `          - key: ${retroHash}
-            title: ${RETRO_TITLE}
-            status: backlog
-            blocked_by: [${parentHashes.join(", ")}]`;
 }
 
 interface FormattedTs {
@@ -289,9 +278,6 @@ export interface AtomicEmitOpts {
   repoRoot: string;
   /** Repo-relative path to DEV.md (default "DEV.md"). */
   devMdPath?: string;
-  /** Repo-relative path to sprint-status.yaml (default
-   *  "_bmad-output/implementation-artifacts/sprint-status.yaml"). */
-  sprintStatusPath?: string;
   /** Test seam — inject failures at any fs op. Defaults to real node:fs. */
   fs?: Partial<AtomicEmitFs>;
   /** Test seam for stderr capture. */
@@ -299,35 +285,35 @@ export interface AtomicEmitOpts {
 }
 
 export interface AtomicEmitResult {
-  /** Absolute paths that successfully renamed (0..3). */
+  /** Absolute paths that successfully renamed (0..2). */
   written: string[];
   /** Absolute paths that didn't make it (only set if partial). */
   partial?: string[];
-  /** True iff all three artifacts landed. */
+  /** True iff both artifacts landed. */
   fullSuccess: boolean;
 }
 
 const DEFAULT_DEV_MD = "DEV.md";
-const DEFAULT_SPRINT_STATUS =
-  "_bmad-output/implementation-artifacts/sprint-status.yaml";
 
 /**
- * Write the three artifacts atomically per epic locked-decision #7.
+ * Write both artifacts atomically per epic locked-decision #7 (narrowed
+ * by v2x101 D-7: sprint-status.yaml is retired — the retro emission is
+ * spec + DEV.md row only).
  *
  * Sequencing:
- *   1. Compose all three target contents (read existing DEV.md +
- *      sprint-status.yaml, splice the new rows in textually, fail with a
- *      clear diagnostic if either insertion can't find the right anchor).
- *   2. writeFile to *.tmp paths for all three. If any of these throws,
+ *   1. Compose both target contents (read existing DEV.md, splice the new
+ *      row in textually, fail with a clear diagnostic if the insertion
+ *      can't find the right anchor).
+ *   2. writeFile to *.tmp paths for both. If any of these throws,
  *      clean up any .tmp files written so far and re-throw — no real
  *      file has changed yet, so this is a clean abort.
- *   3. Rename in fixed order: spec → DEV.md → sprint-status.yaml. If a
- *      rename throws, the prior renames are committed (better partial
- *      than zero); we emit a WARN to stderr listing every artifact that
- *      didn't land, leave its .tmp on disk for the operator to inspect,
- *      and return AtomicEmitResult{partial: [...]}. The pln102 spec
- *      explicitly accepts this trade-off (party-mode locked decision #7
- *      — see _bmad-output/planning-artifacts/epic-devx-plan-skill.md).
+ *   3. Rename in fixed order: spec → DEV.md. If a rename throws, the
+ *      prior renames are committed (better partial than zero); we emit
+ *      a WARN to stderr listing every artifact that didn't land, leave
+ *      its .tmp on disk for the operator to inspect, and return
+ *      AtomicEmitResult{partial: [...]}. The pln102 spec explicitly
+ *      accepts this trade-off (party-mode locked decision #7 — see
+ *      _bmad-output/planning-artifacts/epic-devx-plan-skill.md).
  */
 export function writeRetroAtomically(
   emit: EmitRetroStoryResult,
@@ -336,11 +322,9 @@ export function writeRetroAtomically(
   const fs: AtomicEmitFs = { ...realFs, ...(opts.fs ?? {}) };
   const err = opts.err ?? ((s: string) => process.stderr.write(s));
   const devMdRel = opts.devMdPath ?? DEFAULT_DEV_MD;
-  const sprintStatusRel = opts.sprintStatusPath ?? DEFAULT_SPRINT_STATUS;
 
   const specAbs = join(opts.repoRoot, emit.specPath);
   const devMdAbs = join(opts.repoRoot, devMdRel);
-  const sprintStatusAbs = join(opts.repoRoot, sprintStatusRel);
 
   // ---- 1) Compose target contents ----
   if (fs.exists(specAbs)) {
@@ -353,26 +337,13 @@ export function writeRetroAtomically(
       `writeRetroAtomically: DEV.md not found at ${devMdAbs}`,
     );
   }
-  if (!fs.exists(sprintStatusAbs)) {
-    throw new Error(
-      `writeRetroAtomically: sprint-status.yaml not found at ${sprintStatusAbs}`,
-    );
-  }
 
   const parentHashes = parseParentsFromDevMdRow(emit.devMdRow);
-  const epicSlug = parseEpicSlugFromSpecBody(emit.specBody);
 
   const devMdBefore = fs.readFile(devMdAbs);
   const devMdAfter = insertDevMdRow(devMdBefore, parentHashes, emit.devMdRow);
 
-  const sprintBefore = fs.readFile(sprintStatusAbs);
-  const sprintAfter = insertSprintStatusRow(
-    sprintBefore,
-    epicSlug,
-    emit.sprintStatusRow,
-  );
-
-  // ---- 2) Write all three .tmp files ----
+  // ---- 2) Write both .tmp files ----
   // PID + Date.now() alone collides if two emissions land in the same ms
   // (cheap to provoke under future Phase 2 ManageAgent parallelism, or in
   // a tight test loop). The 8-byte random suffix makes a collision
@@ -381,7 +352,6 @@ export function writeRetroAtomically(
   const tag = `${process.pid}.${Date.now()}.${randomBytes(4).toString("hex")}`;
   const specTmp = `${specAbs}.tmp.${tag}.spec`;
   const devMdTmp = `${devMdAbs}.tmp.${tag}.devmd`;
-  const sprintStatusTmp = `${sprintStatusAbs}.tmp.${tag}.sprint`;
 
   const tmpsWritten: string[] = [];
   try {
@@ -394,8 +364,6 @@ export function writeRetroAtomically(
     tmpsWritten.push(specTmp);
     fs.writeFile(devMdTmp, devMdAfter);
     tmpsWritten.push(devMdTmp);
-    fs.writeFile(sprintStatusTmp, sprintAfter);
-    tmpsWritten.push(sprintStatusTmp);
   } catch (e) {
     // Clean up any .tmp we wrote — no real file has changed yet, so this
     // really is a clean abort. The caller sees the original error.
@@ -410,7 +378,6 @@ export function writeRetroAtomically(
   const renamePlan: Array<{ tmp: string; dest: string; label: string }> = [
     { tmp: specTmp, dest: specAbs, label: "spec" },
     { tmp: devMdTmp, dest: devMdAbs, label: "DEV.md" },
-    { tmp: sprintStatusTmp, dest: sprintStatusAbs, label: "sprint-status.yaml" },
   ];
 
   let firstFailure: { label: string; cause: unknown } | null = null;
@@ -552,118 +519,8 @@ export function insertDevMdRow(
   return out.join("\n");
 }
 
-/**
- * Insert the new retro yaml chunk under the matching epic's stories: list
- * in sprint-status.yaml. Locates the epic by `- key: epic-<slug>` (the
- * canonical key shape used by every entry in the file). Inserts the new
- * `- key: <retroHash>` block after the last existing story under that
- * epic.
- */
-export function insertSprintStatusRow(
-  content: string,
-  epicSlug: string,
-  newRow: string,
-): string {
-  const lines = content.split("\n");
-  const epicKeySuffix = `- key: epic-${epicSlug}`;
-
-  let epicIdx = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trimStart() === epicKeySuffix) {
-      epicIdx = i;
-      break;
-    }
-  }
-  if (epicIdx === -1) {
-    throw new Error(
-      `insertSprintStatusRow: epic 'epic-${epicSlug}' not found in sprint-status.yaml`,
-    );
-  }
-
-  // Find the bound of this epic block: next sibling-or-shallower entry.
-  // Sibling = `- key: epic-…` at the same indent. Shallower = `- key:
-  // plan-…` (next plan, 2-space indent). End-of-file is also a bound.
-  const epicDashCol = leadingDashCol(lines[epicIdx]);
-  // Story rows nest exactly 4 columns deeper per the canonical 10/12-space
-  // shape (epic at col 6 → story at col 10). Lock to that — accepting any
-  // deeper `- key:` would let nested sub-lists (e.g. a future `tasks:`
-  // block) anchor the splice, which would land the new row at the wrong
-  // indent and produce invalid YAML.
-  const expectedStoryDashCol = epicDashCol + 4;
-  let epicEnd = lines.length;
-  for (let i = epicIdx + 1; i < lines.length; i++) {
-    const dashCol = leadingDashCol(lines[i]);
-    if (dashCol === -1) continue;
-    const trimmed = lines[i].trimStart();
-    // Next epic at same indent → bound.
-    if (dashCol === epicDashCol && trimmed.startsWith("- key: epic-")) {
-      epicEnd = i;
-      break;
-    }
-    // Next plan (shallower) → bound.
-    if (dashCol < epicDashCol && trimmed.startsWith("- key: plan-")) {
-      epicEnd = i;
-      break;
-    }
-  }
-
-  // Find the last `- key:` story line at the canonical story dash-col
-  // (epicDashCol + 4 — the 10/12-space convention used by every existing
-  // entry in the file). Locking the dash-col rejects nested sub-list
-  // entries (e.g. a future `tasks:` block) that would otherwise anchor
-  // the splice at the wrong indent.
-  let lastStoryIdx = -1;
-  for (let i = epicEnd - 1; i > epicIdx; i--) {
-    const dashCol = leadingDashCol(lines[i]);
-    if (
-      dashCol === expectedStoryDashCol &&
-      lines[i].trimStart().startsWith("- key: ")
-    ) {
-      lastStoryIdx = i;
-      break;
-    }
-  }
-  if (lastStoryIdx === -1) {
-    throw new Error(
-      `insertSprintStatusRow: epic 'epic-${epicSlug}' has no existing stories at the expected indent (col ${expectedStoryDashCol}) to anchor against`,
-    );
-  }
-
-  // Walk forward from lastStoryIdx to find the end of that story block:
-  // the first line that is either another `- key:` at the same dash-col,
-  // OR shallower indent (next epic / plan), OR a blank line that
-  // separates blocks. (Inserting AT a blank line preserves the blank as
-  // separator after the new block — verified by test.)
-  let insertAt = epicEnd;
-  for (let i = lastStoryIdx + 1; i < epicEnd; i++) {
-    const dashCol = leadingDashCol(lines[i]);
-    if (
-      dashCol === expectedStoryDashCol &&
-      lines[i].trimStart().startsWith("- ")
-    ) {
-      insertAt = i;
-      break;
-    }
-    if (dashCol !== -1 && dashCol < expectedStoryDashCol) {
-      insertAt = i;
-      break;
-    }
-    if (lines[i].trim() === "") {
-      insertAt = i;
-      break;
-    }
-  }
-
-  const out = [
-    ...lines.slice(0, insertAt),
-    newRow,
-    ...lines.slice(insertAt),
-  ];
-  return out.join("\n");
-}
-
 // ---------------------------------------------------------------------------
-// Internal parsers — extract the parents + slug we need from the
+// Internal parsers — extract the parents we need from the
 // EmitRetroStoryResult so writeRetroAtomically doesn't need a parallel
 // argument list (the EmitRetroStoryResult is itself the contract).
 // ---------------------------------------------------------------------------
@@ -686,32 +543,9 @@ function parseParentsFromDevMdRow(row: string): string[] {
     .filter((s) => s.length > 0);
 }
 
-function parseEpicSlugFromSpecBody(specBody: string): string {
-  const m = specBody.match(
-    /^from:\s*_bmad-output\/planning-artifacts\/epic-(.+)\.md\s*$/m,
-  );
-  if (!m) {
-    throw new Error(
-      "writeRetroAtomically: could not parse epic slug from spec body's `from:` line",
-    );
-  }
-  return m[1];
-}
-
 function escapeRegex(s: string): string {
   // POSIX-safe escape — covers anything that could appear in a hash even
   // though our hash regex constrains to alnum. Defensive against future
   // hash-shape changes.
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/**
- * Column of the first `- ` (dash followed by space) bullet in `line`, or
- * -1 if there isn't one. Distinct from `indexOf("-")` — that would match
- * stray `-` chars (e.g. inside a comment, or an embedded hyphen) and
- * mis-locate the YAML bullet column.
- */
-function leadingDashCol(line: string): number {
-  const m = line.match(/^(\s*)- /);
-  return m ? m[1].length : -1;
 }

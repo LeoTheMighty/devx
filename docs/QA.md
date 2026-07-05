@@ -149,7 +149,7 @@ For `/devx-focus` exploratory QA to work, every `develop` PR needs a live URL br
 
 ## Story-derived QA (the load-bearing flow we were ignoring)
 
-DevAgent already writes a "QA walkthrough" section into every story file as it implements (it's part of the BMAD `dev-story` workflow output). For most of devx's history, this section was written and then ignored. That's the bug.
+DevAgent writes a "QA walkthrough" section as it implements (a discipline carried over from the BMAD-era `dev-story` workflow into the native execute stage). For most of devx's history, this section was written and then ignored. That's the bug.
 
 The flow chart that fixes it:
 
@@ -216,7 +216,7 @@ Override in `devx.config.yaml → qa.exploratory.*` when needed.
 
 - **Don't run exploratory QA per-PR.** That's how costs spiral. Per-PR = regression; scheduled = exploratory.
 - **Don't let browser-use drive in production.** Always against a preview deploy, never against `main`. `devx.config.yaml` guards the target URL.
-- **Don't put exploration prompts under `_bmad/`.** They belong in `qa/prompts/` in the devx repo so self-healing (SELF_HEALING §S1/S3) can edit them over time.
+- **Don't bury exploration prompts inside the packaged engine templates.** They belong in `qa/prompts/` in the project repo so self-healing (SELF_HEALING §S1/S3) can edit them over time.
 - **Don't chain browser-use runs.** One persona, one flow, one spec file. Parallelism comes from Triage running multiple runs in parallel across separate subprocesses, not from one run doing multiple flows.
 
 ---

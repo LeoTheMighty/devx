@@ -33,6 +33,7 @@ import {
   ConfigError,
   clearConfigCache,
   loadValidatedConfig,
+  resetBmadKeyWarningForTests,
   validate,
 } from "../src/lib/config-validate.js";
 
@@ -374,6 +375,47 @@ test("loadValidatedConfig: end-to-end happy path with a real project on disk", (
       "project.shape round-trips through validation",
     );
     assertEq(cfg.thoroughness, "balanced", "thoroughness round-trips");
+  });
+});
+
+// -- deprecated bmad: shim (v2x101 FR-3) -----------------------------------
+
+test("leftover `bmad:` key loads with a deprecation warning, not an error", () => {
+  withTmpDir((dir) => {
+    const projectPath = setupProject(
+      dir,
+      [
+        "mode: YOLO",
+        "project:",
+        "  shape: empty-dream",
+        "thoroughness: send-it",
+        "bmad:",
+        "  modules: [core]",
+        "  output_root: _bmad-output",
+        "",
+      ].join("\n"),
+    );
+    const userPath = join(dir, "no-user.yaml");
+    resetBmadKeyWarningForTests();
+    const { result: cfg, warnings } = captureWarn(() =>
+      loadValidatedConfig({ projectPath, userPath, reload: true }),
+    );
+    // Does NOT throw; the merged config still comes back usable.
+    assertEq((cfg as { mode: string }).mode, "YOLO", "config loads despite bmad: key");
+    assert(
+      warnings.some((w) => w.includes("deprecated `bmad:` section")),
+      `expected the deprecation warning; got: ${warnings.join(" | ")}`,
+    );
+    // Warn-once-per-process: a second load stays quiet on the shim message.
+    const { warnings: second } = captureWarn(() =>
+      loadValidatedConfig({ projectPath, userPath, reload: true }),
+    );
+    assertEq(
+      second.filter((w) => w.includes("deprecated `bmad:` section")).length,
+      0,
+      "deprecation warning fires once per process",
+    );
+    resetBmadKeyWarningForTests();
   });
 });
 

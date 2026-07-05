@@ -43,6 +43,12 @@ intent classification + first-class debug loop + any-repo init. Per
   8am-harness `next_command()` move. Rows 1–8 need the manager/loop state
   shapes from mgr102; loop-row (#1) degrades gracefully until v2l101 lands.
 
+- Inherited from v2x101: `devx plan-helper validate-emit` still resolves
+  epics only under `_bmad-output/planning-artifacts/` (frozen); for v2
+  workstream slugs it soft-exits 2 (route-to-user, no abort). Retarget it
+  to `_devx/workstreams/<slug>/plan.md` (or fold into `devx next`
+  emission checks) as part of the dispatcher work.
+
 ## Status log
 
 - 2026-07-05T13:05 — created from v2/06-phases.md § V2.4.

@@ -172,7 +172,7 @@ describe("cli303 — devx --help command listing", () => {
     expect(out).toMatchInlineSnapshot(`
       "Usage: devx [options] [command]
 
-      devx — autonomous development system built on BMAD
+      devx — self-contained closed-loop autonomous development system
 
       Options:
         -V, --version                output the version number

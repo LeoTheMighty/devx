@@ -1,12 +1,12 @@
 # Setup
 
-Two layers to install: **BMAD** (the underlying workflow engine) and **devx** (the slash commands, hooks, and opinions layered on top). Both are currently in early design — treat the exact commands below as the current plan, not a frozen contract.
+One thing to install: **devx** (the CLI, slash commands, hooks, and opinions). The engine — stage templates, gate CLIs, and skill bodies — is native and ships inside the devx npm package; there is no separate framework to install underneath. Parts of this doc are still early design — treat the exact commands below as the current plan, not a frozen contract.
 
 ---
 
 ## Prerequisites
 
-- **Node.js** ≥ 20 (BMAD's installer is a Node CLI).
+- **Node.js** ≥ 20 (the devx CLI is a Node package).
 - **Claude Code** installed and signed in (`claude --version` should work).
 - **git** ≥ 2.30 (we rely on `git worktree`).
 - **gh** (GitHub CLI), authenticated — needed for the CI-as-source-of-truth loop.
@@ -18,49 +18,15 @@ Optional but recommended:
 
 ---
 
-## Part 1 — Install BMAD
+## Part 1 — The engine (nothing to install)
 
-BMAD v6 ships as an npm-based installer that drops a `_bmad/` directory into your project and generates Claude Code slash commands for each agent and workflow.
+The devx engine is native: the stage templates (`_devx/templates/engine/` — prd, expectations, design, plan, red-report, checkpoint, decision, results), the gate CLIs (`devx gate prd|coverage|evals`), and the skill bodies all ship inside the `@devx/cli` npm package (see [`INSTALL.md`](../INSTALL.md) for the CLI install matrix). `/devx-init` copies the templates into your repo under `_devx/`.
 
-We install **three modules**:
+Generated outputs live under:
+- `_devx/workstreams/<slug>/` — per-workstream planning artifacts: prd.md, expectations.md, design.md, plan.md, decisions/, checkpoints/, evals/ (version-controlled).
+- `dev/`, `plan/`, etc. — the lightweight spec-file index the backlogs point at.
 
-| Module | Package | What it gives us |
-|---|---|---|
-| `core` | built-in | Workflow engine (`_bmad/core/tasks/workflow.xml`), party-mode, shard-doc, brainstorming. |
-| `bmm` | built-in | The BMAD Method — analyst, PM, architect, SM, dev, QA, UX, tech-writer agents, plus the full planning/solutioning/implementation workflow set (`create-prd`, `create-architecture`, `create-story`, `dev-story`, `code-review`, `check-implementation-readiness`, etc.). |
-| `tea` | `bmad-method-test-architecture-enterprise` | Test Architecture Enterprise — test strategy, ATDD, automation, CI setup, NFR testing, coverage tracing. **This is the testing/QA muscle we lean on for `/devx-test`.** |
-
-### Install steps
-
-From the project root of the repo you want to add BMAD to:
-
-```bash
-# One-time installer — interactive, picks Claude Code as the IDE
-npx bmad-method@latest install
-
-# When prompted:
-#   - IDE: claude-code
-#   - Modules: core, bmm, tea   ← pick all three
-#   - Module source for tea: external (npm: bmad-method-test-architecture-enterprise)
-```
-
-Verify:
-
-```bash
-ls _bmad/_cfg/manifest.yaml           # BMAD installed
-ls _bmad/bmm/agents/                  # analyst, pm, architect, dev, qa, ux-designer, sm, tech-writer, quick-flow-solo-dev
-ls _bmad/tea/agents/                  # tea (test architect)
-ls .claude/commands/ | grep bmad-     # ~50 bmad-* slash commands registered
-```
-
-Generated outputs will live under:
-- `_bmad/` — the framework itself (version-controlled).
-- `_bmad-output/planning-artifacts/` — PRD, architecture, epics (version-controlled).
-- `_bmad-output/implementation-artifacts/` — story files, sprint-status.yaml, QA walkthroughs (version-controlled).
-
-### What to keep across upgrades
-
-BMAD upgrades rewrite `_bmad/` but leave `_bmad-output/` and `.claude/commands/bmad-*` alone. Your planning artifacts are durable; only the framework itself changes.
+*(Historical note: through Phases 0–1 devx ran on top of the BMAD framework, installed via `npx bmad-method install` into `_bmad/`. The v2 migration ejected it — see `v2/01-bmad-capture.md`. Repos from that era keep a frozen, read-only `_bmad-output/` archive; nothing reads or writes it.)*
 
 ---
 
@@ -114,23 +80,23 @@ This copies the skills into `<your-project>/.claude/commands/` and adds a `devx.
 ./install.sh --uninstall --global     # or --project <path>
 ```
 
-Removes every `devx-*` file from the target commands directory. Does not touch BMAD commands (they were installed by BMAD's own installer).
+Removes every `devx-*` file from the target commands directory. Does not touch any other commands.
 
 ---
 
 ## Part 3 — Bootstrap a project with `/devx-init`
 
-Once BMAD and devx are installed, the first and only command you run against a fresh repo is:
+Once devx is installed, the first and only command you run against a fresh repo is:
 
 ```
 /devx-init
 ```
 
-This is the "simple guy to talk to" — it walks you through a short interview (not BMAD's full menu) and then sets everything up:
+This is the "simple guy to talk to" — it walks you through a short interview (not a wall of menus) and then sets everything up:
 
 1. **Repo detection** — empty vs. existing vs. active. Adapts the rest of the flow.
 2. **Project brief** — 5-question interview: what are you building, who is it for, what stack, solo or team, infra preferences.
-3. **BMAD init** — runs `npx bmad-method install` if not present.
+3. **Engine scaffolding** — copies the packaged engine templates into `_devx/` (workstream templates, config schema).
 4. **Backlog scaffolding** — creates `DEV.md`, `PLAN.md`, `TEST.md`, `DEBUG.md`, `FOCUS.md`, `INTERVIEW.md`, `MANUAL.md` at the repo root, and `dev/`, `plan/`, `test/`, `debug/`, `focus/` subdirectories for individual spec files.
 5. **CI/CD scaffolding** — a minimal GitHub Actions workflow with lint + test + coverage gates, plus a PR template that links back to the spec file.
 6. **Observability wiring** — prompts for how to connect logs/metrics/DB (read-only token, or "set up later"). Writes a `devx.config.yaml` with the connection details.
@@ -160,14 +126,11 @@ Direct invocations still work too — call `/devx-plan <idea>` to kick off plann
 ## Upgrading
 
 ```bash
-# Upgrade BMAD
-npx bmad-method@latest install     # detects existing install and prompts
-
 # Upgrade devx
 cd ~/src/devx && git pull && ./install.sh --global
 ```
 
-Both installers are additive — they re-generate commands but don't touch your backlog files, planning artifacts, or spec files.
+The installer is additive — it re-generates commands but doesn't touch your backlog files, planning artifacts, or spec files.
 
 ---
 
@@ -176,7 +139,6 @@ Both installers are additive — they re-generate commands but don't touch your 
 | Symptom | Fix |
 |---|---|
 | `/devx-*` commands don't appear in Claude Code | Check `~/.claude/commands/` exists and contains `devx-*.md`. Restart Claude Code. |
-| `bmad-*` commands don't appear | Check `.claude/commands/` in the repo. Re-run `npx bmad-method install` and pick `claude-code` as the IDE. |
 | `git worktree` errors during `/devx` | Ensure `.worktrees/` is in `.gitignore` and the parent dir is writable. Run `git worktree prune`. |
 | CI step fails but local passes | Expected — CI is ground truth. Read the failing job logs (`gh run view <id> --log-failed`) and let `/devx-debug` handle it. |
 | Coverage gate fails a merge | Either the DevAgent missed a file (let `/devx-test` write the gap) or the surface genuinely doesn't need coverage (mark `# devx:no-coverage <reason>` inline). |

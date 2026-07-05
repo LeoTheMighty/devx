@@ -10,8 +10,8 @@
 //       3. Compute the delta of new top-level keys for the version pair
 //          (via a pluggable registry) and prompt only for those.
 //       4. Detect + repair drifted surfaces: CLAUDE.md devx-block markers,
-//          supervisor units, CI workflow, PR template, personas, INTERVIEW
-//          seeding.
+//          supervisor units, CI workflow, PR template, engine stage
+//          templates (v2x101), personas, INTERVIEW seeding.
 //       5. Emit the `kept N / added M / migrated K` summary line — `added`
 //          counts include surfaces auto-repaired (per epic party-mode note),
 //          not just new config keys.
@@ -66,6 +66,7 @@ export type RepairSurface =
   | "supervisor-units"
   | "ci-workflow"
   | "pr-template"
+  | "engine-templates"
   | "personas"
   | "interview-seed";
 
@@ -217,7 +218,8 @@ const TOP_LEVEL_KEYS_UNIVERSE: ReadonlySet<string> = new Set([
   "concierge",
   "storage",
   "observability",
-  "bmad",
+  "engine",
+  "loop",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -360,6 +362,8 @@ export async function runInitUpgrade(
     "supervisor-units": opts.detect?.["supervisor-units"] ?? defaultDetectSupervisor,
     "ci-workflow": opts.detect?.["ci-workflow"] ?? defaultDetectCiWorkflow,
     "pr-template": opts.detect?.["pr-template"] ?? defaultDetectPrTemplate,
+    "engine-templates":
+      opts.detect?.["engine-templates"] ?? defaultDetectEngineTemplates,
     personas: opts.detect?.personas ?? defaultDetectPersonas,
     "interview-seed": opts.detect?.["interview-seed"] ?? defaultDetectInterviewSeed,
   };
@@ -369,6 +373,8 @@ export async function runInitUpgrade(
     "supervisor-units": opts.repair?.["supervisor-units"] ?? defaultRepairSupervisor,
     "ci-workflow": opts.repair?.["ci-workflow"] ?? defaultRepairCiWorkflow,
     "pr-template": opts.repair?.["pr-template"] ?? defaultRepairPrTemplate,
+    "engine-templates":
+      opts.repair?.["engine-templates"] ?? defaultRepairEngineTemplates,
     personas: opts.repair?.personas ?? defaultRepairPersonas,
     "interview-seed": opts.repair?.["interview-seed"] ?? defaultRepairInterviewSeed,
   };
@@ -383,6 +389,7 @@ export async function runInitUpgrade(
     "supervisor-units",
     "ci-workflow",
     "pr-template",
+    "engine-templates",
     "personas",
     "interview-seed",
   ];
@@ -565,6 +572,21 @@ function defaultDetectPrTemplate(ctx: SurfaceContext): boolean {
   );
 }
 
+// v2x101: pre-v2 repos upgraded in place need the engine stage templates
+// the v2 planning stages instantiate from — fresh init writes them
+// (writeEngineTemplates); the upgrade path repairs their absence here.
+// Present = the dir exists and carries at least one .md template.
+function defaultDetectEngineTemplates(ctx: SurfaceContext): boolean {
+  const dir = join(ctx.repoRoot, "_devx", "templates", "engine");
+  if (!existsSync(dir)) return false;
+  try {
+    if (!statSync(dir).isDirectory()) return false;
+    return readdirSync(dir).some((n) => n.endsWith(".md"));
+  } catch {
+    return false;
+  }
+}
+
 function defaultDetectPersonas(ctx: SurfaceContext): boolean {
   const dir = join(ctx.repoRoot, "focus-group", "personas");
   if (!existsSync(dir)) return false;
@@ -658,6 +680,14 @@ async function defaultRepairPrTemplate(ctx: SurfaceContext): Promise<boolean> {
   const { writePrTemplate } = await import("./init-write.js");
   const result = writePrTemplate(ctx.repoRoot);
   return result.action === "wrote";
+}
+
+async function defaultRepairEngineTemplates(
+  ctx: SurfaceContext,
+): Promise<boolean> {
+  const { writeEngineTemplates } = await import("./init-write.js");
+  const result = writeEngineTemplates(ctx.repoRoot);
+  return result.written.length > 0;
 }
 
 async function defaultRepairPersonas(ctx: SurfaceContext): Promise<boolean> {

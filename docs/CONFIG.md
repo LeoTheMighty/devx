@@ -402,15 +402,39 @@ observability:
 
 ---
 
-## 15. BMAD integration
+## 15. Engine (v2 — replaces the BMAD integration section)
 
 ```yaml
-bmad:
-  modules: [core, bmm, tea]           # which BMAD modules to install
-  output_root: _bmad-output
-  preserve_on_eject: true             # devx eject leaves these files intact
-  workflows_path: _bmad/              # never written by devx
+engine:
+  workstreams_root: _devx/workstreams   # where per-workstream artifacts live
+  archive_root: _devx/archive           # closed/retired workstreams move here
+  code_citation_hints: []               # paths the design stage grounds discussion in
+  expectations_min: 3                   # Gate 1 floor: ≥N E-blocks in expectations.md
+  prose_budget_kb: 60                   # S-1 canary threshold over shipped skill/template prose
+  critique:                             # re-homed party-mode (plan-stage critique)
+    lenses: [pm, architect, dev, qa]
+    min_surfaces: 2                     # thoroughness-gated, as party-mode was
 ```
+
+Full engine contract: `v2/02-engine.md` §7. A leftover `bmad:` key from a
+pre-v2 config loads with a deprecation warning, not an error (migration shim
+in config-io); the section itself was retired at v2x101.
+
+---
+
+## 15b. Overnight loop budgets
+
+```yaml
+loop:
+  max_iterations_per_item: 8            # per-item retry ceiling
+  max_tokens_per_item: 2000000
+  max_consecutive_failures: 3           # trip breaker for the whole loop
+  max_items: 10                         # per-night item cap
+  max_total_tokens: 10000000
+  backoff_ms: [60000, 120000, 240000]   # consecutive-failure backoff ladder
+```
+
+Consumed by `devx loop` (v2l101); see `v2/04-overnight-loop.md` §3.
 
 ---
 
@@ -440,4 +464,4 @@ Everything else is defaulted by mode + shape + thoroughness. The user edits `dev
 
 ## Schema validation
 
-`devx.config.yaml` is validated on load. Unknown keys produce a warning (not an error — devx upgrades may add keys); missing required keys (`mode`, `project.shape`) abort with a pointer to `/devx-init`. The JSON schema (Phase 0 cfg201) ships embedded in the devx npm package and is resolved at runtime via `require.resolve` from the installed package; `devx config <key>` autocompletes against it. (BMAD modules under `_bmad/{core,bmm,tea}/` do not host devx-specific assets — devx is a separate package that consumes BMAD as a library.)
+`devx.config.yaml` is validated on load. Unknown keys produce a warning (not an error — devx upgrades may add keys); missing required keys (`mode`, `project.shape`) abort with a pointer to `/devx-init`. The JSON schema (Phase 0 cfg201) ships embedded in the devx npm package and is resolved at runtime via `require.resolve` from the installed package; `devx config <key>` autocompletes against it. (All devx assets — schema, engine templates, skill bodies — ship in the devx package itself; there is no external framework directory hosting any of them.)

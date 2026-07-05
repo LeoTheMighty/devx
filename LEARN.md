@@ -12,7 +12,9 @@ See [`docs/ROADMAP.md` § Locked decisions](./docs/ROADMAP.md#locked-decisions-c
 
 Every epic ends with a `*ret` story (e.g. `audret`, `cfgret`) that:
 
-1. Invokes the `bmad-retrospective` skill against the epic's shipped stories.
+1. Runs the native `/devx retro` stage against the epic's shipped stories
+   (re-targeted from `bmad-retrospective` at v2x101 per `v2/07-decisions.md`
+   D-3; the row contract below is unchanged).
 2. Appends findings to this file under the epic's section.
 3. Applies low-blast-radius items immediately; files higher-blast items as `MANUAL.md` rows or new dev specs.
 

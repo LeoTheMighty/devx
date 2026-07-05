@@ -9,10 +9,12 @@
 // Test shape:
 //   1. Build a fixture repo in tmpdir mirroring a real devx-managed repo
 //      shape: a `.devx-cache/` directory, a `dev/` spec dir with a fake spec,
-//      a `devx.config.yaml`, a `_bmad/` library directory (which `devx eject`
-//      Phase-10 will move/rewrite), `.git/` symlink (so any naive `git -C` would
-//      target the real repo's git db — caught by snapshot), and a regular
-//      file in the cwd.
+//      a `devx.config.yaml`, a `_devx/` engine directory (per the v2 eject
+//      contract — v2/01-bmad-capture.md §6 — eject reduces to "remove the
+//      CLI + skills, keep the markdown"; markdown + git are ground truth,
+//      and there is no third-party framework tree left in the repo),
+//      `.git/` symlink (so any naive `git -C` would target the real repo's
+//      git db — caught by snapshot), and a regular file in the cwd.
 //   2. Snapshot every file's content (SHA-256) + every directory's recursive
 //      listing.
 //   3. Spawn `node dist/cli.js eject` with cwd=fixture. Pass extra flags too
@@ -63,11 +65,20 @@ function buildFixture(root: string): void {
     "utf8",
   );
   writeFileSync(join(root, ".devx-cache", "lock"), "pid=12345\n", "utf8");
-  // _bmad/ — Phase 10 eject will move/rewrite this; Phase 0 must NOT touch it.
-  mkdirSync(join(root, "_bmad", "core"), { recursive: true });
+  // _devx/ — the v2 engine tree (workstreams + templates). Phase 10 eject
+  // will remove the tooling but keep the markdown; the Phase-0 stub must NOT
+  // touch any of it. (The v2 eject contract has no framework tree — the old
+  // `_bmad/` fixture dir went away with the v2x101 ejection.)
+  mkdirSync(join(root, "_devx", "templates", "engine"), { recursive: true });
   writeFileSync(
-    join(root, "_bmad", "core", "workflow.yaml"),
-    "id: placeholder\n",
+    join(root, "_devx", "templates", "engine", "prd.md"),
+    "# PRD template placeholder\n",
+    "utf8",
+  );
+  mkdirSync(join(root, "_devx", "workstreams", "sample"), { recursive: true });
+  writeFileSync(
+    join(root, "_devx", "workstreams", "sample", "plan.md"),
+    "# Plan placeholder\n",
     "utf8",
   );
   // dev/ spec dir.
@@ -167,7 +178,7 @@ describe("cli302 — `devx eject` is destructively-zero in Phase 0", () => {
       // Phase 10 may add real flags; Phase 0 must ignore every one.
       const ret = spawnSync(
         "node",
-        [distEntry, "eject", "--force", "--yes-really", "--keep-bmad", "weird-extra"],
+        [distEntry, "eject", "--force", "--yes-really", "--keep-engine", "weird-extra"],
         {
           encoding: "utf8",
           cwd: fixture,

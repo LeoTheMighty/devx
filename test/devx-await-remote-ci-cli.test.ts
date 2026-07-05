@@ -3,7 +3,7 @@
 // fs+exec+sleep so the CLI's exit-code + JSON-on-stdout contract is
 // independently verified from the library tests.
 //
-// Mirrors devx-should-create-story-cli.test.ts and devx-helper-cli.test.ts.
+// Mirrors devx-helper-cli.test.ts's seam-injection pattern.
 //
 // Spec: dev/dev-dvx105-2026-04-28T19:30-devx-await-remote-ci.md
 

@@ -30,7 +30,12 @@ The phased buildout of devx: locked decisions, dependency graph, and what we won
 **Architectural refuses (from competitive analysis 2026-04-25 PM)**
 - No metered-SaaS billing layer ever. devx infra cost stays $0; users pay only their own LLM/GitHub bills. Adding ACU-style billing destroys the lock-in story.
 - No proprietary state store; markdown + git stays the ground truth.
-- BMAD remains a library, not a fork. `devx eject` must always work.
+- The engine is native and ships in the devx package; markdown + git are
+  ground truth; `devx eject` leaves a working repo with readable history,
+  backlogs, specs, and workstream artifacts. *(Re-worded at v2x101 per
+  `v2/07-decisions.md` D-2 — supersedes "BMAD remains a library, not a fork;
+  `devx eject` must always work." The ejectability principle survives; the
+  BMAD clause does not.)*
 
 **Control plane (locked 2026-04-26)**
 - `ManageAgent` = scheduler + supervisor in one loop. Reads backlogs, decides desired roster, spawns/restarts workers. Persists desired roster to `.devx-cache/state/schedule.json` so restart is recoverable from disk. Thin loop, narrow tools (filesystem + subprocess + heartbeat).
@@ -39,7 +44,7 @@ The phased buildout of devx: locked decisions, dependency graph, and what we won
 - OS-level supervision via launchd (mac) / systemd-user (linux) / Task Scheduler (win-WSL). Mutual watchdog between Manager and Concierge. Cloud watchdog GitHub Actions cron for laptop-asleep coverage.
 
 **Interim retro discipline (locked 2026-04-27)**
-- Until Phase 5's `epic-retro-agent` + `epic-learn-agent` ship, **every epic ends with a `*ret` retrospective story** (e.g. `audret`, `cfgret`) blocked on all other stories in the epic. The retro story invokes `bmad-retrospective` against the epic's shipped stories and appends findings to `LEARN.md § <epic>`.
+- Until Phase 5's `epic-retro-agent` + `epic-learn-agent` ship, **every epic ends with a `*ret` retrospective story** (e.g. `audret`, `cfgret`) blocked on all other stories in the epic. The retro story runs the native `/devx retro` stage against the epic's shipped stories and appends findings to `LEARN.md § <epic>`. *(Re-targeted from `bmad-retrospective` at v2x101 per `v2/07-decisions.md` D-3; the LEARN.md row contract is byte-compatible.)*
 - Each finding tags **confidence** (low/med/high) + **blast radius** (memory/skill/template/config/docs/code). Low-blast items apply in the retro PR; higher-blast items file as MANUAL.md rows or new dev specs.
 - Cross-epic patterns hitting ≥3 concordant retros get promoted into `LEARN.md § Cross-epic patterns` (mirrors the Phase 5 `epic-learn-agent` threshold manually).
 - `/devx-plan` must emit a `*ret` story when chunking any new epic into stories. `/devx-init` (epic `ini502`) creates `LEARN.md` alongside the other backlog files.
@@ -50,6 +55,11 @@ The phased buildout of devx: locked decisions, dependency graph, and what we won
 ## Phased buildout
 
 Each phase is built on top of the previous one. No skipping, but parallelism within a phase is fine.
+
+> **v2 re-cut (2026-07-05):** Phases 0–1 shipped as written below. Phases 2+
+> are re-cut by the v2 migration — see `v2/06-phases.md` for the current
+> sequencing (native engine, review tours, universal dispatcher, overnight
+> loop). The tables below are preserved as the original plan of record.
 
 ### Phase 0 — Foundation (week 1)
 

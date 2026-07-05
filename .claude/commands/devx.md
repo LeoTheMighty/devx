@@ -1,6 +1,6 @@
 ---
 name: 'devx'
-description: 'Autonomous devx dev loop. Picks the next ready item from DEV.md (or a specified hash/slug), creates a worktree on develop/<type>-<hash>, implements via BMAD dev-story, self-reviews, runs local CI per devx.config.yaml, opens a PR to develop, and waits for remote CI. Respects the project mode (YOLO/BETA/PROD/LOCKDOWN) and trust-gradient autonomy. Use when the user says "devx this" or "/devx <hash|slug|next>".'
+description: 'Autonomous devx dev loop. Picks the next ready item from DEV.md (or a specified hash/slug), creates a worktree on develop/<type>-<hash>, implements natively from spec ACs (v2 engine), self-reviews, runs local CI per devx.config.yaml, opens a PR to develop, and waits for remote CI. Respects the project mode (YOLO/BETA/PROD/LOCKDOWN) and trust-gradient autonomy. Use when the user says "devx this" or "/devx <hash|slug|next>".'
 ---
 
 # /devx — Autonomous devx Dev Loop
@@ -9,7 +9,7 @@ description: 'Autonomous devx dev loop. Picks the next ready item from DEV.md (o
 >
 > **Until ManageAgent ships, /devx still runs the full loop end-to-end — claim → implement → self-review → local CI → PR → merge → cleanup.** Specifically: `/devx-manage` references in this file are about cross-item orchestration (parallelism, prioritization, soak windows). They are NOT a license to leave PRs open for human review. In YOLO single-branch this skill merges its own PR on every successful run. The only things that stop a YOLO merge are a failing local-CI gate, a non-empty workflow that returned non-success, or trust-gradient N not yet reached. "Prior PRs were merged by a human" is a bug log, not a precedent — do not infer policy from it.
 
-You are an autonomous development agent executing the full BMAD lifecycle for a **single item from DEV.md**: claim it, implement, self-review, run local gates, push, open a PR (or push direct in single-branch YOLO), wait for remote CI iff one is configured, **merge the PR yourself**, and cleanup. You operate in a dedicated worktree on a dedicated branch, never sharing a working tree with any other agent.
+You are an autonomous development agent executing the full devx lifecycle for a **single item from DEV.md**: claim it, implement, self-review, run local gates, push, open a PR (or push direct in single-branch YOLO), wait for remote CI iff one is configured, **merge the PR yourself**, and cleanup. You operate in a dedicated worktree on a dedicated branch, never sharing a working tree with any other agent.
 
 ## Branch model resolution
 
@@ -95,59 +95,52 @@ Repeat per item, respecting `stop_after`:
 
    If `devx devx-helper claim` exited 2 with stage `worktree`, the claim itself succeeded (commit pushed; lock released) but worktree create failed — re-run `git worktree add .worktrees/dev-<hash> -b <branch> <base>` by hand, then resume from Phase 2.
 
-### Phase 2: Create BMAD Story Context (if needed)
+### Phase 2: Working Artifacts (v2 — spec ACs direct)
 
-Phase 2 invokes `devx devx-helper should-create-story <hash>` (dvx102) to compute the conditional `bmad-create-story` decision. The helper reads `devx.config.yaml → project.shape` + `_internal.skip_create_story_canary` + spec AC count + story-file presence and emits a JSON decision:
-
-```
-{
-  "hash": "<hash>",
-  "canary": "off" | "active" | "default",
-  "decision": { "invoke": boolean, "reason": "shape-not-empty-dream" | "story-file-exists" | "few-actionable-acs" | "project_shape=empty-dream + <N> ACs + no story file" },
-  "effective": { "action": "invoke" | "skip" | "read-existing", "statusLog": "phase 2: canary=..., shouldCreateStory=... → bmad-create-story <SKIPPED|INVOKED> [...]" },
-  "inputs": { "acCount": number, "hasStoryFile": boolean }
-}
-```
-
-The canary states (`devx.config.yaml → _internal.skip_create_story_canary`):
-- `"off"` (default after dvx102 ships) — helper decision is **logged but NOT honored**. v0 behavior preserved: read existing story if present, otherwise invoke `bmad-create-story`.
-- `"active"` — helper decision **IS honored**. `effective.action == "skip"` short-circuits Phase 2 entirely (the spec ACs are the working artifact). `"invoke"` runs `bmad-create-story`. `"read-existing"` reads the existing story file.
-- `"default"` — same as `"active"`; the flag is flag-deletable post-canary. /devx-learn (Phase 5+) flips `"active"`→`"default"` after one in-flight story green-runs the conditional path.
+The spec file's acceptance criteria ARE the working artifact. There is no
+intermediate story file (v2x101 retired the story path + canary after the
+LEARN.md 49/49-skip pattern held through every shipped epic).
 
 Steps:
 
-1. Run `devx devx-helper should-create-story <hash>`. Parse JSON; capture `effective.action` and `effective.statusLog`.
-   - On exit 2 (`{"error":"rollback","stage":...}`): the helper couldn't resolve the spec or load config — surface the stderr, mark spec `blocked`, and stop.
-2. Append `effective.statusLog` to the spec file's status log (append-only, per CLAUDE.md "Working agreements"). The line shape is fixed by spec dvx102 AC #5: `phase 2: canary=<state>, shouldCreateStory=<reason> → bmad-create-story <SKIPPED|INVOKED> [(detail)]`.
-3. Branch on `effective.action`:
-   - `"skip"` — Skip the BMAD story entirely. Continue to Phase 3 with the spec ACs as the working artifact. (Reached only when `canary` is `"active"` or `"default"` AND the helper returned `invoke=false`.)
-   - `"read-existing"` — Read `_bmad-output/implementation-artifacts/story-<hash>.md` (it exists). Continue to Phase 3.
-   - `"invoke"` — Invoke the `bmad-create-story` skill. Pass:
-     - the spec file contents,
-     - the parent epic file (from `from:`),
-     - the project's `CLAUDE.md`,
-     - `devx.config.yaml → stack.layers` so the story respects declared layers.
-     Use YOLO mode for BMAD — auto-select defaults at interactive halts. The spec file's acceptance criteria are the source of truth; the BMAD story is the working artifact.
-4. Mark the item `ready-for-dev` in sprint-status.yaml.
+1. Re-read the spec: Goal, ACs, Technical notes, Status log (what prior
+   sessions tried), and the parent (`from:`) epic/plan for locked decisions.
+2. If the spec belongs to a workstream (plan spec has `gate_status:`), read
+   `_devx/workstreams/<slug>/plan.md` for this phase's Verification plan +
+   Context, and locate the RED artifacts named in the Expectation-coverage
+   table. `tests-first` phases MUST re-run their already-RED artifact and
+   watch it fail NOW, before writing code — never re-author it to pass.
+3. Append the status-log line: `phase 2: spec ACs direct (v2 native); <N>
+   ACs; workstream=<slug|none>; red-artifacts=<list|none>`.
 
-> Why a CLI helper instead of inlining the decision in prose: the LEARN.md cross-epic pattern (`[high] [skill]` 25/25 silent skip across Phase 0) is structural — every Phase 0 spec had `bmad-create-story` skipped without an explicit recorded reason. Routing through `devx devx-helper should-create-story` makes the decision (and its inputs) recorded, testable, and canary-gated. Skill body never re-implements the rule.
+### Phase 3: Implement (native discipline)
 
-### Phase 3: Implement
+1. Work directly from the spec ACs + workstream context. Honor
+   `devx.config.yaml` stack/layer choices.
+2. Execute ALL ACs and tasks. Do NOT stop at milestones or session
+   boundaries.
+3. Red-green-refactor: failing test → implement → refactor. For tests-first
+   phases the RED artifact from Phase 2 is the failing test.
+4. Maintain a File List (every file created/modified/deleted) in the
+   session; it feeds the PR body and the review.
+5. Append a status-log line to the spec file.
 
-1. Invoke the `bmad-dev-story` skill. Pass the BMAD story path, the spec file path, and `devx.config.yaml` context (so language/framework choices are consistent).
-2. Execute ALL tasks and subtasks. Do NOT stop at milestones or session boundaries.
-3. Follow red-green-refactor: write failing tests → implement → refactor.
-4. Update the story file's File List with every file created/modified/deleted.
-5. Mark the story `review` when all ACs are satisfied.
-6. Append a status-log line to the spec file.
+### Phase 4: Self-Review (Adversarial, native)
 
-### Phase 4: Self-Review (Adversarial)
-
-1. Invoke the `bmad-code-review` skill against the story's changes.
-2. Review is **adversarial** — find 3–10 specific issues minimum. A review that finds zero issues is a failed review; re-run with stricter framing.
-3. For ALL findings (HIGH, MEDIUM, LOW): **fix them automatically** — do NOT ask the user or create action items.
-4. After fixing, re-run the review to verify fixes are clean.
-5. Mark the story `done` in sprint-status.yaml.
+1. Review your own diff adversarially — you are hunting semantics bugs, not
+   lint. Re-read every hunk asking "what input breaks this?" and audit the
+   diff against every spec AC.
+2. **Threshold rule** (LEARN.md cross-epic pattern): for substantial
+   surfaces (>500 changed lines / multi-regex / marker-bearing), run the
+   3-agent parallel shape — Blind Hunter (fresh eyes, semantics bugs),
+   Edge Case Hunter (boundaries + branches), Acceptance Auditor (diff vs
+   ACs) — as parallel subagents; otherwise a rigorous single pass.
+3. Review is **adversarial** — find 3–10 specific issues minimum on
+   substantial surfaces. A zero-finding review of a big diff is a failed
+   review; re-run with stricter framing.
+4. For ALL findings (HIGH, MEDIUM, LOW): **fix them automatically** — do
+   NOT ask the user or create action items. Fix forward, in this item.
+5. After fixing, re-review the changed hunks to verify fixes are clean.
 6. **A status-log line MUST be appended after Phase 4 completes, regardless of issue count.** Omission is a regression: the line is the audit trail that proves adversarial self-review actually ran. Zero issues writes `phase 4: clean review (0 issues; re-ran with stricter framing — confirmed clean)`. Non-zero findings record the count and disposition: `phase 4: <N>-agent <single-pass|parallel adversarial> review; <X> findings (<H> HIGH, <M> MED, <L> LOW); ALL fixed in-place — <one-line summary of the most load-bearing fix>; re-review clean`.
 
    The explicit-zero form (per CLAUDE.md "Self-review is non-skippable" + LEARN.md § epic-merge-gate-modes E7) is required because the failure mode dvx103 forecloses is silent omission — dvx102's status log is the motivating example (phase-2 + phase-7 lines were written but the phase-4 line was left implicit, losing the audit). `test/devx-status-log-discipline.test.ts` asserts every shipped non-retro non-grandfathered dev spec has a `phase 4:` line in its status log; new specs that ship without one will fail the assertion.
@@ -216,7 +209,6 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
    <1-2 sentence summary of what was built>
 
    Spec: dev/dev-<hash>-<ts>-<slug>.md
-   Story: _bmad-output/implementation-artifacts/story-<hash>.md
    Co-Authored-By: Claude <noreply@anthropic.com>
    ```
    Where `<type>` is the conventional-commit prefix inferred from the spec (`feat`, `fix`, `refactor`, etc.); default `feat` if unclear.
@@ -319,7 +311,6 @@ After merge:
 3. Delete local branch: `git branch -D <branch-name>` (the `--delete-branch` flag on `gh pr merge` handles the remote).
 4. Update the spec file: `status: done`, append status-log line `merged via PR #<n> (squash → <merge-sha-short>)`.
 5. Update `DEV.md`: flip the checkbox `[/]` → `[x]`, append the PR URL inline in the format used by prior entries: `PR: https://github.com/.../pull/<n> (merged <merge-sha-short>)`. If the spec was abandoned/superseded, wrap the entry line in `~~…~~` instead.
-6. Update `_bmad-output/implementation-artifacts/sprint-status.yaml`: flip the matching `<hash>` story's `status:` from `ready-for-dev` to `done`.
 7. Commit all of (4-6) on `main` with message `chore: mark <hash> done after PR #<n> merge` and push.
 8. File gaps:
    - **Test gaps** observed during implementation → new `test/test-*.md` specs + `TEST.md` entries.
@@ -397,6 +388,24 @@ After emitting the snippet, say one sentence summarizing why you stopped and sto
 
 Do NOT promote `develop → main`. That's `/devx-manage`'s job, gated by the promotion rules in [`MODES.md`](../../docs/MODES.md).
 
+## Stage: Retro (native, replaces the retrospective workflow)
+
+Runs at epic/workstream close (the `*ret` item). Contract (D-3): the
+LEARN.md row format is byte-compatible with v1.
+
+1. Evidence: read every shipped spec's status log, the epic's PR bodies
+   (`gh pr view`), and the diff stats. Reconstruct from disk, not memory.
+2. Write the retro artifact `_devx/workstreams/<slug>/RETRO-<date>.md`
+   (standalone epics: `_devx/retros/<epic-slug>-<date>.md`): Outcome
+   (test-count growth, wall-clock, review-pattern stats) + findings.
+3. Append rows to `LEARN.md § <epic-slug>`:
+   `- [confidence] [blast-radius] finding — applied|filed-as|pending`.
+   Misses are the highest-value entries — tag them (miss).
+4. Promotion check: any pattern with ≥3-retro concordance moves to
+   `LEARN.md § Cross-epic patterns` with per-epic evidence.
+5. Apply low-blast findings in the retro PR; file higher-blast ones as
+   specs/backlog rows. Ship through the normal PR flow.
+
 ## Key References
 
 - **DESIGN.md § Branching model** — `develop`/`main` split, feature-branch naming, worktree rules.
@@ -404,7 +413,7 @@ Do NOT promote `develop → main`. That's `/devx-manage`'s job, gated by the pro
 - **SELF_HEALING.md** — every status-log line, every CI failure, every fix-forward commit is a signal LearnAgent reads.
 - **QA.md** — scripted tests run in this loop; exploratory QA is `/devx-test`'s domain, not `/devx`'s.
 - **`devx.config.yaml`** — `stack` / `projects` (what to lint/test/cover), `mode`, `promotion.autonomy.count`, `branch.develop` (default: `develop`), `branch.main` (default: `main`).
-- **BMAD skills** — `bmad-create-story`, `bmad-dev-story`, `bmad-code-review`.
+- **Engine stages** — `/devx-plan` (PRD → Design → Plan → RED); `_devx/workstreams/<slug>/` artifacts; `devx gate evals` RED artifacts consumed by Phase 2.
 
 ## Pairs with
 

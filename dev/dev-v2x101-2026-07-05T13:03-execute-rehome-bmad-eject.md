@@ -5,7 +5,7 @@ created: 2026-07-05T13:03:00-06:00
 title: V2.2 — execute re-home + BMAD ejection
 from: v2/06-phases.md
 plan: v2/
-status: in-progress
+status: in-review
 owner: /devx-2026-07-05T1105-3281
 blocked_by: [v2e102, mgrret]
 branch: feat/dev-v2x101
@@ -56,3 +56,6 @@ branch: feat/dev-v2x101
 
 - 2026-07-05T13:03 — created from v2/06-phases.md § V2.2.
 - 2026-07-05T11:05:36-06:00 — claimed by /devx in session /devx-2026-07-05T1105-3281
+- 2026-07-05T11:55 — phase 2: spec ACs direct (v2 native); 11 ACs; workstream=execute-rehome-bmad-eject; red-artifacts=E-1_bmad-free.ts,E-2_engine-config.ts (both re-run RED before implementation).
+- 2026-07-05T11:55 — implemented: config engine:/loop: + shim (coordinator); devx.md native Phases 2–4 + Stage: Retro (coordinator); 927-file BMAD deletion (coordinator); src de-BMAD + sprint-status retirement + init engine scaffold (agent A, 5 review findings fixed); docs sweep 11 files (agent B). E-1/E-2 flipped RED→GREEN; checkpoint: _devx/workstreams/execute-rehome-bmad-eject/checkpoints/phase-1.md.
+- 2026-07-05T11:55 — phase 4: 3-agent parallel adversarial review (agent A scope: 11 raw → 5 unique findings, 1 HIGH validate-emit abort-regression, all fixed) + coordinator review of own surfaces (2 findings: E-1 shim-detector paradox, stale devx-plan sprint-status line — both fixed); re-review clean.

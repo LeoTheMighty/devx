@@ -28,6 +28,7 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -267,6 +268,107 @@ describe("ini508 — empty fixture", () => {
     expect(result.fresh?.prTemplate.path).toBe(prTemplatePath);
   });
 
+  it("fresh scaffold is BMAD-free and ships the engine (E-3, v2x101)", async () => {
+    const result = await runInit({
+      repoRoot: repo,
+      ask: scriptedAsk(SCRIPTED_ANSWERS_BASE),
+      git: noRemoteGit(repo),
+      gh: ((args) => {
+        if (args[0] === "auth" && args[1] === "status") {
+          return { exitCode: 0, stdout: "", stderr: "" };
+        }
+        return { exitCode: 0, stdout: "{}", stderr: "" };
+      }) as GhExec,
+      skipSupervisor: true,
+    });
+    expect(result.status).toBe("completed");
+
+    // (a) engine templates shipped into the new repo (v2 planning stages
+    //     instantiate workstream artifacts from these).
+    const engineDir = join(repo, "_devx", "templates", "engine");
+    expect(existsSync(engineDir)).toBe(true);
+    const shipped = readdirSync(engineDir).sort();
+    // The canonical stage templates at minimum — prd/design/plan/red-report
+    // are the four the /devx-plan stages consume directly.
+    for (const t of ["prd.md", "design.md", "plan.md", "red-report.md"]) {
+      expect(shipped).toContain(t);
+    }
+    // Orchestrator surfaced the write outcome.
+    expect(result.fresh?.engineTemplates.written.length).toBeGreaterThan(0);
+    expect(result.fresh?.engineTemplates.skipped).toEqual([]);
+
+    // (b) config carries engine: + loop: blocks; no bmad: block.
+    const cfgText = readFileSync(join(repo, "devx.config.yaml"), "utf8");
+    expect(cfgText).toMatch(/^engine:/m);
+    expect(cfgText).toMatch(/^\s*workstreams_root: _devx\/workstreams$/m);
+    expect(cfgText).toMatch(/^loop:/m);
+    expect(cfgText).toMatch(/^\s*max_iterations_per_item:/m);
+    expect(cfgText).not.toMatch(/^bmad:/m);
+
+    // (c) ZERO live BMAD references anywhere in the scaffold. Walk every
+    //     text file the init run produced (skip .git). Exemption mirrors the
+    //     v2x101 AC: a line is a violation iff it matches /bmad/i and does
+    //     not reference the frozen `_bmad-output/` history.
+    const offenders: string[] = [];
+    const walk = (dir: string): void => {
+      for (const ent of readdirSync(dir, { withFileTypes: true })) {
+        if (ent.name === ".git") continue;
+        const p = join(dir, ent.name);
+        if (ent.isDirectory()) {
+          walk(p);
+          continue;
+        }
+        const content = readFileSync(p, "utf8");
+        for (const line of content.split("\n")) {
+          if (/bmad/i.test(line) && !line.includes("_bmad-output/")) {
+            offenders.push(`${p}: ${line.trim().slice(0, 120)}`);
+          }
+        }
+      }
+    };
+    walk(repo);
+    expect(offenders).toEqual([]);
+  });
+
+  it("re-running init never overwrites an existing engine template (idempotent per file)", async () => {
+    const first = await runInit({
+      repoRoot: repo,
+      ask: scriptedAsk(SCRIPTED_ANSWERS_BASE),
+      git: noRemoteGit(repo),
+      gh: ((args) => {
+        if (args[0] === "auth" && args[1] === "status") {
+          return { exitCode: 0, stdout: "", stderr: "" };
+        }
+        return { exitCode: 0, stdout: "{}", stderr: "" };
+      }) as GhExec,
+      skipSupervisor: true,
+    });
+    expect(first.status).toBe("completed");
+
+    // User tunes one template; a re-run must not clobber it.
+    const tuned = join(repo, "_devx", "templates", "engine", "prd.md");
+    writeFileSync(tuned, "# user-tuned PRD template\n");
+
+    const second = await runInit({
+      repoRoot: repo,
+      ask: scriptedAsk(SCRIPTED_ANSWERS_BASE),
+      git: noRemoteGit(repo),
+      gh: ((args) => {
+        if (args[0] === "auth" && args[1] === "status") {
+          return { exitCode: 0, stdout: "", stderr: "" };
+        }
+        return { exitCode: 0, stdout: "{}", stderr: "" };
+      }) as GhExec,
+      skipSupervisor: true,
+    });
+    // Repo has no HEAD commit → still routes fresh; writeEngineTemplates
+    // runs again and must skip every existing file.
+    expect(second.status).toBe("completed");
+    expect(readFileSync(tuned, "utf8")).toBe("# user-tuned PRD template\n");
+    expect(second.fresh?.engineTemplates.written).toEqual([]);
+    expect(second.fresh?.engineTemplates.skipped.length).toBeGreaterThan(0);
+  });
+
   it("idempotent re-run is a near no-op (kept M / added 0 / migrated 0)", async () => {
     const baseline = await runInit({
       repoRoot: repo,
@@ -444,7 +546,14 @@ describe("ini508 — partial-on-devx fixture", () => {
     expect(result.status).toBe("completed");
     expect(claudeRepairs).toBe(1);
     expect(personasRepairs).toBe(1);
-    expect(result.upgrade?.summary?.added).toBe(2);
+    // 3 = claude-md-markers + personas (stubbed) + engine-templates (the
+    // v2x101 surface, left un-stubbed so the DEFAULT detect/repair pair runs
+    // for real — the fixture predates the engine, so the upgrade must ship
+    // the stage templates into the repo).
+    expect(result.upgrade?.summary?.added).toBe(3);
+    expect(
+      existsSync(join(repo, "_devx", "templates", "engine", "prd.md")),
+    ).toBe(true);
   });
 });
 

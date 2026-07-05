@@ -110,6 +110,12 @@ Fallback channels still available:
 
 ## 7. What does BMAD actually cover, and where does devx add?
 
+> **Resolved.** Phase 0's `epic-bmad-audit` answered this question in full
+> (`_bmad-output/planning-artifacts/bmad-audit.md`), and the v2 migration
+> subsequently ejected BMAD entirely — the capture of what was load-bearing
+> and how each piece was re-homed natively is `v2/01-bmad-capture.md`.
+> Preserved below as originally written.
+
 **The thought:** "Let's actually get BMAD working in this project itself to iron out how to make this as good as possible."
 
 **Action:** run `npx bmad-method install` in this very repo (with `core + bmm + tea`), then walk through each workflow it exposes and decide:
@@ -186,7 +192,7 @@ Fallback channels still available:
 
 **Scenario:** `palateful/` has `app/`, `services/api/`, `services/worker/`, `libraries/utils/`, `terraform/`. Can one DevAgent working `dev-a3f2b9` touch code in 3 of those subtrees?
 
-**Yes, probably** — worktrees are repo-wide, not subtree-wide, and BMAD's story-writing already considers multi-layer work (frontend + backend + infra). But there are sub-questions:
+**Yes, probably** — worktrees are repo-wide, not subtree-wide, and the plan stage already considers multi-layer work (frontend + backend + infra) when cutting phases. But there are sub-questions:
 - Coverage gates are per-project (`api:test` vs. `utils:test` vs. `flutter test`). `/devx-test` must know the mapping.
 - CI for monorepos is more complex (Nx task graphs, affected-only builds). The generated `devx.yml` needs to match.
 
@@ -315,9 +321,9 @@ TestAgent selects the right commands based on which project's files were touched
 
 **Context:** Portability claim in the brief must be testable. Solution: ship `devx eject` in v1.
 
-**What it does:** removes `.devx-cache/`, `.worktrees/`, and `.claude/commands/devx-*` from the current project. Leaves `_bmad/`, `_bmad-output/`, backlog files, spec files, and CLAUDE.md intact. User is left with a vanilla BMAD project that can be driven entirely by raw `/bmad-*` commands. Git history is preserved; lessons are preserved in CLAUDE.md.
+**What it does:** removes `.devx-cache/`, `.worktrees/`, and `.claude/commands/devx-*` from the current project. Leaves a working repo with readable history, backlogs, specs, and workstream artifacts (plus any frozen `_bmad-output/` archive), and CLAUDE.md intact — markdown + git are ground truth (`v2/07-decisions.md` D-2). Git history is preserved; lessons are preserved in CLAUDE.md.
 
-**Lands in:** DESIGN.md § "Contract between devx and BMAD" + `devx eject` CLI spec.
+**Lands in:** DESIGN.md § "The engine contract" + `devx eject` CLI spec.
 
 ---
 

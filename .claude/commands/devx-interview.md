@@ -141,7 +141,7 @@ After answer, ask a single optional follow-up: `Add a Note? (blank to skip)`.
   whitespace, headings, and the "How to answer" footer.
 - **Don't auto-commit by default.** Answering an INTERVIEW question is a
   product decision; the user reviews the markdown diff before committing.
-- **Don't make the BMAD story / dev-loop call.** That's `/devx`'s job.
+- **Don't make the implementation / dev-loop call.** That's `/devx`'s job.
   Once a spec flips to `ready`, the user (or ManageAgent, when it ships)
   decides whether to claim it.
 - **Don't fan-out into multi-question prompts.** One question at a time.

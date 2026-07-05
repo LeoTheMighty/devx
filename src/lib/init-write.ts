@@ -40,6 +40,8 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
+  statSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -492,11 +494,28 @@ export function renderInitConfig(opts: RenderOpts): string {
       telemetry: { enabled: false, endpoint: null, anonymized: true },
     },
 
-    bmad: {
-      modules: ["core", "bmm", "tea"],
-      output_root: "_bmad-output",
-      preserve_on_eject: true,
-      workflows_path: "_bmad/",
+    // v2 engine (v2x101): replaces the retired framework-integration
+    // section. Shape mirrors devx.config.yaml §15 (engine) + §15b (overnight
+    // loop budgets); see v2/02-engine.md §7 + v2/04-overnight-loop.md §3.
+    engine: {
+      workstreams_root: "_devx/workstreams",
+      archive_root: "_devx/archive",
+      code_citation_hints: [],
+      expectations_min: 3,
+      prose_budget_kb: 60,
+      critique: {
+        lenses: ["pm", "architect", "dev", "qa"],
+        min_surfaces: 2,
+      },
+    },
+
+    loop: {
+      max_iterations_per_item: 8,
+      max_tokens_per_item: 2000000,
+      max_consecutive_failures: 3,
+      max_items: 10,
+      max_total_tokens: 10000000,
+      backoff_ms: [60000, 120000, 240000],
     },
   };
 
@@ -831,6 +850,81 @@ function defaultPrTemplateRoot(): string {
   // dist/lib/init-write.js → ../../_devx/templates
   const here = fileURLToPath(import.meta.url);
   return resolve(here, "..", "..", "..", "_devx", "templates");
+}
+
+// ---------------------------------------------------------------------------
+// Engine stage templates (v2x101)
+//
+// The v2 engine's planning stages (`/devx-plan` PRD → Design → Plan → RED)
+// instantiate workstream artifacts from the stage templates shipped in the
+// npm package under `_devx/templates/engine/`. A fresh scaffold must carry
+// them so the engine works offline in the new repo (same reasoning as the
+// PR template above: ship-in-package + write-at-init).
+//
+// Idempotent per file: existing destination files are NEVER overwritten
+// (the user may have tuned a template); missing ones are (re)written.
+// ---------------------------------------------------------------------------
+
+export interface EngineTemplatesResult {
+  /** Repo-relative paths written this run. */
+  written: string[];
+  /** Repo-relative paths skipped because they already exist. */
+  skipped: string[];
+}
+
+export interface WriteEngineTemplatesOpts {
+  /** When true, compute the outcome without touching disk. */
+  dryRun?: boolean;
+  /** Override the templates root (the dir CONTAINING `engine/`). Defaults
+   *  to the package's `_devx/templates/`. */
+  templatesRoot?: string;
+}
+
+export function writeEngineTemplates(
+  repoRoot: string,
+  opts: WriteEngineTemplatesOpts = {},
+): EngineTemplatesResult {
+  const templatesRoot = opts.templatesRoot ?? defaultPrTemplateRoot();
+  const srcDir = join(templatesRoot, "engine");
+  const destDir = join(repoRoot, "_devx", "templates", "engine");
+
+  // Guard with actionable diagnostics instead of raw fs errors — a bare
+  // ENOENT/ENOTDIR mid-init (after config + backlogs already landed) gives
+  // the operator no signal about what broke.
+  if (!existsSync(srcDir)) {
+    throw new Error(
+      `writeEngineTemplates: engine templates not found at ${srcDir} — ` +
+        `the devx package should ship _devx/templates/engine/ (broken ` +
+        `install, or a custom templatesRoot without an engine/ subdir)`,
+    );
+  }
+  if (existsSync(destDir) && !statSync(destDir).isDirectory()) {
+    throw new Error(
+      `writeEngineTemplates: ${destDir} exists but is not a directory — ` +
+        `move it aside and re-run devx init`,
+    );
+  }
+
+  const written: string[] = [];
+  const skipped: string[] = [];
+
+  const names = readdirSync(srcDir)
+    .filter((n) => n.endsWith(".md"))
+    .sort();
+  for (const name of names) {
+    const dest = join(destDir, name);
+    const rel = join("_devx", "templates", "engine", name);
+    if (existsSync(dest)) {
+      skipped.push(rel);
+      continue;
+    }
+    if (!opts.dryRun) {
+      writeAtomic(dest, readTemplate(join(srcDir, name)));
+    }
+    written.push(rel);
+  }
+
+  return { written, skipped };
 }
 
 // ---------------------------------------------------------------------------

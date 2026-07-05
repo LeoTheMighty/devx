@@ -25,7 +25,6 @@ import {
   type ValidateEmitFs,
   type ValidationIssue,
   parseEpicDevMdRows,
-  parseEpicSprintStatusStories,
   parseFrontmatterValue,
   parseLockedDecisions,
   parseStoryHashes,
@@ -44,6 +43,7 @@ import {
 // the methods as own enumerable properties, which DO survive the spread.
 interface MemoryFs extends ValidateEmitFs {
   put(absPath: string, content: string): void;
+  remove(absPath: string): void;
 }
 
 function newMemoryFs(): MemoryFs {
@@ -62,6 +62,15 @@ function newMemoryFs(): MemoryFs {
         if (!dirs.has(dirAbs)) dirs.set(dirAbs, new Set());
         dirs.get(dirAbs)!.add(child);
       }
+    },
+    remove(absPath: string): void {
+      files.delete(absPath);
+      // Prune the child entry from its parent dir listing so readdir stays
+      // consistent. (Ancestor dirs remain — matches real-fs semantics where
+      // removing a file doesn't remove its directory.)
+      const idx = absPath.lastIndexOf("/");
+      const dirAbs = idx <= 0 ? "/" : absPath.slice(0, idx);
+      dirs.get(dirAbs)?.delete(absPath.slice(idx + 1));
     },
     readFile(p: string): string {
       const v = files.get(p);
@@ -102,8 +111,8 @@ function cleanFixture(): Tree {
 ### fix102 — second story
 - [ ] AC 1.
 
-### fixret — Retro: bmad-retrospective on epic-fixture-epic
-- [ ] Run bmad-retrospective.
+### fixret — Retro: /devx retro on epic-fixture-epic
+- [ ] Run the native retro stage.
 
 ## Party-mode refined (2026-04-28)
 
@@ -352,39 +361,7 @@ describe("validateEmit — check 2: DEV.md row → spec exists", () => {
   });
 });
 
-describe("validateEmit — check 3: sprint-status story → spec exists", () => {
-  it("flags a sprint-status story with no matching dev spec", () => {
-    const { fs, repoRoot } = cleanFixture();
-    fs.put(
-      `${repoRoot}/_bmad-output/implementation-artifacts/sprint-status.yaml`,
-      `plans:
-  - key: plan-fixture
-    title: Fixture
-    epics:
-      - key: epic-fixture-epic
-        stories:
-          - key: fix101
-            title: first
-          - key: fix102
-            title: second
-          - key: ghost9
-            title: phantom story not in dev/
-          - key: fixret
-            title: Retro
-`,
-    );
-    const r = validateEmit(
-      { repoRoot, epicSlug: "fixture-epic", config: SINGLE_BRANCH_CONFIG },
-      fs,
-    );
-    const issue = findIssue(r.issues, "sprint-status-points-at-missing-spec");
-    expect(issue).toBeDefined();
-    expect(issue!.message).toContain("ghost9");
-    expect(issue!.location).toMatch(/sprint-status\.yaml:\d+/);
-  });
-});
-
-describe("validateEmit — check 4: retro trifecta", () => {
+describe("validateEmit — check 4: retro pair (spec + DEV.md row; sprint-status retired by D-7)", () => {
   it("flags retro spec missing from dev/", () => {
     // Build the fixture WITHOUT the retro spec — easier than copying-and-
     // dropping after the fact, since the factory's internal Maps are
@@ -456,10 +433,11 @@ branch: feat/dev-fix102
     );
     expect(findIssue(r.issues, "retro-trifecta-missing-spec")).toBeDefined();
     expect(findIssue(r.issues, "retro-trifecta-missing-devmd-row")).toBeDefined();
-    expect(findIssue(r.issues, "retro-trifecta-missing-sprint-status")).toBeDefined();
+    // Retired by v2x101 D-7 — no sprint-status requirement survives.
+    expect(findIssue(r.issues, "retro-trifecta-missing-sprint-status")).toBeUndefined();
   });
 
-  it("flags retro DEV.md row missing while spec + sprint-status are present", () => {
+  it("flags retro DEV.md row missing while spec is present", () => {
     const { fs, repoRoot } = cleanFixture();
     fs.put(
       `${repoRoot}/DEV.md`,
@@ -476,31 +454,19 @@ branch: feat/dev-fix102
     );
     expect(findIssue(r.issues, "retro-trifecta-missing-devmd-row")).toBeDefined();
     expect(findIssue(r.issues, "retro-trifecta-missing-spec")).toBeUndefined();
-    expect(findIssue(r.issues, "retro-trifecta-missing-sprint-status")).toBeUndefined();
   });
 
-  it("flags retro sprint-status row missing while spec + DEV.md are present", () => {
+  it("a repo with NO sprint-status.yaml at all validates clean (D-7: fresh v2 scaffolds never create it)", () => {
     const { fs, repoRoot } = cleanFixture();
-    fs.put(
-      `${repoRoot}/_bmad-output/implementation-artifacts/sprint-status.yaml`,
-      `plans:
-  - key: plan-fixture
-    epics:
-      - key: epic-fixture-epic
-        stories:
-          - key: fix101
-            title: first
-          - key: fix102
-            title: second
-`,
-    );
+    fs.remove(`${repoRoot}/_bmad-output/implementation-artifacts/sprint-status.yaml`);
     const r = validateEmit(
       { repoRoot, epicSlug: "fixture-epic", config: SINGLE_BRANCH_CONFIG },
       fs,
     );
-    expect(findIssue(r.issues, "retro-trifecta-missing-sprint-status")).toBeDefined();
-    expect(findIssue(r.issues, "retro-trifecta-missing-spec")).toBeUndefined();
-    expect(findIssue(r.issues, "retro-trifecta-missing-devmd-row")).toBeUndefined();
+    expect(r.epicFound).toBe(true);
+    expect(findIssue(r.issues, "sprint-status-missing")).toBeUndefined();
+    expect(findIssue(r.issues, "retro-trifecta-missing-sprint-status")).toBeUndefined();
+    expect(r.issues.filter((i) => i.severity === "error")).toEqual([]);
   });
 });
 
@@ -1016,39 +982,6 @@ describe("parseEpicDevMdRows", () => {
   });
 });
 
-describe("parseEpicSprintStatusStories", () => {
-  it("captures stories under the named epic block, ignores other epics", () => {
-    const yml = `plans:
-  - key: plan-1
-    epics:
-      - key: epic-foo
-        stories:
-          - key: foo101
-            title: x
-          - key: foo102
-            title: y
-      - key: epic-bar
-        stories:
-          - key: bar101
-            title: z
-`;
-    const hits = parseEpicSprintStatusStories(yml, "foo");
-    expect(hits.map((h) => h.hash)).toEqual(["foo101", "foo102"]);
-  });
-
-  it("returns empty when the epic isn't found", () => {
-    const yml = `plans:
-  - key: plan-1
-    epics:
-      - key: epic-foo
-        stories:
-          - key: foo101
-            title: x
-`;
-    expect(parseEpicSprintStatusStories(yml, "ghost")).toEqual([]);
-  });
-});
-
 describe("parseFrontmatterValue", () => {
   it("extracts a top-level scalar from frontmatter", () => {
     const body = `---
@@ -1087,7 +1020,7 @@ describe("parseLockedDecisions", () => {
     // token in the bullet") produced false-positive anchors when a Locked
     // decision named multiple hashes in passing. anchorHash should be null
     // here, suppressing the heuristic warn entirely.
-    const epic = `**Locked decision:** Following pln103 design, plnret will run \`bmad-retrospective\`.`;
+    const epic = `**Locked decision:** Following pln103 design, plnret will run \`the-retro-stage\`.`;
     const lds = parseLockedDecisions(epic);
     expect(lds).toHaveLength(1);
     expect(lds[0].anchorHash).toBe(null);

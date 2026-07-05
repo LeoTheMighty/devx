@@ -14,7 +14,7 @@
 //
 //   derive-branch / emit-retro-story:
 //     0  — success; derived value printed on stdout. Partial-but-acceptable
-//          outcomes (emit-retro-story's "spec wrote, sprint-status rename
+//          outcomes (emit-retro-story's "spec wrote, DEV.md rename
 //          failed") are also exit 0 with `WARN:` on stderr.
 //     1  — invalid input or pre-write failure. No fs side-effects.
 //     2  — commander usage error (handled by commander itself).
@@ -227,7 +227,7 @@ export function runEmitRetroStory(
     return 1;
   }
   // The repoRoot is the directory containing devx.config.yaml — that's
-  // where DEV.md and _bmad-output/ live.
+  // where DEV.md lives.
   const repoRoot = opts.repoRoot ?? dirname(projectConfigPath);
 
   let merged: DeriveBranchConfig & {
@@ -285,13 +285,14 @@ export function runEmitRetroStory(
   }
 
   // Single-line stdout summary so the skill body can grep it. Format:
-  //   spec=<path> dev_md=<path> sprint_status=<path> [partial=<csv>]
+  //   spec=<path> dev_md=<path> [partial=<csv>]
   // All paths are repo-relative (the same canonical paths writeRetroAtomically
   // defaulted to). Skill body splits on whitespace + `=` to consume.
+  // (v2x101 D-7: the sprint_status= field is gone — sprint-status.yaml is
+  // retired and never written again.)
   const lineParts = [
     `spec=${emit.specPath}`,
     `dev_md=DEV.md`,
-    `sprint_status=_bmad-output/implementation-artifacts/sprint-status.yaml`,
   ];
   if (!result.fullSuccess && result.partial) {
     // Strip the repoRoot prefix so the partial: list mirrors the other
@@ -467,7 +468,7 @@ export function register(program: Command): void {
   sub
     .command("emit-retro-story")
     .description(
-      "Emit the per-epic retro story (spec file + DEV.md row + sprint-status.yaml row) atomically. Closes the LEARN.md cross-epic regression where retros were absent from sprint-status.yaml in every Phase 0 PR.",
+      "Emit the per-epic retro story (spec file + DEV.md row) atomically. The spec's ACs point at the native retro stage (`/devx retro`).",
     )
     .requiredOption("--epic-slug <slug>", "epic slug (the part after 'epic-')")
     .requiredOption(
@@ -500,7 +501,7 @@ export function register(program: Command): void {
   sub
     .command("validate-emit")
     .description(
-      "Validate cross-references emitted by /devx-plan Phase 5/6 for one epic. Catches half-broken artifacts (DEV.md row → missing spec, branch frontmatter ignoring devx.config.yaml, retro trifecta missing one of three rows, etc.) at planning time, before /devx tries to claim them.",
+      "Validate cross-references emitted by /devx-plan for one epic. Catches half-broken artifacts (DEV.md row → missing spec, branch frontmatter ignoring devx.config.yaml, retro spec/DEV.md-row pair missing a piece, etc.) at planning time, before /devx tries to claim them.",
     )
     .argument(
       "<epic-slug>",

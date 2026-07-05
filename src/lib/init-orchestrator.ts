@@ -66,8 +66,10 @@ import {
   type UpgradeResult,
 } from "./init-upgrade.js";
 import {
+  type EngineTemplatesResult,
   type PrTemplateResult,
   type WriteInitResult,
+  writeEngineTemplates,
   writeInitFiles,
   writePrTemplate,
 } from "./init-write.js";
@@ -96,6 +98,9 @@ export interface FreshInitOutcome {
    *  before githubWrites so e2e tests can assert on the canonical Phase 1
    *  shape on disk. */
   prTemplate: PrTemplateResult;
+  /** Engine stage-template scaffold outcome (v2x101). Populated alongside
+   *  prTemplate — both ship from the same packaged `_devx/templates/` root. */
+  engineTemplates: EngineTemplatesResult;
   githubWrites: InitGhResult;
   personas: SeedPersonasResult;
   interview: SeedInterviewResult;
@@ -269,6 +274,13 @@ export async function runInit(opts: RunInitOpts): Promise<OrchestratorResult> {
     ...(prTemplateRoot ? { templatesRoot: prTemplateRoot } : {}),
   });
 
+  // 2b. Engine stage templates (v2x101) — the v2 planning stages instantiate
+  //     workstream artifacts from these; a fresh repo must carry them. Same
+  //     templates root as the PR template (parent of init/).
+  const engineTemplates = writeEngineTemplates(opts.repoRoot, {
+    ...(prTemplateRoot ? { templatesRoot: prTemplateRoot } : {}),
+  });
+
   // 3. GitHub-side writes (workflows + branch ops; PR template handled above)
   const githubWrites = writeInitGh({
     repoRoot: opts.repoRoot,
@@ -352,6 +364,7 @@ export async function runInit(opts: RunInitOpts): Promise<OrchestratorResult> {
       questions,
       localWrites,
       prTemplate,
+      engineTemplates,
       githubWrites,
       personas,
       interview,

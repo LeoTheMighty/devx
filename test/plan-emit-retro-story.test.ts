@@ -1,34 +1,33 @@
-// Tests for src/lib/plan/emit-retro-story.ts (pln102).
+// Tests for src/lib/plan/emit-retro-story.ts (pln102; retargeted by v2x101).
 //
 // Three layers covered:
 //
 //   1. emitRetroStory() pure-function golden output
-//      - canonical spec body matches the Phase 1 retro template
-//        (prtret/mrgret shape) byte-for-byte
+//      - canonical spec body matches the native-retro template (`/devx retro`
+//        — the `## Stage: Retro` section of .claude/commands/devx.md)
 //      - DEV.md row format
-//      - sprint-status row format (10/12-space indents)
+//      - NO sprint-status row (v2x101 D-7: sprint-status.yaml is retired)
 //      - prefix derivation from parents[0].slice(0,3)
 //      - throws on prefix mismatch / empty parents / empty epicSlug
 //      - opts.now is honored (deterministic timestamp)
 //
-//   2. insertDevMdRow() / insertSprintStatusRow() textual splicing
+//   2. insertDevMdRow() textual splicing
 //      - happy path on real-shape fixtures
 //      - throws on missing epic
 //      - mid-section append (not at end of file)
 //      - strikethrough/abandoned rows still anchor
 //
 //   3. writeRetroAtomically() — atomicity per epic locked-decision #7
-//      - happy path: all 3 written, no WARN
-//      - rename failure at spec → no state changed (DEV.md +
-//        sprint-status untouched), partial=[spec, DEV.md, sprint-status]
-//      - rename failure at DEV.md → spec written, DEV.md +
-//        sprint-status NOT written, partial=[DEV.md, sprint-status]
-//      - rename failure at sprint-status → spec + DEV.md written,
-//        sprint-status NOT written, partial=[sprint-status]
+//      (narrowed by D-7 to the two remaining artifacts)
+//      - happy path: both written, no WARN
+//      - rename failure at spec → no state changed (DEV.md untouched),
+//        partial=[spec, DEV.md]
+//      - rename failure at DEV.md → spec written, partial=[DEV.md]
 //      - WARN message names every missing artifact
 //      - tmp files remain on disk after partial (operator can recover)
 //
 // Spec: dev/dev-pln102-2026-04-28T19:30-plan-emit-retro.md
+// Spec: dev/dev-v2x101 (execute re-home + ejection; full filename under dev/)
 
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdirSync } from "node:fs";
@@ -41,7 +40,6 @@ import {
   type EmitRetroStoryResult,
   emitRetroStory,
   insertDevMdRow,
-  insertSprintStatusRow,
   writeRetroAtomically,
 } from "../src/lib/plan/emit-retro-story.js";
 
@@ -146,20 +144,14 @@ describe("emitRetroStory — pure", () => {
     );
   });
 
-  it("sprint-status row matches the 10/12-space indent shape", () => {
+  it("result carries NO sprint-status row (v2x101 D-7 — sprint-status.yaml retired)", () => {
     const r = emitRetroStory(
       "merge-gate-modes",
       ["mrg101", "mrg102", "mrg103"],
       STD_OPTS,
     );
-    expect(r.sprintStatusRow).toBe(
-      [
-        "          - key: mrgret",
-        "            title: Retro + LEARN.md updates (interim retro discipline)",
-        "            status: backlog",
-        "            blocked_by: [mrg101, mrg102, mrg103]",
-      ].join("\n"),
-    );
+    expect(r).not.toHaveProperty("sprintStatusRow");
+    expect(Object.keys(r).sort()).toEqual(["devMdRow", "specBody", "specPath"]);
   });
 
   it("spec body carries every required frontmatter field", () => {
@@ -175,9 +167,13 @@ describe("emitRetroStory — pure", () => {
     expect(r.specBody).toContain(
       "title: Retro + LEARN.md updates (interim retro discipline)",
     );
+    // v2x101: `from:` points at the plan spec that spawned the retro — the
+    // old `_bmad-output/planning-artifacts/epic-<slug>.md` parent dangled
+    // forever post-ejection (no new epic file is ever written there).
     expect(r.specBody).toContain(
-      "from: _bmad-output/planning-artifacts/epic-merge-gate-modes.md",
+      "from: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md",
     );
+    expect(r.specBody).not.toContain("_bmad-output/planning-artifacts");
     expect(r.specBody).toContain(
       "plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md",
     );
@@ -191,17 +187,17 @@ describe("emitRetroStory — pure", () => {
     );
   });
 
-  it("spec body's Goal + ACs match the prtret canonical template", () => {
+  it("spec body's Goal + ACs target the native retro stage (v2x101 D-3)", () => {
     const r = emitRetroStory("pr-template", ["prt101", "prt102"], {
       ...STD_OPTS,
       branch: "feat/dev-prtret",
     });
     expect(r.specBody).toContain(
-      "Run `bmad-retrospective` on epic-pr-template; append findings to `LEARN.md § epic-pr-template`",
+      "Run the native retro stage (`/devx retro` — the `## Stage: Retro` section of `.claude/commands/devx.md`) on epic-pr-template; append findings to `LEARN.md § epic-pr-template`",
     );
-    // The 7 ACs that match the prtret canonical shape.
+    // The 6 ACs of the native-retro canonical shape.
     expect(r.specBody).toContain(
-      "- [ ] `bmad-retrospective` invoked against shipped stories (prt101, prt102).",
+      "- [ ] `/devx retro` stage run against shipped stories (prt101, prt102).",
     );
     expect(r.specBody).toContain(
       "- [ ] Findings appended to `LEARN.md § epic-pr-template`",
@@ -214,7 +210,10 @@ describe("emitRetroStory — pure", () => {
     expect(r.specBody).toContain(
       "Cross-epic patterns hitting ≥3 retros total promoted into `LEARN.md § Cross-epic patterns`.",
     );
-    expect(r.specBody).toContain("Sprint-status row for `prtret` present");
+    // Retired references must NOT appear (D-3 + D-7).
+    expect(r.specBody).not.toContain("bmad-retrospective");
+    expect(r.specBody).not.toContain("Sprint-status row");
+    expect(r.specBody).not.toContain("sprint-status");
   });
 
   it("Technical notes records mode/shape/thoroughness as provenance", () => {
@@ -249,7 +248,7 @@ describe("emitRetroStory — pure", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Layer 2 — splicing helpers
+// Layer 2 — splicing helper
 // ---------------------------------------------------------------------------
 
 const SAMPLE_DEV_MD = `# DEV — Features to build
@@ -258,10 +257,10 @@ Some preamble.
 
 ## Phase 0 — Foundation
 
-### Epic 1 — BMAD audit
-- [x] \`dev/dev-aud101-2026-04-26T19:35-bmad-modules-inventory.md\` — Inventory. Status: done.
-- [x] \`dev/dev-aud102-2026-04-26T19:35-bmad-classify-workflows.md\` — Classify. Status: done.
-- [x] \`dev/dev-audret-2026-04-27T08:00-retro-bmad-audit.md\` — Retro. Status: done.
+### Epic 1 — Framework audit
+- [x] \`dev/dev-aud101-2026-04-26T19:35-modules-inventory.md\` — Inventory. Status: done.
+- [x] \`dev/dev-aud102-2026-04-26T19:35-classify-workflows.md\` — Classify. Status: done.
+- [x] \`dev/dev-audret-2026-04-27T08:00-retro-framework-audit.md\` — Retro. Status: done.
 
 ### Epic 2 — devx CLI skeleton
 - [x] \`dev/dev-cli301-2026-04-26T19:35-cli-package-scaffold.md\` — Scaffold. Status: done.
@@ -286,10 +285,10 @@ describe("insertDevMdRow", () => {
   });
 
   it("appends mid-file when the matching epic isn't last", () => {
-    const newRow = `- [ ] \`dev/dev-audret2-2026-05-03T14:23-retro-bmad-audit.md\` — Retro2. Status: ready. Blocked-by: aud101.`;
+    const newRow = `- [ ] \`dev/dev-audret2-2026-05-03T14:23-retro-framework-audit.md\` — Retro2. Status: ready. Blocked-by: aud101.`;
     const out = insertDevMdRow(SAMPLE_DEV_MD, ["aud101"], newRow);
     const lines = out.split("\n");
-    // Inserted right after the last `- [` row of the BMAD audit section
+    // Inserted right after the last `- [` row of the audit section
     // (the audret line) and BEFORE the `### Epic 2` heading.
     const audretIdx = lines.findIndex((l) => l.includes("dev-audret-"));
     expect(lines[audretIdx + 1]).toBe(newRow);
@@ -344,190 +343,22 @@ describe("insertDevMdRow", () => {
   });
 });
 
-const SAMPLE_SPRINT_STATUS = `# devx implementation sprint status
-plans:
-  - key: plan-a01000-foundation
-    title: Phase 0
-    status: backlog
-    epics:
-      - key: epic-bmad-audit
-        title: BMAD audit
-        status: backlog
-        stories:
-          - key: aud101
-            title: Inventory
-            status: done
-          - key: aud102
-            title: Classify
-            status: done
-            blocked_by: [aud101]
-
-      - key: epic-cli-skeleton
-        title: CLI skeleton
-        status: backlog
-        stories:
-          - key: cli301
-            title: Scaffold
-            status: done
-
-  - key: plan-b01000-single-agent-loop
-    title: Phase 1
-    status: backlog
-    epics:
-      - key: epic-merge-gate-modes
-        title: Merge gate
-        status: backlog
-        stories:
-          - key: mrg101
-            title: Pure fn
-            status: done
-          - key: mrg102
-            title: CLI
-            status: backlog
-            blocked_by: [mrg101]
-`;
-
-describe("insertSprintStatusRow", () => {
-  it("appends a new story right after the last existing story in the matching epic", () => {
-    const row = [
-      "          - key: mrgret",
-      "            title: Retro + LEARN.md updates (interim retro discipline)",
-      "            status: backlog",
-      "            blocked_by: [mrg101, mrg102]",
-    ].join("\n");
-
-    const out = insertSprintStatusRow(SAMPLE_SPRINT_STATUS, "merge-gate-modes", row);
-    const lines = out.split("\n");
-    const mrgretIdx = lines.findIndex((l) => l.includes("- key: mrgret"));
-    // The new block lands after the mrg102 story (last existing) and
-    // before the next plan/epic boundary or EOF.
-    const mrg102BlockedByIdx = lines.findIndex((l) =>
-      l.includes("blocked_by: [mrg101]"),
-    );
-    expect(mrgretIdx).toBeGreaterThan(mrg102BlockedByIdx);
-  });
-
-  it("inserts mid-file when the matching epic isn't the last one", () => {
-    const row = [
-      "          - key: audret",
-      "            title: Retro + LEARN.md updates (interim retro discipline)",
-      "            status: backlog",
-      "            blocked_by: [aud101, aud102]",
-    ].join("\n");
-
-    const out = insertSprintStatusRow(SAMPLE_SPRINT_STATUS, "bmad-audit", row);
-    const lines = out.split("\n");
-    const audretIdx = lines.findIndex((l) => l.includes("- key: audret"));
-    // Inserted before the next epic (epic-cli-skeleton).
-    const nextEpicIdx = lines.findIndex((l) =>
-      l.includes("- key: epic-cli-skeleton"),
-    );
-    expect(audretIdx).toBeLessThan(nextEpicIdx);
-    expect(audretIdx).toBeGreaterThan(0);
-  });
-
-  it("inserts before the next plan boundary", () => {
-    // CLI epic is the last in plan-a01000. Inserting a retro should
-    // land BEFORE the `- key: plan-b01000` line.
-    const row = [
-      "          - key: cliret",
-      "            title: Retro + LEARN.md updates (interim retro discipline)",
-      "            status: backlog",
-      "            blocked_by: [cli301]",
-    ].join("\n");
-
-    const out = insertSprintStatusRow(SAMPLE_SPRINT_STATUS, "cli-skeleton", row);
-    const lines = out.split("\n");
-    const cliretIdx = lines.findIndex((l) => l.includes("- key: cliret"));
-    const nextPlanIdx = lines.findIndex((l) =>
-      l.includes("- key: plan-b01000-single-agent-loop"),
-    );
-    expect(cliretIdx).toBeLessThan(nextPlanIdx);
-    // And after the last existing cli story.
-    const cli301Idx = lines.findIndex((l) => l.includes("- key: cli301"));
-    expect(cliretIdx).toBeGreaterThan(cli301Idx);
-  });
-
-  it("throws on missing epic", () => {
-    expect(() =>
-      insertSprintStatusRow(SAMPLE_SPRINT_STATUS, "does-not-exist", "row"),
-    ).toThrow(/epic-does-not-exist/);
-  });
-
-  it("rejects nested sub-list `- key:` entries as an anchor (EC[3] regression)", () => {
-    // Synthetic fixture: an epic where the last `- key:` deeper than the
-    // epic's dash-col is at the WRONG (over-deep) indent — e.g. inside a
-    // hypothetical `tasks:` sub-block. Pre-fix code would happily anchor
-    // there and emit YAML at the wrong indent.
-    const yaml = `plans:
-  - key: plan-x
-    epics:
-      - key: epic-foo
-        stories:
-          - key: foo101
-            title: Real story
-            status: done
-            tasks:
-              - key: deeply-nested-task
-                done: true
-`;
-    // No story exists at the canonical story dash-col (col 10) AFTER the
-    // nested task at col 14. The new code should still find foo101 (the
-    // last `- key:` at col 10) and anchor there — NOT the nested task.
-    const out = insertSprintStatusRow(yaml, "foo", "          - key: fooret\n            title: Retro");
-    // The new row should land between foo101's block and EOF — and its
-    // dash-col should be 10 (matching foo101), NOT 14.
-    const fooretLine = out.split("\n").find((l) => l.includes("- key: fooret"));
-    expect(fooretLine).toBeDefined();
-    expect(fooretLine?.indexOf("-")).toBe(10);
-  });
-
-  it("preserves the blank-line separator between epics on insertion", () => {
-    // Insert into the merge-gate-modes epic; the next epic
-    // (epic-pr-template doesn't exist in SAMPLE_SPRINT_STATUS, but the
-    // pattern is the trailing-blank case) — confirm the resulting yaml
-    // has a blank line AFTER the inserted block.
-    const row = [
-      "          - key: mrgret",
-      "            title: Retro",
-      "            status: backlog",
-      "            blocked_by: [mrg101, mrg102]",
-    ].join("\n");
-    const out = insertSprintStatusRow(SAMPLE_SPRINT_STATUS, "merge-gate-modes", row);
-    // The block ends with `blocked_by: [mrg101, mrg102]` followed by the
-    // file's trailing characters. Verify the inserted row didn't eat the
-    // file's structure — there should be no `- key: epic-` line directly
-    // after the blocked_by line.
-    const lines = out.split("\n");
-    const mrgretBlockedByIdx = lines.findIndex(
-      (l) => l.includes("blocked_by: [mrg101, mrg102]"),
-    );
-    expect(mrgretBlockedByIdx).toBeGreaterThan(-1);
-  });
-});
-
 // ---------------------------------------------------------------------------
-// Layer 3 — writeRetroAtomically (atomicity per locked decision #7)
+// Layer 3 — writeRetroAtomically (atomicity per locked decision #7,
+// narrowed by v2x101 D-7 to spec + DEV.md)
 // ---------------------------------------------------------------------------
 
 interface WorkRoot {
   root: string;
   devMdAbs: string;
-  sprintStatusAbs: string;
   cleanup: () => void;
 }
 
 function setupRoot(): WorkRoot {
   const root = mkdtempSync(join(tmpdir(), "devx-emit-retro-"));
   const devMdAbs = join(root, "DEV.md");
-  const sprintStatusAbs = join(
-    root,
-    "_bmad-output/implementation-artifacts/sprint-status.yaml",
-  );
   writeFileSync(devMdAbs, SAMPLE_DEV_MD);
-  mkdirSync(dirname(sprintStatusAbs), { recursive: true });
-  writeFileSync(sprintStatusAbs, SAMPLE_SPRINT_STATUS);
-  return { root, devMdAbs, sprintStatusAbs, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+  return { root, devMdAbs, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
 function makeEmit(): EmitRetroStoryResult {
@@ -539,7 +370,7 @@ function makeEmit(): EmitRetroStoryResult {
 }
 
 describe("writeRetroAtomically — happy path", () => {
-  it("writes all 3 artifacts and emits no WARN", () => {
+  it("writes both artifacts and emits no WARN", () => {
     const wr = setupRoot();
     try {
       const emit = makeEmit();
@@ -550,7 +381,7 @@ describe("writeRetroAtomically — happy path", () => {
       });
       expect(result.fullSuccess).toBe(true);
       expect(result.partial).toBeUndefined();
-      expect(result.written).toHaveLength(3);
+      expect(result.written).toHaveLength(2);
       expect(stderr.join("")).toBe("");
 
       // Spec written with exact body.
@@ -563,15 +394,14 @@ describe("writeRetroAtomically — happy path", () => {
       expect(devMdAfter).toContain(emit.devMdRow);
       // Original headers preserved.
       expect(devMdAfter).toContain("### Epic 1 — Mode-derived merge gate");
-      expect(devMdAfter).toContain("### Epic 1 — BMAD audit");
+      expect(devMdAfter).toContain("### Epic 1 — Framework audit");
 
-      // sprint-status updated with the new chunk.
-      const sprintAfter = readFileSync(wr.sprintStatusAbs, "utf8");
-      expect(sprintAfter).toContain(emit.sprintStatusRow);
-      expect(sprintAfter).toContain("- key: epic-merge-gate-modes");
+      // No sprint-status.yaml anywhere in the tree (D-7: never written).
+      const all = filesIn(wr.root);
+      expect(all.some((p) => p.includes("sprint-status"))).toBe(false);
 
       // No leftover .tmp files.
-      const tmps = filesIn(wr.root).filter((p) => p.includes(".tmp."));
+      const tmps = all.filter((p) => p.includes(".tmp."));
       expect(tmps).toHaveLength(0);
     } finally {
       wr.cleanup();
@@ -580,12 +410,11 @@ describe("writeRetroAtomically — happy path", () => {
 });
 
 describe("writeRetroAtomically — atomicity per locked-decision #7", () => {
-  it("rename failure on spec → DEV.md + sprint-status untouched, all three listed in WARN", () => {
+  it("rename failure on spec → DEV.md untouched, both listed in WARN", () => {
     const wr = setupRoot();
     try {
       const emit = makeEmit();
       const devMdBefore = readFileSync(wr.devMdAbs, "utf8");
-      const sprintBefore = readFileSync(wr.sprintStatusAbs, "utf8");
 
       const stderr: string[] = [];
       const fs = makeFailingFs({ failOn: "spec" });
@@ -600,12 +429,10 @@ describe("writeRetroAtomically — atomicity per locked-decision #7", () => {
       expect(result.partial).toEqual([
         join(wr.root, emit.specPath),
         wr.devMdAbs,
-        wr.sprintStatusAbs,
       ]);
 
       // Real files untouched.
       expect(readFileSync(wr.devMdAbs, "utf8")).toBe(devMdBefore);
-      expect(readFileSync(wr.sprintStatusAbs, "utf8")).toBe(sprintBefore);
       expect(existsSync(join(wr.root, emit.specPath))).toBe(false);
 
       // WARN names every missing artifact.
@@ -613,17 +440,15 @@ describe("writeRetroAtomically — atomicity per locked-decision #7", () => {
       expect(stderrAll).toContain("WARN: retro emission partial");
       expect(stderrAll).toContain("spec");
       expect(stderrAll).toContain("DEV.md");
-      expect(stderrAll).toContain("sprint-status.yaml");
     } finally {
       wr.cleanup();
     }
   });
 
-  it("rename failure on DEV.md → spec written, sprint-status untouched", () => {
+  it("rename failure on DEV.md → spec written, only DEV.md listed missing", () => {
     const wr = setupRoot();
     try {
       const emit = makeEmit();
-      const sprintBefore = readFileSync(wr.sprintStatusAbs, "utf8");
 
       const stderr: string[] = [];
       const fs = makeFailingFs({ failOn: "DEV.md" });
@@ -635,54 +460,16 @@ describe("writeRetroAtomically — atomicity per locked-decision #7", () => {
 
       expect(result.fullSuccess).toBe(false);
       expect(result.written).toEqual([join(wr.root, emit.specPath)]);
-      expect(result.partial).toEqual([wr.devMdAbs, wr.sprintStatusAbs]);
+      expect(result.partial).toEqual([wr.devMdAbs]);
 
       // Spec landed (per locked decision #7 — better partial than zero).
       expect(existsSync(join(wr.root, emit.specPath))).toBe(true);
-      // sprint-status untouched.
-      expect(readFileSync(wr.sprintStatusAbs, "utf8")).toBe(sprintBefore);
 
       const stderrAll = stderr.join("");
       expect(stderrAll).toContain("WARN: retro emission partial");
       expect(stderrAll).toContain("DEV.md");
-      expect(stderrAll).toContain("sprint-status.yaml");
       // Spec already landed — should NOT be in the missing list.
       expect(stderrAll).not.toMatch(/manually verify spec[,\s]/);
-    } finally {
-      wr.cleanup();
-    }
-  });
-
-  it("rename failure on sprint-status → spec + DEV.md written, only sprint-status listed missing", () => {
-    const wr = setupRoot();
-    try {
-      const emit = makeEmit();
-
-      const stderr: string[] = [];
-      const fs = makeFailingFs({ failOn: "sprint-status.yaml" });
-      const result = writeRetroAtomically(emit, {
-        repoRoot: wr.root,
-        err: (s) => stderr.push(s),
-        fs,
-      });
-
-      expect(result.fullSuccess).toBe(false);
-      expect(result.written).toEqual([
-        join(wr.root, emit.specPath),
-        wr.devMdAbs,
-      ]);
-      expect(result.partial).toEqual([wr.sprintStatusAbs]);
-
-      // Spec + DEV.md landed.
-      expect(existsSync(join(wr.root, emit.specPath))).toBe(true);
-      expect(readFileSync(wr.devMdAbs, "utf8")).toContain(emit.devMdRow);
-
-      const stderrAll = stderr.join("");
-      expect(stderrAll).toContain("WARN");
-      expect(stderrAll).toContain("sprint-status.yaml");
-      // The other two should NOT be in the missing list.
-      expect(stderrAll).not.toMatch(/manually verify spec/);
-      expect(stderrAll).not.toMatch(/manually verify .*DEV\.md/);
     } finally {
       wr.cleanup();
     }
@@ -718,19 +505,6 @@ describe("writeRetroAtomically — atomicity per locked-decision #7", () => {
     }
   });
 
-  it("throws clear error when sprint-status.yaml is missing", () => {
-    const wr = setupRoot();
-    try {
-      rmSync(wr.sprintStatusAbs);
-      const emit = makeEmit();
-      expect(() =>
-        writeRetroAtomically(emit, { repoRoot: wr.root, err: () => undefined }),
-      ).toThrow(/sprint-status\.yaml not found/);
-    } finally {
-      wr.cleanup();
-    }
-  });
-
   it("WARN includes the actual partial paths AND the leftover .tmp paths (BH[5] + EC[10])", () => {
     const wr = setupRoot();
     try {
@@ -743,9 +517,8 @@ describe("writeRetroAtomically — atomicity per locked-decision #7", () => {
         fs,
       });
       const stderrAll = stderr.join("");
-      // Concrete paths, not just the "DEV.md" / "sprint-status.yaml" labels.
+      // Concrete paths, not just the "DEV.md" label.
       expect(stderrAll).toContain(wr.devMdAbs);
-      expect(stderrAll).toContain(wr.sprintStatusAbs);
       // Leftover .tmp paths called out so the operator knows what to clean up
       // or recover.
       expect(stderrAll).toContain(".tmp.");
@@ -779,9 +552,9 @@ describe("writeRetroAtomically — atomicity per locked-decision #7", () => {
         err: () => undefined,
         fs: captureFs(seen2),
       });
-      // Sanity: 3 tmps each call.
-      expect(seen1).toHaveLength(3);
-      expect(seen2).toHaveLength(3);
+      // Sanity: 2 tmps each call (spec + DEV.md).
+      expect(seen1).toHaveLength(2);
+      expect(seen2).toHaveLength(2);
       // Every tmp from call 1 should be distinct from every tmp in call 2.
       for (const a of seen1) {
         for (const b of seen2) {
@@ -800,7 +573,7 @@ describe("writeRetroAtomically — atomicity per locked-decision #7", () => {
 
 interface FailingFsOpts {
   /** Fail rename when the destination basename matches one of these substrings. */
-  failOn: "spec" | "DEV.md" | "sprint-status.yaml";
+  failOn: "spec" | "DEV.md";
 }
 
 function makeFailingFs(opts: FailingFsOpts): Partial<AtomicEmitFs> {
@@ -815,9 +588,7 @@ function makeFailingFs(opts: FailingFsOpts): Partial<AtomicEmitFs> {
     rename(oldP: string, newP: string) {
       if (
         (opts.failOn === "spec" && newP.includes("/dev/dev-")) ||
-        (opts.failOn === "DEV.md" && newP.endsWith("/DEV.md")) ||
-        (opts.failOn === "sprint-status.yaml" &&
-          newP.endsWith("/sprint-status.yaml"))
+        (opts.failOn === "DEV.md" && newP.endsWith("/DEV.md"))
       ) {
         const e = new Error(`simulated rename failure on ${newP}`) as NodeJS.ErrnoException;
         e.code = "EACCES";
