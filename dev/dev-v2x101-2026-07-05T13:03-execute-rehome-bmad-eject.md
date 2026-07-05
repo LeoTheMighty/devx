@@ -1,0 +1,56 @@
+---
+hash: v2x101
+type: dev
+created: 2026-07-05T13:03:00-06:00
+title: V2.2 — execute re-home + BMAD ejection
+from: v2/06-phases.md
+plan: v2/
+status: ready
+blocked_by: [v2e102, mgrret]
+branch: feat/dev-v2x101
+---
+
+## Goal
+
+`/devx` execution runs BMAD-free; BMAD is removed from the repo. Per
+`v2/01-bmad-capture.md` §4 and `v2/06-phases.md § V2.2`.
+
+## Acceptance criteria
+
+- [ ] `.claude/commands/devx.md` Phases 2–4 replaced: native execute
+      discipline (spec-ACs direct; red-green-refactor; tests-first re-runs
+      the RED artifact and watches it fail before coding; File List);
+      adversarial self-review re-homed natively incl. 3-agent parallel shape
+      at the >500-line threshold + explicit-zero rule; dvx103 status-log
+      pinning updated + green.
+- [ ] Native `/devx retro` stage section (walk shipped specs + PRs → retro
+      file + LEARN.md rows, same row contract) replaces `bmad-retrospective`;
+      `emit-retro-story` AC template retargeted (D-3).
+- [ ] `should-create-story` + canary retired; `Story:` commit-template line
+      dropped; sprint-status.yaml writer steps removed everywhere (D-7).
+- [ ] `devx.config.yaml`: `engine:` + `loop:` blocks per `v2/02-engine.md` §7
+      + `v2/04-overnight-loop.md` §3 replace `bmad:` (§15); schema updated;
+      deprecation shim tolerates a leftover `bmad:` key with a warning.
+- [ ] `.claude/skills/bmad-*` (all), `_bmad/`, `.claude/commands/dev.md`,
+      `.claude/commands/dev-plan.md` deleted (user-foreground).
+- [ ] `devx init` de-BMAD'd: no `npx bmad-method install` path; ini506
+      BMAD-fail failure mode removed; engine templates included in scaffold.
+- [ ] Docs sweep: CLAUDE.md, docs/DESIGN.md, docs/ROADMAP.md (D-2 re-wording),
+      docs/SETUP.md ghost path, LEARN.md header line, docs/MODES.md refs.
+- [ ] Eject contract updated per `v2/01-bmad-capture.md` §6.
+- [ ] `grep -ri bmad src/ .claude/ _devx/` clean (frozen `_bmad-output/`
+      history + docs' historical-capture mentions exempt; the exemption list
+      is explicit in the test).
+- [ ] A dev item ships end-to-end under the rewritten skill with zero BMAD
+      loads (the next item in DEV.md serves as the proof run).
+- [ ] Full suite green.
+
+## Technical notes
+
+- This workstream is v2e102's dogfood subject: drive it PRD→RED with the new
+  stages before executing.
+- Batch all `.claude/` edits/deletes into this single user-foreground PR.
+
+## Status log
+
+- 2026-07-05T13:03 — created from v2/06-phases.md § V2.2.
