@@ -21,7 +21,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "postinstall": "node scripts/postinstall.js",
-    "test": "node test/schema-smoke.mjs && tsx test/config-io.test.ts && tsx test/config-validate.test.ts && npm run build && vitest run",
+    "test": "node test/schema-smoke.mjs && tsx test/config-io.test.ts && tsx test/config-validate.test.ts && npm run build && npm run typecheck && vitest run",
     "test:schema": "node test/schema-smoke.mjs",
     "test:config-io": "tsx test/config-io.test.ts",
     "test:config-validate": "tsx test/config-validate.test.ts",
