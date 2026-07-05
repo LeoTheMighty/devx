@@ -267,7 +267,40 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
 
    > Implementation note: `devx devx-helper await-remote-ci <branch>` (without `--once`) wraps the full state machine and blocks via real `setTimeout` until terminal. Useful from non-harness consumers (e.g. CI runners that aren't an LLM) and as the canonical reference impl. The `/devx` skill body always uses `--once` because the agent's cache stays warm only when the harness drives the wait via `ScheduleWakeup`, not when the CLI internally sleeps for 120s.
 
+### Phase 7.5: Review Tour (v2t101 — fail-soft)
+
+Every PR ships a self-contained static review tour so human review is a
+guided walkthrough, not a raw diff. The tour presents and points — no
+severity verdicts (judging is the reviewer's job; your Phase 4 already ran).
+
+1. `devx tour gather <hash>` — emits the gather JSON (spec Goal/ACs, diff vs
+   base, numstat, commits).
+2. Narrate: build the tour model from the gather JSON — changeMap with
+   honest weight classes (core/supporting/mechanical/tests), 3–7 decision
+   ledger entries, dependency-ordered stops (must/should/skim + the 4 flags
+   ⚠ decision · 🔍 scrutinize · 💬 discussed · 🕳 gap), trails (**every
+   A-calls-B edge grep-verified at the call site or flagged 🕳 — never
+   narrated from plausibility**), blast radius incl. callers-not-updated,
+   coverage rows seeded from the spec ACs. For big diffs (>~1500 lines /
+   >25 files) fan out subagents per semantic area; synthesize in one head.
+   Write tour.json; `devx tour build <hash> --tour-json <path>` validates
+   (fix and retry on schema errors) and renders the single-file HTML.
+3. `devx tour publish <hash>` — pushes to the orphan `devx-tours` branch
+   (D-4), prints the htmlpreview + raw URLs.
+4. Pass `--tour-url <url> --tour-orientation <path>` to `devx pr-body` so
+   the PR body carries the tour link + orientation fallback.
+5. **Fail-soft rule**: any tour step failing must NOT block the PR — pass
+   no tour flags (pr-body renders the unavailable line), note the failure
+   in the status log, continue to Phase 8.
+
 ### Phase 8: Auto-Merge (gate-driven) or Hand Off
+
+
+**Hold check (D-5) — run BEFORE merging, after CI green**: `devx devx-helper
+check-hold <pr-number>`. Exit 3 (`devx: hold` comment or an unresolved
+requested-changes review) → do NOT merge; surface the hold reason, address
+it via `/devx address <pr>`, and only merge after the hold is lifted
+(comment resolved / re-review). Exit 0 → silence merges, as YOLO always has.
 
 **YOLO is fully autonomous — /devx merges its own PRs. Period.** No "leave it open for human review," no "prior PRs were merged manually so I'll follow that pattern." If the user wants to gate merges on human approval they bump out of YOLO. The only thing that stops a YOLO merge is the merge gate itself returning `merge:false`. Past PRs being merged by a human is irrelevant — that's an artifact of `/devx` not doing its job, not a project policy.
 
@@ -387,6 +420,25 @@ After emitting the snippet, say one sentence summarizing why you stopped and sto
    - Current trust-gradient count and N threshold.
 
 Do NOT promote `develop → main`. That's `/devx-manage`'s job, gated by the promotion rules in [`MODES.md`](../../docs/MODES.md).
+
+## Stage: Address (`/devx address <pr>`)
+
+Consume human review input from a PR. Every comment gets a response —
+a reply, a commit, or a filed spec — never silent resolution.
+
+1. Fetch comments + review threads (`gh api repos/{owner}/{repo}/pulls/<n>/comments`
+   + reviews). Tour-originated comments carry `path:line` anchors — map
+   each to the spec/stop context mechanically.
+2. Triage each comment: **in-scope** (fix on the PR branch now, reply with
+   what was done + the commit sha) / **out-of-scope** (file a debug/test
+   spec + backlog row, reply with the spec path) / **question** (answer in
+   a reply with file:line evidence).
+3. Re-run local CI after fixes; push; the PR updates in place. Rebuild +
+   republish the tour (Phase 7.5) when the diff changed materially.
+4. Append a status-log line: `address: <n> comments — <f> fixed, <s> filed,
+   <q> answered`.
+5. If the PR carried a hold, ask the reviewer to lift it (reply summarizing
+   dispositions); the merge tail re-checks via `check-hold`.
 
 ## Stage: Retro (native, replaces the retrospective workflow)
 

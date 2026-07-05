@@ -547,6 +547,9 @@ describe("renderPrBody — golden-file shape (AC 6)", () => {
 
       ## Notes for reviewers
       - (none)
+
+      ## 🗺 Review tour
+      _Review tour unavailable (not generated)._
       "
     `);
     expect(r.unresolvedPlaceholders).toEqual([]);

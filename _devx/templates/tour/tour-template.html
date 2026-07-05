@@ -1,0 +1,882 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__DEVX_TOUR_TITLE__</title>
+<!--
+  devx review tour (v2t101) — single self-contained static file.
+  Adapted from LeoTheMighty/code-review-tour assets/tour.html per
+  v2/03-review-tour.md §1: data embedded as an inline JSON island, diff2html
+  JS+CSS and marked vendored inline at build time, NO mermaid (trail step
+  tables carry the information), system font stacks, zero network requests.
+  Comments are a localStorage-only scratchpad; review input reaches GitHub
+  exclusively by copy-paste into normal PR comments.
+-->
+<style>
+__DEVX_TOUR_D2H_CSS__
+</style>
+<style>
+/* ============ Field-journal theme (system stacks only) ============ */
+:root {
+  --ink-0: #131110;         /* page */
+  --ink-1: #1b1815;         /* panels */
+  --ink-2: #242019;         /* raised */
+  --ink-3: #2f2a21;         /* borders-strong */
+  --line: #2a251d;          /* hairlines */
+  --paper: #eae3d6;         /* primary text */
+  --paper-dim: #a89f8f;     /* secondary text */
+  --paper-faint: #6f6759;   /* tertiary */
+  --amber: #d9a441;         /* waypoints, primary */
+  --amber-soft: rgba(217,164,65,.14);
+  --moss: #8fb573;          /* new */
+  --moss-soft: rgba(143,181,115,.13);
+  --coral: #e0704f;         /* must / scrutinize */
+  --slate: #7da3c0;         /* discussed / tests */
+  --violet: #a08fc0;        /* gap */
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --display: Georgia, "Times New Roman", serif;
+  --sidebar-w: 300px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--ink-0); color: var(--paper);
+  font-family: var(--sans); font-size: 14.5px; line-height: 1.55;
+}
+/* grain atmosphere (inline data: URI — no network) */
+body::before {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 999; opacity: .05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.6'/%3E%3C/svg%3E");
+}
+a { color: var(--amber); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre, .mono { font-family: var(--mono); }
+::selection { background: rgba(217,164,65,.3); }
+
+/* ============ Header ============ */
+header {
+  position: sticky; top: 0; z-index: 50;
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 20px; background: rgba(19,17,16,.92); backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--ink-3);
+}
+.brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; flex: 1; }
+.brand .compass { color: var(--amber); font-size: 17px; }
+.brand h1 {
+  font-family: var(--display); font-weight: 600; font-size: 17px; margin: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.brand .pr-meta { font-family: var(--mono); font-size: 11.5px; color: var(--paper-dim); white-space: nowrap; }
+.hdr-btn {
+  font-family: var(--mono); font-size: 12.5px; font-weight: 500; cursor: pointer;
+  border-radius: 7px; padding: 7px 14px; border: 1px solid var(--ink-3);
+  background: var(--ink-2); color: var(--paper); transition: all .15s ease;
+  white-space: nowrap;
+}
+.hdr-btn:hover { border-color: var(--amber); }
+#btn-drawer .count { color: var(--amber); }
+
+/* ============ Layout ============ */
+.wrap { display: flex; }
+nav.sidebar {
+  width: var(--sidebar-w); flex-shrink: 0; position: sticky; top: 53px;
+  height: calc(100vh - 53px); overflow-y: auto; padding: 22px 14px 60px 20px;
+  border-right: 1px solid var(--line);
+  background:
+    repeating-radial-gradient(circle at 120% -20%, transparent 0 46px, rgba(217,164,65,.03) 46px 47px),
+    var(--ink-0);
+}
+main { flex: 1; min-width: 0; max-width: 1160px; padding: 30px 36px 40vh; }
+
+/* sidebar itinerary */
+.nav-label {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--paper-faint); margin: 22px 0 8px 2px;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 6px;
+  color: var(--paper-dim); cursor: pointer; font-size: 13px; position: relative;
+}
+.nav-item:hover { background: var(--ink-1); color: var(--paper); text-decoration: none; }
+.nav-item.active { background: var(--ink-2); color: var(--paper); }
+.itinerary { position: relative; }
+.itinerary::before {
+  content: ""; position: absolute; left: 17px; top: 14px; bottom: 14px;
+  border-left: 2px dotted var(--ink-3);
+}
+.waypoint {
+  width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; z-index: 1;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  background: var(--ink-2); border: 1.5px solid var(--paper-faint); color: var(--paper-dim);
+}
+.nav-item[data-priority="must"] .waypoint { border-color: var(--coral); color: var(--coral); }
+.nav-item[data-priority="should"] .waypoint { border-color: var(--amber); color: var(--amber); }
+.nav-item .nav-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.nav-item .nav-flags { font-size: 10.5px; letter-spacing: -1px; }
+.nav-item .nav-cc { font-family: var(--mono); font-size: 10px; color: var(--amber); }
+
+/* ============ Sections ============ */
+section { margin-bottom: 44px; scroll-margin-top: 70px; animation: rise .5s ease both; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+h2.sec {
+  font-family: var(--display); font-weight: 600; font-size: 24px; margin: 0 0 4px;
+  display: flex; align-items: baseline; gap: 12px;
+}
+h2.sec .sec-no { font-family: var(--mono); font-size: 12px; color: var(--amber); font-weight: 400; }
+.sec-rule { border: none; border-top: 1px solid var(--line); margin: 10px 0 18px; }
+.card {
+  background: var(--ink-1); border: 1px solid var(--line); border-radius: 10px;
+  padding: 16px 20px; margin-bottom: 14px;
+}
+.kv { display: flex; gap: 10px; margin: 3px 0; font-size: 13.5px; }
+.kv .k { font-family: var(--mono); font-size: 11px; color: var(--paper-faint); text-transform: uppercase; letter-spacing: .1em; min-width: 130px; padding-top: 2px; }
+.md p { margin: .5em 0; } .md ul { margin: .4em 0; padding-left: 20px; }
+.md code { background: var(--ink-2); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+
+/* tables */
+table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.tbl th {
+  font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .12em;
+  color: var(--paper-faint); text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--ink-3);
+}
+table.tbl td { padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.tbl tr:last-child td { border-bottom: none; }
+.w-core { color: var(--coral); } .w-supporting { color: var(--amber); }
+.w-mechanical { color: var(--paper-faint); } .w-tests { color: var(--slate); }
+
+/* badges + flags */
+.badge {
+  font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; border-radius: 20px; padding: 2px 9px; display: inline-block;
+}
+.badge.must { background: rgba(224,112,79,.15); color: var(--coral); border: 1px solid rgba(224,112,79,.4); }
+.badge.should { background: var(--amber-soft); color: var(--amber); border: 1px solid rgba(217,164,65,.4); }
+.badge.skim { background: var(--ink-2); color: var(--paper-faint); border: 1px solid var(--ink-3); }
+.flag { font-size: 13px; margin-left: 4px; cursor: default; }
+
+/* ============ Stops ============ */
+.stop { border: 1px solid var(--line); border-radius: 12px; margin-bottom: 26px; background: var(--ink-1); overflow: hidden; }
+.stop-head { padding: 14px 20px 12px; border-bottom: 1px solid var(--line); }
+.stop-head .stop-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.stop-head h3 { font-family: var(--display); font-size: 18px; font-weight: 600; margin: 0; }
+.stop-head .stop-files { font-family: var(--mono); font-size: 11.5px; color: var(--paper-dim); margin-top: 5px; }
+.stop-head .connects { font-size: 12px; color: var(--paper-faint); margin-top: 6px; font-style: italic; }
+.stop-narration { padding: 12px 20px 4px; color: var(--paper); }
+.stop-actions { padding: 4px 20px 12px; }
+.link-btn {
+  background: none; border: none; color: var(--paper-faint); font-family: var(--mono);
+  font-size: 11.5px; cursor: pointer; padding: 2px 0;
+}
+.link-btn:hover { color: var(--amber); }
+.stop-diff { padding: 0 12px 14px; }
+
+/* diff2html blending */
+.d2h-wrapper { --d2h-bg-color: var(--ink-1); }
+.stop-diff .d2h-file-wrapper { border: 1px solid var(--ink-3); border-radius: 8px; margin-bottom: 12px; background: #17150f; }
+.stop-diff .d2h-file-header { background: var(--ink-2); border-bottom: 1px solid var(--ink-3); font-family: var(--mono); }
+.stop-diff .d2h-code-line, .stop-diff .d2h-code-linenumber, .stop-diff .d2h-code-side-line { font-family: var(--mono); font-size: 12px; }
+.stop-diff .d2h-info { background: #1d1a14; color: var(--paper-faint); }
+.stop-diff .d2h-code-linenumber { cursor: pointer; position: relative; }
+/* gutter + button */
+.gutter-add {
+  position: absolute; left: 2px; top: 50%; transform: translateY(-50%) scale(.85);
+  width: 18px; height: 18px; border-radius: 5px; border: none; cursor: pointer;
+  background: var(--amber); color: #141210; font-weight: 700; font-size: 13px; line-height: 1;
+  display: none; align-items: center; justify-content: center; z-index: 5;
+  transition: transform .1s ease;
+}
+tr:hover .gutter-add { display: flex; }
+.gutter-add:hover { transform: translateY(-50%) scale(1.05); }
+
+/* ============ Comment threads (localStorage scratchpad) ============ */
+.crt-thread-cell { padding: 0 !important; border-top: 1px solid var(--ink-3); background: var(--ink-0); }
+.thread { padding: 10px 14px; max-width: 860px; }
+.comment-card {
+  border: 1px solid var(--ink-3); border-left: 3px solid var(--amber); border-radius: 8px;
+  background: var(--ink-1); padding: 10px 14px; margin-bottom: 8px; animation: rise .25s ease both;
+}
+.comment-card .c-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.comment-card .c-anchor { font-family: var(--mono); font-size: 10.5px; color: var(--paper-faint); }
+.comment-card .c-raw { white-space: pre-wrap; font-size: 13.5px; }
+.c-actions { margin-top: 7px; display: flex; gap: 14px; }
+
+/* composer */
+.composer { border: 1px solid var(--amber); border-radius: 8px; background: var(--ink-1); padding: 10px; margin: 8px 0; }
+.composer textarea {
+  width: 100%; min-height: 74px; resize: vertical; background: var(--ink-0); color: var(--paper);
+  border: 1px solid var(--ink-3); border-radius: 6px; padding: 8px 10px;
+  font-family: var(--sans); font-size: 13.5px;
+}
+.composer textarea:focus { outline: none; border-color: var(--amber); }
+.composer .comp-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+.composer .hint { font-family: var(--mono); font-size: 10.5px; color: var(--paper-faint); }
+.btn {
+  font-family: var(--mono); font-size: 12px; padding: 6px 13px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--ink-3); background: var(--ink-2); color: var(--paper);
+}
+.btn.primary { background: var(--amber); border-color: var(--amber); color: #141210; font-weight: 700; }
+.btn:hover { filter: brightness(1.1); }
+
+/* ============ Trails (step tables only — no mermaid in v1) ============ */
+.trail { margin-bottom: 26px; }
+.trail h3 { font-family: var(--display); font-size: 17px; margin: 0 0 8px; }
+.step-new { color: var(--moss); } .step-modified { color: var(--amber); } .step-unchanged { color: var(--paper-faint); }
+
+/* ============ Drawer ============ */
+#drawer {
+  position: fixed; top: 53px; right: 0; width: 340px; height: calc(100vh - 53px);
+  background: var(--ink-1); border-left: 1px solid var(--ink-3); z-index: 60;
+  transform: translateX(100%); transition: transform .22s ease; overflow-y: auto; padding: 18px;
+}
+#drawer.open { transform: none; box-shadow: -18px 0 40px rgba(0,0,0,.45); }
+#drawer h3 { font-family: var(--display); margin: 0 0 12px; }
+.drawer-item { border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; margin-bottom: 8px; cursor: pointer; }
+.drawer-item:hover { border-color: var(--amber); }
+.drawer-item .d-anchor { font-family: var(--mono); font-size: 10.5px; color: var(--amber); }
+.drawer-item .d-raw { font-size: 12.5px; color: var(--paper-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#btn-export { width: 100%; margin-bottom: 12px; }
+
+/* ============ Toast ============ */
+#toast {
+  position: fixed; bottom: 24px; right: 24px; z-index: 95; display: none;
+  background: var(--ink-2); border: 1px solid var(--amber); border-radius: 8px;
+  padding: 10px 16px; font-family: var(--mono); font-size: 12px; color: var(--paper);
+}
+#loading { padding: 80px; text-align: center; font-family: var(--mono); color: var(--paper-dim); }
+
+/* code deep-links + jump target */
+.code-link { font-family: var(--mono); font-size: .92em; color: var(--amber); border-bottom: 1px dotted rgba(217,164,65,.5); white-space: nowrap; }
+.code-link::after { content: "↗"; font-size: .78em; margin-left: 2px; opacity: .65; }
+.code-link:hover { text-decoration: none; border-bottom-style: solid; }
+tr.flash-target > td { animation: flashbg 1.8s ease-out 1; }
+div.flash-target, .d2h-file-wrapper.flash-target { animation: flashbg 1.8s ease-out 1; }
+@keyframes flashbg { 0%, 35% { background: rgba(217,164,65,.26); } 100% { background: transparent; } }
+#backpill {
+  position: fixed; bottom: 24px; left: calc(var(--sidebar-w) + 24px); z-index: 80; display: none;
+  background: var(--ink-2); border: 1px solid var(--amber); color: var(--amber);
+  border-radius: 20px; padding: 8px 16px; font-family: var(--mono); font-size: 12px; cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0,0,0,.4);
+}
+#backpill:hover { background: var(--amber-soft); }
+#totaldiff .d2h-file-wrapper { scroll-margin-top: 70px; }
+kbd { font-family: var(--mono); font-size: 10.5px; background: var(--ink-2); border: 1px solid var(--ink-3); border-radius: 4px; padding: 1px 5px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="compass">✦</span>
+    <h1 id="hdr-title">devx Review Tour</h1>
+    <span class="pr-meta" id="hdr-meta"></span>
+  </div>
+  <button class="hdr-btn" id="btn-drawer">📝 Review notes <span class="count" id="drawer-count">0</span></button>
+</header>
+
+<div class="wrap">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main id="main"><div id="loading">charting the territory…</div></main>
+</div>
+
+<div id="drawer">
+  <h3>Review notes</h3>
+  <button class="btn primary" id="btn-export">Export review → clipboard as markdown</button>
+  <div id="drawer-list"></div>
+</div>
+
+<div id="toast"></div>
+<button id="backpill">← back to where you were</button>
+
+<script type="application/json" id="tour-data">__DEVX_TOUR_DATA__</script>
+<script>
+__DEVX_TOUR_D2H_JS__
+</script>
+<script>
+__DEVX_TOUR_MARKED_JS__
+</script>
+<script>
+"use strict";
+/* ================= state ================= */
+let TOUR = null;
+let state = { comments: [] };
+let storageKey = "devx-tour:unknown";
+const anchors = new Map();   // anchorKey -> [rows] (a line can render in a stop diff AND the total diff)
+const fileEls = new Map();   // file path -> [d2h file wrappers]
+let knownFiles = [];
+const $ = (s, el=document) => el.querySelector(s);
+const $$ = (s, el=document) => [...el.querySelectorAll(s)];
+const esc = s => (s ?? "").toString().replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+/* marked does not sanitize; its output lands in innerHTML. Strip active
+   content (script/iframe/etc, on* handlers, javascript: URLs) so hostile-
+   looking text quoted from a diff into a narration can't execute in the
+   hosting origin. */
+function sanitizeHtml(html) {
+  const t = document.createElement("template");
+  t.innerHTML = html;
+  const bad = t.content.querySelectorAll("script, iframe, object, embed, base, meta, form");
+  bad.forEach(el => el.remove());
+  const all = t.content.querySelectorAll("*");
+  for (const el of all) {
+    for (const attr of [...el.attributes]) {
+      const n = attr.name.toLowerCase();
+      const v = (attr.value || "").trim().toLowerCase();
+      if (n.startsWith("on")) el.removeAttribute(attr.name);
+      else if ((n === "href" || n === "src" || n === "xlink:href") &&
+               (v.startsWith("javascript:") || v.startsWith("data:text/html") || v.startsWith("vbscript:"))) {
+        el.removeAttribute(attr.name);
+      }
+    }
+  }
+  return t.innerHTML;
+}
+const md = s => {
+  try {
+    if (typeof marked !== "undefined" && marked.parse) return sanitizeHtml(marked.parse(s ?? ""));
+  } catch {}
+  return `<pre style="white-space:pre-wrap">${esc(s)}</pre>`;
+};
+const FLAG = { decision:"⚠", scrutinize:"🔍", discussed:"💬", gap:"🕳" };
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : "c" + Date.now() + Math.random().toString(16).slice(2));
+
+function save() {
+  try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch {}
+  refreshCounts();
+}
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.style.display = "block";
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", 3200);
+}
+function copyText(text, doneMsg) {
+  const done = () => toast(doneMsg || "copied to clipboard");
+  const fallback = () => {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.append(ta); ta.select();
+    try { document.execCommand("copy"); done(); } catch { toast("copy failed — select + copy manually"); }
+    ta.remove();
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(fallback);
+  } else { fallback(); }
+}
+
+/* ================= boot (inline data island — no fetch, no server) ================= */
+function boot() {
+  try {
+    TOUR = JSON.parse($("#tour-data").textContent);
+  } catch (e) {
+    $("#loading").textContent = "could not parse the embedded tour data island";
+    return;
+  }
+  storageKey = `devx-tour:${TOUR.meta.hash || "unknown"}`;
+  try {
+    /* the Array.isArray guard lives INSIDE the try: localStorage holding
+       "null" parses fine but null.comments throws — which would abort
+       boot() and permanently brick this tour's page (per-hash key never
+       self-heals). */
+    const saved = localStorage.getItem(storageKey);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && Array.isArray(parsed.comments)) state = parsed;
+    }
+  } catch {}
+  if (!state || !Array.isArray(state.comments)) state = { comments: [] };
+  document.title = `Tour · ${TOUR.meta.title}`;
+  $("#hdr-title").textContent = TOUR.meta.title;
+  const metaBits = [
+    TOUR.meta.hash,
+    TOUR.meta.base && TOUR.meta.branch ? `${TOUR.meta.base} ← ${TOUR.meta.branch}` : "",
+    `+${TOUR.meta.additions ?? "?"}/−${TOUR.meta.deletions ?? "?"}`,
+    `${TOUR.meta.files ?? "?"} files`,
+  ].filter(Boolean);
+  $("#hdr-meta").textContent = metaBits.join(" · ");
+  renderAll();
+  onHashChange();          // honor a #code=... deep link on load
+}
+
+/* ================= render: sections ================= */
+function renderAll() {
+  const m = $("#main"); m.innerHTML = "";
+  m.append(secOrientation(), secChangeMap(), secDecisions(), secStops(), secTrails(), secBlast(), secCoverage(), secTotalDiff());
+  renderSidebar();
+  buildKnownFiles();
+  renderDiffs();          // draws diff2html then attaches gutters/threads
+  linkifyCode(m);         // every path:line reference becomes a deep link into the Total Diff
+  renderAllThreads();
+  refreshCounts();
+}
+function sec(id, no, title, inner) {
+  const s = document.createElement("section");
+  s.id = id;
+  s.innerHTML = `<h2 class="sec"><span class="sec-no">${no}</span>${esc(title)}</h2><hr class="sec-rule">`;
+  s.append(inner);
+  return s;
+}
+function div(cls, html) { const d = document.createElement("div"); if (cls) d.className = cls; if (html != null) d.innerHTML = html; return d; }
+
+function secOrientation() {
+  const o = TOUR.orientation || {};
+  const box = div("");
+  box.append(div("card md", md(o.summary)));
+  const facts = div("card");
+  const kv = (k, v) => v ? `<div class="kv"><span class="k">${k}</span><span class="md">${md(v)}</span></div>` : "";
+  /* for values that are ALREADY escaped/assembled HTML (list joins) */
+  const kvHtml = (k, v) => v ? `<div class="kv"><span class="k">${k}</span><span class="md">${v}</span></div>` : "";
+  facts.innerHTML =
+    kv("CI / merge", [o.ci, o.mergeable, o.baseNote].filter(Boolean).join(" · ")) +
+    kv("Concurrent work", o.concurrent) +
+    kvHtml("Priorities", (o.standingPriorities || []).map(esc).join("<br>")) +
+    kvHtml("Patterns", (o.activatedPatterns || []).map(esc).join("<br>")) +
+    kv("Reading order", o.readingOrder) +
+    kv("Time-boxed", o.timeBoxed) +
+    kv("Flags", o.flagIndex);
+  box.append(facts);
+  return sec("orientation", "01", "Orientation", box);
+}
+function secChangeMap() {
+  const rows = (TOUR.changeMap || []).map(f =>
+    `<tr><td class="mono" style="font-size:12px">${esc(f.file)}</td><td>${esc(f.area||"")}</td>
+     <td class="mono w-${esc(f.weight)}">${esc(f.weight)}</td><td>${esc(f.what||"")}</td>
+     <td class="mono">${(f.stops||[]).map(n=>`<a href="#stop-${esc(String(n))}">${esc(String(n))}</a>`).join(" ")}</td></tr>`).join("");
+  return sec("changemap", "02", "Change Map", div("card",
+    `<table class="tbl"><thead><tr><th>File</th><th>Area</th><th>Weight</th><th>What it does</th><th>Stops</th></tr></thead><tbody>${rows}</tbody></table>`));
+}
+function secDecisions() {
+  const rows = (TOUR.decisions || []).map(d =>
+    `<tr><td class="mono">⚠ ${esc(String(d.id))}</td><td>${esc(d.decision)}</td><td class="mono" style="font-size:11.5px">${esc(d.where||"")}</td>
+     <td>${esc(d.implies||"")}</td><td style="color:var(--paper-dim)">${esc(d.alternative||"")}</td></tr>`).join("");
+  return sec("decisions", "03", "Decision Ledger", div("card",
+    `<table class="tbl"><thead><tr><th>#</th><th>Decision</th><th>Where</th><th>Implies</th><th>Alternative was</th></tr></thead><tbody>${rows}</tbody></table>`));
+}
+function secStops() {
+  const box = div("");
+  for (const s of TOUR.stops || []) {
+    const stop = div("stop"); stop.id = `stop-${s.id}`;
+    stop.innerHTML = `
+      <div class="stop-head">
+        <div class="stop-title-row">
+          <span class="badge ${esc(s.priority||"should")}">${esc(s.priority||"should")}</span>
+          <h3>Stop ${esc(String(s.id))}: ${esc(s.title)}</h3>
+          <span>${(s.flags||[]).map(f=>`<span class="flag" title="${esc(f)}">${FLAG[f]||esc(f)}</span>`).join("")}</span>
+        </div>
+        <div class="stop-files">${(s.files||[]).map(esc).join(" · ")}</div>
+        ${s.connects ? `<div class="connects">${esc(s.connects.prev||"")} ${s.connects.prev&&s.connects.next?"·":""} ${esc(s.connects.next||"")}</div>` : ""}
+      </div>
+      <div class="stop-narration md">${md(s.narration)}</div>
+      <div class="stop-actions"><button class="link-btn" data-stopcomposer="${esc(String(s.id))}">💬 Note on this stop</button></div>
+      <div class="stop-thread-slot" data-stop="${esc(String(s.id))}"></div>
+      <div class="stop-diff" data-stop="${esc(String(s.id))}"></div>`;
+    box.append(stop);
+  }
+  box.addEventListener("click", ev => {
+    const id = ev.target?.dataset?.stopcomposer;
+    if (id !== undefined) openStopComposer(id);
+  });
+  return sec("stops", "04", "Stops", box);
+}
+function secTrails() {
+  const box = div("");
+  for (const t of TOUR.trails || []) {
+    const el = div("trail"); el.id = `trail-${t.id}`;
+    const steps = (t.steps || []).map(st =>
+      `<tr><td class="mono">${esc(String(st.n))}</td><td>${esc(st.what)}</td>
+       <td class="mono" style="font-size:11.5px">${esc(st.where||"")}</td>
+       <td class="mono step-${esc(st.status)}">${esc(st.status)}</td><td>${esc(st.note||"")}</td></tr>`).join("");
+    el.innerHTML = `<h3>Trail ${esc(String(t.id))}: ${esc(t.name)}</h3>
+      <div class="card"><table class="tbl"><thead><tr><th>Step</th><th>What happens</th><th>Where</th><th>Status</th><th>Note</th></tr></thead><tbody>${steps}</tbody></table></div>`;
+    box.append(el);
+  }
+  return sec("trails", "05", "Trails", box);
+}
+function secBlast() {
+  const b = TOUR.blastRadius || {};
+  const box = div("");
+  for (const s of b.sections || []) box.append(div("card", `<strong>${esc(s.title)}</strong><div class="md">${md(s.body)}</div>`));
+  if (b.callersNotUpdated) box.append(div("card", `<strong style="color:var(--coral)">Callers not updated</strong><div class="md">${md(b.callersNotUpdated)}</div>`));
+  if (b.expectedMissing) box.append(div("card", `<strong style="color:var(--violet)">🕳 Expected but missing</strong><div class="md">${md(b.expectedMissing)}</div>`));
+  return sec("blast", "06", "Blast Radius", box);
+}
+function secCoverage() {
+  const c = TOUR.coverage || {};
+  const rows = (c.rows || []).map(r => `<tr><td class="mono">${esc(String(r.stop))}</td><td>${esc(r.testedBy||"")}</td><td>${esc(r.gaps||"")}</td></tr>`).join("");
+  const box = div("card",
+    `<table class="tbl"><thead><tr><th>Stop</th><th>Tested by</th><th>Gaps</th></tr></thead><tbody>${rows}</tbody></table>`);
+  const wrap = div("");
+  wrap.append(box);
+  if (c.todos) wrap.append(div("card", `<strong>TODOs in diff</strong><div class="md">${md(c.todos)}</div>`));
+  if (c.questions) wrap.append(div("card", `<strong>Open questions</strong><div class="md">${md(c.questions)}</div>`));
+  return sec("coverage", "07", "Coverage & Open Questions", wrap);
+}
+function secTotalDiff() {
+  if (!TOUR.fullDiff) return div("");
+  const box = div("");
+  box.append(div("card", `<span style="color:var(--paper-dim);font-size:13px">The complete diff — every line is commentable here too. Code references throughout the tour deep-link into this section; use the back pill or your browser's back button to return to where you were.</span>`));
+  const holder = div("stop-diff"); holder.dataset.stop = "__full__";
+  box.append(holder);
+  return sec("totaldiff", "Δ", "Total Diff", box);
+}
+
+/* ================= sidebar ================= */
+function renderSidebar() {
+  const nav = $("#sidebar"); nav.innerHTML = "";
+  const link = (href, label, icon) => {
+    const a = document.createElement("a"); a.className = "nav-item"; a.href = href;
+    a.innerHTML = `<span class="waypoint">${icon}</span><span class="nav-title">${esc(label)}</span>`;
+    return a;
+  };
+  nav.append(div("nav-label", "The Map"));
+  nav.append(link("#orientation","Orientation","◎"), link("#changemap","Change Map","▤"), link("#decisions","Decision Ledger","⚠"));
+  nav.append(div("nav-label", "Itinerary — Stops"));
+  const it = div("itinerary");
+  for (const s of TOUR.stops || []) {
+    const a = document.createElement("a"); a.className = "nav-item"; a.href = `#stop-${s.id}`;
+    a.dataset.priority = s.priority || "should"; a.dataset.stopnav = s.id;
+    a.innerHTML = `<span class="waypoint">${esc(String(s.id))}</span><span class="nav-title">${esc(s.title)}</span>
+      <span class="nav-flags">${(s.flags||[]).map(f=>FLAG[f]||"").join("")}</span><span class="nav-cc" data-cc="${esc(String(s.id))}"></span>`;
+    it.append(a);
+  }
+  nav.append(it);
+  if ((TOUR.trails||[]).length) {
+    nav.append(div("nav-label", "Trails"));
+    for (const t of TOUR.trails) nav.append(link(`#trail-${t.id}`, `Trail ${t.id}: ${t.name}`, "⇢"));
+  }
+  nav.append(div("nav-label", "Perimeter"));
+  nav.append(link("#blast","Blast Radius","☄"), link("#coverage","Coverage & Questions","✓"));
+  if (TOUR.fullDiff) nav.append(link("#totaldiff","Total Diff","Δ"));
+  nav.append(div("nav-label", ""), div("", `<div style="font-family:var(--mono);font-size:10.5px;color:var(--paper-faint);padding:0 8px"><kbd>j</kbd>/<kbd>k</kbd> next / prev section</div>`));
+}
+
+/* ================= diffs + gutters ================= */
+function renderDiffs() {
+  for (const holder of $$(".stop-diff")) {
+    const stopId = holder.dataset.stop;
+    const isFull = stopId === "__full__";
+    const diffStr = isFull ? TOUR.fullDiff : (TOUR.stops || []).find(s => String(s.id) === stopId)?.diff;
+    if (!diffStr) continue;
+    try {
+      if (typeof Diff2HtmlUI === "undefined") throw new Error("diff2html unavailable");
+      const ui = new Diff2HtmlUI(holder, diffStr, {
+        drawFileList: isFull, matching: "lines", outputFormat: "line-by-line",
+        colorScheme: "dark", highlight: true, fileContentToggle: isFull,
+      });
+      ui.draw(); ui.highlightCode();
+      indexAnchors(holder, stopId);
+    } catch (e) {
+      /* graceful degradation: plain <pre> when diff2html fails */
+      holder.innerHTML = `<pre style="font-size:12px;overflow-x:auto;padding:12px">${esc(diffStr)}</pre>`;
+    }
+  }
+}
+function indexAnchors(holder, stopId) {
+  for (const fileWrap of $$(".d2h-file-wrapper", holder)) {
+    const fileName = ($(".d2h-file-name", fileWrap)?.textContent || "").trim();
+    if (!fileEls.has(fileName)) fileEls.set(fileName, []);
+    fileEls.get(fileName).push(fileWrap);
+    for (const tr of $$("tbody tr", fileWrap)) {
+      const lnCell = $("td.d2h-code-linenumber", tr);
+      if (!lnCell || $(".d2h-info", tr)) continue;
+      const n1 = ($(".line-num1", lnCell)?.textContent || "").trim();
+      const n2 = ($(".line-num2", lnCell)?.textContent || "").trim();
+      let side, line;
+      if (n2) { side = "RIGHT"; line = parseInt(n2, 10); }
+      else if (n1) { side = "LEFT"; line = parseInt(n1, 10); }
+      else continue;
+      const anchor = { stopId, file: fileName, side, line };
+      const key = anchorKey(anchor);
+      if (!anchors.has(key)) anchors.set(key, []);
+      anchors.get(key).push(tr);
+      tr.dataset.anchor = key;
+      const btn = document.createElement("button");
+      btn.className = "gutter-add"; btn.textContent = "+"; btn.title = "Add a review note";
+      btn.addEventListener("click", ev => { ev.stopPropagation(); openLineComposer(anchor, tr); });
+      lnCell.append(btn);
+    }
+  }
+}
+/* comments are anchored by file+side+line so a thread shows in every place that line renders */
+const anchorKey = a => a.line != null ? `${a.file}|${a.side}|${a.line}` : `${a.stopId}|stop`;
+const anchorLabel = a => a.line != null ? `${a.file}:${a.line}${a.side === "LEFT" ? " (old)" : ""}` : `Stop ${a.stopId}`;
+/* the `path:line` (or `Stop N`) reference used when copying out to GitHub */
+const anchorRef = a => a.line != null ? `${a.file}:${a.line}` : `Stop ${a.stopId}`;
+/* canonical PR-comment form: `path:line` — text */
+const prCommentFor = c => `\`${anchorRef(c)}\` — ${c.raw}`;
+
+/* ================= code deep-links ================= */
+function buildKnownFiles() {
+  const set = new Set();
+  for (const m of (TOUR.fullDiff || "").matchAll(/^diff --git a\/(\S+) b\/(\S+)/gm)) { set.add(m[1]); set.add(m[2]); }
+  for (const s of TOUR.stops || [])
+    for (const m of (s.diff || "").matchAll(/^diff --git a\/(\S+) b\/(\S+)/gm)) { set.add(m[1]); set.add(m[2]); }
+  for (const f of TOUR.changeMap || []) if (f.file) set.add(f.file);
+  set.delete("/dev/null");
+  knownFiles = [...set];
+}
+function resolveFile(ref) {
+  if (knownFiles.includes(ref)) return ref;
+  const bySuffix = knownFiles.filter(f => f.endsWith("/" + ref));
+  if (bySuffix.length === 1) return bySuffix[0];
+  const base = ref.split("/").pop();
+  const byBase = knownFiles.filter(f => f.split("/").pop() === base);
+  if (byBase.length === 1) return byBase[0];
+  return null;
+}
+const CODE_REF_RE = /(?:[\w.-]+\/)*[\w.-]+\.[A-Za-z]{1,5}(?::\d+(?:[-–—]\d+)?)?/g;
+function linkifyCode(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(n) {
+      const p = n.parentElement;
+      if (!p || p.closest(".stop-diff, a, textarea, script, style, .composer, .comment-card")) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    const text = node.nodeValue;
+    let m, last = 0, out = null;
+    CODE_REF_RE.lastIndex = 0;
+    while ((m = CODE_REF_RE.exec(text))) {
+      const refFull = m[0];
+      const colon = refFull.indexOf(":");
+      const pathPart = colon > -1 ? refFull.slice(0, colon) : refFull;
+      const resolved = resolveFile(pathPart);
+      if (!resolved) continue;
+      const line = colon > -1 ? parseInt(refFull.slice(colon + 1), 10) : null;
+      out = out || document.createDocumentFragment();
+      out.append(document.createTextNode(text.slice(last, m.index)));
+      const a = document.createElement("a");
+      a.className = "code-link";
+      a.href = `#code=${encodeURIComponent(resolved)}${line ? ":" + line : ""}`;
+      a.textContent = refFull;
+      // record where we came from so browser-back returns to this section
+      a.addEventListener("click", () => history.replaceState(null, "", "#" + nearestSectionId()));
+      out.append(a);
+      last = m.index + refFull.length;
+    }
+    if (out) { out.append(document.createTextNode(text.slice(last))); node.replaceWith(out); }
+  }
+}
+function sectionTargets() {
+  return ["orientation","changemap","decisions",...(TOUR?.stops||[]).map(s=>`stop-${s.id}`),
+    ...(TOUR?.trails||[]).map(t=>`trail-${t.id}`),"blast","coverage",...(TOUR?.fullDiff?["totaldiff"]:[])];
+}
+function nearestSectionId() {
+  let best = "orientation";
+  for (const id of sectionTargets()) {
+    const el = document.getElementById(id);
+    if (el && el.getBoundingClientRect().top <= 90) best = id;
+  }
+  return best;
+}
+function jumpToCode(file, line) {
+  let target = null;
+  if (line != null) {
+    for (const side of ["RIGHT", "LEFT"]) {
+      const rows = anchors.get(`${file}|${side}|${line}`);
+      if (rows && rows.length) { target = rows[rows.length - 1]; break; }  // last instance = Total Diff
+    }
+  }
+  if (!target) target = (fileEls.get(file) || []).slice(-1)[0];            // fall back to the file header
+  if (!target) { toast(`${file} isn't in this diff`); return; }
+  target.scrollIntoView({ block: "center" });
+  target.classList.remove("flash-target"); void target.offsetWidth;
+  target.classList.add("flash-target");
+}
+function onHashChange() {
+  /* decodeURIComponent throws URIError on malformed %-sequences (e.g. a
+     stop id like "50%") — guard so one bad hash doesn't kill the handler
+     for the rest of the session. */
+  let h;
+  try { h = decodeURIComponent(location.hash || ""); }
+  catch { h = location.hash || ""; }
+  if (h.startsWith("#code=")) {
+    const ref = h.slice(6);
+    const i = ref.lastIndexOf(":");
+    const line = i > -1 ? parseInt(ref.slice(i + 1), 10) : NaN;
+    if (!isNaN(line)) jumpToCode(ref.slice(0, i), line);
+    else jumpToCode(ref, null);
+    $("#backpill").style.display = "block";
+  } else {
+    $("#backpill").style.display = "none";
+  }
+}
+
+/* ================= composers ================= */
+let openComposerEl = null;
+function closeComposer() { openComposerEl?.remove(); openComposerEl = null; }
+
+function composerNode(anchor) {
+  const c = div("composer");
+  c.innerHTML = `
+    <div style="font-family:var(--mono);font-size:11px;color:var(--amber);margin-bottom:6px">${esc(anchorLabel(anchor))}</div>
+    <textarea placeholder="Leave a review note — stored locally; copy it out as a GitHub PR comment when you're done"></textarea>
+    <div class="comp-foot">
+      <span class="hint">⌘⏎ to add · esc to cancel</span>
+      <span style="display:flex;gap:8px">
+        <button class="btn" data-act="cancel">Cancel</button>
+        <button class="btn primary" data-act="add">Add note</button>
+      </span></div>`;
+  const ta = $("textarea", c);
+  const submit = () => {
+    const raw = ta.value.trim(); if (!raw) return;
+    state.comments.push({ id: uid(), ...anchor, raw, ts: new Date().toISOString() });
+    save(); closeComposer(); renderAllThreads();
+  };
+  c.addEventListener("click", ev => {
+    if (ev.target.dataset.act === "add") submit();
+    if (ev.target.dataset.act === "cancel") closeComposer();
+  });
+  ta.addEventListener("keydown", ev => {
+    if ((ev.metaKey || ev.ctrlKey) && ev.key === "Enter") submit();
+    if (ev.key === "Escape") closeComposer();
+  });
+  setTimeout(() => ta.focus(), 30);
+  return c;
+}
+
+function openLineComposer(anchor, atRow) {
+  closeComposer();
+  const tr = atRow || (anchors.get(anchorKey(anchor)) || [])[0];
+  if (!tr) return;
+  const compTr = document.createElement("tr");
+  compTr.className = "crt-composer-row";
+  const td = document.createElement("td");
+  td.colSpan = 2; td.className = "crt-thread-cell";
+  td.append(composerNode(anchor));
+  compTr.append(td);
+  insertAfterThread(tr, compTr);
+  openComposerEl = compTr;
+  compTr.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+function openStopComposer(stopId) {
+  closeComposer();
+  const stop = (TOUR.stops || []).find(s => String(s.id) === String(stopId));
+  const anchor = { stopId: String(stopId), file: (stop?.files?.[0] || "").split(":")[0] || null, side: "RIGHT", line: null };
+  const slot = $(`.stop-thread-slot[data-stop="${CSS.escape(String(stopId))}"]`);
+  if (!slot) return;
+  const holder = div("thread");
+  holder.append(composerNode(anchor));
+  slot.append(holder);
+  openComposerEl = holder;
+}
+function insertAfterThread(anchorTr, node) {
+  let after = anchorTr;
+  if (after.nextElementSibling?.classList.contains("crt-thread-row")) after = after.nextElementSibling;
+  after.after(node);
+}
+
+/* ================= threads ================= */
+function commentCard(c) {
+  const card = div("comment-card");
+  card.innerHTML = `
+    <div class="c-head">
+      <span class="c-anchor">${esc(anchorLabel(c))}</span>
+    </div>
+    <div class="c-raw">${esc(c.raw)}</div>
+    <div class="c-actions">
+      <button class="link-btn" data-act="copy">📋 Copy as PR comment</button>
+      <button class="link-btn" data-act="edit">Edit</button>
+      <button class="link-btn" data-act="del">Delete</button>
+    </div>`;
+  card.addEventListener("click", ev => {
+    const act = ev.target.dataset.act; if (!act) return;
+    if (act === "copy") copyText(prCommentFor(c), "copied — paste into a GitHub PR comment");
+    if (act === "del") { state.comments = state.comments.filter(x => x.id !== c.id); save(); renderAllThreads(); }
+    if (act === "edit") {
+      const nv = prompt("Edit note:", c.raw);
+      if (nv != null && nv.trim()) { c.raw = nv.trim(); save(); renderAllThreads(); }
+    }
+  });
+  return card;
+}
+
+function renderAllThreads() {
+  $$(".crt-thread-row").forEach(el => el.remove());
+  $$(".stop-thread-slot").forEach(el => { el.innerHTML = ""; });
+  const byAnchor = new Map();
+  for (const c of state.comments) {
+    const k = anchorKey(c);
+    if (!byAnchor.has(k)) byAnchor.set(k, []);
+    byAnchor.get(k).push(c);
+  }
+  for (const [key, comments] of byAnchor) {
+    if (key.endsWith("|stop")) {
+      const thread = div("thread");
+      comments.forEach(c => thread.append(commentCard(c)));
+      const stopId = key.split("|")[0];
+      $(`.stop-thread-slot[data-stop="${CSS.escape(stopId)}"]`)?.append(thread);
+    } else {
+      for (const tr of anchors.get(key) || []) {   // thread renders at every instance of the line
+        const thread = div("thread");
+        comments.forEach(c => thread.append(commentCard(c)));
+        const row = document.createElement("tr");
+        row.className = "crt-thread-row";
+        const td = document.createElement("td");
+        td.colSpan = 2; td.className = "crt-thread-cell";
+        td.append(thread); row.append(td);
+        tr.after(row);
+      }
+    }
+  }
+  refreshCounts();
+}
+
+function refreshCounts() {
+  $("#drawer-count").textContent = state.comments.length;
+  for (const cc of $$(".nav-cc")) {
+    const n = state.comments.filter(c => String(c.stopId) === cc.dataset.cc).length;
+    cc.textContent = n ? `📝${n}` : "";
+  }
+  const list = $("#drawer-list"); list.innerHTML = "";
+  for (const c of state.comments) {
+    const item = div("drawer-item",
+      `<div class="d-anchor">${esc(anchorLabel(c))}</div><div class="d-raw">${esc(c.raw)}</div>`);
+    item.addEventListener("click", () => {
+      $("#drawer").classList.remove("open");
+      const tr = (anchors.get(anchorKey(c)) || [])[0];
+      (tr || $(`#stop-${CSS.escape(String(c.stopId))}`))?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+    list.append(item);
+  }
+  if (!state.comments.length) list.innerHTML = `<div style="color:var(--paper-faint);font-size:12.5px">No notes yet. Hover a diff line and hit <b>+</b>, or "Note on this stop".</div>`;
+}
+
+/* ================= export ================= */
+function exportReviewMarkdown() {
+  const lines = [`## Review — ${TOUR.meta.title}`, ""];
+  for (const c of state.comments) lines.push(`- ${prCommentFor(c)}`);
+  if (state.comments.length === 0) lines.push("_(no notes)_");
+  return lines.join("\n") + "\n";
+}
+
+/* ================= chrome ================= */
+$("#btn-drawer").addEventListener("click", () => $("#drawer").classList.toggle("open"));
+$("#btn-export").addEventListener("click", () =>
+  copyText(exportReviewMarkdown(), "review markdown copied — paste into the GitHub PR"));
+document.addEventListener("keydown", ev => {
+  if (ev.target.tagName === "TEXTAREA" || ev.target.tagName === "INPUT") return;
+  if (ev.key !== "j" && ev.key !== "k") return;
+  const targets = sectionTargets();
+  /* current = LAST section whose heading has scrolled to (or past) the
+     reading line — mirrors nearestSectionId. The old "first section with
+     top > -10" pick skipped a section when the reader was mid-scroll:
+     80px into section A, A's top < -10, so idx pointed at B and `j`
+     jumped to C. */
+  let current = -1;
+  for (let i = 0; i < targets.length; i++) {
+    const el = document.getElementById(targets[i]);
+    if (el && el.getBoundingClientRect().top <= 80) current = i;
+  }
+  if (ev.key === "j") document.getElementById(targets[Math.min(current + 1, targets.length - 1)])?.scrollIntoView();
+  if (ev.key === "k") document.getElementById(targets[Math.max(current - 1, 0)])?.scrollIntoView();
+});
+window.addEventListener("hashchange", onHashChange);
+$("#backpill").addEventListener("click", () => history.back());
+
+boot();
+</script>
+</body>
+</html>

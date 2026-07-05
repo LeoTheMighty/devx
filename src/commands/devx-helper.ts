@@ -9,6 +9,7 @@
 //   • dvx101: `devx devx-helper claim <hash>`
 //   • dvx105: `devx devx-helper await-remote-ci <branch> [--once]`
 //   • roc101: `devx devx-helper verify-claim <hash> [--session-token <token>]`
+//   • v2t101: `devx devx-helper check-hold <pr-number>` (D-5 merge-tail hold)
 //
 // (dvx102's `should-create-story` was retired by v2x101 — the v2 engine
 // implements from spec ACs directly; the canary machinery went with it.)
@@ -41,6 +42,16 @@
 //            stderr has detail. Operator-actionable (auth / network /
 //            parse). `"unknown"` is the catch-all for non-GhProbeError
 //            throws — argument validation, unhandled internal failures.
+//     • 64 → usage error. stderr only.
+//
+//   `check-hold` (Phase 8 merge tail, AFTER merge-gate says merge:true):
+//     • 0  → no hold. JSON `{"hold": false}` on stdout. D-5: silence merges.
+//     • 3  → hold requested. JSON `{"hold": true, "reason": ...}` on stdout
+//            — a `devx: hold` comment or an unresolved requested-changes
+//            review. Skill body leaves the PR open + notifies.
+//     • 2  → gh failure. JSON `{error, stage}` on stdout; stderr has detail.
+//            Uncertainty defaults to safe: the skill body does NOT merge on
+//            exit 2 (same posture as merge-gate's exit 2).
 //     • 64 → usage error. stderr only.
 //
 //   `verify-claim`:
@@ -86,6 +97,11 @@ import {
   VerifyClaimError,
   verifyClaim,
 } from "../lib/devx/verify-claim.js";
+import {
+  type HoldCheckOpts,
+  HoldCheckError,
+  checkHold,
+} from "../lib/devx/hold-check.js";
 import type { DeriveBranchConfig } from "../lib/plan/derive-branch.js";
 
 const HASH_RE = /^[a-z0-9]{3,12}$/i;
@@ -455,6 +471,95 @@ export async function runVerifyClaim(
 }
 
 // ---------------------------------------------------------------------------
+// check-hold (v2t101)
+// ---------------------------------------------------------------------------
+
+export interface RunCheckHoldOpts {
+  /** Test seam: route stdout off process.stdout. */
+  out?: (s: string) => void;
+  /** Test seam: route stderr off process.stderr. */
+  err?: (s: string) => void;
+  /** Test seam: explicit project repo root (skip findProjectConfig walk). */
+  repoRoot?: string;
+  /** Test seam: forward through to checkHold (exec seam). */
+  holdOpts?: Partial<HoldCheckOpts>;
+}
+
+/**
+ * Drive the D-5 review-hold check. Returns the exit code; emits exactly-one
+ * JSON object on stdout and human-readable detail on stderr.
+ *
+ * Runs in /devx Phase 8 AFTER `devx merge-gate <hash>` exits 0: exit 0 here
+ * → proceed with the merge (silence merges); exit 3 → leave the PR open and
+ * surface the reason; exit 2 → do NOT merge (uncertainty defaults to safe).
+ */
+export function runCheckHold(
+  args: string[],
+  opts: RunCheckHoldOpts = {},
+): number {
+  const out = opts.out ?? ((s) => process.stdout.write(s));
+  const err = opts.err ?? ((s) => process.stderr.write(s));
+
+  if (args.length !== 1) {
+    err("usage: devx devx-helper check-hold <pr-number>\n");
+    return 64;
+  }
+  const raw = args[0].trim();
+  if (!/^\d+$/.test(raw)) {
+    err(
+      `devx devx-helper check-hold: invalid PR number '${args[0]}' (expected a positive integer)\n`,
+    );
+    return 64;
+  }
+  const prNumber = Number.parseInt(raw, 10);
+  if (prNumber <= 0) {
+    err(
+      `devx devx-helper check-hold: invalid PR number '${args[0]}' (expected a positive integer)\n`,
+    );
+    return 64;
+  }
+
+  let repoRoot: string;
+  if (opts.repoRoot) {
+    repoRoot = opts.repoRoot;
+  } else {
+    const projectConfigPath = findProjectConfig();
+    if (!projectConfigPath) {
+      err(
+        "devx devx-helper check-hold: devx.config.yaml not found (walked up from cwd)\n",
+      );
+      return 64;
+    }
+    repoRoot = dirname(projectConfigPath);
+  }
+
+  try {
+    const result = checkHold(prNumber, {
+      repoRoot,
+      ...(opts.holdOpts ?? {}),
+    });
+    out(`${JSON.stringify(result)}\n`);
+    if (result.hold) {
+      err(
+        `devx devx-helper check-hold: HOLD — ${result.reason}; leave the PR open (D-5)\n`,
+      );
+      return 3;
+    }
+    return 0;
+  } catch (e) {
+    if (e instanceof HoldCheckError) {
+      out(`${JSON.stringify({ error: "hold-check-failed", stage: e.stage })}\n`);
+      err(`devx devx-helper check-hold: ${e.message}\n`);
+      return 2;
+    }
+    const msg = e instanceof Error ? e.message : String(e);
+    out(`${JSON.stringify({ error: "hold-check-failed", stage: "unknown" })}\n`);
+    err(`devx devx-helper check-hold: unexpected error: ${msg}\n`);
+    return 2;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // commander wiring
 // ---------------------------------------------------------------------------
 
@@ -509,6 +614,19 @@ export function register(program: Command): void {
           ? [hash, "--session-token", options.sessionToken]
           : [hash];
       const code = await runVerifyClaim(args, {});
+      if (code !== 0) {
+        process.exit(code);
+      }
+    });
+
+  sub
+    .command("check-hold")
+    .description(
+      "D-5 review-hold check for the /devx Phase 8 merge tail (v2t101). Inspects PR comments + reviews via gh for a 'devx: hold' comment or an unresolved requested-changes review. Exit 0 {hold:false} → silence merges / 3 {hold:true, reason} → leave PR open / 2 gh failure → do not merge.",
+    )
+    .argument("<pr-number>", "PR number (e.g. '64')")
+    .action((prNumber: string) => {
+      const code = runCheckHold([prNumber], {});
       if (code !== 0) {
         process.exit(code);
       }

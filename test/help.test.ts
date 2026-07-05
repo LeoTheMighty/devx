@@ -208,6 +208,10 @@ describe("cli303 — devx --help command listing", () => {
         revise [options] <hash>      Apply the v2 cascade-reset table for a touched
                                      workstream artifact (prd/expectations → 4 flags;
                                      design → 3; plan → 2) and print the replay path.
+        tour                         Static HTML review tour for a spec's PR
+                                     (v2t101). gather → (agent narrates) → build →
+                                     publish; prune for retention. See
+                                     v2/03-review-tour.md.
         workstream                   Workstream operations (v2 engine). \`new <slug>\`
                                      scaffolds _devx/workstreams/<slug>/ + the plan
                                      spec's engine frontmatter.

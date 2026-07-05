@@ -30,6 +30,8 @@ import type { Command } from "commander";
 import { findProjectConfig, loadMerged } from "../lib/config-io.js";
 import { attachPhase } from "../lib/help.js";
 import {
+  type TourSectionData,
+  type TourStopSummary,
   extractAcChecklist,
   loadTemplate,
   renderPrBody,
@@ -54,6 +56,17 @@ export interface PrBodyFlags {
   testPlan?: string;
   notes?: string;
   templatePath?: string;
+  /** v2t101: primary tour link (htmlpreview wrapper from `devx tour
+   *  publish`). Absent → the tour section renders the fail-soft
+   *  "unavailable" line. */
+  tourUrl?: string;
+  /** v2t101: path to the tour.json (or an `{orientation, stops}` subset) —
+   *  feeds the orientation text fallback. Unreadable/invalid is FAIL-SOFT:
+   *  stderr note, section still renders. */
+  tourOrientation?: string;
+  /** v2t101: reason for the "tour unavailable (<reason>)" line when no
+   *  --tour-url was given. */
+  tourUnavailable?: string;
 }
 
 export function runPrBody(flags: PrBodyFlags, opts: RunPrBodyOpts = {}): number {
@@ -147,6 +160,11 @@ export function runPrBody(flags: PrBodyFlags, opts: RunPrBodyOpts = {}): number 
 
   const acChecklist = extractAcChecklist(specBody);
 
+  // v2t101: assemble the tour section data. Every failure branch here is
+  // FAIL-SOFT — a broken orientation file or missing URL degrades the tour
+  // section, never the PR body render (exit stays 0).
+  const tour = buildTourSectionData(flags, projectDir, err);
+
   const result = renderPrBody({
     template,
     mode,
@@ -155,6 +173,7 @@ export function runPrBody(flags: PrBodyFlags, opts: RunPrBodyOpts = {}): number 
     summary: flags.summary,
     testPlan: flags.testPlan,
     notes: flags.notes,
+    tour,
   });
 
   out(result.body);
@@ -163,8 +182,86 @@ export function runPrBody(flags: PrBodyFlags, opts: RunPrBodyOpts = {}): number 
   for (const name of result.unresolvedPlaceholders) {
     err(`unresolved-placeholder: ${name}\n`);
   }
+  if (result.tourSectionSkipped) {
+    err(
+      "tour-section: template has no canonical tour placeholder line — tour link omitted (fail-soft)\n",
+    );
+  }
 
   return 0;
+}
+
+/** Parse the tour flags into TourSectionData. Fail-soft everywhere: an
+ *  unreadable/malformed --tour-orientation file downgrades to a stderr note
+ *  and the section renders with whatever survives. */
+function buildTourSectionData(
+  flags: PrBodyFlags,
+  projectDir: string,
+  err: (s: string) => void,
+): TourSectionData | undefined {
+  const hasAny =
+    flags.tourUrl !== undefined ||
+    flags.tourOrientation !== undefined ||
+    flags.tourUnavailable !== undefined;
+  if (!hasAny) return undefined;
+
+  const tour: TourSectionData = {};
+  if (flags.tourUrl !== undefined && flags.tourUrl.trim() !== "") {
+    tour.url = flags.tourUrl.trim();
+  }
+  if (flags.tourUnavailable !== undefined) {
+    tour.unavailableReason = flags.tourUnavailable;
+  }
+
+  if (flags.tourOrientation !== undefined) {
+    const oPath = isAbsolute(flags.tourOrientation)
+      ? flags.tourOrientation
+      : resolve(projectDir, flags.tourOrientation);
+    try {
+      const parsed = JSON.parse(readFileSync(oPath, "utf8")) as {
+        orientation?: { summary?: unknown; timeBoxed?: unknown };
+        stops?: unknown;
+      };
+      const orientation = parsed?.orientation;
+      if (orientation && typeof orientation === "object") {
+        if (typeof orientation.summary === "string") {
+          tour.orientationSummary = orientation.summary;
+        }
+        if (typeof orientation.timeBoxed === "string") {
+          tour.timeBoxed = orientation.timeBoxed;
+        }
+      }
+      if (Array.isArray(parsed?.stops)) {
+        const stops: TourStopSummary[] = [];
+        for (const s of parsed.stops) {
+          if (!s || typeof s !== "object") continue;
+          const raw = s as { id?: unknown; priority?: unknown; title?: unknown };
+          if (
+            (typeof raw.id === "string" || typeof raw.id === "number") &&
+            typeof raw.title === "string"
+          ) {
+            stops.push({
+              id: raw.id,
+              title: raw.title,
+              priority:
+                typeof raw.priority === "string" ? raw.priority : undefined,
+            });
+          }
+        }
+        if (stops.length > 0) tour.stops = stops;
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      err(
+        `tour-orientation: could not read ${flags.tourOrientation}: ${msg} — rendering tour section without the text fallback (fail-soft)\n`,
+      );
+      if (tour.url === undefined && tour.unavailableReason === undefined) {
+        tour.unavailableReason = "orientation unreadable";
+      }
+    }
+  }
+
+  return tour;
 }
 
 /** Returns the repo-relative form of `absPath` under `projectDir`, or `null`
@@ -208,6 +305,18 @@ export function register(program: Command): void {
       "--template-path <path>",
       "override the PR template path (defaults to .github/pull_request_template.md)",
     )
+    .option(
+      "--tour-url <url>",
+      "review-tour link for the `## 🗺 Review tour` section (from `devx tour publish`); absent → fail-soft unavailable line",
+    )
+    .option(
+      "--tour-orientation <path>",
+      "path to tour.json — orientation.summary + timeBoxed + stop list render as the section's <details> text fallback",
+    )
+    .option(
+      "--tour-unavailable <reason>",
+      "reason for the 'tour unavailable (<reason>)' line when no --tour-url is given",
+    )
     .action(
       (opts: {
         spec: string;
@@ -215,6 +324,9 @@ export function register(program: Command): void {
         testPlan?: string;
         notes?: string;
         templatePath?: string;
+        tourUrl?: string;
+        tourOrientation?: string;
+        tourUnavailable?: string;
       }) => {
         const code = runPrBody({
           spec: opts.spec,
@@ -222,6 +334,9 @@ export function register(program: Command): void {
           testPlan: opts.testPlan,
           notes: opts.notes,
           templatePath: opts.templatePath,
+          tourUrl: opts.tourUrl,
+          tourOrientation: opts.tourOrientation,
+          tourUnavailable: opts.tourUnavailable,
         });
         if (code !== 0) process.exit(code);
       },
