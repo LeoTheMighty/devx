@@ -345,6 +345,15 @@ bmad:
 # ---------------------------------------------------------------------------
 
 projects:
+  - name: workstream-evals
+    # v2e102: RED-gate eval scripts (devx gate evals) — standalone tsx
+    # scripts under _devx/workstreams/*/evals/, never part of `npm test`.
+    path: _devx/workstreams
+    layers: [backend]
+    lint: null
+    test: 'npx tsx'
+    coverage: null
+    pre_push: null
   - name: cli
     path: .
     layers: [backend]

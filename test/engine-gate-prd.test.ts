@@ -413,3 +413,51 @@ describe("devx gate prd — CLI driver", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// v2e102 dogfood regression: house style wraps field values at ~78 chars;
+// the parser must fold indented continuation lines into one value. First
+// surfaced by the first real `gate prd` run (see the v2x101 workstream's
+// decisions/2026-07-05-prd-gate-seeded-defect.md).
+// ---------------------------------------------------------------------------
+
+describe("parseExpectations — wrapped field values (v2e102)", () => {
+  it("folds a line-wrapped EARS sentence into one value", () => {
+    const exp = validExpectations().replace(
+      /- \*\*Expectation \(EARS\):\*\* ([^\n]+)\n/,
+      "- **Expectation (EARS):** When the artifact builds after a merge,\n" +
+        "  the system SHALL keep the wrapped value intact.\n",
+    );
+    const result = evaluate({ expectations: exp });
+    expect(checksOf(result)).not.toContain("expectation-ears-shape");
+  });
+
+  it("folds a wrapped Verified-by target", () => {
+    const exp = validExpectations().replace(
+      /- \*\*Verified by:\*\* ([^\n]+)\n/,
+      "- **Verified by:**\n  test/tour-build.test.ts\n",
+    );
+    const result = evaluate({ expectations: exp });
+    expect(checksOf(result)).not.toContain("expectation-verified-by-vague");
+  });
+
+  it("does not bleed a continuation into the next field", () => {
+    const exp = validExpectations().replace(
+      /- \*\*Trigger:\*\* ([^\n]+)\n/,
+      "- **Trigger:** a wrapped trigger sentence\n  continuing here\n",
+    );
+    const result = evaluate({ expectations: exp });
+    // Threshold and Verified-by on the following lines must stay intact.
+    expect(checksOf(result)).not.toContain("expectation-threshold-missing");
+    expect(checksOf(result)).not.toContain("expectation-verified-by-vague");
+  });
+
+  it("blank line closes an open field (no over-folding)", () => {
+    const exp = validExpectations().replace(
+      /- \*\*Verified by:\*\* ([^\n]+)\n/,
+      "- **Verified by:** $1\n\n  stray indented prose after a blank line\n",
+    );
+    const result = evaluate({ expectations: exp });
+    expect(checksOf(result)).not.toContain("expectation-verified-by-vague");
+  });
+});
