@@ -5,7 +5,7 @@ created: 2026-05-07T08:50:00-06:00
 title: /devx Phase 1 resume-detection — verify claim ownership via session-token check
 from: dev/dev-dvxret-2026-04-28T19:30-retro-devx-skill.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
-status: in-progress
+status: in-review
 owner: /devx-2026-07-05T0953-22822
 blocked_by: [dvxret]
 branch: feat/dev-roc101
@@ -96,3 +96,7 @@ fix: a CLI primitive + skill-body wire-up.
   CLAUDE.md "Verify claim ownership before resuming" working agreement
   shipped in dvxret PR.
 - 2026-07-05T09:53:48-06:00 — claimed by /devx in session /devx-2026-07-05T0953-22822
+- 2026-07-05T10:05 — phase 2: canary=off, spec ACs cover the story → bmad-create-story SKIPPED (v0 behavior; 8 actionable ACs, no story file)
+- 2026-07-05T10:05 — phase 3: implemented `verifyClaim` (src/lib/devx/verify-claim.ts — normalize/parseLockOwner/parseSpecClaimFields pure helpers + decision driver reusing claim.ts's ClaimFs seam + findSpecForHash + lock-file/owner shape), `devx devx-helper verify-claim <hash> [--session-token <token>]` CLI (exit 0/3/4/2/64 per AC JSON contract), `.claude/commands/devx.md` Phase 1 resume-detection subsection, test/devx-verify-claim.test.ts (39 tests, cartesian lock-exists × token-matches × spec-status) + test/devx-skill-phase1-resume.test.ts (10 discipline tests). Smoke-verified against roc101's own live lock: exit 0 with the claiming token, exit 3 with a foreign token — the primitive ran on its own claim.
+- 2026-07-05T10:05 — phase 4: self-review — 1 finding (HIGH semantics: skill-body token-provenance wording could be read as "copy the token from spec `owner:` frontmatter", which trivially always matches and defeats the check — the exact E13 incident shape; fixed with an explicit "never copy from spec/lock; fresh sessions omit the flag" rule + a discipline-test assertion pinning it), all fixed; re-review clean. Design-time hardenings folded in: spec resolve ordered before lock probe (garbage hash → exit 2 `resolve`, never a spurious 0/3), `/devx-`-only token normalizes to empty and is rejected at `validate`, missing locks dir and missing lock file both map to the same no-lock branch.
+- 2026-07-05T10:05 — phase 5: local CI green — npm test: 68 files, 1357 tests passing (baseline 1309; +48 net). Frontmatter flipped to in-review.
