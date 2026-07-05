@@ -24,7 +24,7 @@ describe("parseDevMd", () => {
 ## Phase 0
 - not a row, missing path
 some text
-- [ ] \`dev/dev-aud101-2026-04-26T19:35-bmad-modules-inventory.md\` — Inventory. Status: done. PR: https://example/1.
+- [ ] \`dev/dev-aud101-2026-04-26T19:35-modules-inventory.md\` — Inventory. Status: done. PR: https://example/1.
 `;
     const rows = parseDevMd(md);
     expect(rows).toHaveLength(1);

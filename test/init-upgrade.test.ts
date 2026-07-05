@@ -50,6 +50,7 @@ const ALL_SURFACES: ReadonlyArray<RepairSurface> = [
   "supervisor-units",
   "ci-workflow",
   "pr-template",
+  "engine-templates",
   "personas",
   "interview-seed",
 ];
@@ -77,9 +78,9 @@ const MINIMAL_CONFIG = [
   "project:",
   "  shape: empty-dream",
   "thoroughness: send-it",
-  "bmad:",
-  "  modules: [core, bmm, tea]",
-  "  output_root: _bmad-output",
+  "engine:",
+  "  workstreams_root: _devx/workstreams",
+  "  archive_root: _devx/archive",
   "",
 ].join("\n");
 
@@ -534,7 +535,7 @@ describe("ini507 — migrations", () => {
         toVersion: "0.3.0",
         apply: () => {
           ranOrder.push("0.2.0-0.3.0");
-          return [["bmad", "modules"]];
+          return [["engine", "workstreams_root"]];
         },
       },
       {
@@ -556,7 +557,7 @@ describe("ini507 — migrations", () => {
     });
 
     expect(ranOrder).toEqual(["0.1.0-0.2.0", "0.2.0-0.3.0"]);
-    // Distinct keys touched across both migrations: mode + bmad.modules.
+    // Distinct keys touched across both migrations: mode + engine.workstreams_root.
     expect(result.summary?.migrated).toBe(2);
   });
 

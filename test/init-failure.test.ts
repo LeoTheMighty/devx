@@ -6,8 +6,6 @@
 //     regression breaks BOTH suites instead of silently moving the failure).
 //   - assertNotPartial: blocks in BETA/PROD/LOCKDOWN; passes in YOLO; passes
 //     when flag absent; passes when config absent.
-//   - handleBmadInstallFailure: r/s/a decisions, write of bmad.modules: [],
-//     stderr capture + truncation, idempotent re-skip.
 //   - handleGhNotAuth + handleNoRemote: MANUAL append (idempotent), flag
 //     flip, promotion.gate forced to manual-only on no-remote.
 //   - replayPendingGhOps: per-kind dispatch (create-develop, set-default,
@@ -31,12 +29,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
 
 import {
-  InitAbortedError,
   InitPartialError,
   PARTIAL_BLOCKING_MODES,
   PendingGhOpsCorruptError,
   assertNotPartial,
-  handleBmadInstallFailure,
   handleGhNotAuth,
   handleNoRemote,
   readInitPartial,
@@ -73,9 +69,8 @@ function writeMinimalConfig(repoRoot: string, overrides: string = ""): string {
       "promotion:",
       "  gate: fast-ship-always",
       "  soak_hours: 0",
-      "bmad:",
-      "  modules: [core, bmm, tea]",
-      "  output_root: _bmad-output",
+      "engine:",
+      "  workstreams_root: _devx/workstreams",
       "",
       overrides,
     ].join("\n"),
@@ -213,142 +208,6 @@ describe("ini506 — assertNotPartial", () => {
 
   it("PARTIAL_BLOCKING_MODES is exactly {BETA, PROD, LOCKDOWN}", () => {
     expect([...PARTIAL_BLOCKING_MODES].sort()).toEqual(["BETA", "LOCKDOWN", "PROD"]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// BMAD-install failure
-// ---------------------------------------------------------------------------
-
-describe("ini506 — handleBmadInstallFailure", () => {
-  let repo: string;
-  beforeEach(() => {
-    repo = mkRepo("ini506-bmad-");
-    writeMinimalConfig(repo);
-  });
-  afterEach(() => rmSync(repo, { recursive: true, force: true }));
-
-  it("decision='retry' returns without writing skip state", async () => {
-    const out = await handleBmadInstallFailure({
-      repoRoot: repo,
-      exitCode: 1,
-      stderr: "transient network error",
-      attempts: 1,
-      prompt: () => "retry",
-      now: NOW,
-    });
-    expect(out.decision).toBe("retry");
-    expect(out.wroteSkipState).toBe(false);
-    expect(readInitPartial({ repoRoot: repo })).toBe(false);
-    expect(existsSync(join(repo, "MANUAL.md"))).toBe(false);
-  });
-
-  it("decision='abort' throws InitAbortedError with attempts in message", async () => {
-    await expect(
-      handleBmadInstallFailure({
-        repoRoot: repo,
-        exitCode: 127,
-        stderr: "command not found",
-        attempts: 3,
-        prompt: () => "abort",
-        now: NOW,
-      }),
-    ).rejects.toThrow(/aborted.*exit 127.*3 attempt/);
-  });
-
-  it("decision='skip' writes bmad.modules:[], flips flag, appends MANUAL", async () => {
-    const out = await handleBmadInstallFailure({
-      repoRoot: repo,
-      exitCode: 1,
-      stderr: "ENOTFOUND registry.npmjs.org",
-      attempts: 1,
-      prompt: () => "skip",
-      now: NOW,
-    });
-    expect(out.decision).toBe("skip");
-    expect(out.wroteSkipState).toBe(true);
-
-    const cfg = parseYaml(readFileSync(join(repo, "devx.config.yaml"), "utf8")) as {
-      bmad: { modules: string[] };
-      init_partial: boolean;
-    };
-    expect(cfg.bmad.modules).toEqual([]);
-    expect(cfg.init_partial).toBe(true);
-
-    const manual = readFileSync(join(repo, "MANUAL.md"), "utf8");
-    expect(manual).toContain("devx-init: bmad-install-failed");
-    expect(manual).toContain("ENOTFOUND registry.npmjs.org");
-    expect(manual).toContain("Filed: 2026-04-27T20:00:00.000Z");
-  });
-
-  it("decision='skip' picks a longer fence when stderr contains ``` so MANUAL renders cleanly", async () => {
-    await handleBmadInstallFailure({
-      repoRoot: repo,
-      exitCode: 1,
-      stderr: "```\nnested fence inside captured stderr\n```",
-      attempts: 1,
-      prompt: () => "skip",
-      now: NOW,
-    });
-    const manual = readFileSync(join(repo, "MANUAL.md"), "utf8");
-    // The fence around stderr must be at least 4 backticks since the body
-    // contains 3. Otherwise the inner ``` would terminate the outer block
-    // and orphan the trailing content into the rest of MANUAL.md.
-    // Body lines are indented 2 spaces inside the bullet (see appendManualEntry).
-    expect(manual).toMatch(/ {2}stderr:\n {2}````/);
-  });
-
-  it("decision='skip' truncates extremely long stderr", async () => {
-    const longStderr = "x".repeat(2000);
-    const out = await handleBmadInstallFailure({
-      repoRoot: repo,
-      exitCode: 1,
-      stderr: longStderr,
-      attempts: 1,
-      prompt: () => "skip",
-      now: NOW,
-    });
-    expect(out.recordedStderr.length).toBeLessThan(longStderr.length);
-    expect(out.recordedStderr).toMatch(/truncated/);
-  });
-
-  it("re-skipping is idempotent on the MANUAL entry (anchor dedupes)", async () => {
-    await handleBmadInstallFailure({
-      repoRoot: repo,
-      exitCode: 1,
-      stderr: "first error",
-      attempts: 1,
-      prompt: () => "skip",
-      now: NOW,
-    });
-    const manualBefore = readFileSync(join(repo, "MANUAL.md"), "utf8");
-    await handleBmadInstallFailure({
-      repoRoot: repo,
-      exitCode: 1,
-      stderr: "second error (different)",
-      attempts: 2,
-      prompt: () => "skip",
-      now: NOW,
-    });
-    const manualAfter = readFileSync(join(repo, "MANUAL.md"), "utf8");
-    // Same MANUAL content (the first entry is preserved, the second is skipped
-    // by the anchor check). This matches the "don't pile up duplicates" rule.
-    expect(manualAfter).toBe(manualBefore);
-  });
-
-  it("prompt is called with exit code, stderr, and attempt count", async () => {
-    const seen: Array<{ exitCode: number; stderr: string; attempts: number }> = [];
-    await handleBmadInstallFailure({
-      repoRoot: repo,
-      exitCode: 42,
-      stderr: "boom",
-      attempts: 7,
-      prompt: (opts) => {
-        seen.push(opts);
-        return "retry";
-      },
-    });
-    expect(seen).toEqual([{ exitCode: 42, stderr: "boom", attempts: 7 }]);
   });
 });
 

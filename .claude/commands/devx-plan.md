@@ -162,8 +162,7 @@ Inputs: plan.md coverage table + expectations.md. Artifacts:
    <hash>`, DEV.md entries appended in dependency order, retro story
    co-emitted via `devx plan-helper emit-retro-story`, the whole emission
    validated with `devx plan-helper validate-emit <epic-slug>` (abort on
-   error). *(sprint-status writes retire in v2x101 — until it lands,
-   emit-retro-story's row is tolerated.)*
+   error).
 4. Flip the PLAN.md checkbox `[x]`, commit, status log, print the final
    summary: workstream, gate verdicts, emitted specs list, and the
    Next-command block rendered from the canonical template in the

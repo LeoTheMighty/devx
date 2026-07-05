@@ -12,7 +12,7 @@ Six write targets, ordered by blast radius (smallest to largest):
 
 | Target | What lands there | Reversible how |
 |---|---|---|
-| **Spec-file templates** under `_bmad/devx/templates/` | Section-ordering tweaks, standard checklist items the agent forgot last time. | `git revert` the lesson commit. |
+| **Spec-file + stage templates** under `_devx/templates/` | Section-ordering tweaks, standard checklist items the agent forgot last time. | `git revert` the lesson commit. |
 | **`devx.config.yaml`** | Tunable defaults: coverage percent, capacity cap, poll intervals, preferred deploy region. | Edit the yaml directly. |
 | **Project memory** (`/Users/<you>/.claude/projects/<proj>/memory/`) | Facts about this project's preferences — "prefer MySQL for new services", "deploy region is us-east-1", "empty states use the palateful illustration set". | Remove or edit the memory file. |
 | **`CLAUDE.md`** (repo-level) | Project-wide rules an agent must follow: tech stack invariants, naming conventions, "never commit to main directly", pre-push checklists. | PR-reviewable edit. |
@@ -69,7 +69,7 @@ User manually edits `~/.claude/commands/devx-*.md`. A `pre-commit` hook in the d
 
 ### S6. PR review surfaces the same issue repeatedly
 
-Code review findings on merged PRs are logged (BMAD's `code-review` workflow already produces these). Grep across the last N reviews for repeated findings categories.
+Code review findings on merged PRs are logged (the native Phase 4 adversarial self-review appends a findings-count status-log line to every spec). Grep across the last N reviews for repeated findings categories.
 
 → **Lesson candidate:** add to a pre-review checklist so the agent catches it before review.
 → **Likely target:** `devx.md` skill Phase 3 (Code Review), or `CLAUDE.md`.
@@ -275,7 +275,7 @@ Given any surprising agent behavior after the fact, you can:
 - **Don't learn from one example.** `confidence: low` stays queued for user review. The whole system breaks if a single weird incident mutates a shared skill.
 - **Don't learn from the user changing their mind.** If user answered q#4 with (c) three times, then answered q#20 with (a), LearnAgent sees the contradiction and lowers confidence, doesn't silently flip.
 - **Don't edit memories the user wrote by hand.** Personal memories flagged `source: user` are read-only to LearnAgent.
-- **Don't drift from BMAD.** Skill edits that would break the contract with BMAD workflows (e.g., renaming a workflow the skill invokes) are rejected by a pre-merge check that parses the skill and verifies referenced workflow paths still exist.
+- **Don't break the engine contract.** Skill edits that would break the contract with the engine (e.g., renaming a `devx` CLI primitive or stage a skill body invokes) are rejected by a pre-merge check that parses the skill and verifies referenced commands and paths still exist.
 - **Don't auto-apply during active agent runs.** LearnAgent always picks quiet moments (no DevAgent/DebugAgent/TestAgent active). Triage enforces this.
 - **Don't accumulate silently.** If `LESSONS.md` grows past 20 pending items, `MANUAL.md` gets a "review lessons — backlog full" entry. Pressure on the user to review, so the loop doesn't stall.
 
@@ -323,4 +323,4 @@ Given any surprising agent behavior after the fact, you can:
 - **Worktrees** — LearnAgent operates in its own worktree on `develop/learn-<hash>` branches, same as any other agent.
 - **TriageAgent** — schedules LearnAgent when capacity is idle and trigger signals have accumulated. Never preempts active work.
 - **Mobile app** — `LESSONS.md` shows up in the Inbox tab. User can approve/reject lessons on the phone with the same inline-action pattern as INTERVIEW questions.
-- **BMAD** — LearnAgent treats BMAD workflows as read-only. It can learn from workflow *outcomes* but won't edit `_bmad/` files. All learning lands in devx-owned files (skills, CLAUDE.md, config, memory).
+- **Frozen archives** — LearnAgent never edits `_bmad-output/` (the BMAD-era archive) or any other frozen history. All learning lands in devx-owned live files (skills, CLAUDE.md, config, memory, `_devx/templates/`).

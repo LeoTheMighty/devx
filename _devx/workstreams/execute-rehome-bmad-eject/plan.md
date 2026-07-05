@@ -36,7 +36,7 @@ restructuring; any new execution features beyond the re-home.
 
 ## Phase checklist
 
-- [ ] Phase 1: the ejection PR (dev spec: v2x101)
+- [x] Phase 1: the ejection PR (dev spec: v2x101)
 
 ## Phases
 
@@ -90,10 +90,10 @@ workstream's RED gate) and flip green here.
     (falsifiable via its PR + status log).
 
 **Tasks**:
-- [ ] T1.1 skill-body re-home — files: `.claude/commands/devx.md`
-- [ ] T1.2 config migration + shim — files: `devx.config.yaml`, `_devx/config-schema.json`, `src/lib/config-*` (order constraint: lands before or with T1.1 — the skill body references `engine:`/`loop:` keys)
-- [ ] T1.3 source-template retargeting — files: `src/lib/plan/emit-retro-story.ts`, `src/commands/plan-helper.ts`, `src/lib/devx/should-create-story.ts`
-- [ ] T1.4 deletions (skills, _bmad/, legacy commands) — files: `.claude/skills/`, `_bmad/`, `.claude/commands/dev*.md`
-- [ ] T1.5 init de-BMAD + engine scaffold — files: `src/lib/init-*.ts`
-- [ ] T1.6 docs + command sweep — files: `CLAUDE.md`, `docs/*`, `LEARN.md`, `.claude/commands/devx-interview.md`
-- [ ] T1.7 test updates + proof run — files: `test/`
+- [x] T1.1 skill-body re-home — files: `.claude/commands/devx.md`
+- [x] T1.2 config migration + shim — files: `devx.config.yaml`, `_devx/config-schema.json`, `src/lib/config-*` (order constraint: lands before or with T1.1 — the skill body references `engine:`/`loop:` keys)
+- [x] T1.3 source-template retargeting — files: `src/lib/plan/emit-retro-story.ts`, `src/commands/plan-helper.ts`, `src/lib/devx/should-create-story.ts`
+- [x] T1.4 deletions (skills, _bmad/, legacy commands) — files: `.claude/skills/`, `_bmad/`, `.claude/commands/dev*.md`
+- [x] T1.5 init de-BMAD + engine scaffold — files: `src/lib/init-*.ts`
+- [x] T1.6 docs + command sweep — files: `CLAUDE.md`, `docs/*`, `LEARN.md`, `.claude/commands/devx-interview.md`
+- [x] T1.7 test updates + proof run — files: `test/`

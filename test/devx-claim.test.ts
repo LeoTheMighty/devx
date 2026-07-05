@@ -218,7 +218,7 @@ describe("findSpecForHash", () => {
   it("finds the matching dev-<hash>-*.md file", () => {
     const fs = fsWith({
       "/repo/dev": [
-        "dev-aud101-2026-04-26T19:35-bmad-modules.md",
+        "dev-aud101-2026-04-26T19:35-modules-inventory.md",
         "dev-dvx101-2026-04-28T19:30-devx-claim-atomic.md",
       ],
     });
@@ -234,7 +234,7 @@ describe("findSpecForHash", () => {
 
   it("returns null when no matching file", () => {
     const fs = fsWith({
-      "/repo/dev": ["dev-aud101-2026-04-26T19:35-bmad-modules.md"],
+      "/repo/dev": ["dev-aud101-2026-04-26T19:35-modules-inventory.md"],
     });
     expect(findSpecForHash(fs, "/repo", "dvx101")).toBeNull();
   });

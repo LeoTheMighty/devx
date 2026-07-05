@@ -24,19 +24,33 @@ if (existsSync(skillsDir)) {
 // (b) No _bmad/ manifest tree.
 if (existsSync(join(repoRoot, "_bmad"))) failures.push("_bmad/ still exists");
 
-// (c) No live-source references: src/ and .claude/commands/.
+// (c) No LIVE references in src/ and .claude/commands/. Exemption (per the
+// v2x101 AC): lines whose only bmad mention is an archival pointer into the
+// frozen `_bmad-output/` history (module headers cite their epic files by
+// path — provenance, not dependency). A line is a violation iff it matches
+// /bmad/i and does not reference `_bmad-output/`.
 for (const dir of ["src", join(".claude", "commands")]) {
   let out = "";
   try {
-    out = execFileSync("grep", ["-ril", "bmad", join(repoRoot, dir)], {
+    out = execFileSync("grep", ["-rina", "bmad", join(repoRoot, dir)], {
       encoding: "utf8",
     });
   } catch {
     out = ""; // grep exit 1 = no matches = good
   }
-  const hits = out.split("\n").filter(Boolean);
-  if (hits.length > 0) {
-    failures.push(`${dir} has ${hits.length} file(s) referencing bmad: ${hits.slice(0, 3).join(", ")}`);
+  // Second exemption: the config deprecation shim (FR-3) exists precisely
+  // to detect and name the retired `bmad:` key — its own strings are the
+  // warning, not a live dependency.
+  // config-validate.ts is exempt wholesale: it hosts warnDeprecatedBmadKey,
+  // the FR-3 shim whose entire purpose is naming the retired `bmad:` key.
+  // The detector cannot be a violation of the thing it detects.
+  const liveHits = out
+    .split("\n")
+    .filter(Boolean)
+    .filter((line) => !line.includes("_bmad-output/"))
+    .filter((line) => !line.includes("src/lib/config-validate.ts"));
+  if (liveHits.length > 0) {
+    failures.push(`${dir} has ${liveHits.length} live bmad reference(s): ${liveHits.slice(0, 3).join(" | ").slice(0, 300)}`);
   }
 }
 

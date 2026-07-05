@@ -1,7 +1,8 @@
-// Failure-mode handling for `/devx-init` (ini506).
+// Failure-mode handling for `/devx-init` (ini506; narrowed by v2x101 —
+// the framework-install failure mode went away with the v2 ejection).
 //
-// Three Phase-0 failure surfaces — every one degrades to local-setup-still-
-// usable + 1 MANUAL.md entry + an `init_partial: true` flag at the top of
+// The remaining failure surfaces all degrade to local-setup-still-usable +
+// 1 MANUAL.md entry + an `init_partial: true` flag at the top of
 // devx.config.yaml. Modes ≥ BETA refuse-to-spawn dev work while the flag is
 // up. The user's recovery path is `devx init --resume-gh` (src/commands/init.ts)
 // which replays the queued ops and clears the flag once everything succeeds.
@@ -11,11 +12,6 @@
 //   - assertNotPartial(opts) — guard imported by every dev command (Phase 1
 //     /devx-plan / /devx wire this in; the function is exported now so the
 //     contract is locked).
-//   - handleBmadInstallFailure(opts) — captures exit/stderr; offers
-//     `[r]etry / [s]kip / [a]bort` via injected prompt; on skip writes
-//     `bmad.modules: []` + appends a MANUAL entry; on abort throws
-//     InitAbortedError; on retry returns the decision so the orchestrator
-//     can re-invoke its installer.
 //   - handleGhNotAuth(opts) — appends the gh-not-auth MANUAL entry. The
 //     queueing of deferred ops is already done by init-gh.ts (ini503) when
 //     `ghAuthOk === false`; this handler exists so the orchestrator has one
@@ -39,6 +35,7 @@
 // anchor is already on disk, we skip the append.
 //
 // Spec: dev/dev-ini506-2026-04-26T19:35-init-failure-modes.md
+// Spec: dev/dev-v2x101 (execute re-home + ejection; full filename under dev/)
 // Epic: _bmad-output/planning-artifacts/epic-init-skill.md
 
 import { existsSync, readFileSync } from "node:fs";
@@ -80,13 +77,6 @@ export class InitPartialError extends Error {
   }
 }
 
-export class InitAbortedError extends Error {
-  constructor(reason: string) {
-    super(`devx-init aborted: ${reason}`);
-    this.name = "InitAbortedError";
-  }
-}
-
 export class PendingGhOpsCorruptError extends Error {
   constructor(public readonly path: string, cause: string) {
     super(
@@ -95,40 +85,6 @@ export class PendingGhOpsCorruptError extends Error {
     );
     this.name = "PendingGhOpsCorruptError";
   }
-}
-
-// ---------- BMAD-install ---------------------------------------------------
-
-export type BmadDecision = "retry" | "skip" | "abort";
-
-export type BmadPrompt = (opts: {
-  exitCode: number;
-  stderr: string;
-  attempts: number;
-}) => BmadDecision | Promise<BmadDecision>;
-
-export interface BmadFailureOpts {
-  repoRoot: string;
-  exitCode: number;
-  stderr: string;
-  /** 1-indexed retry counter. Caller bumps before re-invoking. */
-  attempts: number;
-  prompt: BmadPrompt;
-  /** Override config path for tests. */
-  configPath?: string;
-  /** Override MANUAL.md path for tests. */
-  manualPath?: string;
-  /** Override timestamp on the MANUAL entry header. */
-  now?: () => Date;
-}
-
-export interface BmadFailureOutcome {
-  decision: BmadDecision;
-  /** True iff `bmad.modules: []` was written + init_partial flipped true. Only
-   *  set on `skip`. */
-  wroteSkipState: boolean;
-  /** Truncated stderr we recorded into the MANUAL entry — useful for tests. */
-  recordedStderr: string;
 }
 
 // ---------- gh-not-auth + no-remote ----------------------------------------
@@ -351,92 +307,6 @@ function appendManualEntry(opts: AppendManualOpts): AppendManualOutcome {
 
   writeAtomic(opts.manualPath, next);
   return { appended: true };
-}
-
-// ---------------------------------------------------------------------------
-// BMAD-install failure
-// ---------------------------------------------------------------------------
-
-const BMAD_STDERR_TRUNCATE = 800;
-
-export async function handleBmadInstallFailure(
-  opts: BmadFailureOpts,
-): Promise<BmadFailureOutcome> {
-  const decision = await opts.prompt({
-    exitCode: opts.exitCode,
-    stderr: opts.stderr,
-    attempts: opts.attempts,
-  });
-
-  if (decision === "retry") {
-    return { decision, wroteSkipState: false, recordedStderr: "" };
-  }
-  if (decision === "abort") {
-    throw new InitAbortedError(
-      `BMAD install failed (exit ${opts.exitCode}); user chose abort after ${opts.attempts} attempt(s)`,
-    );
-  }
-
-  // decision === "skip" — write bmad.modules: [], flip init_partial, append MANUAL.
-  const configPath = resolveConfigPath(opts);
-  const manualPath = resolveManualPath(opts);
-  const now = (opts.now ?? (() => new Date()))();
-
-  const recordedStderr = truncateStderr(opts.stderr);
-  writeBmadModulesEmpty(configPath);
-  setInitPartial({ ...opts, partial: true });
-  appendManualEntry({
-    manualPath,
-    kind: "bmad-install-failed",
-    title: `BMAD install failed (exit ${opts.exitCode}) — modules deferred`,
-    body: bmadSkipManualBody(opts.exitCode, recordedStderr),
-    now,
-  });
-
-  return { decision, wroteSkipState: true, recordedStderr };
-}
-
-function truncateStderr(s: string): string {
-  const cleaned = s.trim();
-  if (cleaned.length <= BMAD_STDERR_TRUNCATE) return cleaned;
-  return `${cleaned.slice(0, BMAD_STDERR_TRUNCATE)}… (truncated)`;
-}
-
-function bmadSkipManualBody(exitCode: number, stderr: string): string {
-  // Pick a fence that doesn't appear in stderr so a captured npm error that
-  // happens to contain literal ``` doesn't escape the code block and break
-  // MANUAL.md's markdown rendering. Backtick-only escalation (3 → 4 → 5).
-  const fence = pickFence(stderr);
-  return [
-    `BMAD installation failed and was skipped during \`/devx-init\`.`,
-    `\`bmad.modules\` is now \`[]\`; devx commands that need a BMAD workflow`,
-    `(e.g. \`/devx-plan\`'s \`bmad-create-prd\`, \`/devx\`'s \`bmad-create-story\`)`,
-    `will refuse to run until BMAD is reinstalled.`,
-    "",
-    "Recovery:",
-    "  1. Investigate the failure (stderr captured below).",
-    "  2. Re-run `npx bmad-method install` manually.",
-    "  3. Re-run `/devx-init` (it detects the existing config and finishes",
-    "     the BMAD step in upgrade mode).",
-    "",
-    `Exit code: ${exitCode}`,
-    stderr.length > 0 ? `stderr:\n${fence}\n${stderr}\n${fence}` : "stderr: (empty)",
-  ].join("\n");
-}
-
-function pickFence(content: string): string {
-  let fence = "```";
-  while (content.includes(fence)) fence += "`";
-  return fence;
-}
-
-/** Write bmad.modules: [] without going through cfg202's setLeaf (which
- *  would reject the existing array node). Goes straight to the YAML doc. */
-function writeBmadModulesEmpty(configPath: string): void {
-  const raw = readFileSync(configPath, "utf8");
-  const doc = parseDocument(raw);
-  doc.setIn(["bmad", "modules"], []);
-  writeAtomic(configPath, doc.toString());
 }
 
 // ---------------------------------------------------------------------------

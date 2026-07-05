@@ -1,27 +1,25 @@
-// Pure cross-reference validator for `/devx-plan` Phase 6 (pln103). Runs
-// after Phase 5/6 emission to catch the regression class where the planner
-// emits half-broken artifacts (a spec without a sprint-status row, a DEV.md
-// row pointing at a missing spec, a `branch:` frontmatter that ignores
+// Pure cross-reference validator for `/devx-plan` Phase 6 (pln103; narrowed
+// by v2x101 D-7 — sprint-status.yaml is retired, so the validator no longer
+// requires or reads it). Runs after emission to catch the regression class
+// where the planner emits half-broken artifacts (a DEV.md row pointing at a
+// missing spec, a `branch:` frontmatter that ignores
 // `git.integration_branch`, etc.).
 //
 // Closes the LEARN.md cross-epic patterns:
 //   - `[high] [skill+docs] Planner-emitted branch: frontmatter ignored
 //     devx.config.yaml` (paired with pln101's deriveBranch).
-//   - `[high] [docs+skill] Retro stories (*ret) absent from sprint-status.yaml`
-//     (paired with pln102's emitRetroStory + locked-decision-#7 atomic emit).
 //   - `[high] [docs] Source-of-truth precedence rule` (paired with pln104).
 //
-// Six structural checks against the epic file + emitted artifacts:
+// Five structural checks against the epic file + emitted artifacts:
 //
 //   1. Stories listed under `## Story list` in the epic (heading shape
 //      `### <hash> — <title>`) must each have a matching `dev/dev-<hash>-*.md`.
 //   2. Every DEV.md row in the epic's section must reference a spec that
 //      exists on disk.
-//   3. Every story under the epic in sprint-status.yaml must have a matching
-//      `dev/dev-<hash>-*.md`.
 //   4. The retro story (`<3letter>ret`) — derived from the parents' shared
-//      prefix — must have all three artifacts: dev spec, DEV.md row,
-//      sprint-status row.
+//      prefix — must have both remaining artifacts: dev spec + DEV.md row.
+//      (Check numbering keeps pln103's original ids; #3, the sprint-status
+//      check, was retired by v2x101 D-7.)
 //   5. Each spec's `branch:` frontmatter must equal
 //      `deriveBranch(config, "dev", hash)` for the resolved config.
 //   6. Each `**Locked decision:** ...` prose bullet that anchors on a story
@@ -42,6 +40,7 @@
 // every branch on a synthetic-epic fixture without a temp dir per assert.
 //
 // Spec: dev/dev-pln103-2026-04-28T19:30-plan-validate-emit.md
+// Spec: dev/dev-v2x101 (execute re-home + ejection; full filename under dev/)
 
 import {
   existsSync,
@@ -71,14 +70,6 @@ const STORY_HEADING_RE = /^### ([a-z0-9]{3,12}) — /i;
 // two stay in lockstep.
 const DEV_MD_ROW_RE =
   /^(?:~~)?- \[[\sx\/\-]\] `(dev\/dev-[a-z0-9]{3,12}-[^`]+\.md)`/i;
-
-// Match a sprint-status story row: `- key: <hash>` at any indent. Captures
-// the hash. Locked to `[a-z0-9]{3,12}` so plan-level keys (`epic-<slug>`,
-// `plan-<id>`) don't match — we only want story-level rows.
-const SPRINT_STATUS_STORY_RE = /^\s*- key: ([a-z0-9]{3,12})\s*$/;
-
-// Match `epic-<slug>` keys to find the epic block in sprint-status.yaml.
-const SPRINT_STATUS_EPIC_RE = /^\s*- key: epic-(.+?)\s*$/;
 
 // Match a "Locked decision" prose anchor in party-mode-refined sections.
 // Two shapes show up empirically (mrg, prt, plan-skill epics):
@@ -130,7 +121,7 @@ export interface ValidateEmitFs {
 }
 
 export interface ValidateEmitResult {
-  /** All issues collected across the six checks. */
+  /** All issues collected across the checks. */
   issues: ValidationIssue[];
   /** True iff the epic file was found and validation ran. False → exit 2. */
   epicFound: boolean;
@@ -295,38 +286,13 @@ export function validateEmit(
     });
   }
 
-  // --- 3) sprint-status.yaml stories under the epic → specs exist. ------
-  const sprintRel =
-    "_bmad-output/implementation-artifacts/sprint-status.yaml";
-  const sprintPath = join(inputs.repoRoot, sprintRel);
-  let sprintStoryHashes: Array<{ hash: string; line: number }> = [];
-  if (fs.exists(sprintPath)) {
-    sprintStoryHashes = parseEpicSprintStatusStories(
-      fs.readFile(sprintPath),
-      inputs.epicSlug,
-    );
-    for (const { hash, line } of sprintStoryHashes) {
-      if (!specByHash.has(hash)) {
-        issues.push({
-          severity: "error",
-          check: "sprint-status-points-at-missing-spec",
-          message: `sprint-status.yaml story '${hash}' under epic-${inputs.epicSlug} has no matching dev spec`,
-          location: `${sprintRel}:${line}`,
-        });
-      }
-    }
-  } else {
-    issues.push({
-      severity: "error",
-      check: "sprint-status-missing",
-      message: `sprint-status.yaml not found at ${sprintRel}`,
-      location: sprintRel,
-    });
-  }
-
-  // --- 4) Retro trifecta — the `<prefix>ret` hash must have all three
-  //         artifacts. Derive the prefix from the FIRST non-retro story
-  //         hash; this matches emit-retro-story.ts's contract exactly. ---
+  // --- 4) Retro pair — the `<prefix>ret` hash must have both remaining
+  //         artifacts (dev spec + DEV.md row). Derive the prefix from the
+  //         FIRST non-retro story hash; this matches emit-retro-story.ts's
+  //         contract exactly. (The former check #3 — sprint-status rows —
+  //         was retired by v2x101 D-7: sprint-status.yaml is frozen and
+  //         never written again, so requiring rows there would abort every
+  //         post-v2 planning run.) ---
   const nonRetroHashes = storyHashes
     .map((s) => s.hash)
     .filter((h) => !h.endsWith("ret"));
@@ -358,20 +324,6 @@ export function validateEmit(
           check: "retro-trifecta-missing-devmd-row",
           message: `retro '${retroHash}' has no row in DEV.md (looked under same epic section)`,
           location: devMdRel,
-        });
-      }
-    }
-    // (c) Sprint-status row exists.
-    if (fs.exists(sprintPath)) {
-      const hasRetroSprint = sprintStoryHashes.some(
-        (s) => s.hash === retroHash,
-      );
-      if (!hasRetroSprint) {
-        issues.push({
-          severity: "error",
-          check: "retro-trifecta-missing-sprint-status",
-          message: `retro '${retroHash}' has no row in sprint-status.yaml under epic-${inputs.epicSlug}`,
-          location: sprintRel,
         });
       }
     }
@@ -453,7 +405,7 @@ export function validateEmit(
     for (const token of ld.backtickedTokens) {
       if (token.length > 50) continue;
       if (/\s/.test(token)) continue;
-      const dedupKey = `${ld.anchorHash} ${token}`;
+      const dedupKey = `${ld.anchorHash} ${token}`;
       if (seenTokenHits.has(dedupKey)) continue;
       if (!specBody.includes(token)) {
         seenTokenHits.add(dedupKey);
@@ -626,59 +578,6 @@ export function devMdHasRowForHash(
     if (m && m[1] === hash) return true;
   }
   return false;
-}
-
-export interface SprintStatusStoryRef {
-  hash: string;
-  line: number;
-}
-
-/**
- * Walk sprint-status.yaml; find the `- key: epic-<slug>` line; collect
- * `- key: <hash>` story lines under it (until the next `- key: epic-…`
- * or `- key: plan-…` or end-of-file). Returns each story hash + its
- * 1-based line number.
- */
-export function parseEpicSprintStatusStories(
-  sprintContent: string,
-  epicSlug: string,
-): SprintStatusStoryRef[] {
-  const lines = sprintContent.split("\n");
-  const epicTrigger = `- key: epic-${epicSlug}`;
-  let epicIdx = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trimStart() === epicTrigger) {
-      epicIdx = i;
-      break;
-    }
-  }
-  if (epicIdx === -1) return [];
-
-  const epicDashCol = lines[epicIdx].indexOf("-");
-  let epicEnd = lines.length;
-  for (let i = epicIdx + 1; i < lines.length; i++) {
-    const trimmed = lines[i].trimStart();
-    if (trimmed === "") continue;
-    const dashCol = lines[i].indexOf("-");
-    // Same-indent or shallower `- key: epic-...` / `- key: plan-...` ends
-    // the block.
-    if (dashCol !== -1 && dashCol <= epicDashCol) {
-      if (
-        SPRINT_STATUS_EPIC_RE.test(lines[i]) ||
-        /^\s*- key: plan-/.test(lines[i])
-      ) {
-        epicEnd = i;
-        break;
-      }
-    }
-  }
-
-  const out: SprintStatusStoryRef[] = [];
-  for (let i = epicIdx + 1; i < epicEnd; i++) {
-    const m = lines[i].match(SPRINT_STATUS_STORY_RE);
-    if (m) out.push({ hash: m[1], line: i + 1 });
-  }
-  return out;
 }
 
 /**

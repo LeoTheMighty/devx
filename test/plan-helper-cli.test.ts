@@ -3,7 +3,8 @@
 //
 // Strategy mirrors merge-gate-cli.test.ts:
 //   - Build a per-test fixture project on a temp dir with a minimal
-//     devx.config.yaml (+ DEV.md + sprint-status.yaml for emit tests).
+//     devx.config.yaml (+ DEV.md for emit tests; v2x101 D-7 retired the
+//     sprint-status.yaml co-emission).
 //   - Drive runDeriveBranch() / runEmitRetroStory() through their out/err/
 //     projectPath/repoRoot test seams.
 //   - Assert (exitCode, stdout, stderr).
@@ -283,7 +284,6 @@ interface RepoFixture {
   root: string;
   configPath: string;
   devMdPath: string;
-  sprintStatusPath: string;
   cleanup: () => void;
 }
 
@@ -298,37 +298,6 @@ const FIXTURE_DEV_MD = `# DEV — Features to build
 ### Epic 2 — PR template
 - [x] \`dev/dev-prt101-2026-04-28T19:30-pr-template-init-write.md\` — Template init. Status: done.
 - [x] \`dev/dev-prt102-2026-04-28T19:30-pr-template-substitution.md\` — Substitution. Status: done.
-`;
-
-const FIXTURE_SPRINT_STATUS = `# devx implementation sprint status
-plans:
-  - key: plan-b01000-single-agent-loop
-    title: Phase 1
-    status: backlog
-    epics:
-      - key: epic-merge-gate-modes
-        title: Merge gate
-        status: backlog
-        stories:
-          - key: mrg101
-            title: Pure fn
-            status: done
-          - key: mrg102
-            title: CLI
-            status: done
-            blocked_by: [mrg101]
-
-      - key: epic-pr-template
-        title: PR template
-        status: backlog
-        stories:
-          - key: prt101
-            title: Template init
-            status: done
-          - key: prt102
-            title: Substitution
-            status: done
-            blocked_by: [prt101]
 `;
 
 function makeRepoFixture(): RepoFixture {
@@ -350,17 +319,10 @@ function makeRepoFixture(): RepoFixture {
   );
   const devMdPath = join(root, "DEV.md");
   writeFileSync(devMdPath, FIXTURE_DEV_MD);
-  const sprintStatusPath = join(
-    root,
-    "_bmad-output/implementation-artifacts/sprint-status.yaml",
-  );
-  mkdirSync(dirname(sprintStatusPath), { recursive: true });
-  writeFileSync(sprintStatusPath, FIXTURE_SPRINT_STATUS);
   return {
     root,
     configPath,
     devMdPath,
-    sprintStatusPath,
     cleanup: () => rmSync(root, { recursive: true, force: true }),
   };
 }
@@ -371,7 +333,7 @@ describe("devx plan-helper emit-retro-story — happy path", () => {
   let fx: RepoFixture;
   afterEach(() => fx.cleanup());
 
-  it("writes spec + DEV.md row + sprint-status row in one call", () => {
+  it("writes spec + DEV.md row in one call (no sprint-status — D-7)", () => {
     fx = makeRepoFixture();
     const cap = capture();
     const code = runEmitRetroStory(
@@ -394,10 +356,12 @@ describe("devx plan-helper emit-retro-story — happy path", () => {
     expect(code).toBe(0);
     expect(cap.io.stderr).toBe("");
     expect(cap.io.stdout).toMatch(
-      /^spec=dev\/dev-mrgret-\d{4}-\d{2}-\d{2}T\d{2}:\d{2}-retro-merge-gate-modes\.md dev_md=DEV\.md sprint_status=_bmad-output\/implementation-artifacts\/sprint-status\.yaml\n$/,
+      /^spec=dev\/dev-mrgret-\d{4}-\d{2}-\d{2}T\d{2}:\d{2}-retro-merge-gate-modes\.md dev_md=DEV\.md\n$/,
     );
+    // No sprint_status= field in the summary line (D-7).
+    expect(cap.io.stdout).not.toContain("sprint_status=");
 
-    // All three artifacts present on disk:
+    // Both artifacts present on disk:
     const specPath = cap.io.stdout
       .split(" ")[0]
       .replace("spec=", "");
@@ -405,8 +369,12 @@ describe("devx plan-helper emit-retro-story — happy path", () => {
     const devMdAfter = readFileSync(fx.devMdPath, "utf8");
     expect(devMdAfter).toContain("dev-mrgret-");
     expect(devMdAfter).toContain("Blocked-by: mrg101, mrg102.");
-    const sprintAfter = readFileSync(fx.sprintStatusPath, "utf8");
-    expect(sprintAfter).toContain("- key: mrgret");
+    // sprint-status.yaml is never created (D-7: retired).
+    expect(
+      existsSync(
+        join(fx.root, "_bmad-output/implementation-artifacts/sprint-status.yaml"),
+      ),
+    ).toBe(false);
   });
 
   it("derives branch from single-branch config (feat/dev-mrgret)", () => {
@@ -666,7 +634,7 @@ describe("devx plan-helper emit-retro-story — invalid input", () => {
         now: FIXED_NOW,
         fsOverride: {
           rename(_oldP: string, newP: string) {
-            if (newP.endsWith("/sprint-status.yaml")) {
+            if (newP.endsWith("/DEV.md")) {
               const e = new Error(`simulated rename failure on ${newP}`);
               throw e;
             }
@@ -681,11 +649,11 @@ describe("devx plan-helper emit-retro-story — invalid input", () => {
     // Per CLI contract: partial == exit 0, WARN on stderr, partial= on stdout.
     expect(code).toBe(0);
     expect(cap.io.stderr).toContain("WARN: retro emission partial");
-    expect(cap.io.stderr).toContain("sprint-status.yaml");
-    expect(cap.io.stdout).toMatch(
-      /partial=_bmad-output\/implementation-artifacts\/sprint-status\.yaml\n$/,
-    );
-    // DEV.md + spec landed.
-    expect(readFileSync(fx.devMdPath, "utf8")).toContain("dev-mrgret-");
+    expect(cap.io.stderr).toContain("DEV.md");
+    expect(cap.io.stdout).toMatch(/partial=DEV\.md\n$/);
+    // Spec landed; DEV.md untouched (rename failed).
+    const specPath = cap.io.stdout.split(" ")[0].replace("spec=", "");
+    expect(existsSync(join(fx.root, specPath))).toBe(true);
+    expect(readFileSync(fx.devMdPath, "utf8")).not.toContain("dev-mrgret-");
   });
 });

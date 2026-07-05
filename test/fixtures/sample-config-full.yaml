@@ -305,14 +305,30 @@ observability:
     anonymized: true
 
 # ---------------------------------------------------------------------------
-# 15. BMAD integration
+# 15. Engine (v2 — native engine; v2/02-engine.md §7)
 # ---------------------------------------------------------------------------
 
-bmad:
-  modules: [core, bmm, tea]
-  output_root: _bmad-output
-  preserve_on_eject: true
-  workflows_path: _bmad/
+engine:
+  workstreams_root: _devx/workstreams
+  archive_root: _devx/archive
+  code_citation_hints: []
+  expectations_min: 3
+  prose_budget_kb: 60
+  critique:
+    lenses: [pm, architect, dev, qa]
+    min_surfaces: 2
+
+# ---------------------------------------------------------------------------
+# 15b. Overnight loop budgets (v2/04-overnight-loop.md §3)
+# ---------------------------------------------------------------------------
+
+loop:
+  max_iterations_per_item: 8
+  max_tokens_per_item: 2000000
+  max_consecutive_failures: 3
+  max_items: 10
+  max_total_tokens: 10000000
+  backoff_ms: [60000, 120000, 240000]
 
 # ---------------------------------------------------------------------------
 # Stack — monorepo shape (mutually exclusive with single `stack:` block).

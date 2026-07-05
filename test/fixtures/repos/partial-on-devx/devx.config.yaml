@@ -17,6 +17,7 @@ git:
   protect_main: false
 manager:
   os_supervisor: none
-bmad:
-  modules: []
-  output_root: _bmad-output
+engine:
+  workstreams_root: _devx/workstreams
+loop:
+  max_items: 10

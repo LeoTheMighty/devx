@@ -8,22 +8,26 @@ duplicating its contents here.
 
 ## What this project is
 
-**devx is a closed-loop autonomous development system built on top of BMAD.** The
-existing `/dev` and `/dev-plan` commands are excellent in isolation, but the
-human is the glue between them. devx replaces the human glue with a filesystem
-graph: every unit of work is a markdown spec file, every backlog is a markdown
-file referencing those specs, agents read backlogs and append status to specs as
-they work, and a supervisor agent (`ManageAgent`) keeps the loop running across
-context rot.
+**devx is a self-contained closed-loop autonomous development system with a
+native engine (`v2/`).** Planning and dev commands are excellent in isolation,
+but the human is usually the glue between them. devx replaces the human glue
+with a filesystem graph: every unit of work is a markdown spec file, every
+backlog is a markdown file referencing those specs, agents read backlogs and
+append status to specs as they work, and a supervisor agent (`ManageAgent`)
+keeps the loop running across context rot. The engine — PRD → Design → Plan →
+RED → Execute → Verify stages, mechanical gates as CLI primitives, judgment as
+thin skill bodies — ships inside the devx package; there is no third-party
+framework underneath. (devx bootstrapped on BMAD through Phases 0–1; the
+capture and ejection record is `v2/01-bmad-capture.md`.)
 
 This repo is **devx building itself** — the project is bootstrapping its own
 tooling. Phase 0 (foundation) closed 2026-04-27 with all 5 epics shipped +
-retroed; the Phase 1 single-agent loop (`/devx-plan`, `/devx`, minimal
-`/devx-manage`) lands next. Mobile companion app runs in parallel from
-Phase 8.
+retroed; Phase 1 (single-agent loop) closed 2026-07-05 at 5/5 epics; the v2
+migration (native engine, review tours, dispatcher, overnight loop) is in
+flight. Mobile companion app runs in parallel from Phase 8.
 
-Read `README.md` for the public pitch and `docs/DESIGN.md` for the full system
-shape.
+Read `README.md` for the public pitch, `docs/DESIGN.md` for the full system
+shape, and `v2/README.md` + `v2/02-engine.md` for the native engine.
 
 ---
 
@@ -63,6 +67,11 @@ runs, tests still run. YOLO relaxes the *gates* (what blocks merge), not the
 ├── devx.config.yaml       ← every knob; see docs/CONFIG.md
 ├── dev/                   ← spec files (one per DEV.md entry)
 ├── plan/                  ← spec files (one per PLAN.md entry)
+├── v2/                    ← native-engine design docs (engine, tours, loop, decisions)
+├── _devx/
+│   ├── workstreams/       ← engine workstream artifacts (prd/design/plan/evals per slug)
+│   ├── templates/engine/  ← stage templates shipped in the npm package
+│   └── config-schema.json ← devx.config.yaml JSON schema
 ├── docs/
 │   ├── DESIGN.md          ← full system shape (load-bearing)
 │   ├── MODES.md           ← what each mode does to each subsystem
@@ -76,10 +85,9 @@ runs, tests still run. YOLO relaxes the *gates* (what blocks merge), not the
 │   ├── SETUP.md           ← installer notes
 │   └── OPEN_QUESTIONS.md  ← unresolved design qs
 ├── focus-group/           ← persistent persona panel (personas, sessions, prompts)
-├── _bmad/                 ← BMAD framework — never edited by devx code
-└── _bmad-output/
-    ├── planning-artifacts/    ← prd.md, architecture.md, epic-*.md
-    └── implementation-artifacts/ ← sprint-status.yaml, story-*.md
+└── _bmad-output/          ← frozen BMAD-era archive (read-only; never rewritten)
+    ├── planning-artifacts/    ← prd.md, epic-*.md from Phases 0–1
+    └── implementation-artifacts/ ← sprint-status.yaml (retired), retro files
 ```
 
 Phase 8+ adds:
@@ -190,26 +198,25 @@ skill is branch-model-aware; values below are this project's resolution.
    `feedback_devx_push_claim_before_pr.md`).
 2. **Worktree**: `git worktree add .worktrees/dev-<hash> -b feat/dev-<hash>
    main`.
-3. **BMAD story**: `bmad-create-story` if no story file exists; otherwise
-   read the existing one. *Empirically across all 10 shipped epics (Phase 0 +
-   all 5 Phase 1 epics; 49/49 stories — FINAL count: aud × 3, cfg × 4,
-   cli × 5, sup × 5, ini × 8, mrg × 3, prt × 2, pln × 6, dvx × 7, mgr × 6)
-   this step has been skipped because spec ACs already cover what
-   `bmad-create-story` would generate; the contract-vs-reality drift is
-   tracked in `LEARN.md § Cross-epic patterns` and reaffirmed in every retro
-   (audret + cfgret + cliret + supret + iniret + mrgret + prtret + plnret +
-   dvxret + mgrret). **Structurally closed at the contract level by dvx102**
-   (`shouldCreateStory()` + `_internal.skip_create_story_canary` flag +
-   `devx devx-helper should-create-story` CLI), but the canary shipped off
-   and never flipped — per `v2/01-bmad-capture.md` the v2 migration retires
-   `bmad-create-story` (and the canary machinery) entirely.*
-4. **Implement**: `bmad-dev-story`, red-green-refactor, all tasks/subtasks.
-5. **Self-review**: `bmad-code-review` adversarially; fix all findings
-   automatically; re-review.
+3. **Working artifacts (v2 — spec ACs direct)**: the spec's acceptance
+   criteria ARE the working artifact; there is no intermediate story file.
+   (The story-file step was retired at v2x101 after the skip pattern held
+   49/49 stories across all 10 BMAD-era epics; see `v2/01-bmad-capture.md`.)
+   If the spec belongs to a workstream, read
+   `_devx/workstreams/<slug>/plan.md` for this phase's Verification plan;
+   `tests-first` phases re-run their already-RED artifact and watch it fail
+   NOW, before writing code.
+4. **Implement (native discipline)**: work directly from spec ACs +
+   workstream context; red-green-refactor; execute ALL ACs/tasks with no
+   milestone stops; maintain a File List for the PR body and review.
+5. **Self-review (adversarial, native)**: hunt semantics bugs, not lint;
+   audit the diff against every spec AC; fix ALL findings automatically;
+   re-review. 3-agent parallel shape at the substantial-surface threshold
+   (see Working agreements below); explicit-zero status-log line when clean.
 6. **Local CI**: per `devx.config.yaml → projects:`, run lint/test/coverage on
    touched-surface projects only.
 7. **Commit**: one commit per story; conventional-commit prefix; message links
-   to spec + story.
+   to the spec file.
 8. **Push + PR to `main`**: PR body includes spec link, ACs as checkboxes,
    test plan, current mode.
 9. **Wait remote CI**: poll with `gh run list ... --branch feat/dev-<hash>`;
@@ -229,8 +236,8 @@ Full contract: `.claude/commands/devx.md`.
 ## Working agreements (project-specific)
 
 - **Don't duplicate business logic.** Wrap existing endpoints, tools,
-  utilities. The whole devx pitch is "BMAD as a library, not a fork." Same
-  applies to internal modules.
+  utilities — the same principle that kept BMAD a library rather than a fork,
+  now applied to devx's own internals. Same applies across internal modules.
 - **One commit per story / sub-task.** Atomic, reviewable. Don't bundle
   unrelated changes.
 - **Fix forward.** If review finds issues, fix them in the same item; don't
@@ -239,9 +246,11 @@ Full contract: `.claude/commands/devx.md`.
   file is sacrosanct. Same for `MANUAL.md` items the user has hand-edited.
 - **No silent product decisions.** When ambiguous, file an `INTERVIEW.md` entry
   with options and a recommendation; don't pick a default in code.
-- **Never edit `_bmad/`.** BMAD is a library. devx writes to `_bmad-output/`
-  and consumes BMAD workflows but never modifies them. `devx eject` must
-  always work.
+- **Ejectability is sacrosanct (D-2).** The engine is native and ships in the
+  devx package; markdown + git are ground truth; `devx eject` leaves a working
+  repo with readable history, backlogs, specs, and workstream artifacts.
+  `_bmad-output/` is a frozen BMAD-era archive — read-only, never rewritten;
+  links in shipped specs must keep resolving.
 - **Mode change is a config edit.** To bump out of YOLO, run `/devx-mode beta`
   (once that skill lands) or edit `devx.config.yaml → mode:`. Don't add
   one-off mode-aware logic without updating `docs/MODES.md`.
@@ -249,20 +258,20 @@ Full contract: `.claude/commands/devx.md`.
 - **Worktrees are isolation, not staging.** Don't run a non-`/devx` flow inside
   a worktree; don't share a worktree across agents.
 - **Verify claim ownership before resuming.** A spec marked `in-progress` with
-  an existing `.worktrees/dev-<hash>/` is **not** necessarily yours. Before any
-  edit in the worktree, check `.devx-cache/locks/spec-<hash>.lock` (and the
-  spec's `owner:` frontmatter) — if the recorded session token isn't yours,
-  halt without touching the worktree. Why: `/devx` Phase 1 today only handles
-  fresh claim; resume-detection has no structural ownership check, so a fresh
-  session can silently stomp on a live peer's work. Surfaced 2026-05-07 in
-  dvxret (a fresh post-`/clear` `/devx` invocation pulled `dvxret` from
-  DEV.md while another live session held the claim — the user interrupted
-  before any worktree edit landed). Structural fix tracked under
-  `dev/dev-roc101-...-devx-resume-owner-check.md` (blocked-by dvxret); this
-  rule is the stopgap until the skill-body update lands. See
-  `LEARN.md § epic-devx-skill` E13.
-- **Self-review is non-skippable.** Every dev story runs `bmad-code-review`
-  after implementation, fixes ALL findings (HIGH/MED/LOW) without asking,
+  an existing `.worktrees/dev-<hash>/` is **not** necessarily yours. The
+  structural check shipped with roc101 (PR #60): `/devx` Phase 1's
+  resume-detection branch runs `devx devx-helper verify-claim <hash>
+  --session-token ...` before any worktree edit and HALTS on an ownership
+  mismatch — never pass a token copied from the spec's `owner:` frontmatter or
+  the lock file (that trivially always matches and defeats the check). Any
+  non-`/devx` flow touching an in-progress spec applies the same rule
+  manually: check `.devx-cache/locks/spec-<hash>.lock` and halt if the
+  recorded session token isn't yours. Why: a fresh post-`/clear` session can
+  otherwise silently stomp on a live peer's work — the 2026-05-07 dvxret
+  resume-collision incident. See `LEARN.md § epic-devx-skill` E13.
+- **Self-review is non-skippable.** Every dev story runs the native Phase 4
+  adversarial self-review after implementation, fixes ALL findings
+  (HIGH/MED/LOW) without asking,
   and re-runs to verify. Empirically (LEARN.md cross-epic patterns) this
   catches real semantics bugs every time across all 10 shipped epics — all 5
   Phase 0 epics + all 5 Phase 1 epics (mrg + prt + pln + dvx + mgr). It pays
@@ -283,13 +292,20 @@ Full contract: `.claude/commands/devx.md`.
 ## Quick references
 
 - `docs/DESIGN.md` — read this first for the full system shape.
+- `v2/README.md` + `v2/02-engine.md` — the native engine (stages, gates,
+  workstreams); `v2/07-decisions.md` — the v2 decision ledger.
 - `docs/CONFIG.md` — every knob in `devx.config.yaml`.
 - `docs/MODES.md` — what each mode does to each subsystem.
-- `docs/ROADMAP.md` — phased buildout + locked cross-epic decisions.
-- `.claude/commands/devx.md` — `/devx` command spec (single-agent loop today;
-  ManageAgent + parallelism arrive Phase 2–3).
-- `_bmad-output/planning-artifacts/` — PRD, architecture, epic-*.md (the big
-  BMAD-shaped files; spec files in `dev/` are the lightweight index on top).
+- `docs/ROADMAP.md` — phased buildout + locked cross-epic decisions
+  (Phases 2+ re-cut by `v2/06-phases.md`).
+- `.claude/commands/devx.md` — `/devx` command spec (execute loop + retro
+  stage); `.claude/commands/devx-plan.md` — planning stages (PRD → Design →
+  Plan → RED).
+- `_devx/workstreams/<slug>/` — engine workstream artifacts (prd.md,
+  design.md, plan.md, evals/); spec files in `dev/` remain the lightweight
+  index on top.
+- `_bmad-output/` — frozen BMAD-era archive (Phases 0–1 planning +
+  implementation artifacts; read-only).
 
 ---
 
@@ -387,3 +403,13 @@ tours, universal dispatcher, overnight loop); `dev-roc101`
 (verify-claim) shipped via PR #60 concurrently with the mgrret retro
 and is inherited by the v2 dispatcher.
 Mobile companion v0.1 runs in parallel from Phase 8.
+
+## Status: v2 migration (in flight)
+
+Shipped so far: v2s101 (engine templates seed, PR #59), roc101
+(verify-claim resume-owner check, PR #60), mgrret (final BMAD-era retro,
+PR #61), v2e101 (engine gate CLIs, PR #62), v2e102 (planning stages
+dogfood, PR #63). v2x101 (this PR) executes the re-home + BMAD ejection:
+`/devx` Phases 2–4 native, `engine:`/`loop:` config blocks replace
+`bmad:`, `.claude/skills/bmad-*` + `_bmad/` deleted, `devx init`
+de-BMAD'd, docs sweep. Phase sequencing: `v2/06-phases.md`.

@@ -2,7 +2,7 @@
 
 **The only tool you need to get a project off the ground and keep it moving.**
 
-`devx` is an opinionated execution harness built on top of the [BMAD Method](https://github.com/bmad-code-org) framework. It wires BMAD's planning, dev, and test workflows into a closed-loop system where a graph of parallel agents pick work off shared backlog files, hand results back, and keep your project running while you sleep.
+`devx` is an opinionated, self-contained execution harness with a native engine: PRD → Design → Plan → RED → Execute → Verify stages, mechanical gates as CLI primitives, judgment as thin skill bodies. It wires planning, dev, and test into a closed-loop system where a graph of parallel agents pick work off shared backlog files, hand results back, and keep your project running while you sleep. (devx began as a layer over the [BMAD Method](https://github.com/bmad-code-org); it ejected the framework once the native engine landed — the record is `v2/01-bmad-capture.md`.)
 
 The goal: one command (`/devx-init`) gets any repo — brand new or already shipping — onto the devx rails. From there, a small set of slash commands does the rest.
 
@@ -10,10 +10,10 @@ The goal: one command (`/devx-init`) gets any repo — brand new or already ship
 
 ## Why devx exists
 
-BMAD on its own gives you world-class planning (PRD → architecture → epics → stories) and a solid dev story executor, but:
+Agentic planning/dev frameworks give you good planning artifacts (PRD → design → epics) and a solid dev executor, but (as devx learned first-hand building on BMAD):
 
-- The loop is **not closed** — you run `/dev-plan`, then manually run `/dev <epic>` on each output. Planning and dev don't talk to each other without you in the middle.
-- It's **too much menu for a solo dev** — BMAD's full agent set (analyst, PM, architect, SM, dev, QA, UX, tech writer, TEA) is powerful, but a first-time user sees a wall of options instead of a way in.
+- The loop is **not closed** — you run a planning command, then manually run a dev command on each output. Planning and dev don't talk to each other without you in the middle.
+- It's **too much menu for a solo dev** — a full agent set (analyst, PM, architect, SM, dev, QA, UX, tech writer, test architect) is powerful, but a first-time user sees a wall of options instead of a way in.
 - **Testing, observability, and QA** live as separate concerns instead of being an always-on feedback signal the dev loop reads from.
 - **Scheduling and prioritization** are implicit — there's no single place that says "here's what we're working on, here's what's next, here's what's blocked on you."
 
@@ -23,11 +23,11 @@ devx closes those gaps by treating the project as a graph of backlog files that 
 
 ## The commands
 
-Every command is a thin shell over a BMAD workflow plus devx-specific opinions (worktrees, CI, coverage gates, observability hooks). All seven are installed as slash commands into `~/.claude/commands/` by `/devx-init`.
+Every command is a thin skill body over the native engine's stages and `devx` CLI gates, plus devx-specific opinions (worktrees, CI, coverage gates, observability hooks). All seven are installed as slash commands into `~/.claude/commands/` by `/devx-init`.
 
 | Command | What it does | Writes to | Reads from |
 |---|---|---|---|
-| `/devx-init` | Walks a repo (empty or existing) onto the devx rails. Installs BMAD, sets up backlog files, configures CI/CD scaffolding, wires observability. The "simple guy to talk to" that BMAD's raw menu isn't. | everything, first-time | nothing |
+| `/devx-init` | Walks a repo (empty or existing) onto the devx rails. Scaffolds the engine templates, sets up backlog files, configures CI/CD scaffolding, wires observability. The "simple guy to talk to" that a raw workflow menu isn't. | everything, first-time | nothing |
 | `/devx-plan` | Autonomous planning loop: requirements → research → PRD → architecture → epics → party-mode refinement. Same shape as the existing `/dev-plan`, but writes units of work directly into `DEV.md`, `INTERVIEW.md`, and `FOCUS.md` instead of leaving slugs on the floor. | `DEV.md`, `INTERVIEW.md`, `FOCUS.md`, `dev/plan-*.md` | requirements, repo state |
 | `/devx` | Autonomous dev loop: picks the next item off `DEV.md`, implements it in a worktree, runs tests, opens a PR, waits for CI, merges. Same shape as the existing `/dev`, but driven by the backlog instead of an epic slug. | `DEV.md` (progress), `TEST.md`, `DEBUG.md` | `DEV.md`, plan file refs |
 | `/devx-test` | Autonomous test authoring + audit loop. Enforces 100% coverage on touched surface. Reads test gaps from `TEST.md`, runs browser-agent QA on user flows, writes regressions to `DEBUG.md` on failure. | `TEST.md`, `DEBUG.md` | `DEV.md`, coverage reports, logs |
@@ -176,11 +176,13 @@ Every repeated question, CI failure, user correction, and flaky test is a signal
 
 ### 7. Persistent user focus group — personas you can actually ask
 
-`/devx-init` creates a panel of 4–6 detailed user personas (plus one explicit anti-persona) stored as markdown files in `focus-group/`. Party-mode covers team lenses (PM, UX, backend); the focus group covers the user lens. Every epic gets pre-build persona reactions during `/devx-plan`. Every `develop → main` promotion gets a pre-ship panel review. Real user telemetry evolves the personas over time via the self-healing loop. Built on BMAD's "User Persona Focus Group" elicitation method as the interaction primitive; the devx contribution is making it stateful and wired into every decision. See [`FOCUS_GROUP.md`](./docs/FOCUS_GROUP.md).
+`/devx-init` creates a panel of 4–6 detailed user personas (plus one explicit anti-persona) stored as markdown files in `focus-group/`. Party-mode covers team lenses (PM, UX, backend); the focus group covers the user lens. Every epic gets pre-build persona reactions during `/devx-plan`. Every `develop → main` promotion gets a pre-ship panel review. Real user telemetry evolves the personas over time via the self-healing loop. The interaction primitive (reactions → concerns → priorities panel flow) was seeded from BMAD's "User Persona Focus Group" elicitation method and is now a native devx prompt; the devx contribution is making it stateful and wired into every decision. See [`FOCUS_GROUP.md`](./docs/FOCUS_GROUP.md).
 
 ---
 
-## How it's different from raw BMAD
+## How it's different from raw BMAD (devx's origin)
+
+devx was built on BMAD through its first two phases; the comparison below is why the loop existed at all, and it still holds against any workflow-menu framework:
 
 | | raw BMAD | devx |
 |---|---|---|
@@ -193,7 +195,7 @@ Every repeated question, CI failure, user correction, and flaky test is a signal
 | Observability | not addressed | first-class, wired by `/devx-init` |
 | CI/CD | not addressed | scaffolded by `/devx-init` |
 
-BMAD supplies the workflows, the personas, and the discipline. devx supplies the loop, the backlog, and the opinions that turn it into something you can leave running.
+BMAD supplied the workflows, the personas, and the discipline during the bootstrap; devx captured what was load-bearing as native disciplines (`v2/01-bmad-capture.md`) and now supplies the whole stack itself — the engine, the loop, the backlog, and the opinions that turn it into something you can leave running.
 
 ---
 
@@ -206,16 +208,16 @@ The promises, with real numbers:
 - **~2 weeks to felt benefit.** Self-healing starts applying your preferences; the system feels lighter each week.
 - **~1 month to "I can't build any other way."** The mobile companion is ambient, exploratory QA catches UX pain before users do, promotion cadence has settled.
 
-**Lock-in risk:** low. If you ever want to leave, run `devx eject` — `.devx-cache/` and `.worktrees/` are removed, the devx slash commands are uninstalled, and you're left with a vanilla BMAD project. Your backlog files, spec files, PRD, architecture, and learned CLAUDE.md rules stay. Git history stays. Nothing is proprietary.
+**Lock-in risk:** low. If you ever want to leave, run `devx eject` — `.devx-cache/` and `.worktrees/` are removed, the devx slash commands are uninstalled, and you're left with a working repo with readable history, backlogs, specs, and workstream artifacts. Markdown + git are ground truth; learned CLAUDE.md rules stay. Nothing is proprietary.
 
 ## Status
 
 This repo is where devx itself is being built. We're using devx to build devx — `/devx-init` run against a fresh repo is both the first feature we ship and the first dogfood test.
 
-BMAD (core + bmm + tea) is installed; product brief lives at [`_bmad-output/planning-artifacts/product-brief.md`](./_bmad-output/planning-artifacts/product-brief.md). PRD, architecture, and epic chunking are the next BMAD phases.
+Phases 0–1 (foundation + single-agent loop) shipped on the BMAD bootstrap; the v2 migration replaced it with the native engine (`v2/`). The BMAD-era planning artifacts — including the founding [`product-brief.md`](./_bmad-output/planning-artifacts/product-brief.md) — are frozen read-only under `_bmad-output/`. Current planning happens in `_devx/workstreams/`.
 
 See:
-- [`SETUP.md`](./docs/SETUP.md) — install BMAD + devx skills on your machine.
+- [`SETUP.md`](./docs/SETUP.md) — install devx on your machine.
 - [`DESIGN.md`](./docs/DESIGN.md) — the backlog graph, filesystem layout, agent contracts, control plane, observability surfaces, `develop`/`main` branching.
 - [`CONFIG.md`](./docs/CONFIG.md) — every configurable knob (capacity, permissions, git strategy, promotion gates, notifications, UI), what `/devx-init` asks vs. defaults.
 - [`ROADMAP.md`](./docs/ROADMAP.md) — phased buildout plan, locked decisions, dependency graph, what we won't build. Backlog state itself lives in `PLAN.md` at root.
@@ -224,5 +226,5 @@ See:
 - [`FOCUS_GROUP.md`](./docs/FOCUS_GROUP.md) — persistent user-persona panel consulted throughout planning, shipping, and iteration. The user lens to complement party-mode's team lenses.
 - [`QA.md`](./docs/QA.md) — the two-layer browser QA subsystem: scripted Playwright for regressions, subprocess-spawned browser-use for exploratory UX pain hunting.
 - [`SELF_HEALING.md`](./docs/SELF_HEALING.md) — how `/devx-learn` turns repeated signals into memory/skill/config/template edits, with confidence gates and canary runs for risky changes.
-- [`OPEN_QUESTIONS.md`](./docs/OPEN_QUESTIONS.md) — design decisions still open (observability hosting, usage-limit handling, terminal control, BMAD integration audit).
+- [`OPEN_QUESTIONS.md`](./docs/OPEN_QUESTIONS.md) — design decisions still open (observability hosting, usage-limit handling, terminal control).
 - [`NOTES.md`](./docs/NOTES.md) — Leonid's raw scratchpad; periodically batch-absorbed into the formal docs above.

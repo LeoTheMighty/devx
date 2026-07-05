@@ -6,22 +6,20 @@ This is the thing that makes `/devx-focus` rich. Today `/devx-focus` synthesizes
 
 ---
 
-## 1. BMAD foundation
+## 1. Origin of the interaction primitive (BMAD-era attribution)
 
-BMAD ships with method #4 in `_bmad/.../advanced-elicitation/methods.csv`:
+The panel flow — `reactions → concerns → priorities` — was seeded from BMAD's "User Persona Focus Group" advanced-elicitation method:
 
 > **User Persona Focus Group** — "Gather your product's user personas to react to proposals and share frustrations - essential for validating features and discovering unmet needs."
->
-> Flow: `reactions → concerns → priorities`.
 
-That's the engine. What BMAD doesn't provide:
+The flow is now a native devx prompt (versioned under `focus-group/prompts/`); BMAD itself was ejected with the v2 migration (`v2/01-bmad-capture.md`). What the one-shot method never provided — and what devx adds:
 
-- A **persistent persona table** — BMAD's method invents personas ad-hoc each time.
-- A **consultation schedule** — BMAD leaves it to you to invoke.
-- **Persona evolution** — real user signals don't flow back into the personas.
+- A **persistent persona table** — the ad-hoc method invented personas each time.
+- A **consultation schedule** — invocation was left to the user.
+- **Persona evolution** — real user signals didn't flow back into the personas.
 - **Integration** with plan / dev / promotion gates.
 
-devx supplies those four pieces. BMAD's elicitation method is the interaction primitive; devx turns it into an always-on subsystem.
+devx supplies those four pieces: the elicitation flow is the interaction primitive; devx turns it into an always-on subsystem.
 
 ---
 
@@ -126,7 +124,7 @@ Question 6 of init (extension from the current 5-question flow):
 
 > **devx:** Last one — who are you building for? One or two sentences per archetype is fine. Or say "propose some" and I'll draft a starter panel based on your project idea.
 
-If the user gives archetypes, PlanAgent expands each one into a full persona file via the BMAD `advanced-elicitation` User Persona Focus Group method, drafts a `weight`, and writes to `focus-group/personas/`. If the user says "propose," devx drafts 4 personas appropriate to the project idea and asks for a thumbs-up on each before committing.
+If the user gives archetypes, PlanAgent expands each one into a full persona file via the persona-expansion prompt (the native User Persona Focus Group flow), drafts a `weight`, and writes to `focus-group/personas/`. If the user says "propose," devx drafts 4 personas appropriate to the project idea and asks for a thumbs-up on each before committing.
 
 Output: `focus-group/personas/*.md` + `focus-group/index.md`. Added to the repo on `develop` as part of the init commit.
 
@@ -197,7 +195,7 @@ Direct invocation:
 /devx-focus-group --persona maya "How do you feel about the new onboarding copy?"
 ```
 
-Cheap, fast, runs the BMAD elicitation method with the persistent cast. Output goes to `focus-group/sessions/`.
+Cheap, fast, runs the reactions → concerns → priorities elicitation flow with the persistent cast. Output goes to `focus-group/sessions/`.
 
 ---
 

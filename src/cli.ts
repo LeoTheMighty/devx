@@ -89,7 +89,7 @@ export function buildProgram(): Command {
   const program = new Command();
   program
     .name("devx")
-    .description("devx — autonomous development system built on BMAD")
+    .description("devx — self-contained closed-loop autonomous development system")
     .version(readPackageVersion());
 
   for (const cmd of commands) {

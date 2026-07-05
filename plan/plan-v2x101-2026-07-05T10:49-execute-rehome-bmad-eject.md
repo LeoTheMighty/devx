@@ -25,3 +25,5 @@ Workstream 'Execute Rehome Bmad Eject' — PRD stage next. Artifacts live in `_d
 
 - 2026-07-05T10:49 — workstream scaffolded by `devx workstream new execute-rehome-bmad-eject`.
 - 2026-07-05T11:05 — RED PASS (gate evals; E-1/E-2 observed RED for the right reason, E-3/E-4 deferred tests-after per plan table). Dev-spec emission SKIPPED with cause: phase 1's dev spec pre-exists (dev/dev-v2x101-…) — re-emission would duplicate the backlog entry. stage: executing; /devx v2x101 is next.
+- 2026-07-05T11:30 — E-1 eval refined pre-implementation (same Verified-by path): archival `_bmad-output/` pointer lines exempted per the spec AC's explicit exemption list; live-reference scan unchanged. Re-run RED: still fails for the right reason (7 live-ref files + 51 skill dirs at refinement time).
+- 2026-07-05T11:55 — E-1 second refinement (same path): src/lib/config-validate.ts exempted wholesale — it hosts the FR-3 deprecation shim; the detector cannot be a violation of the thing it detects. E-1 GREEN + E-2 GREEN post-implementation; checkpoint phase-1 PASS.
