@@ -384,5 +384,6 @@ parent stories + 5 retros, +863 net tests (mrg ~92 + prt ~46 + pln ~207
 sprint-status.yaml received its last touch in the mgrret PR. Next work
 happens under the v2 migration (`v2/README.md`: native engine, review
 tours, universal dispatcher, overnight loop); `dev-roc101`
-(verify-claim) is carried forward as a v2 dispatcher design input.
+(verify-claim) shipped via PR #60 concurrently with the mgrret retro
+and is inherited by the v2 dispatcher.
 Mobile companion v0.1 runs in parallel from Phase 8.

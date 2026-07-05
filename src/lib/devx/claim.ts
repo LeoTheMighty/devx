@@ -90,7 +90,7 @@ export interface ClaimFs {
   readdir(path: string): string[];
 }
 
-const realFs: ClaimFs = {
+export const realFs: ClaimFs = {
   openExclusive: (path, contents) => {
     // Node's `wx` flag === O_CREAT | O_EXCL. The open throws EEXIST
     // synchronously if the file already exists — that's the contract

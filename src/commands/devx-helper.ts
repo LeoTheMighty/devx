@@ -10,6 +10,7 @@
 //   • dvx101: `devx devx-helper claim <hash>`
 //   • dvx102: `devx devx-helper should-create-story <hash>`
 //   • dvx105: `devx devx-helper await-remote-ci <branch> [--once]`
+//   • roc101: `devx devx-helper verify-claim <hash> [--session-token <token>]`
 //
 // Each subcommand is registered conditionally so the /devx skill body
 // can rely on the absence/presence of a subcommand as a canary signal.
@@ -49,7 +50,23 @@
 //            throws — argument validation, unhandled internal failures.
 //     • 64 → usage error. stderr only.
 //
-// Spec: dev/dev-dvx101-... + dev/dev-dvx102-... + dev/dev-dvx105-...
+//   `verify-claim`:
+//     • 0  → caller owns the claim. JSON `{hash, owned, sessionToken}` on
+//            stdout.
+//     • 3  → owned by another session. JSON `{error:
+//            "owned-by-other-session", hash, lockOwner, currentSession}` on
+//            stdout. Skill body halts without touching the worktree.
+//     • 4  → drift: spec `status: in-progress` but no lock file. JSON
+//            `{error: "in-progress-without-lock", hash}` on stdout. Skill
+//            body files an INTERVIEW.md row + halts.
+//     • 2  → everything else. JSON `{error: "<stage>", hash}` on stdout
+//            where `stage ∈ {"validate","resolve","read-spec","spec-parse",
+//            "read-lock","lock-unparseable","spec-not-in-progress",
+//            "unknown"}`; stderr has detail.
+//     • 64 → usage error. stderr only.
+//
+// Spec: dev/dev-dvx101-... + dev/dev-dvx102-... + dev/dev-dvx105-... +
+//       dev/dev-roc101-...
 // Epic: _bmad-output/planning-artifacts/epic-devx-skill.md
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -78,6 +95,11 @@ import {
   readCanary,
   shouldCreateStory,
 } from "../lib/devx/should-create-story.js";
+import {
+  type VerifyClaimOpts,
+  VerifyClaimError,
+  verifyClaim,
+} from "../lib/devx/verify-claim.js";
 import type { DeriveBranchConfig } from "../lib/plan/derive-branch.js";
 
 const HASH_RE = /^[a-z0-9]{3,12}$/i;
@@ -484,6 +506,165 @@ export async function runAwaitRemoteCi(
 }
 
 // ---------------------------------------------------------------------------
+// verify-claim (roc101)
+// ---------------------------------------------------------------------------
+
+export interface RunVerifyClaimOpts {
+  /** Test seam: route stdout off process.stdout. */
+  out?: (s: string) => void;
+  /** Test seam: route stderr off process.stderr. */
+  err?: (s: string) => void;
+  /** Test seam: explicit project repo root (skip findProjectConfig walk). */
+  repoRoot?: string;
+  /** Test seam: forward through to verifyClaim (fs seam). */
+  verifyOpts?: Partial<VerifyClaimOpts>;
+}
+
+/**
+ * Drive the resume-detection ownership check. Returns the exit code; emits
+ * exactly-one JSON object on stdout and human-readable detail on stderr.
+ *
+ * Session token resolution: `--session-token <token>` when supplied,
+ * otherwise auto-derived via `defaultSessionId()` — the SAME primitive
+ * `runClaim` uses when the caller doesn't override, so a claim + verify in
+ * one CLI process derive identically. A resuming skill session should pass
+ * the token it claimed with (recorded in the spec's `owner:` frontmatter
+ * and the lock file's first line) explicitly.
+ */
+export async function runVerifyClaim(
+  args: string[],
+  opts: RunVerifyClaimOpts = {},
+): Promise<number> {
+  const out = opts.out ?? ((s) => process.stdout.write(s));
+  const err = opts.err ?? ((s) => process.stderr.write(s));
+
+  // Hand-parse (mirrors runAwaitRemoteCi) so test seams aren't dependent
+  // on commander state. Accepted shapes: `<hash>` and
+  // `<hash> --session-token <token>` (flag position-independent).
+  let sessionToken: string | undefined;
+  const positional: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--session-token") {
+      if (i + 1 >= args.length) {
+        err(
+          "devx devx-helper verify-claim: --session-token requires a value\n",
+        );
+        return 64;
+      }
+      sessionToken = args[i + 1];
+      i++;
+    } else if (a.startsWith("--")) {
+      err(`devx devx-helper verify-claim: unknown flag '${a}'\n`);
+      return 64;
+    } else {
+      positional.push(a);
+    }
+  }
+  if (positional.length !== 1) {
+    err(
+      "usage: devx devx-helper verify-claim <hash> [--session-token <token>]\n",
+    );
+    return 64;
+  }
+  const hash = positional[0];
+  if (!HASH_RE.test(hash)) {
+    err(
+      `devx devx-helper verify-claim: invalid hash '${hash}' (expected hex/alnum 3-12 chars)\n`,
+    );
+    return 64;
+  }
+  if (sessionToken !== undefined && sessionToken.trim() === "") {
+    err(
+      "devx devx-helper verify-claim: --session-token value must be non-empty\n",
+    );
+    return 64;
+  }
+
+  let repoRoot: string;
+  if (opts.repoRoot) {
+    repoRoot = opts.repoRoot;
+  } else {
+    const projectConfigPath = findProjectConfig();
+    if (!projectConfigPath) {
+      err(
+        "devx devx-helper verify-claim: devx.config.yaml not found (walked up from cwd)\n",
+      );
+      return 64;
+    }
+    repoRoot = dirname(projectConfigPath);
+  }
+
+  try {
+    const result = verifyClaim(hash, {
+      sessionToken: sessionToken ?? defaultSessionId(),
+      repoRoot,
+      ...(opts.verifyOpts ?? {}),
+    });
+    switch (result.status) {
+      case "owned": {
+        // Lock is the authoritative sentinel (the O_EXCL file claimSpec
+        // created); frontmatter drift is surfaced on stderr, not fatal.
+        if (result.specOwnerDrift) {
+          err(
+            `devx devx-helper verify-claim: WARN — spec owner '${result.specOwner}' disagrees with lock owner '${result.lockOwner}'; lock wins\n`,
+          );
+        }
+        if (result.specStatusDrift) {
+          err(
+            `devx devx-helper verify-claim: WARN — lock held but spec status is not 'in-progress'; reconcile the spec frontmatter\n`,
+          );
+        }
+        out(
+          `${JSON.stringify({
+            hash: result.hash,
+            owned: true,
+            sessionToken: result.sessionToken,
+          })}\n`,
+        );
+        return 0;
+      }
+      case "owned-by-other-session": {
+        out(
+          `${JSON.stringify({
+            error: "owned-by-other-session",
+            hash: result.hash,
+            lockOwner: result.lockOwner,
+            currentSession: result.currentSession,
+          })}\n`,
+        );
+        err(
+          `devx devx-helper verify-claim: claim on '${hash}' is held by another session (lock owner '${result.lockOwner}', current session '${result.currentSession}') — halt without touching the worktree\n`,
+        );
+        return 3;
+      }
+      case "in-progress-without-lock": {
+        out(
+          `${JSON.stringify({
+            error: "in-progress-without-lock",
+            hash: result.hash,
+          })}\n`,
+        );
+        err(
+          `devx devx-helper verify-claim: spec '${hash}' is in-progress but no lock file exists${result.specOwner ? ` (last recorded owner: '${result.specOwner}')` : ""} — orphaned claim; file INTERVIEW.md and halt\n`,
+        );
+        return 4;
+      }
+    }
+  } catch (e) {
+    if (e instanceof VerifyClaimError) {
+      out(`${JSON.stringify({ error: e.stage, hash })}\n`);
+      err(`devx devx-helper verify-claim: ${e.message}\n`);
+      return 2;
+    }
+    const msg = e instanceof Error ? e.message : String(e);
+    out(`${JSON.stringify({ error: "unknown", hash })}\n`);
+    err(`devx devx-helper verify-claim: unexpected error: ${msg}\n`);
+    return 2;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // commander wiring
 // ---------------------------------------------------------------------------
 
@@ -530,6 +711,27 @@ export function register(program: Command): void {
     .action(async (branch: string, options: { once?: boolean }) => {
       const args = options.once ? [branch, "--once"] : [branch];
       const code = await runAwaitRemoteCi(args, {});
+      if (code !== 0) {
+        process.exit(code);
+      }
+    });
+
+  sub
+    .command("verify-claim")
+    .description(
+      "Verify claim ownership before resuming an in-progress spec (roc101). Reads .devx-cache/locks/spec-<hash>.lock + spec frontmatter owner:; compares against the current session token. Exit 0 owned / 3 owned-by-other-session / 4 in-progress-without-lock / 2 other errors. Skill body Phase 1 resume-detection runs this BEFORE any worktree edit.",
+    )
+    .argument("<hash>", "spec hash (e.g. 'roc101')")
+    .option(
+      "--session-token <token>",
+      "current session's token (raw sessionId or /devx-<sessionId> owner shape); auto-derived when omitted",
+    )
+    .action(async (hash: string, options: { sessionToken?: string }) => {
+      const args =
+        options.sessionToken !== undefined
+          ? [hash, "--session-token", options.sessionToken]
+          : [hash];
+      const code = await runVerifyClaim(args, {});
       if (code !== 0) {
         process.exit(code);
       }
