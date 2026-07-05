@@ -59,6 +59,23 @@ Repeat per item, respecting `stop_after`:
    - If no runnable item exists → report and stop.
 2. **Read the spec file** — frontmatter + goal + ACs + status log.
 3. **Read cross-references** — `from:` (parent plan/epic), `blocked-by:`, `spawned:`.
+
+   **Resume-detection branch (roc101).** When the resolved spec already has `status: in-progress` in its frontmatter AND a `.worktrees/dev-<hash>/` directory exists, this is a potential resume — the claim may belong to another live session, and a fresh post-`/clear` invocation is NOT entitled to it (LEARN.md § epic-devx-skill E13: the 2026-05-07 resume-collision incident). BEFORE any worktree edit — and INSTEAD of the fresh claim in step 4 — verify ownership:
+
+   ```
+   devx devx-helper verify-claim <hash> --session-token "$SESSION_TOKEN"
+   ```
+
+   (`--session-token` takes the token this session claimed with — the raw sessionId or the `/devx-<sessionId>` shape — but ONLY from this conversation's own memory: the claim performed earlier in this same session, or a Handoff Snippet that carries it. **Never copy the token out of the spec's `owner:` frontmatter or the lock file** — that trivially always matches and defeats the check entirely (the exact E13 incident shape). A fresh post-`/clear` session that doesn't know its token OMITS the flag; the helper auto-derives a new token via the same primitive `claim` uses, which correctly mismatches a live peer's lock.)
+
+   Branch on the exit code:
+   - **0** — `{"hash":"...","owned":true,"sessionToken":"..."}`: this session owns the claim. Resume: skip step 4 (the claim commit + lock + worktree already exist), enter the existing worktree at step 5, and continue from the last status-log line in the spec.
+   - **3** — `{"error":"owned-by-other-session","hash":"...","lockOwner":"...","currentSession":"..."}`: another live session holds the lock. **HALT without touching the worktree** — no worktree edit, no spec edit, no DEV.md edit. Surface the owner mismatch (`lockOwner` vs `currentSession`) to the user and stop.
+   - **4** — `{"error":"in-progress-without-lock","hash":"..."}`: drift — the spec says in-progress but no lock file exists (orphaned claim, e.g. a crashed session whose lock was cleaned). File an INTERVIEW.md row asking the user to either resume the orphaned spec manually or release it (flip back to `ready`), then halt.
+   - **2** — `{"error":"<stage>","hash":"..."}`: helper failure (resolve / read / parse — see stage). Surface stderr and stop.
+
+   When the spec is NOT in-progress (fresh claim) or no worktree exists, fall through to step 4 as usual.
+
 4. **Atomically claim** via `devx devx-helper claim <hash>` (dvx101). The helper drives the six-step claim — lock + DEV.md flip + spec frontmatter + status log + commit on the base branch + push to `origin/<base>` + worktree create — in fixed order with per-stage rollback. Stdout is JSON `{branch, lockPath, claimSha}`; exit codes encode the outcome:
    ```
    if ! CLAIM_JSON=$(devx devx-helper claim "$HASH"); then

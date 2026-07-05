@@ -46,3 +46,4 @@ wire the v2 plan into the live backlogs, per `v2/06-phases.md § V2.0`.
 - 2026-07-05T09:58:42-06:00 — claimed by /devx in session /devx-2026-07-05T0958-23724
 - 2026-07-05T13:20 — implemented: 9 engine templates (_devx/templates/engine/), _devx/workstreams/ root, _bmad-output freeze note, D-10 grep test (test/engine-templates.test.ts). Self-review: 2 findings (verdict-block regex anchored per-template not per-file; results.md uses outcome: not gate: vocabulary — test adjusted to match D-9's results shape), both fixed.
 - 2026-07-05T13:30 — PR https://github.com/LeoTheMighty/devx/pull/59 merged (9dd187d); worktree removed; lock released.
+- 2026-07-05T10:15 — phase 4: self-review — 2 findings, all fixed (retroactive discipline line appended in roc101 PR #60: the 13:20 'implemented:' entry above carried the self-review findings but lacked the mandatory literal 'phase 4:' prefix, which turned the status-log discipline gate red on main for every PR)
