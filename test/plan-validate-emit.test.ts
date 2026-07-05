@@ -27,6 +27,7 @@ import {
   parseEpicDevMdRows,
   parseFrontmatterValue,
   parseLockedDecisions,
+  parsePlanStoryHashes,
   parseStoryHashes,
   validateEmit,
 } from "../src/lib/plan/validate-emit.js";
@@ -812,7 +813,12 @@ describe("runValidateEmit — CLI exit codes", () => {
     });
     expect(code).toBe(2);
     expect(cap.io.stdout).toBe("");
-    expect(cap.io.stderr).toContain("epic file not found");
+    // v2d101: resolution tries the workstream plan.md first, then the
+    // frozen BMAD-era epic path — the diagnostic names both.
+    expect(cap.io.stderr).toContain("no plan.md or epic file found");
+    expect(cap.io.stderr).toContain(
+      "_devx/workstreams/does-not-exist/plan.md",
+    );
     expect(cap.io.stderr).toContain("epic-does-not-exist.md");
   });
 
@@ -1221,5 +1227,396 @@ describe("validateEmit — CRLF normalization end-to-end", () => {
     );
     const errs = r.issues.filter((i) => i.severity === "error");
     expect(errs).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v2d101 — workstream-plan resolution (`_devx/workstreams/<slug>/plan.md`)
+// ---------------------------------------------------------------------------
+
+const WS_SLUG = "demo-ws";
+const WS_PLAN_PATH = `${REPO_ROOT}/_devx/workstreams/${WS_SLUG}/plan.md`;
+
+function wsFixture(): Tree {
+  const fs = newMemoryFs();
+  fs.put(
+    WS_PLAN_PATH,
+    `# Plan — Demo WS
+
+## Current state
+
+Nothing.
+
+## Expectation coverage
+
+| E-id | Priority | Verified in phase | Validation type | Eval artifact | Coverage |
+|---|---|---|---|---|---|
+| E-1 | P0 | 1 | tests-first | evals/E-1.ts | full |
+
+## Phase checklist
+
+- [ ] Phase 1: core (dev spec: v2a101)
+- [ ] Phase 2: polish (dev spec: v2a102)
+
+## Phases
+
+### 1. Phase: core
+
+**Overview**: lands the core. Execution tracker:
+\`dev/dev-v2a101-2026-07-05T12:00-core.md\`.
+
+### 2. Phase: polish
+
+**Overview**: polish pass.
+`,
+  );
+  fs.put(
+    `${REPO_ROOT}/dev/dev-v2a101-2026-07-05T12:00-core.md`,
+    `---
+hash: v2a101
+type: dev
+title: core
+from: _devx/workstreams/demo-ws/plan.md
+status: ready
+branch: feat/dev-v2a101
+---
+
+## Goal
+Core.
+`,
+  );
+  fs.put(
+    `${REPO_ROOT}/dev/dev-v2a102-2026-07-05T12:00-polish.md`,
+    `---
+hash: v2a102
+type: dev
+title: polish
+from: _devx/workstreams/demo-ws/plan.md
+status: ready
+branch: feat/dev-v2a102
+---
+
+## Goal
+Polish.
+`,
+  );
+  fs.put(
+    `${REPO_ROOT}/DEV.md`,
+    `# DEV
+
+### Workstream — demo-ws
+- [ ] \`dev/dev-v2a101-2026-07-05T12:00-core.md\` — core. Status: ready.
+- [ ] \`dev/dev-v2a102-2026-07-05T12:00-polish.md\` — polish. Status: ready. Blocked-by: v2a101.
+`,
+  );
+  return { fs, repoRoot: REPO_ROOT };
+}
+
+describe("validateEmit — workstream-plan mode (v2d101)", () => {
+  it("resolves _devx/workstreams/<slug>/plan.md FIRST and validates clean", () => {
+    const { fs, repoRoot } = wsFixture();
+    const r = validateEmit(
+      { repoRoot, epicSlug: WS_SLUG, config: SINGLE_BRANCH_CONFIG },
+      fs,
+    );
+    expect(r.epicFound).toBe(true);
+    expect(r.source).toBe("workstream-plan");
+    expect(r.epicPath).toBe(WS_PLAN_PATH);
+    const errs = r.issues.filter((i) => i.severity === "error");
+    expect(errs).toEqual([]);
+  });
+
+  it("plan.md wins over a same-slug legacy epic file", () => {
+    const { fs, repoRoot } = wsFixture();
+    fs.put(
+      `${REPO_ROOT}/_bmad-output/planning-artifacts/epic-${WS_SLUG}.md`,
+      "# Epic — legacy shadow\n\n## Story list with ACs\n\n### zzz999 — ghost\n",
+    );
+    const r = validateEmit(
+      { repoRoot, epicSlug: WS_SLUG, config: SINGLE_BRANCH_CONFIG },
+      fs,
+    );
+    expect(r.source).toBe("workstream-plan");
+    // The legacy epic's ghost story must NOT leak into the checks.
+    expect(findIssue(r.issues, "spec-missing")).toBeUndefined();
+  });
+
+  it("historical slugs still fall back to the frozen BMAD epic (source: bmad-epic)", () => {
+    const { fs, repoRoot } = cleanFixture();
+    const r = validateEmit(
+      { repoRoot, epicSlug: "fixture-epic", config: SINGLE_BRANCH_CONFIG },
+      fs,
+    );
+    expect(r.source).toBe("frozen-epic");
+    expect(r.epicPath).toContain("_bmad-output/planning-artifacts/");
+  });
+
+  it("check 1 (spec-missing) fires when a checklist phase's dev spec is absent", () => {
+    const { fs, repoRoot } = wsFixture();
+    fs.remove(`${REPO_ROOT}/dev/dev-v2a102-2026-07-05T12:00-polish.md`);
+    // Also drop its DEV.md row so we isolate check 1 from check 2.
+    fs.put(
+      `${REPO_ROOT}/DEV.md`,
+      `# DEV
+
+### Workstream — demo-ws
+- [ ] \`dev/dev-v2a101-2026-07-05T12:00-core.md\` — core. Status: ready.
+`,
+    );
+    const r = validateEmit(
+      { repoRoot, epicSlug: WS_SLUG, config: SINGLE_BRANCH_CONFIG },
+      fs,
+    );
+    const issue = findIssue(r.issues, "spec-missing");
+    expect(issue).toBeDefined();
+    expect(issue?.message).toContain("v2a102");
+  });
+
+  it("check 1b (orphan-spec-claims-epic) fires for a spec claiming the workstream with no phase", () => {
+    const { fs, repoRoot } = wsFixture();
+    fs.put(
+      `${REPO_ROOT}/dev/dev-v2a999-2026-07-05T12:00-stray.md`,
+      `---
+hash: v2a999
+type: dev
+title: stray
+from: _devx/workstreams/demo-ws/plan.md
+status: ready
+branch: feat/dev-v2a999
+---
+`,
+    );
+    const r = validateEmit(
+      { repoRoot, epicSlug: WS_SLUG, config: SINGLE_BRANCH_CONFIG },
+      fs,
+    );
+    const issue = findIssue(r.issues, "orphan-spec-claims-epic");
+    expect(issue).toBeDefined();
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain("v2a999");
+  });
+
+  it("check 1b also anchors on the workstream: frontmatter pointer", () => {
+    const { fs, repoRoot } = wsFixture();
+    fs.put(
+      `${REPO_ROOT}/dev/dev-v2a998-2026-07-05T12:00-stray2.md`,
+      `---
+hash: v2a998
+type: dev
+title: stray2
+workstream: _devx/workstreams/demo-ws
+status: ready
+branch: feat/dev-v2a998
+---
+`,
+    );
+    const r = validateEmit(
+      { repoRoot, epicSlug: WS_SLUG, config: SINGLE_BRANCH_CONFIG },
+      fs,
+    );
+    expect(findIssue(r.issues, "orphan-spec-claims-epic")?.message).toContain(
+      "v2a998",
+    );
+  });
+
+  it("check 5 (branch-mismatch) still fires in plan mode", () => {
+    const { fs, repoRoot } = wsFixture();
+    fs.put(
+      `${REPO_ROOT}/dev/dev-v2a101-2026-07-05T12:00-core.md`,
+      `---
+hash: v2a101
+type: dev
+title: core
+from: _devx/workstreams/demo-ws/plan.md
+status: ready
+branch: develop/dev-v2a101
+---
+`,
+    );
+    const r = validateEmit(
+      { repoRoot, epicSlug: WS_SLUG, config: SINGLE_BRANCH_CONFIG },
+      fs,
+    );
+    const issue = findIssue(r.issues, "branch-mismatch");
+    expect(issue).toBeDefined();
+    expect(issue?.message).toContain("feat/dev-v2a101");
+  });
+
+  it("check 2 (devmd-row-points-at-missing-spec) still fires in plan mode", () => {
+    const { fs, repoRoot } = wsFixture();
+    fs.put(
+      `${REPO_ROOT}/DEV.md`,
+      `# DEV
+
+### Workstream — demo-ws
+- [ ] \`dev/dev-v2a101-2026-07-05T12:00-core.md\` — core. Status: ready.
+- [ ] \`dev/dev-v2a777-2026-07-05T12:00-ghost.md\` — ghost row. Status: ready.
+`,
+    );
+    const r = validateEmit(
+      { repoRoot, epicSlug: WS_SLUG, config: SINGLE_BRANCH_CONFIG },
+      fs,
+    );
+    const issue = findIssue(r.issues, "devmd-row-points-at-missing-spec");
+    expect(issue).toBeDefined();
+    expect(issue?.message).toContain("v2a777");
+  });
+
+  it("retro-trifecta checks are skipped in plan mode (retro is a stage, D-3)", () => {
+    const { fs, repoRoot } = wsFixture();
+    const r = validateEmit(
+      { repoRoot, epicSlug: WS_SLUG, config: SINGLE_BRANCH_CONFIG },
+      fs,
+    );
+    expect(findIssue(r.issues, "retro-trifecta-missing-spec")).toBeUndefined();
+    expect(
+      findIssue(r.issues, "retro-trifecta-missing-devmd-row"),
+    ).toBeUndefined();
+  });
+
+  it("neither plan.md nor epic exists → epicFound:false with both paths in triedPaths", () => {
+    const fs = newMemoryFs();
+    fs.put(`${REPO_ROOT}/DEV.md`, "");
+    const r = validateEmit(
+      { repoRoot: REPO_ROOT, epicSlug: "ghost", config: SINGLE_BRANCH_CONFIG },
+      fs,
+    );
+    expect(r.epicFound).toBe(false);
+    expect(r.source).toBeNull();
+    expect(r.triedPaths).toEqual([
+      `${REPO_ROOT}/_devx/workstreams/ghost/plan.md`,
+      `${REPO_ROOT}/_bmad-output/planning-artifacts/epic-ghost.md`,
+    ]);
+  });
+
+  it("honors engine.workstreams_root from the config blob", () => {
+    const { fs, repoRoot } = wsFixture();
+    // Same plan content re-homed under a custom root.
+    fs.put(
+      `${REPO_ROOT}/custom/streams/${WS_SLUG}/plan.md`,
+      fs.readFile(WS_PLAN_PATH),
+    );
+    fs.remove(WS_PLAN_PATH);
+    const r = validateEmit(
+      {
+        repoRoot,
+        epicSlug: WS_SLUG,
+        config: {
+          ...SINGLE_BRANCH_CONFIG,
+          engine: { workstreams_root: "custom/streams" },
+        } as typeof SINGLE_BRANCH_CONFIG,
+      },
+      fs,
+    );
+    expect(r.source).toBe("workstream-plan");
+    expect(r.epicPath).toBe(`${REPO_ROOT}/custom/streams/${WS_SLUG}/plan.md`);
+  });
+});
+
+describe("parsePlanStoryHashes (v2d101)", () => {
+  it("extracts checklist markers + Execution-tracker refs, deduped, with line numbers", () => {
+    const body = [
+      "# Plan — X",
+      "",
+      "## Phase checklist",
+      "",
+      "- [x] Phase 1: core (dev spec: aaa111)",
+      "- [ ] Phase 2: polish (dev spec: bbb222)",
+      "",
+      "## Phases",
+      "",
+      "### 1. Phase: core",
+      "",
+      "**Overview**: lands core. Execution tracker:",
+      "`dev/dev-ccc333-2026-07-05T12:00-extra.md` (pre-existing spec).",
+      "**Context**: depends on `dev/dev-xwk999-2026-07-05T12:00-other-ws.md`.",
+      "**Files**:",
+      "- `dev/dev-fil888-2026-07-05T12:00-touched.md` — a file being touched",
+    ].join("\n");
+    const hits = parsePlanStoryHashes(body);
+    // Checklist markers + the Execution-tracker ref (wrapped onto the next
+    // line) count; cross-workstream prose mentions and Files bullets do NOT
+    // (adversarial-review BH#10).
+    expect(hits.map((h) => h.hash)).toEqual(["aaa111", "bbb222", "ccc333"]);
+    expect(hits[0].line).toBe(5);
+  });
+
+  it("ignores dev-spec markers outside the Phase checklist section for the marker shape", () => {
+    const body = [
+      "## Notes",
+      "",
+      "- (dev spec: zzz999) — prose mention, not a checklist row",
+      "",
+      "## Phase checklist",
+      "",
+      "- [ ] Phase 1: only (dev spec: yyy888)",
+    ].join("\n");
+    const hits = parsePlanStoryHashes(body);
+    expect(hits.map((h) => h.hash)).toEqual(["yyy888"]);
+  });
+
+  it("ignores markers and tracker refs inside fenced code blocks (EC#8)", () => {
+    const body = [
+      "## Phase checklist",
+      "",
+      "- [ ] Phase 1: real (dev spec: rea111)",
+      "",
+      "## Phases",
+      "",
+      "### 1. Phase: real",
+      "",
+      "```markdown",
+      "- [ ] Phase 9: example (dev spec: fak999)",
+      "Execution tracker: `dev/dev-fak998-2026-01-01T00:00-example.md`",
+      "```",
+    ].join("\n");
+    const hits = parsePlanStoryHashes(body);
+    expect(hits.map((h) => h.hash)).toEqual(["rea111"]);
+  });
+});
+
+describe("validateEmit — orphan-claim boundary matching (EC#13)", () => {
+  it("counts a from: with trailing annotation text as claiming the workstream", () => {
+    const { fs, repoRoot } = wsFixture();
+    fs.put(
+      `${REPO_ROOT}/dev/dev-v2a997-2026-07-05T12:00-annotated.md`,
+      `---
+hash: v2a997
+type: dev
+title: annotated
+from: _devx/workstreams/demo-ws/plan.md (phase 2)
+status: ready
+branch: feat/dev-v2a997
+---
+`,
+    );
+    const r = validateEmit(
+      { repoRoot, epicSlug: WS_SLUG, config: SINGLE_BRANCH_CONFIG },
+      fs,
+    );
+    expect(findIssue(r.issues, "orphan-spec-claims-epic")?.message).toContain(
+      "v2a997",
+    );
+  });
+
+  it("does NOT count a suffix-colliding path (backup_devx/...) as claiming", () => {
+    const { fs, repoRoot } = wsFixture();
+    fs.put(
+      `${REPO_ROOT}/dev/dev-v2a996-2026-07-05T12:00-collide.md`,
+      `---
+hash: v2a996
+type: dev
+title: collide
+from: backup_devx/workstreams/demo-ws/plan.md
+status: ready
+branch: feat/dev-v2a996
+---
+`,
+    );
+    const r = validateEmit(
+      { repoRoot, epicSlug: WS_SLUG, config: SINGLE_BRANCH_CONFIG },
+      fs,
+    );
+    expect(findIssue(r.issues, "orphan-spec-claims-epic")).toBeUndefined();
   });
 });

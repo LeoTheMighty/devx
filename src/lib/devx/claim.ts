@@ -175,7 +175,9 @@ export interface ClaimSpecOpts {
   fs?: Partial<ClaimFs>;
   /** Test seam — replacement for the real `git` shell-out. */
   exec?: Exec;
-  /** Spec type (default "dev"). Phase 1 only claims dev/* specs. */
+  /** Spec type (default "dev"). v2d101 extends the claim primitive to
+   *  debug/* specs (DEBUG.md row flip, `.worktrees/debug-<hash>` stem);
+   *  any other type throws ClaimError("validate"). */
   type?: string;
 }
 
@@ -218,35 +220,59 @@ export class ClaimError extends Error {
 }
 
 const HASH_RE = /^[a-z0-9]{3,12}$/i;
-const SPEC_DIR = "dev";
+
+/**
+ * Claimable spec types (v2d101): `/devx` executes DEV.md dev items and
+ * DEBUG.md debug items through the same claim primitive. The type picks
+ * the spec dir (`dev/` vs `debug/`), the backlog file whose row gets
+ * flipped (DEV.md vs DEBUG.md), and the worktree stem
+ * (`.worktrees/<type>-<hash>`). Other spec types stay unclaimable — plan
+ * specs are consumed by the planning stages, not the execute arm.
+ */
+export const CLAIMABLE_TYPES = ["dev", "debug"] as const;
+export type ClaimableType = (typeof CLAIMABLE_TYPES)[number];
+
+const BACKLOG_BY_TYPE: Record<ClaimableType, string> = {
+  dev: "DEV.md",
+  debug: "DEBUG.md",
+};
+
+function isClaimableType(t: string): t is ClaimableType {
+  return (CLAIMABLE_TYPES as readonly string[]).includes(t);
+}
 
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
 
 /**
- * Flip the matching `- [ ] \`dev/dev-<hash>-…\`` row in DEV.md from `[ ]`
- * → `[/]` and `Status: ready` → `Status: in-progress`. Throws if the row
- * isn't found in `[ ]` state — that's the signal that another agent has
- * already claimed (or the row was never created).
+ * Flip the matching `- [ ] \`<type>/<type>-<hash>-…\`` row in the backlog
+ * file (DEV.md for dev, DEBUG.md for debug) from `[ ]` → `[/]` and
+ * `Status: ready` → `Status: in-progress`. Throws if the row isn't found
+ * in `[ ]` state — that's the signal that another agent has already
+ * claimed (or the row was never created).
  *
  * Textual splice rather than markdown-AST roundtrip: every backlog entry
  * in the repo follows the canonical `- [<state>] \`dev/...\`` shape, and
  * an AST roundtrip would reformat the rest of the file (loses intentional
  * blank-line separators between epic sections).
  */
-export function flipDevMdRow(content: string, hash: string): string {
+export function flipDevMdRow(
+  content: string,
+  hash: string,
+  type: ClaimableType = "dev",
+): string {
   if (!HASH_RE.test(hash)) {
     throw new Error(
       `flipDevMdRow: invalid hash '${hash}' (expected hex/alnum 3-12 chars)`,
     );
   }
-  // Anchor on path-component boundary (`dev-${hash}-`) so a hash that's a
-  // prefix of another (e.g. `mrg10` vs `mrg101`) doesn't match the wrong
-  // row. Existing rows always look like `\`dev/dev-<hash>-<ts>` where
+  // Anchor on path-component boundary (`<type>-${hash}-`) so a hash that's
+  // a prefix of another (e.g. `mrg10` vs `mrg101`) doesn't match the wrong
+  // row. Existing rows always look like `\`<type>/<type>-<hash>-<ts>` where
   // the char after the hash is always `-` followed by the timestamp.
   const probeRe = new RegExp(
-    `^- \\[ \\] \`dev/dev-${escapeRegex(hash)}-`,
+    `^- \\[ \\] \`${type}/${type}-${escapeRegex(hash)}-`,
   );
   const lines = content.split("\n");
   let foundIdx = -1;
@@ -261,7 +287,7 @@ export function flipDevMdRow(content: string, hash: string): string {
     // state" — saves one debug round-trip. We probe for any-state row to
     // produce the more informative error.
     const anyStateRe = new RegExp(
-      `\`dev/dev-${escapeRegex(hash)}-`,
+      `\`${type}/${type}-${escapeRegex(hash)}-`,
     );
     for (const line of lines) {
       if (anyStateRe.test(line)) {
@@ -271,7 +297,7 @@ export function flipDevMdRow(content: string, hash: string): string {
       }
     }
     throw new Error(
-      `flipDevMdRow: no DEV.md row found for hash '${hash}'`,
+      `flipDevMdRow: no ${BACKLOG_BY_TYPE[type]} row found for hash '${hash}'`,
     );
   }
   let line = lines[foundIdx];
@@ -360,18 +386,21 @@ export function updateSpecForClaim(
 }
 
 /**
- * Locate a spec file by hash under <repoRoot>/dev/. Returns absolute path
- * or null. Mirrors merge-gate.ts's resolver — same shape, same boundary.
+ * Locate a spec file by hash under <repoRoot>/<type>/. Returns absolute
+ * path or null. Mirrors merge-gate.ts's resolver — same shape, same
+ * boundary. `type` defaults to "dev" so every pre-v2d101 caller keeps its
+ * behavior byte-identical.
  */
 export function findSpecForHash(
   fs: ClaimFs,
   repoRoot: string,
   hash: string,
+  type: string = "dev",
 ): string | null {
-  const dir = join(repoRoot, SPEC_DIR);
+  const dir = join(repoRoot, type);
   if (!fs.exists(dir)) return null;
   for (const name of fs.readdir(dir)) {
-    if (name.startsWith(`dev-${hash}-`) && name.endsWith(".md")) {
+    if (name.startsWith(`${type}-${hash}-`) && name.endsWith(".md")) {
       return join(dir, name);
     }
   }
@@ -412,6 +441,13 @@ export async function claimSpec(
   const exec = opts.exec ?? realExec;
   const now = (opts.now ?? (() => new Date()))();
   const type = opts.type ?? "dev";
+  if (!isClaimableType(type)) {
+    throw new ClaimError(
+      "validate",
+      `unclaimable spec type '${type}' (expected one of: ${CLAIMABLE_TYPES.join(", ")})`,
+    );
+  }
+  const backlogName = BACKLOG_BY_TYPE[type];
   const isoTimestamp = formatIsoLocal(now);
 
   const branch = deriveBranch(opts.config, type, hash);
@@ -451,16 +487,16 @@ export async function claimSpec(
     "locks",
     `spec-${hash}.lock`,
   );
-  const devMdAbs = join(opts.repoRoot, "DEV.md");
-  const specPath = findSpecForHash(fs, opts.repoRoot, hash);
+  const devMdAbs = join(opts.repoRoot, backlogName);
+  const specPath = findSpecForHash(fs, opts.repoRoot, hash, type);
   if (!specPath) {
     throw new ClaimError(
       "resolve",
-      `no spec file found at ${join(opts.repoRoot, SPEC_DIR)}/dev-${hash}-*.md`,
+      `no spec file found at ${join(opts.repoRoot, type)}/${type}-${hash}-*.md`,
     );
   }
   if (!fs.exists(devMdAbs)) {
-    throw new ClaimError("resolve", `DEV.md not found at ${devMdAbs}`);
+    throw new ClaimError("resolve", `${backlogName} not found at ${devMdAbs}`);
   }
 
   // ---- Step 1: lock ----
@@ -494,7 +530,7 @@ export async function claimSpec(
   let specAfter: string;
   try {
     const devMdBefore = fs.readFile(devMdAbs);
-    devMdAfter = flipDevMdRow(devMdBefore, hash);
+    devMdAfter = flipDevMdRow(devMdBefore, hash, type);
     const specBefore = fs.readFile(specPath);
     specAfter = updateSpecForClaim(specBefore, opts.sessionId, isoTimestamp);
   } catch (e) {
@@ -705,7 +741,7 @@ export async function claimSpec(
   const worktreePath = join(
     opts.repoRoot,
     ".worktrees",
-    `dev-${hash}`,
+    `${type}-${hash}`,
   );
   const worktreeResult = exec(
     "git",

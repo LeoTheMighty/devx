@@ -289,10 +289,16 @@ describe("devx next — CLI driver", () => {
     expect((io.json() as { next: string }).next).toBe("devx gate evals abc123");
   });
 
-  it("no hash → exit 2 with the v2d101 pointer", () => {
-    const { code, io } = next();
-    expect(code).toBe(2);
-    expect(io.stderr()).toContain("v2d101");
+  it("no hash → repo-level dispatcher (v2d101): empty fixture routes row 12", () => {
+    const io = captureIo();
+    const code = runNext(["--no-gh"], {
+      ...io,
+      projectPath: repo.configPath,
+    });
+    expect(code).toBe(0);
+    const j = JSON.parse(io.stdout().trim()) as { row: number; action: string };
+    expect(j.row).toBe(12);
+    expect(j.action).toBe("propose-interview");
   });
 
   it("unknown hash → exit 2", () => {

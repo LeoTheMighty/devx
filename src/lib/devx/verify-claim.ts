@@ -49,6 +49,9 @@ export interface VerifyClaimOpts {
   sessionToken: string;
   /** Project repo root — where `.devx-cache/` and `dev/` live. */
   repoRoot: string;
+  /** Spec type (default "dev"). v2d101: debug specs resolve under
+   *  `debug/` — same lock path, same ownership semantics. */
+  type?: string;
   /** Test seam — partial fs override (real fs for unspecified keys). */
   fs?: Partial<ClaimFs>;
 }
@@ -215,14 +218,22 @@ export function verifyClaim(
 
   const fs: ClaimFs = { ...realFs, ...(opts.fs ?? {}) };
 
+  const type = opts.type ?? "dev";
+  if (!/^[a-z]+$/.test(type)) {
+    throw new VerifyClaimError(
+      "validate",
+      `invalid spec type '${type}' (expected lowercase letters)`,
+    );
+  }
+
   // ---- Resolve + parse the spec first: exit-4 vs exit-2 both depend on
   //      the spec's status, and a garbage hash should be "resolve" (exit 2)
   //      regardless of any stray lock file.
-  const specPath = findSpecForHash(fs, opts.repoRoot, hash);
+  const specPath = findSpecForHash(fs, opts.repoRoot, hash, type);
   if (!specPath) {
     throw new VerifyClaimError(
       "resolve",
-      `no spec file found at ${join(opts.repoRoot, "dev")}/dev-${hash}-*.md`,
+      `no spec file found at ${join(opts.repoRoot, type)}/${type}-${hash}-*.md`,
     );
   }
   let specContent: string;

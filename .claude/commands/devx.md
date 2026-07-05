@@ -1,11 +1,14 @@
 ---
 name: 'devx'
-description: 'Autonomous devx dev loop. Picks the next ready item from DEV.md (or a specified hash/slug), creates a worktree on develop/<type>-<hash>, implements natively from spec ACs (v2 engine), self-reviews, runs local CI per devx.config.yaml, opens a PR to develop, and waits for remote CI. Respects the project mode (YOLO/BETA/PROD/LOCKDOWN) and trust-gradient autonomy. Use when the user says "devx this" or "/devx <hash|slug|next>".'
+description: 'The universal devx dispatcher: knows when to plan, design, execute, debug, review, or loop. No args → devx next decides from repo state; a hash routes by spec type + stage; free text routes by intent (bug → debug loop, small feature → execute, big/vague → PRD stage, review → tour/address). The execute arm runs the full dev loop: claim → implement → self-review → local CI → PR+tour → remote CI → merge → cleanup. Respects mode (YOLO/BETA/PROD/LOCKDOWN) + trust gradient. Use for "devx this", "/devx <anything>", "fix X", "build Y".'
 ---
 
-# /devx — Autonomous devx Dev Loop
+# /devx — The Universal Dispatcher
 
-> **v0 — bootstrap version.** Forked from `/dev` with path + checkbox updates so the closed loop is usable today, before the rest of the devx stack ships. Refined in Phase 1 (`plan/plan-b01000-...-single-agent-loop.md`) per the full DESIGN.md contract. ManageAgent + parallelism arrive in Phases 2–3.
+> **v2 (v2d101).** `/devx` is the only command you need. It routes to the
+> right stage — plan / design / execute / debug / review / loop — from repo
+> state (`devx next`) or from what you typed. The execute arm below is the
+> Phase 1 loop, unchanged where it was already proven.
 >
 > **Until ManageAgent ships, /devx still runs the full loop end-to-end — claim → implement → self-review → local CI → PR → merge → cleanup.** Specifically: `/devx-manage` references in this file are about cross-item orchestration (parallelism, prioritization, soak windows). They are NOT a license to leave PRs open for human review. In YOLO single-branch this skill merges its own PR on every successful run. The only things that stop a YOLO merge are a failing local-CI gate, a non-empty workflow that returned non-success, or trust-gradient N not yet reached. "Prior PRs were merged by a human" is a bug log, not a precedent — do not infer policy from it.
 
@@ -21,17 +24,55 @@ Read `devx.config.yaml → git.*` once at the top of the run:
 
 Throughout this doc, "the integration branch" means whichever branch the resolved config says agents target. References to "PR to `develop`" should be read as "PR to the integration branch" — substitute `main` mentally if `integration_branch: null`.
 
-## Arguments
+## Routing (the dispatcher)
 
-Parse from the user's message after `/devx`:
+Parse the user's message after `/devx`:
 
-- **item**: one of:
-  - a spec-file hash (`a3f2b9`),
-  - a spec-file slug path (`dev/dev-a3f2b9-...md`),
-  - the literal string `next` — picks the top `[ ]`/ready item from `DEV.md`,
-  - if omitted, default to `next` (the no-args auto-pick from [DESIGN.md §`/devx` with no args = auto-pick](../../docs/DESIGN.md#devx-with-no-args--auto-pick)).
-- **stop_after**: one of `this-item`, `n-items`, `until-blocked`, `all`. Default: `this-item`. When set to `n-items` or `all`, loop back and claim another ready item after each merge.
-- **instructions**: extra instructions or constraints ("skip tests for now", "keep PR small", "use library X"). Logged into the spec file's status log.
+1. **No args** → run `devx next` (the 12-row state-driven decision table —
+   CLI is the single source of truth; render its `command` + `detail`, then
+   do it). If a morning report exists at `.devx-cache/loop/*/report.md`
+   newer than your session start, run the **morning review first**:
+   reconstruct from disk — `git status`, `git log --oneline -20`, open PRs,
+   the report — never summarize an overnight run from memory; treat the
+   night's claims as claims.
+2. **Hash or spec path** → route by the spec's type + stage: dev spec →
+   Execute arm (Phase 1 below); plan spec mid-pipeline → the matching
+   `/devx-plan` stage; debug spec → Stage: Debug. A stage name after the
+   hash overrides (`/devx <hash> retro`).
+3. **Explicit stage word** (`prd|design|plan|red|execute|verify|revise|
+   address|retro|outcome|review|loop`) → that stage. `review <pr>` = build
+   the tour for an existing PR; `address <pr>` = Stage: Address.
+4. **Free text** → intent classification (say your routing call out loud;
+   `INTERVIEW.md` when genuinely ambiguous — no silent product decisions):
+   - **Bug-shaped** ("broken", "500s", stack trace, "why does…") → file
+     `debug/debug-<hash>` spec + DEBUG.md row → Stage: Debug.
+   - **Feature, small & unambiguous** (single surface, clear AC, ~one
+     phase) → file `dev/dev-<hash>` spec directly with
+     `entered_at: execute` recorded (D-8) → Execute arm.
+   - **Feature, large or vague** → `devx workstream new <slug>` → hand off
+     to `/devx-plan` PRD stage with the text as seed.
+   - **Question-shaped** → answer with file:line evidence; file nothing
+     unless asked.
+5. **stop_after**: `this-item` (default) | `n-items` | `until-blocked` |
+   `all` — the execute arm loops back through `devx next` after each merge.
+6. **instructions**: extra constraints, logged to the spec status log.
+
+Drift reported by `devx next` (backlog↔frontmatter mismatch) is surfaced to
+the user as a defect, never silently fixed.
+
+## Stage: Debug (repro-first)
+
+1. Intake: symptom → `debug/debug-<hash>-<ts>-<slug>.md` (Goal = expected
+   behavior; ACs = "repro exists", "root cause documented with evidence",
+   "fix + regression test") + DEBUG.md row.
+2. **Reproduce before touching code**: a failing test or runnable repro
+   script, committed — the RED gate for bugs. No repro → no fix; if
+   irreproducible, document the attempt and file for observability instead.
+3. Root-cause with evidence in the status log (hypothesis → check →
+   result, one line each).
+4. Fix via the Execute arm (worktree → PR + tour → merge); the tour's
+   decision ledger carries the root-cause narrative.
+5. Learnings → LEARN.md candidates at the next retro.
 
 ## Core Principles
 

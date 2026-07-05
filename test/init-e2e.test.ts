@@ -44,6 +44,7 @@ import {
 } from "../src/lib/init-orchestrator.js";
 import type { GhExec } from "../src/lib/init-gh.js";
 import type { GitExec, GitResult } from "../src/lib/init-state.js";
+import { runNext } from "../src/commands/next.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures + helpers
@@ -367,6 +368,105 @@ describe("ini508 — empty fixture", () => {
     expect(readFileSync(tuned, "utf8")).toBe("# user-tuned PRD template\n");
     expect(second.fresh?.engineTemplates.written).toEqual([]);
     expect(second.fresh?.engineTemplates.skipped.length).toBeGreaterThan(0);
+  });
+
+  it("S-5 (v2d101): init → devx next → correct first action, zero BMAD", async () => {
+    // The full any-repo portability path: a fresh scaffold must be
+    // immediately dispatchable — `devx next` reads the just-written
+    // backlogs + config and produces a correct first action without any
+    // framework install in between.
+    const result = await runInit({
+      repoRoot: repo,
+      ask: scriptedAsk(SCRIPTED_ANSWERS_BASE),
+      git: noRemoteGit(repo),
+      gh: ((args) => {
+        if (args[0] === "auth" && args[1] === "status") {
+          return { exitCode: 0, stdout: "", stderr: "" };
+        }
+        return { exitCode: 0, stdout: "{}", stderr: "" };
+      }) as GhExec,
+      skipSupervisor: true,
+    });
+    expect(result.status).toBe("completed");
+
+    const captured = () => {
+      let so = "";
+      let se = "";
+      return {
+        out: (s: string) => {
+          so += s;
+        },
+        err: (s: string) => {
+          se += s;
+        },
+        stdout: () => so,
+        stderr: () => se,
+      };
+    };
+
+    // (a) Genuinely empty backlogs → row 12: propose the next-objective
+    //     interview. (--no-gh: a fresh scaffold has no remote/auth yet.)
+    const empty = captured();
+    const code = runNext(["--no-gh"], {
+      out: empty.out,
+      err: empty.err,
+      projectPath: join(repo, "devx.config.yaml"),
+    });
+    expect(code).toBe(0);
+    const emptyDecision = JSON.parse(empty.stdout().trim()) as {
+      row: number;
+      action: string;
+      command: string;
+      drift: unknown[];
+    };
+    expect(emptyDecision.row).toBe(12);
+    expect(emptyDecision.action).toBe("propose-interview");
+    expect(emptyDecision.command).toBe("/devx-interview");
+    expect(emptyDecision.drift).toEqual([]);
+    expect(empty.stderr()).toContain("[row 12/propose-interview]");
+
+    // (b) Seed one PLAN.md item + its plan spec → row 10: start its PRD
+    //     stage. This is the first real action a fresh project takes.
+    const planSpecRel = "plan/plan-abc001-2026-07-05T12:00-first-feature.md";
+    writeFileSync(
+      join(repo, planSpecRel),
+      [
+        "---",
+        "hash: abc001",
+        "type: plan",
+        "created: 2026-07-05T12:00:00-06:00",
+        "title: First Feature",
+        "status: ready",
+        "---",
+        "",
+        "## Goal",
+        "",
+        "The project's first feature.",
+        "",
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(repo, "PLAN.md"),
+      readFileSync(join(repo, "PLAN.md"), "utf8") +
+        `\n- [ ] \`${planSpecRel}\` — First feature. Status: ready.\n`,
+    );
+
+    const seeded = captured();
+    expect(
+      runNext(["--no-gh"], {
+        out: seeded.out,
+        err: seeded.err,
+        projectPath: join(repo, "devx.config.yaml"),
+      }),
+    ).toBe(0);
+    const seededDecision = JSON.parse(seeded.stdout().trim()) as {
+      row: number;
+      action: string;
+      command: string;
+    };
+    expect(seededDecision.row).toBe(10);
+    expect(seededDecision.action).toBe("plan-prd");
+    expect(seededDecision.command).toBe("/devx prd abc001");
   });
 
   it("idempotent re-run is a near no-op (kept M / added 0 / migrated 0)", async () => {

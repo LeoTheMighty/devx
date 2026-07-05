@@ -580,3 +580,97 @@ describe("devx devx-helper verify-claim — exit 64 (usage)", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// v2d101 — debug-type verify-claim (the debug resume path)
+// ---------------------------------------------------------------------------
+
+describe("verifyClaim — debug type (v2d101)", () => {
+  function makeDebugFixture(lockBody?: string): Fixture {
+    const dir = mkdtempSync(join(tmpdir(), "devx-verify-claim-debug-"));
+    const specDir = join(dir, "debug");
+    mkdirSync(specDir, { recursive: true });
+    const specPath = join(specDir, "debug-bug001-2026-07-05T12:00-fixture.md");
+    writeFileSync(
+      specPath,
+      [
+        "---",
+        "hash: bug001",
+        "type: debug",
+        "title: Fixture bug",
+        "status: in-progress",
+        `owner: /devx-${OWNER_SID}`,
+        "branch: feat/debug-bug001",
+        "---",
+        "",
+        "## Status log",
+        "",
+        "- 2026-07-05T12:00 — filed.",
+        "",
+      ].join("\n"),
+    );
+    const lockPath = join(dir, ".devx-cache", "locks", "spec-bug001.lock");
+    if (lockBody !== undefined) {
+      mkdirSync(join(dir, ".devx-cache", "locks"), { recursive: true });
+      writeFileSync(lockPath, lockBody);
+    }
+    return { dir, specPath, lockPath };
+  }
+
+  it("resolves the spec under debug/ with type: 'debug' → owned", () => {
+    const fx = makeDebugFixture(lockBodyFor(OWNER_SID));
+    try {
+      const r = verifyClaim("bug001", {
+        sessionToken: OWNER_SID,
+        repoRoot: fx.dir,
+        type: "debug",
+      });
+      expect(r.status).toBe("owned");
+    } finally {
+      destroy(fx);
+    }
+  });
+
+  it("default type ('dev') does NOT resolve a debug spec (resolve error, exit-2 class)", () => {
+    const fx = makeDebugFixture(lockBodyFor(OWNER_SID));
+    try {
+      expect(() =>
+        verifyClaim("bug001", { sessionToken: OWNER_SID, repoRoot: fx.dir }),
+      ).toThrow(/no spec file found at .*dev\/dev-bug001/);
+    } finally {
+      destroy(fx);
+    }
+  });
+
+  it("CLI --type debug drives the same resolution (exit 0 owned)", async () => {
+    const fx = makeDebugFixture(lockBodyFor(OWNER_SID));
+    try {
+      const { code, io } = await run(fx, [
+        "bug001",
+        "--session-token",
+        OWNER_SID,
+        "--type",
+        "debug",
+      ]);
+      expect(code).toBe(0);
+      expect(JSON.parse(io.stdout)).toMatchObject({ hash: "bug001", owned: true });
+    } finally {
+      destroy(fx);
+    }
+  });
+
+  it("CLI rejects invalid --type values and flag-shaped values with exit 64", async () => {
+    const fx = makeDebugFixture(lockBodyFor(OWNER_SID));
+    try {
+      const bad = await run(fx, ["bug001", "--type", "plan"]);
+      expect(bad.code).toBe(64);
+      expect(bad.io.stderr).toContain("invalid --type");
+
+      const swallowed = await run(fx, ["bug001", "--type", "--session-token"]);
+      expect(swallowed.code).toBe(64);
+      expect(swallowed.io.stderr).toContain("--type requires a value");
+    } finally {
+      destroy(fx);
+    }
+  });
+});

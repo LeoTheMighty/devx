@@ -196,9 +196,11 @@ describe("cli303 — devx --help command listing", () => {
         merge-gate [options] <hash>  Compute the mode-derived merge decision for a
                                      spec PR (Phase 1). Emits JSON; exit 0 = merge, 1
                                      = no-merge, 2 = signal trouble.
-        next [hash]                  Print the single next command for a workstream
-                                     from its stage + gate_status (v1: workstream
-                                     rows; repo-level rows land in v2d101).
+        next [options] [hash]        Print the single next action. With <hash>: the
+                                     workstream-stage rows (v1). Without: the full
+                                     repo-level 12-row dispatcher table over
+                                     backlogs, PRs + CI, and .devx-cache state
+                                     (v2d101).
         plan-helper                  Helpers invoked by the /devx-plan skill body
                                      (Phase 1). Subcommand-driven; mirrors \`devx
                                      merge-gate\`'s passthrough pattern.

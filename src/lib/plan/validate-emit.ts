@@ -49,6 +49,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 
+import { blankFencedLines } from "../backlog/parse.js";
 import {
   type DeriveBranchConfig,
   deriveBranch,
@@ -125,9 +126,15 @@ export interface ValidateEmitResult {
   issues: ValidationIssue[];
   /** True iff the epic file was found and validation ran. False → exit 2. */
   epicFound: boolean;
-  /** Path of the epic file we tried to read (for the error message in
-   *  the epic-not-found case). */
+  /** Path of the epic file the validator used (or, when not found, the
+   *  frozen-archive path — kept for pre-v2d101 caller compatibility). */
   epicPath: string;
+  /** Which source resolved (v2d101): `_devx/workstreams/<slug>/plan.md`
+   *  wins; the frozen `_bmad-output/planning-artifacts/epic-<slug>.md` is
+   *  the historical fallback. Null when neither exists. */
+  source: "workstream-plan" | "frozen-epic" | null;
+  /** Every path probed, resolution order — for the not-found message. */
+  triedPaths: string[];
 }
 
 const realFs: ValidateEmitFs = {
@@ -165,11 +172,39 @@ export function validateEmit(
     exists: (p) => rawFs.exists(p),
     readdir: (p) => rawFs.readdir(p),
   };
-  const epicRel = `_bmad-output/planning-artifacts/epic-${inputs.epicSlug}.md`;
-  const epicPath = join(inputs.repoRoot, epicRel);
 
-  if (!fs.exists(epicPath)) {
-    return { issues: [], epicFound: false, epicPath };
+  // --- Resolution (v2d101): the v2 engine's workstream plan wins; the
+  //     frozen-archive epic file (`_bmad-output/planning-artifacts/`) is
+  //     the fallback for historical slugs. `_bmad-output/` is a read-only
+  //     archive — it never gains new epics, so a new slug that misses
+  //     both paths is a genuine not-found.
+  const wsRoot = workstreamsRootFrom(inputs.config);
+  const planRel = `${wsRoot}/${inputs.epicSlug}/plan.md`;
+  const planPath = join(inputs.repoRoot, ...planRel.split("/"));
+  const archiveRel = `_bmad-output/planning-artifacts/epic-${inputs.epicSlug}.md`;
+  const archivePath = join(inputs.repoRoot, archiveRel);
+  const triedPaths = [planPath, archivePath];
+
+  let source: "workstream-plan" | "frozen-epic";
+  let epicPath: string;
+  let epicRel: string;
+  if (fs.exists(planPath)) {
+    source = "workstream-plan";
+    epicPath = planPath;
+    epicRel = planRel;
+  } else if (fs.exists(archivePath)) {
+    source = "frozen-epic";
+    epicPath = archivePath;
+    epicRel = archiveRel;
+  } else {
+    // epicPath stays the archive path — pre-v2d101 callers pattern-match it.
+    return {
+      issues: [],
+      epicFound: false,
+      epicPath: archivePath,
+      source: null,
+      triedPaths,
+    };
   }
 
   const epicBody = fs.readFile(epicPath);
@@ -215,7 +250,16 @@ export function validateEmit(
   }
 
   // --- 1) Epic story headings → dev specs exist. ------------------------
-  const storyHashes = parseStoryHashes(epicBody);
+  //     Story-hash extraction is source-shaped: frozen-archive epics
+  //     (`_bmad-output/`) use `### <hash> — <title>` headings; v2
+  //     workstream plans use `(dev spec: <hash>)` markers on the Phase
+  //     checklist plus `dev/dev-<hash>-…` execution-tracker references
+  //     (one plan phase ≙ one dev spec, D-12). Check names stay identical
+  //     across both sources.
+  const storyHashes =
+    source === "workstream-plan"
+      ? parsePlanStoryHashes(epicBody)
+      : parseStoryHashes(epicBody);
   const storyHashSet = new Set(storyHashes.map((s) => s.hash));
   for (const { hash, line } of storyHashes) {
     if (!specByHash.has(hash)) {
@@ -236,6 +280,7 @@ export function validateEmit(
   //         tracked by the epic. A spec left behind after a story rename or
   //         scope-cut is the regression class this catches. ------------
   const epicFromMarker = `epic-${inputs.epicSlug}.md`;
+  const wsDirMarker = `${wsRoot}/${inputs.epicSlug}`;
   for (const fn of sortedDevFiles) {
     const m = fn.match(/^dev-([a-z0-9]{3,12})-/i);
     if (!m) continue;
@@ -245,6 +290,30 @@ export function validateEmit(
     try {
       body = fs.readFile(join(inputs.repoRoot, "dev", fn));
     } catch {
+      continue;
+    }
+    if (source === "workstream-plan") {
+      // v2 shape: a spec claims the workstream via `from:` naming its
+      // plan.md, or via a `workstream:` frontmatter pointer. Boundary-
+      // anchored match rather than endsWith: `from: <path> (phase 2)`
+      // trailing text must still count, and a suffix collision like
+      // `backup_devx/workstreams/<slug>/plan.md` must NOT (EC#13).
+      const fromVal = parseFrontmatterValue(body, "from");
+      const wsVal = parseFrontmatterValue(body, "workstream");
+      const fromClaimRe = new RegExp(
+        `(?:^|[\\s('"\`])${escapeRe(wsDirMarker)}/plan\\.md(?:$|[\\s)'"\`,;])`,
+      );
+      const claims =
+        (fromVal !== null && fromClaimRe.test(fromVal)) ||
+        wsVal === wsDirMarker;
+      if (claims) {
+        issues.push({
+          severity: "error",
+          check: "orphan-spec-claims-epic",
+          message: `spec for '${hash}' claims workstream '${wsDirMarker}' but no phase in plan.md tracks it`,
+          location: `dev/${fn}`,
+        });
+      }
       continue;
     }
     const fromVal = parseFrontmatterValue(body, "from");
@@ -293,9 +362,13 @@ export function validateEmit(
   //         was retired by v2x101 D-7: sprint-status.yaml is frozen and
   //         never written again, so requiring rows there would abort every
   //         post-v2 planning run.) ---
-  const nonRetroHashes = storyHashes
-    .map((s) => s.hash)
-    .filter((h) => !h.endsWith("ret"));
+  //     v2 workstream plans SKIP this check: the retro is the `/devx retro`
+  //     stage (D-3 re-target), not an emitted `<prefix>ret` spec, so
+  //     requiring the trifecta would fail every v2 planning run.
+  const nonRetroHashes =
+    source === "workstream-plan"
+      ? []
+      : storyHashes.map((s) => s.hash).filter((h) => !h.endsWith("ret"));
   if (nonRetroHashes.length > 0) {
     const prefix = nonRetroHashes[0].slice(0, 3);
     const retroHash = `${prefix}ret`;
@@ -419,7 +492,26 @@ export function validateEmit(
     }
   }
 
-  return { issues, epicFound: true, epicPath };
+  return { issues, epicFound: true, epicPath, source, triedPaths };
+}
+
+/**
+ * Read `engine.workstreams_root` off the config blob (the CLI passes the
+ * full merged config through DeriveBranchConfig's structural type).
+ * Default matches ENGINE_DEFAULTS.workstreamsRoot — duplicated as a
+ * literal here to keep plan/* free of an engine/* import back-edge.
+ */
+function workstreamsRootFrom(config: unknown): string {
+  if (config && typeof config === "object" && !Array.isArray(config)) {
+    const engine = (config as Record<string, unknown>).engine;
+    if (engine && typeof engine === "object" && !Array.isArray(engine)) {
+      const v = (engine as Record<string, unknown>).workstreams_root;
+      if (typeof v === "string" && v.trim() !== "") {
+        return v.trim().replace(/\/+$/, "");
+      }
+    }
+  }
+  return "_devx/workstreams";
 }
 
 // ---------------------------------------------------------------------------
@@ -479,6 +571,64 @@ export function parseStoryHashes(epicBody: string): StoryHashRef[] {
   for (let i = 0; i < lines.length; i++) {
     const m = lines[i].match(STORY_HEADING_RE);
     if (m) hits.push({ hash: m[1], line: i + 1 });
+  }
+  return hits;
+}
+
+/**
+ * v2 workstream-plan story extraction (v2d101). One plan phase ≙ one dev
+ * spec (D-12); the emitted linkage shows up as either (or both):
+ *
+ *   - a `(dev spec: <hash>)` marker on a `## Phase checklist` entry
+ *     (`- [x] Phase 1: the ejection PR (dev spec: v2x101)`), or
+ *   - a backticked `dev/dev-<hash>-…` reference on an "Execution tracker"
+ *     line inside a phase's Overview (the v2x101 plan.md shape).
+ *
+ * Dedup keeps the first occurrence's line number. Two precision guards
+ * (adversarial-review BH#10/EC#8):
+ *   - fenced code blocks are blanked first (blankFencedLines — the same
+ *     primitive backlog/parse.ts uses), so a fenced example row can't
+ *     become a phantom story that hard-fails check 1;
+ *   - pass 2 only reads lines carrying the "Execution tracker" marker —
+ *     a plan phase's **Files:** bullets and cross-workstream "depends on
+ *     `dev/dev-…`" prose must not count as THIS plan's stories.
+ */
+export function parsePlanStoryHashes(planBody: string): StoryHashRef[] {
+  const lines = blankFencedLines(planBody.split("\n"));
+  const hits: StoryHashRef[] = [];
+  const seen = new Set<string>();
+  const push = (hash: string, line: number): void => {
+    const h = hash.toLowerCase();
+    if (seen.has(h)) return;
+    seen.add(h);
+    hits.push({ hash: h, line });
+  };
+
+  // 1) Phase-checklist markers (the canonical linkage).
+  let inChecklist = false;
+  const MARKER_RE = /\(dev spec:\s*([a-z0-9]{3,12})\)/gi;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^## Phase checklist\s*$/.test(line)) {
+      inChecklist = true;
+      continue;
+    }
+    if (inChecklist && line.startsWith("## ")) inChecklist = false;
+    if (!inChecklist) continue;
+    for (const m of line.matchAll(MARKER_RE)) push(m[1], i + 1);
+  }
+
+  // 2) Execution-tracker references. The marker may sit on the line above
+  // the backticked path (the v2x101 plan wraps mid-sentence), so a line
+  // qualifies when it — or its predecessor — names the tracker.
+  const TRACKER_RE = /`dev\/dev-([a-z0-9]{3,12})-[^`\n]*\.md`/gi;
+  const TRACKER_MARKER_RE = /execution tracker/i;
+  for (let i = 0; i < lines.length; i++) {
+    const qualifies =
+      TRACKER_MARKER_RE.test(lines[i]) ||
+      (i > 0 && TRACKER_MARKER_RE.test(lines[i - 1]));
+    if (!qualifies) continue;
+    for (const m of lines[i].matchAll(TRACKER_RE)) push(m[1], i + 1);
   }
   return hits;
 }

@@ -804,3 +804,172 @@ describe("claimSpec — input validation", () => {
     ).rejects.toMatchObject({ name: "ClaimError", stage: "resolve" });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Layer 4 — debug-type claims (v2d101 debug loop)
+// ---------------------------------------------------------------------------
+
+const SAMPLE_DEBUG_MD = `# DEBUG
+
+- [ ] \`debug/debug-bug001-2026-07-05T12:00-broken-thing.md\` — Broken thing. Status: ready.
+- [/] \`debug/debug-bug002-2026-07-05T12:00-other-thing.md\` — Other thing. Status: in-progress.
+`;
+
+const SAMPLE_DEBUG_SPEC = `---
+hash: bug001
+type: debug
+created: 2026-07-05T12:00:00-06:00
+title: Broken thing
+status: ready
+branch: feat/debug-bug001
+---
+
+## Goal
+
+Expected behavior restored; repro exists; root cause documented.
+
+## Status log
+
+- 2026-07-05T12:00 — filed.
+`;
+
+describe("flipDevMdRow — debug type (v2d101)", () => {
+  it("flips a DEBUG.md row when type is 'debug'", () => {
+    const out = flipDevMdRow(SAMPLE_DEBUG_MD, "bug001", "debug");
+    expect(out).toContain(
+      "- [/] `debug/debug-bug001-2026-07-05T12:00-broken-thing.md` — Broken thing. Status: in-progress.",
+    );
+  });
+
+  it("does not match dev rows when flipping debug (and vice versa)", () => {
+    expect(() => flipDevMdRow(SAMPLE_DEV_MD, "dvx101", "debug")).toThrow(
+      /no DEBUG.md row found/,
+    );
+    expect(() => flipDevMdRow(SAMPLE_DEBUG_MD, "bug001")).toThrow(
+      /no DEV.md row found/,
+    );
+  });
+
+  it("already-claimed debug rows throw the same 'already claimed' signal", () => {
+    expect(() => flipDevMdRow(SAMPLE_DEBUG_MD, "bug002", "debug")).toThrow(
+      /already claimed/,
+    );
+  });
+});
+
+describe("findSpecForHash — type parameter (v2d101)", () => {
+  it("resolves debug specs under debug/", () => {
+    const files: Record<string, string[]> = {
+      "/repo/debug": ["debug-bug001-2026-07-05T12:00-broken-thing.md"],
+    };
+    const fs: ClaimFs = {
+      ...nullFs(),
+      exists: (p) => Object.keys(files).some((k) => p === k),
+      readdir: (p) => files[p] ?? [],
+    };
+    expect(findSpecForHash(fs, "/repo", "bug001", "debug")).toBe(
+      "/repo/debug/debug-bug001-2026-07-05T12:00-broken-thing.md",
+    );
+    // Default type stays dev — no cross-dir match.
+    expect(findSpecForHash(fs, "/repo", "bug001")).toBeNull();
+  });
+});
+
+describe("claimSpec — debug type (v2d101)", () => {
+  function makeDebugFixture(): {
+    fs: ClaimFs;
+    state: FakeFsState;
+    baseOpts: Pick<ClaimSpecOpts, "sessionId" | "repoRoot" | "config" | "now">;
+  } {
+    const initial: Record<string, string> = {
+      [`${REPO}/DEBUG.md`]: SAMPLE_DEBUG_MD,
+      [`${REPO}/debug/debug-bug001-2026-07-05T12:00-broken-thing.md`]:
+        SAMPLE_DEBUG_SPEC,
+    };
+    const { fs, state } = makeFakeFs(initial);
+    return {
+      fs,
+      state,
+      baseOpts: {
+        sessionId: "test-sid",
+        repoRoot: REPO,
+        config: STD_CONFIG,
+        now: () => new Date(2026, 6, 5, 12, 0, 0),
+      },
+    };
+  }
+
+  it("claims a DEBUG.md item: DEBUG.md row flip + debug worktree stem + derived branch", async () => {
+    const { fs, state, baseOpts } = makeDebugFixture();
+    const { exec, calls } = makeFakeExec();
+    const result = await claimSpec("bug001", {
+      ...baseOpts,
+      fs,
+      exec,
+      type: "debug",
+    });
+    expect(result.branch).toBe("feat/debug-bug001");
+    expect(result.lockPath).toBe("/repo/.devx-cache/locks/spec-bug001.lock");
+
+    // DEBUG.md row flipped; DEV.md never touched (it doesn't even exist).
+    const debugMdAfter = state.files.get(`${REPO}/DEBUG.md`) as string;
+    expect(debugMdAfter).toContain(
+      "- [/] `debug/debug-bug001-2026-07-05T12:00-broken-thing.md` — Broken thing. Status: in-progress.",
+    );
+
+    // Spec frontmatter + status log updated identically to dev claims.
+    const specAfter = state.files.get(
+      `${REPO}/debug/debug-bug001-2026-07-05T12:00-broken-thing.md`,
+    ) as string;
+    expect(specAfter).toContain("status: in-progress");
+    expect(specAfter).toContain("owner: /devx-test-sid");
+
+    // Worktree stem is .worktrees/debug-<hash> per the CLAUDE.md convention.
+    const wtCall = calls.find(
+      (c) => c.cmd === "git" && c.args[0] === "worktree" && c.args[1] === "add",
+    );
+    expect(wtCall?.args).toEqual([
+      "worktree",
+      "add",
+      "/repo/.worktrees/debug-bug001",
+      "-b",
+      "feat/debug-bug001",
+      "main",
+    ]);
+
+    // Push-before-worktree invariant holds for debug claims too.
+    const pushIdx = calls.findIndex(
+      (c) => c.cmd === "git" && c.args[0] === "push",
+    );
+    const wtIdx = calls.findIndex(
+      (c) => c.cmd === "git" && c.args[0] === "worktree",
+    );
+    expect(pushIdx).toBeLessThan(wtIdx);
+
+    // git add staged DEBUG.md + the debug spec (not DEV.md).
+    const addCall = calls.find((c) => c.cmd === "git" && c.args[0] === "add");
+    expect(addCall?.args).toContain("DEBUG.md");
+    expect(
+      addCall?.args.some((a) => a.startsWith("debug/debug-bug001-")),
+    ).toBe(true);
+  });
+
+  it("rejects unclaimable spec types with ClaimError('validate')", async () => {
+    const { fs, baseOpts } = makeDebugFixture();
+    const { exec } = makeFakeExec();
+    await expect(
+      claimSpec("bug001", { ...baseOpts, fs, exec, type: "plan" }),
+    ).rejects.toMatchObject({ name: "ClaimError", stage: "validate" });
+    await expect(
+      claimSpec("bug001", { ...baseOpts, fs, exec, type: "qa" }),
+    ).rejects.toMatchObject({ name: "ClaimError", stage: "validate" });
+  });
+
+  it("resolve failure names the debug path when the debug spec is missing", async () => {
+    const { fs, baseOpts } = makeDebugFixture();
+    const { exec } = makeFakeExec();
+    await expect(
+      claimSpec("zzz999", { ...baseOpts, fs, exec, type: "debug" }),
+    ).rejects.toThrow(/debug\/debug-zzz999-\*\.md/);
+  });
+});

@@ -138,7 +138,7 @@ function stripCR(line: string): string {
  * (BH#2 fence-state, EC#3 answer-marker false positive). Pre-stripping the
  * fenced lines closes both via the same primitive.
  */
-function blankFencedLines(lines: string[]): string[] {
+export function blankFencedLines(lines: string[]): string[] {
   let inFence = false;
   return lines.map((line) => {
     if (/^[ \t]*```/.test(line)) {

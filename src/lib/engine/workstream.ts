@@ -410,9 +410,12 @@ export function resolveWorkstream(
   };
 }
 
-/** findSpecForHashIn but routed through the fs seam (for tests). */
-function findSpecForHashInFs(
-  fs: EngineFs,
+/** findSpecForHashIn but routed through the fs seam (for tests). Exported
+ *  for the v2d101 repo-level gatherer (src/lib/next/gather.ts) so the spec
+ *  resolution stays single-sourced. Minimal fs shape so read-only seams
+ *  (NextFs) qualify structurally. */
+export function findSpecForHashInFs(
+  fs: Pick<EngineFs, "exists" | "readdir">,
   repoRoot: string,
   specDir: string,
   hash: string,
