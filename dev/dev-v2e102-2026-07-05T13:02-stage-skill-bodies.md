@@ -5,7 +5,7 @@ created: 2026-07-05T13:02:00-06:00
 title: V2.1-B — stage skill bodies (prd / design / plan / red)
 from: v2/06-phases.md
 plan: v2/
-status: in-review
+status: done
 owner: /devx-2026-07-05T1044-87192
 blocked_by: [v2e101]
 branch: feat/dev-v2e102
@@ -52,3 +52,4 @@ body, calling the v2e101 primitives, per `v2/02-engine.md` §4. USER-FOREGROUND
 - 2026-07-05T10:44:39-06:00 — claimed by /devx in session /devx-2026-07-05T1044-87192
 - 2026-07-05T11:05 — implemented: /devx-plan rewritten as the four engine stages (36KB → ~14KB incl. verbatim v1 Hand-off port); prose canary now covers the skill body; discipline tests refit (pln104/pln105/pln106 lineage preserved in v2 shape). Dogfood: v2x101 workstream driven PRD→Design→Plan(+4-lens critique)→RED — all four gates PASS; seeded defect (E-2 missing Threshold) refused correctly; fix-forward: parseExpectations wrapped-field folding (v2e101 parser bug surfaced by the first real gate run, regression-tested).
 - 2026-07-05T11:05 — phase 4: self-review — 13 findings (1 seeded-defect probe + 4 from live gate refusals incl. the wrapped-field parser bug + 8 accepted critique-lens findings incl. 1 HIGH wrong-schema-path in the E-2 eval), all fixed; 2 lens findings rejected with rationale in decisions/2026-07-05-plan-critique.md.
+- 2026-07-05T11:15 — PR https://github.com/LeoTheMighty/devx/pull/63 merged (7c81b34); worktree removed; lock released. V2.1 closed 2/2.
