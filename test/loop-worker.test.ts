@@ -1,6 +1,7 @@
 // Worker session runner (v2l101 — src/lib/loop/worker.ts): prompt-as-argv,
 // output capture, grace-kill arming, token estimation.
 
+import { spawn } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 import { WorkerTimeoutError, estimateTokens, makeClaudeWorker } from "../src/lib/loop/worker.js";
@@ -8,18 +9,17 @@ import { WorkerTimeoutError, estimateTokens, makeClaudeWorker } from "../src/lib
 const REPORT =
   '```json\n{"success":true,"summary":"s","key_changes_made":[],"key_learnings":["l"],"acs_met":false}\n```';
 
-/** Worker backed by `node -e` so the test drives a REAL child process. */
+/** Worker backed by `node -e` so the test drives a REAL child process.
+ *  The spawn seam replaces the claude argv entirely — relying on
+ *  `node -p <prompt> -e <script>` last-flag-wins semantics broke on CI
+ *  (node 20 resolves the flags differently than node 24; both grace-kill
+ *  tests hung 15s → PR #67 CI red). The seam keeps every real-process
+ *  property the tests exercise (own process group, pipes, kill -pid). */
 function nodeWorker(script: string, graceKillMs?: number) {
   return makeClaudeWorker({
     claudeBin: process.execPath,
     ...(graceKillMs !== undefined ? { graceKillMs } : {}),
-    // `claude -p <prompt>` shape → `node -p <prompt>`? No: we override argv
-    // entirely by treating the prompt as an ignored first arg and running
-    // our script via extraArgs. Layout: node -p <prompt-expr> would eval the
-    // prompt; instead use extraArgs to append `-e <script>` AFTER `-p
-    // <prompt>`... node treats the LAST -e/-p as the program, so the script
-    // wins and the prompt stays inert data.
-    extraArgs: ["-e", script],
+    spawnFn: (_bin, _args, opts) => spawn(process.execPath, ["-e", script], opts),
   });
 }
 
@@ -88,7 +88,7 @@ describe("iteration wall-clock ceiling (BH/EC hang immunity)", () => {
   it("a worker that never reports and never exits is killed at the ceiling and surfaces as an error", async () => {
     const worker = makeClaudeWorker({
       claudeBin: process.execPath,
-      extraArgs: ["-e", "setInterval(() => {}, 1000);"],
+            spawnFn: (_bin, _args, opts) => spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], opts),
       iterationTimeoutMs: 300,
     });
     const started = Date.now();
@@ -104,7 +104,7 @@ describe("iteration wall-clock ceiling (BH/EC hang immunity)", () => {
       // Ceiling is generous vs node's startup time so the write always
       // lands BEFORE the kill, even under full-suite parallel load (a
       // 500ms ceiling flaked when child startup exceeded it).
-      extraArgs: ["-e", `process.stdout.write("x".repeat(400)); setInterval(() => {}, 1000);`],
+      spawnFn: (_bin, _args, opts) => spawn(process.execPath, ["-e", `process.stdout.write("x".repeat(400)); setInterval(() => {}, 1000);`], opts),
       iterationTimeoutMs: 5_000,
     });
     let caught: unknown;
@@ -128,10 +128,7 @@ describe("final-report anchoring (LOW-12 — grace-kill arms only on a TRAILING 
     // iteration ceiling must be what ends the session (rejection).
     const worker = makeClaudeWorker({
       claudeBin: process.execPath,
-      extraArgs: [
-        "-e",
-        `process.stdout.write(${JSON.stringify(REPORT)}); process.stdout.write("\\n...still working on cleanup...\\n"); setInterval(() => {}, 1000);`,
-      ],
+            spawnFn: (_bin, _args, opts) => spawn(process.execPath, ["-e", `process.stdout.write(${JSON.stringify(REPORT)}); process.stdout.write("\\n...still working on cleanup...\\n"); setInterval(() => {}, 1000);`], opts),
       graceKillMs: 100,
       iterationTimeoutMs: 1_500,
     });
@@ -141,10 +138,7 @@ describe("final-report anchoring (LOW-12 — grace-kill arms only on a TRAILING 
   it("a report as the FINAL content still arms the grace-kill (existing contract intact)", async () => {
     const worker = makeClaudeWorker({
       claudeBin: process.execPath,
-      extraArgs: [
-        "-e",
-        `process.stdout.write("preamble work log\\n"); process.stdout.write(${JSON.stringify(REPORT)}); setInterval(() => {}, 1000);`,
-      ],
+            spawnFn: (_bin, _args, opts) => spawn(process.execPath, ["-e", `process.stdout.write("preamble work log\\n"); process.stdout.write(${JSON.stringify(REPORT)}); setInterval(() => {}, 1000);`], opts),
       graceKillMs: 200,
       iterationTimeoutMs: 30_000,
     });
