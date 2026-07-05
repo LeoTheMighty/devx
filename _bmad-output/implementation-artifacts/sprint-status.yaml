@@ -372,7 +372,7 @@ plans:
 
       - key: epic-devx-manage-minimal
         title: /devx-manage v0 (minimal scheduler + supervisor)
-        status: backlog
+        status: done
         stories:
           - key: mgr101
             title: Manager scaffold + devx manage --once single-tick CLI
@@ -400,7 +400,7 @@ plans:
             blocked_by: [mgr101]
           - key: mgrret
             title: Retro + LEARN.md updates (interim retro discipline)
-            status: backlog
+            status: done
             blocked_by: [mgr101, mgr102, mgr103, mgr104, mgr105, mgr106]
           - key: roc101
             title: /devx Phase 1 resume-detection — verify-claim CLI + skill-body wire-up

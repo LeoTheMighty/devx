@@ -191,19 +191,18 @@ skill is branch-model-aware; values below are this project's resolution.
 2. **Worktree**: `git worktree add .worktrees/dev-<hash> -b feat/dev-<hash>
    main`.
 3. **BMAD story**: `bmad-create-story` if no story file exists; otherwise
-   read the existing one. *Empirically across 9 shipped epics (Phase 0 +
-   Phase 1's first 4 epics; 43/43 stories: aud × 3, cfg × 4, cli × 5, sup × 5,
-   ini × 8, mrg × 3, prt × 2, pln × 6, dvx × 7) this step has been skipped
-   because spec ACs already cover what `bmad-create-story` would generate;
-   the contract-vs-reality drift is tracked in `LEARN.md § Cross-epic
-   patterns` and reaffirmed in every retro to date (audret + cfgret + cliret
-   + supret + iniret + mrgret + prtret + plnret + dvxret). **Structurally
-   closed at the contract level by dvx102** (`shouldCreateStory()` +
-   `_internal.skip_create_story_canary` flag + `devx devx-helper
-   should-create-story` CLI), but the canary ships off — v0 behavior
-   preserved. The behavior shift (flip canary to `"active"`) remains
-   user-review-required per `self_healing.user_review_required_for:
-   [skills]`.*
+   read the existing one. *Empirically across all 10 shipped epics (Phase 0 +
+   all 5 Phase 1 epics; 49/49 stories — FINAL count: aud × 3, cfg × 4,
+   cli × 5, sup × 5, ini × 8, mrg × 3, prt × 2, pln × 6, dvx × 7, mgr × 6)
+   this step has been skipped because spec ACs already cover what
+   `bmad-create-story` would generate; the contract-vs-reality drift is
+   tracked in `LEARN.md § Cross-epic patterns` and reaffirmed in every retro
+   (audret + cfgret + cliret + supret + iniret + mrgret + prtret + plnret +
+   dvxret + mgrret). **Structurally closed at the contract level by dvx102**
+   (`shouldCreateStory()` + `_internal.skip_create_story_canary` flag +
+   `devx devx-helper should-create-story` CLI), but the canary shipped off
+   and never flipped — per `v2/01-bmad-capture.md` the v2 migration retires
+   `bmad-create-story` (and the canary machinery) entirely.*
 4. **Implement**: `bmad-dev-story`, red-green-refactor, all tasks/subtasks.
 5. **Self-review**: `bmad-code-review` adversarially; fix all findings
    automatically; re-review.
@@ -265,9 +264,9 @@ Full contract: `.claude/commands/devx.md`.
 - **Self-review is non-skippable.** Every dev story runs `bmad-code-review`
   after implementation, fixes ALL findings (HIGH/MED/LOW) without asking,
   and re-runs to verify. Empirically (LEARN.md cross-epic patterns) this
-  catches real semantics bugs every time across 8 shipped epics — all 5
-  Phase 0 epics + Phase 1's first 3 epics (mrg + prt + pln). It pays for
-  itself on every run. Skip this step and load-bearing bugs ship. The
+  catches real semantics bugs every time across all 10 shipped epics — all 5
+  Phase 0 epics + all 5 Phase 1 epics (mrg + prt + pln + dvx + mgr). It pays
+  for itself on every run. Skip this step and load-bearing bugs ship. The
   correct shape when there's nothing to fix is explicit-zero ("self-review
   found nothing actionable"), not omission — see `LEARN.md §
   epic-merge-gate-modes` E7. **For substantial-surface stories (>500 lines
@@ -301,7 +300,7 @@ CLI (PR #20), CLI skeleton (PR #21), OS supervisor scaffold (PR #22),
 `/devx-init` skill (PR #30). 25 parent stories across the 5 epics; +225
 net tests in the ini epic alone (largest of any Phase 0 epic).
 
-## Status: Phase 1 — Single-agent core loop (in flight, 4/5 epics shipped)
+## Status: Phase 1 — Single-agent core loop (closed 2026-07-05, 5/5 epics shipped + retroed)
 
 epic-merge-gate-modes shipped (PRs #31 mrg101 + #32 mrg102 + #33 mrg103 +
 #34 mrgret). +92 net tests across the 3 stories. Delivers the single
@@ -357,6 +356,33 @@ pr-body` and gated via `devx merge-gate`. Filed `dev-roc101` follow-up
 (resume-detection / verify-claim) as load-bearing for Phase 2's
 mgr104 worker-spawn discipline — see LEARN.md § epic-devx-skill E13.
 
-1 epic remaining: epic-devx-manage-minimal (was blocked-by dvxret;
-unblocked after this PR merges). Mobile companion v0.1 runs in parallel
-from Phase 8.
+epic-devx-manage-minimal shipped (PRs #53 mgr101 + #54 mgr102 + #55
+mgr103 + #56 mgr104 + #57 mgr105 + #58 mgr106 + mgrret). +263 net tests
+across the 6 stories (1046 → 1309) — **largest growth of any epic to
+date** (dvx +255, ini +225). All six stories shipped in a single
+calendar day (2026-05-07, ~7h45m) — the fastest multi-story epic by
+wall-clock. Delivers the v0 `/devx-manage` scheduler under
+`src/lib/manage/`: `devx manage --once` single-tick CLI + loop driver
+(mgr101), atomic tmp+rename state persistence for
+schedule/manager/heartbeat JSON with crash-mid-write recovery (mgr102),
+pure `reconcile()` + shared backlog parser `src/lib/backlog/parse.ts`
+with `HARD_CAP_PHASE_1 = 1` (mgr103), detached `claude /devx <hash>`
+worker spawn with log rotation (mgr104), crash backoff + max-restarts
+gate + manager-restart PID-recovery (mgr105), and O_EXCL manager lock
+with stale-PID + PID-recycling cross-check + SIGTERM-clean drain
+(mgr106). First epic where every story used 3-agent parallel
+adversarial review (~97 unique actionable findings, all fixed
+in-place). mgrret (retro PR) promoted "atomic state writes via
+tmp+rename" to `LEARN.md § Cross-epic patterns` (sup + ini + pln + mgr
+= 4 epics) and wired `npm run typecheck` into the local `npm test`
+gate (closes the twice-recurring typecheck-only CI-red class from
+mgr102 + mgr104).
+
+**Phase 1 is closed — and with it the BMAD era.** Phase 1 totals: 24
+parent stories + 5 retros, +863 net tests (mrg ~92 + prt ~46 + pln ~207
++ dvx ~255 + mgr ~263). mgrret is the FINAL BMAD-era retrospective;
+sprint-status.yaml received its last touch in the mgrret PR. Next work
+happens under the v2 migration (`v2/README.md`: native engine, review
+tours, universal dispatcher, overnight loop); `dev-roc101`
+(verify-claim) is carried forward as a v2 dispatcher design input.
+Mobile companion v0.1 runs in parallel from Phase 8.
