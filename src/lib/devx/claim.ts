@@ -656,9 +656,15 @@ export async function claimSpec(
       `git add failed (exit ${addResult.exitCode}): ${addResult.stderr.trim()}`,
     );
   }
+  // Pathspec-limited commit (v2l101 BH-MED-5 follow-through): a bare
+  // `git commit -m` commits the ENTIRE staged index — anything the user
+  // left staged in the main worktree (an overnight `devx loop` claims
+  // while they sleep) would be silently swept into the claim commit and
+  // pushed to origin. With the trailing pathspec, only the two claim
+  // files are committed regardless of index state.
   const commitResult = exec(
     "git",
-    ["commit", "-m", commitMessage],
+    ["commit", "-m", commitMessage, "--", relativeDevMd, relativeSpec],
     { cwd: opts.repoRoot },
   );
   if (commitResult.exitCode !== 0) {

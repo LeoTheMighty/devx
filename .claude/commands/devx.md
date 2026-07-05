@@ -481,6 +481,33 @@ a reply, a commit, or a filed spec — never silent resolution.
 5. If the PR carried a hold, ask the reviewer to lift it (reply summarizing
    dispositions); the merge tail re-checks via `check-hold`.
 
+## Stage: Loop (`/devx loop` — good night, have fun)
+
+Unattended operation. The trust model is transactional git + the failure
+ladder + merge-gate — NOT permission bypass (D-6; LOCKDOWN refuses the loop
+entirely).
+
+1. Entry: `devx loop [--until <HH:MM>] [--max-items N] [--max-tokens N]
+   [--only <type>] [--dry-run]`. Budgets come from `devx.config.yaml →
+   loop:`; flags override downward only. Run `--dry-run` first when the
+   user is present and show them the plan.
+2. The CLI owns the loop: item pick (reconcile), worker spawn, the
+   iteration contract (fresh session per iteration; smallest verifiable
+   slice; structured report), commit-or-reset transactions, the failure
+   ladder (reported → continue; hard error → backoff; permanent → abort;
+   3 strikes → abandon item, preserve worktree; 3 abandoned → stop), and
+   the morning report. The skill's job is to start it, not to be it.
+3. **Loop completion is not acceptance (D-11).** `acs_met` routes items
+   into the normal PR + CI + merge-gate tail; nothing reaches main any
+   other way.
+4. Workers inside the loop obey the iteration contract verbatim: read the
+   status log first, never commit, never edit the status log (the loop
+   owns both), report failure instead of pivoting forever, stop background
+   processes before finishing.
+5. Morning: the first `/devx` of the day runs the morning review
+   (dispatcher Routing rule 1) — reconstruct from disk, read the report's
+   claims as claims, verify merges via `gh pr view` before trusting them.
+
 ## Stage: Retro (native, replaces the retrospective workflow)
 
 Runs at epic/workstream close (the `*ret` item). Contract (D-3): the

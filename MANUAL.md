@@ -83,3 +83,11 @@ declined. If/when this project upgrades to BETA or PROD, revisit.
   - Blocks: nothing immediate. The status-log terseness is currently harmless (no consumer reads the logs except this retro pass) but becomes a behavior bug the moment LearnAgent lands and tries to harvest signal from per-phase milestone history.
   - User-review-required because `self_healing.user_review_required_for: [skills]`.
   - Source: `LEARN.md § Cross-epic patterns` row "Status-log terseness pattern (corrective-needs-promotion)", `_bmad-output/implementation-artifacts/epic-devx-plan-skill-retro-2026-05-05.md` §3.1.
+
+## For V2.5 — overnight loop (filed by v2l101)
+
+- [ ] **MV2.1 — Run the S-3 supervised night, then a real night.**
+  - Why: v2/00-vision.md S-3 ("an overnight `devx loop` run completes ≥3 backlog items unattended, with every failure either recovered or cleanly rolled back, and produces a morning report reconstructable from disk alone") is a *behavioral* acceptance criterion — it can only be verified by actually running the loop, and the first run should be supervised (v2/06-phases.md § V2.5 "First supervised night (Leo awake), then first real night").
+  - How: (1) with Leo awake, run `devx loop --dry-run` and review the plan; then `devx loop --until <bedtime+2h> --max-items 2` and watch one full item cycle (claim → iterations → PR → merge tail → report). (2) If the supervised run behaves, pick a real night: `devx loop --until 07:30`. (3) In the morning, run `devx next` (row 1 reads the report) and verify every claim from disk — `git log --oneline`, `gh pr view` per PR, preserved-worktree paths for any abandoned item.
+  - Blocks: S-3 sign-off (v2/06-phases.md § V2.5 exit AC). The chaos test ships in-repo (`test/loop-chaos.test.ts`); this item is the human half.
+  - Spec: `dev/dev-v2l101-2026-07-05T13:06-overnight-loop.md`.

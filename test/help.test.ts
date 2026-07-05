@@ -219,6 +219,9 @@ describe("cli303 — devx --help command listing", () => {
                                      spec's engine frontmatter.
         ask                          (coming in Phase 2 — epic-devx-concierge-skill)
         kill                         (coming in Phase 2 — epic-devx-concierge-skill)
+        loop [options]               Run the overnight loop: claim backlog items,
+                                     iterate with fresh worker sessions, merge on
+                                     green, write a morning report (LOCKDOWN refuses)
         pause                        (coming in Phase 2 — epic-devx-manage-minimal)
         restart                      (coming in Phase 2 — epic-devx-concierge-skill)
         resume                       (coming in Phase 2 — epic-devx-manage-minimal)
