@@ -259,6 +259,13 @@ each goal vs reality into `RESULTS.md` with verdict
 `keep | tune (cascade-reopen keyed to missed E-ids) | restart (linked v2
 workstream) | retire`. This closes a loop v1 never had.
 
+*(Shipped-reality note, appended at v2o101 2026-07-05: tune's implemented
+reopen is verification-scoped — `evals_red` clears and the stage rolls back
+to `red`, replaying the missed expectations' RED artifacts via `devx gate
+evals`; a revision of the expectation/design/plan artifact itself goes
+through `devx revise` §4.9. The full §4.9 cascade is deliberately NOT
+auto-applied by a tune verdict.)*
+
 ## 5. The next-command function — `devx next [<hash>]`
 
 A pure function over frontmatter + backlogs → the single next command

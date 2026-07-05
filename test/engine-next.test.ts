@@ -24,6 +24,7 @@ function state(overrides: {
   stage?: EngineState["stage"];
   gates?: Partial<EngineState["gateStatus"]>;
   outcomeStatus?: string | null;
+  measureBy?: string | null;
 }): EngineState {
   return {
     hash: "abc123",
@@ -38,7 +39,10 @@ function state(overrides: {
       evals_red: false,
       ...(overrides.gates ?? {}),
     },
-    outcome: { status: overrides.outcomeStatus ?? null, measure_by: null },
+    outcome: {
+      status: overrides.outcomeStatus ?? null,
+      measure_by: overrides.measureBy ?? null,
+    },
     workstream: "_devx/workstreams/demo",
     blockedBy: [],
   };
@@ -81,6 +85,64 @@ describe("nextForWorkstream — decision table", () => {
     );
     expect(d.command).toBeNull();
     expect(d.row).toBe(3);
+  });
+
+  it("done + pending outcome due today → row 2 with the came-due reason (v2o101)", () => {
+    const d = nextForWorkstream(
+      "abc123",
+      state({ stage: "done", outcomeStatus: "pending", measureBy: "2026-08-02" }),
+      artifacts(),
+      "2026-08-02",
+    );
+    expect(d.row).toBe(2);
+    expect(d.command).toBe("/devx outcome abc123");
+    expect(d.reason).toContain("came due");
+    expect(d.reason).toContain("2026-08-02");
+  });
+
+  it("done + pending outcome NOT yet due → row 3 waiting, no command (v2o101)", () => {
+    const d = nextForWorkstream(
+      "abc123",
+      state({ stage: "done", outcomeStatus: "pending", measureBy: "2026-08-02" }),
+      artifacts(),
+      "2026-07-05",
+    );
+    expect(d.row).toBe(3);
+    expect(d.command).toBeNull();
+    expect(d.reason).toContain("waiting for the measurement window");
+  });
+
+  it("done + pending with a malformed measure_by counts as due (never waits forever)", () => {
+    const d = nextForWorkstream(
+      "abc123",
+      state({ stage: "done", outcomeStatus: "pending", measureBy: "someday" }),
+      artifacts(),
+      "2026-07-05",
+    );
+    expect(d.row).toBe(2);
+    expect(d.command).toBe("/devx outcome abc123");
+  });
+
+  it("done + unarmed outcome is actionable regardless of today (arm it)", () => {
+    const d = nextForWorkstream(
+      "abc123",
+      state({ stage: "done" }),
+      artifacts(),
+      "2026-07-05",
+    );
+    expect(d.row).toBe(2);
+    expect(d.command).toBe("/devx outcome abc123");
+  });
+
+  it("done + garbage outcome status ('keeep') stays actionable — never misread as scored", () => {
+    const d = nextForWorkstream(
+      "abc123",
+      state({ stage: "done", outcomeStatus: "keeep" }),
+      artifacts(),
+      "2026-07-05",
+    );
+    expect(d.row).toBe(2);
+    expect(d.command).toBe("/devx outcome abc123");
   });
 
   it("prd.md missing → /devx prd (authoring precedes the gate)", () => {

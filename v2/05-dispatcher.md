@@ -27,6 +27,7 @@ backlog files, spec frontmatter (stage + gate_status), open PRs, CI state,
 | 3 | own PR open, CI green, unmerged | run merge-gate tail (respect `devx: hold`) |
 | 4 | PR merged but spec/backlog not reconciled | cleanup phase (worktree, checkbox, status) |
 | 5 | spec claimed by me, in-progress | resume it (after roc101 owner check) |
+| 5.5 | a workstream's outcome came due (status pending, measure_by ≤ today) | `/devx outcome <hash>` — score it *(added at v2o101/V2.6; fractional so the canonical 1–12 numbers stay pinned)* |
 | 6 | INTERVIEW.md has unanswered items blocking ready work | surface them (`/devx-interview`) |
 | 7 | DEBUG.md has ready items | top debug item → execute |
 | 8 | DEV.md has ready items whose workstream gates pass | top item → execute |

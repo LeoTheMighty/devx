@@ -37,6 +37,8 @@ import {
   type WorkstreamArtifacts,
   nextForWorkstream,
 } from "../engine/next.js";
+import { isMeasureByDue } from "../engine/outcome.js";
+import { formatDate } from "../engine/verdict.js";
 import { findSpecForHashInFs } from "../engine/workstream.js";
 import {
   normalizeSessionToken,
@@ -54,6 +56,7 @@ import {
   type InterviewBlockSignal,
   type LoopSignal,
   type MergeReconcileSignal,
+  type OutcomeDueSignal,
   type OwnPrSignal,
   type PlanItemSignal,
   type ReadyItemSignal,
@@ -343,8 +346,15 @@ export function gatherRepoSnapshot(opts: GatherOpts): RepoSnapshot {
     }
   }
 
-  // ── Mid-pipeline workstreams (row 9 — reuse the v1 stage rows) ─────────
-  const midPipeline = gatherMidPipeline(fs, repoRoot, engine, warnings);
+  // ── Mid-pipeline workstreams (row 9 — reuse the v1 stage rows) + due
+  //    outcomes (row 5.5, v2o101) — one plan/ scan feeds both. ────────────
+  const { midPipeline, outcomeDue } = gatherWorkstreamSignals(
+    fs,
+    repoRoot,
+    engine,
+    formatDate(now),
+    warnings,
+  );
 
   // ── Loop / manager heartbeat (row 1) ────────────────────────────────────
   const loop = gatherLoopSignal(fs, repoRoot, opts, now, warnings);
@@ -357,6 +367,7 @@ export function gatherRepoSnapshot(opts: GatherOpts): RepoSnapshot {
     prs,
     unreconciled,
     claims,
+    outcomeDue,
     interviewBlocking,
     debugReady,
     devReady,
@@ -543,18 +554,21 @@ export function resolveWorkstreamGate(
 }
 
 // ---------------------------------------------------------------------------
-// Mid-pipeline workstreams (row 9)
+// Workstream scan: mid-pipeline (row 9) + due outcomes (row 5.5)
 // ---------------------------------------------------------------------------
 
-function gatherMidPipeline(
+function gatherWorkstreamSignals(
   fs: NextFs,
   repoRoot: string,
   engine: EngineConfig,
+  /** YYYY-MM-DD — the outcome measure_by due-date comparison anchor. */
+  today: string,
   warnings: string[],
-): WorkstreamSignal[] {
+): { midPipeline: WorkstreamSignal[]; outcomeDue: OutcomeDueSignal[] } {
   const planDir = join(repoRoot, "plan");
-  if (!fs.exists(planDir)) return [];
-  const out: WorkstreamSignal[] = [];
+  const midPipeline: WorkstreamSignal[] = [];
+  const outcomeDue: OutcomeDueSignal[] = [];
+  if (!fs.exists(planDir)) return { midPipeline, outcomeDue };
   for (const name of [...fs.readdir(planDir)].sort()) {
     if (!name.endsWith(".md")) continue;
     let content: string;
@@ -577,22 +591,39 @@ function gatherMidPipeline(
         /^plan-[a-z0-9]{3,12}-\d{4}-\d{2}-\d{2}T\d{2}:\d{2}-(.+)\.md$/i.exec(name);
       if (m) wsRel = `${engine.workstreamsRoot}/${m[1]}`;
     }
+    const slug = wsRel !== null ? (wsRel.split("/").pop() ?? wsRel) : hash;
+
+    // Row 5.5: an armed outcome that came due. Gated on stage 'done' to
+    // match what `devx outcome score` will actually accept — a pending
+    // outcome on a revised (rolled-back) workstream would otherwise emit a
+    // command that refuses forever, livelocking the dispatcher above rows
+    // 6–12 (adversarial-review BH#1). A rolled-back workstream's pending
+    // outcome resurfaces here once the replay reaches done again (its
+    // stage rows meanwhile surface at row 9).
+    if (
+      state.stage === "done" &&
+      state.outcome.status === "pending" &&
+      isMeasureByDue(state.outcome.measure_by, today)
+    ) {
+      outcomeDue.push({ hash, slug, measureBy: state.outcome.measure_by });
+    }
+
     const wsAbs = wsRel !== null ? join(repoRoot, ...wsRel.split("/")) : null;
     const artifacts = artifactsFor(fs, wsAbs);
-    const decision = nextForWorkstream(hash, state, artifacts);
+    const decision = nextForWorkstream(hash, state, artifacts, today);
     // Row-9 domain: a stage/gate command exists AND it isn't the v1
     // "all gates passed → /devx executes its dev items" terminal row
     // (that is row 8's domain via DEV.md).
     if (decision.command !== null && decision.row !== 12) {
-      out.push({
+      midPipeline.push({
         hash,
-        slug: wsRel !== null ? (wsRel.split("/").pop() ?? wsRel) : hash,
+        slug,
         stage: state.stage,
         decision,
       });
     }
   }
-  return out;
+  return { midPipeline, outcomeDue };
 }
 
 function artifactsFor(fs: NextFs, wsAbs: string | null): WorkstreamArtifacts {

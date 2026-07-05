@@ -169,3 +169,36 @@ depend only on V2.2. Default order puts the tour first because it upgrades
 | Overnight loop meets a novel failure class | Ladder converges on stop; worktrees preserved; first nights supervised; LOCKDOWN mode disables `devx loop` entirely |
 | Prose budget creeps back up | S-1 canary test fails CI on regression |
 | Losing BMAD's planning depth for genuinely big projects | Gates are mode/thoroughness-scaled like everything else; PRFAQ/brainstorm-style depth can return later as optional pre-PRD stages — deliberately out of v2 scope |
+
+---
+
+## Outcome (2026-07-05)
+
+Appended at V2.6 (the migration's own retro — full record:
+`_devx/retros/v2-migration-2026-07-05.md`). **The entire migration V2.0 →
+V2.5 shipped in ONE calendar day** (first claim 09:58 local, last merge
+17:27 local, ~7.5h, nine PRs), carried by the v1 loop per sequencing
+principle (3). Tests 1,309 → 1,974; net −247K lines (the BMAD ejection).
+
+| Phase | PRs |
+|---|---|
+| V2.0 close-out & scaffold | [#59](https://github.com/LeoTheMighty/devx/pull/59) v2s101 · [#60](https://github.com/LeoTheMighty/devx/pull/60) roc101 · [#61](https://github.com/LeoTheMighty/devx/pull/61) mgrret |
+| V2.1 engine core | [#62](https://github.com/LeoTheMighty/devx/pull/62) v2e101 · [#63](https://github.com/LeoTheMighty/devx/pull/63) v2e102 |
+| V2.2 execute re-home & BMAD eject | [#64](https://github.com/LeoTheMighty/devx/pull/64) v2x101 |
+| V2.3 review tour | [#65](https://github.com/LeoTheMighty/devx/pull/65) v2t101 |
+| V2.4 dispatcher | [#66](https://github.com/LeoTheMighty/devx/pull/66) v2d101 |
+| V2.5 overnight loop | [#67](https://github.com/LeoTheMighty/devx/pull/67) v2l101 |
+| V2.6 outcome loop & polish | v2o101 (the PR carrying this section) |
+
+Reality-vs-plan deltas worth naming (append-only; the plan text above is
+history): V2.1's two epics landed as two PRs, not two epics of PRs; the
+"one real workstream driven PRD→RED" exit was v2x101's workstream exactly
+as designed (dogfood held). V2.5's supervised-first-night step is still
+pending as `MANUAL.md MV2.1` — the loop shipped with chaos tests green but
+the S-3 real-night exit runs when Leo schedules it. V2.6's backlog-hygiene
+bullet was largely delivered early by V2.4 (drift is a reported defect on
+every `devx next` run); the 12 v1-era PLAN.md status-vocab drift rows it
+surfaced remain open reconcile chores. S-1 measured at V2.6: planning
+surface 23.9 KB (inside the 60 KB budget); full run incl. the six-arm
+`devx.md` 64.2 KB (~7% over end-to-end, ~88% under the ~550 KB BMAD
+baseline) — disposition tracked in `LEARN.md § v2-migration` E8.
