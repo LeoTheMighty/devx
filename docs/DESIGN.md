@@ -8,6 +8,8 @@ This is the working design doc. It captures the shape of the system as we curren
 
 The existing `/dev` and `/dev-plan` commands are excellent in isolation — `/dev-plan` does research → PRD → party-mode refinement → emits epic slugs; `/dev` takes a slug and implements it with full discipline (CI, coverage, adversarial review). But **the user is the glue** between them. You run `/dev-plan`, you read the output, you decide which epic to run, you run `/dev <slug>`, you wait, you pick the next one.
 
+*(Historical framing — `/dev` and `/dev-plan` were retired with the v2 migration (PR #64); their disciplines live on natively as the engine's stage pipeline (`v2/02-engine.md`) behind `/devx` and `/devx-plan`, and party-mode became the plan-stage critique step. The glue problem and the filesystem-graph answer below are unchanged.)*
+
 devx replaces the human glue with a **filesystem graph**:
 
 - Every unit of work is a file (`dev/dev-<hash>-<timestamp>-<slug>.md`).
@@ -247,16 +249,16 @@ Every agent class maps 1:1 to a slash command, but the slash commands can also b
 ### `PlanAgent` — `/devx-plan`
 
 - Input: a raw idea, or an entry in `PLAN.md`, or a signal from `FOCUS.md`.
-- Work: research → PRD update → architecture update → epic chunking → party-mode refinement.
+- Work: research → PRD update → architecture update → epic chunking → party-mode refinement. *(Since v2: the PRD → Design → Plan → RED stage pipeline with the critique step — `v2/02-engine.md` §4.)*
 - Output: new spec files under `dev/`, new entries in `DEV.md`, questions in `INTERVIEW.md`, cross-refs from `FOCUS.md`.
-- Inherits the discipline of the current `/dev-plan` command — the seven-phase loop, party-mode for every epic, three-layer coverage, YOLO vs. ask rules.
+- Inherits the discipline of the current `/dev-plan` command — the seven-phase loop, party-mode for every epic, three-layer coverage, YOLO vs. ask rules. *(That command is retired; the inheritance landed — `.claude/commands/devx-plan.md` IS the native successor.)*
 
 ### `DevAgent` — `/devx`
 
 - Input: next `[ ]` item in `DEV.md` (auto-picked when called without a slug; see [§Checkbox conventions](#checkbox-conventions)). `/devx <hash>` or `/devx <slug>` overrides the auto-pick.
 - Work: claim (`[ ]` → `[/]`, status `in-progress`, lock `spec-<hash>.lock`) → create worktree + branch → implement in red-green-refactor → self-review (adversarial) → push → wait for CI → merge (or revise) → mark `[x]` and `status: done`.
 - Output: merged code, updated spec file status log, test gaps appended to `TEST.md`, debug items appended to `DEBUG.md` on CI failure.
-- Inherits the discipline of the current `/dev` command — the six-phase loop, story-per-commit, check-models drift detection, pubspec bumps, CI-as-truth.
+- Inherits the discipline of the current `/dev` command — the six-phase loop, story-per-commit, check-models drift detection, pubspec bumps, CI-as-truth. *(That command is retired; the inheritance landed — `.claude/commands/devx.md`'s execute arm IS the native successor, per-project drift/bump steps riding `devx.config.yaml → projects:`.)*
 
 ### `TestAgent` — `/devx-test`
 
@@ -274,7 +276,7 @@ Every agent class maps 1:1 to a slash command, but the slash commands can also b
 
 ### `FocusAgent` — `/devx-focus` (and `/devx-focus-group`)
 
-- **Simulated mode:** consults the persistent persona panel in `focus-group/personas/` about a proposed change. Invoked during `/devx-plan` after party-mode, before `develop → main` promotion, and on demand.
+- **Simulated mode:** consults the persistent persona panel in `focus-group/personas/` about a proposed change. Invoked during `/devx-plan` after party-mode *(v2: after the plan-stage critique step — the panel stays separate from the critique lenses per `v2/07-decisions.md` O-3)*, before `develop → main` promotion, and on demand.
 - **Empirical mode:** ingests real user telemetry + `INTERVIEW.md` answers + explicit feedback + `qa/*.md` results from exploratory browser runs; synthesizes patterns, cross-references with panel predictions, and evolves persona reaction libraries.
 - **Output:** `focus-group/sessions/session-*.md` (per consultation), rolling summary in `FOCUS.md`, new items in `DEV.md`/`DEBUG.md`/`INTERVIEW.md`, persona edits queued in `LESSONS.md`.
 - The interaction primitive (reactions → concerns → priorities panel flow) was seeded from BMAD's "User Persona Focus Group" elicitation method and is now a native devx prompt under `focus-group/prompts/`. Browser QA subprocess-spawned per [`QA.md`](./QA.md); persona prompts for QA seeded directly from `focus-group/personas/*.md`.
@@ -483,6 +485,8 @@ Mode covers risk-to-user-data. Project shape covers state-of-codebase. **Thoroug
 | `send-it` | minimum | PlanAgent skips party-mode unless the epic crosses ≥2 surfaces; focus-group skipped except in PROD; QA Layer 2 on-demand only; coverage advisory; RetroAgent runs but LearnAgent threshold raised to ≥5 concordant retros so the system mutates slowly when you're moving fast |
 | `balanced` (default) | ~1× | Party-mode for every epic; focus-group consulted at plan + pre-promotion; QA Layer 2 nightly per mode; coverage and retros at mode defaults |
 | `thorough` | 2–3× | Party-mode + advanced-elicitation pre-write; focus-group at plan + post-implementation + pre-promotion; QA Layer 2 nightly + per-PR; deeper research passes; LearnAgent threshold lowered to ≥2 concordant retros (catch more, gate harder) |
+
+*("Party-mode" in this table is the BMAD-era name for what is now the plan-stage critique step (`v2/02-engine.md` §4.5, `engine.critique` in config) — the thoroughness scaling applies to the critique step unchanged, incl. the `min_surfaces` skip rule.)*
 
 ### How thoroughness combines with mode
 

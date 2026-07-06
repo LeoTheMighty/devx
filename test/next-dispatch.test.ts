@@ -48,6 +48,7 @@ function emptySnapshot(): RepoSnapshot {
     prs: [],
     unreconciled: [],
     claims: [],
+    outcomeDue: [],
     interviewBlocking: [],
     debugReady: [],
     devReady: [],
@@ -99,6 +100,9 @@ function fullSnapshot(): RepoSnapshot {
   ];
   s.claims = [
     { hash: "cla001", backlog: "DEV.md", ownership: "owned", lockOwner: "tok" },
+  ];
+  s.outcomeDue = [
+    { hash: "out001", slug: "shipped-thing", measureBy: "2026-06-01" },
   ];
   s.interviewBlocking = [{ qNum: "9", blocks: ["blk001"] }];
   s.debugReady = [
@@ -304,6 +308,25 @@ describe("decideRepoNext — each row fires in isolation", () => {
     expect(d.row).toBe(12);
   });
 
+  it("row 5.5: due outcome → outcome-due (/devx outcome <hash>)", () => {
+    const s = emptySnapshot();
+    s.outcomeDue = fullSnapshot().outcomeDue;
+    const d = rowOf(s);
+    expect(d.row).toBe(5.5);
+    expect(d.action).toBe("outcome-due");
+    expect(d.command).toBe("/devx outcome out001");
+    expect(d.detail).toContain("shipped-thing");
+    expect(d.detail).toContain("measure_by 2026-06-01 has passed");
+  });
+
+  it("row 5.5 with a null measure_by says so explicitly (due-by-default)", () => {
+    const s = emptySnapshot();
+    s.outcomeDue = [{ hash: "out002", slug: "odd-one", measureBy: null }];
+    const d = rowOf(s);
+    expect(d.row).toBe(5.5);
+    expect(d.detail).toContain("unset/unparseable");
+  });
+
   it("row 6: unanswered INTERVIEW items blocking ready work → /devx-interview", () => {
     const s = emptySnapshot();
     s.interviewBlocking = fullSnapshot().interviewBlocking;
@@ -442,6 +465,9 @@ describe("decideRepoNext — first-match ordering (strip-down chain)", () => {
     expect(rowOf(s).row).toBe(5);
 
     s.claims = [];
+    expect(rowOf(s).row).toBe(5.5);
+
+    s.outcomeDue = [];
     expect(rowOf(s).row).toBe(6);
 
     s.interviewBlocking = [];
@@ -466,47 +492,30 @@ describe("decideRepoNext — first-match ordering (strip-down chain)", () => {
   it("cartesian spot-check: every earlier row beats every later row", () => {
     // For each pair (i, j) with i < j, a snapshot carrying only signals i
     // and j must fire row i. Signals are injected via targeted setters.
-    const setters: Record<number, (s: RepoSnapshot) => void> = {
-      1: (s) => {
-        s.loop = fullSnapshot().loop;
-      },
-      2: (s) => {
-        s.prs.push(fullSnapshot().prs[0]);
-      },
-      3: (s) => {
-        s.prs.push(fullSnapshot().prs[1]);
-      },
-      4: (s) => {
-        s.unreconciled = fullSnapshot().unreconciled;
-      },
-      5: (s) => {
-        s.claims = fullSnapshot().claims;
-      },
-      6: (s) => {
-        s.interviewBlocking = fullSnapshot().interviewBlocking;
-      },
-      7: (s) => {
-        s.debugReady = fullSnapshot().debugReady;
-      },
-      8: (s) => {
-        s.devReady = fullSnapshot().devReady;
-      },
-      9: (s) => {
-        s.midPipeline = fullSnapshot().midPipeline;
-      },
-      10: (s) => {
-        s.planReady = fullSnapshot().planReady;
-      },
-      11: (s) => {
-        s.blocked = fullSnapshot().blocked;
-      },
-    };
-    for (let i = 1; i <= 11; i++) {
-      for (let j = i + 1; j <= 11; j++) {
+    // Row 5.5 (outcome-due, v2o101) sits between 5 and 6 in the ordering.
+    const setters: Array<{ row: number; set: (s: RepoSnapshot) => void }> = [
+      { row: 1, set: (s) => { s.loop = fullSnapshot().loop; } },
+      { row: 2, set: (s) => { s.prs.push(fullSnapshot().prs[0]); } },
+      { row: 3, set: (s) => { s.prs.push(fullSnapshot().prs[1]); } },
+      { row: 4, set: (s) => { s.unreconciled = fullSnapshot().unreconciled; } },
+      { row: 5, set: (s) => { s.claims = fullSnapshot().claims; } },
+      { row: 5.5, set: (s) => { s.outcomeDue = fullSnapshot().outcomeDue; } },
+      { row: 6, set: (s) => { s.interviewBlocking = fullSnapshot().interviewBlocking; } },
+      { row: 7, set: (s) => { s.debugReady = fullSnapshot().debugReady; } },
+      { row: 8, set: (s) => { s.devReady = fullSnapshot().devReady; } },
+      { row: 9, set: (s) => { s.midPipeline = fullSnapshot().midPipeline; } },
+      { row: 10, set: (s) => { s.planReady = fullSnapshot().planReady; } },
+      { row: 11, set: (s) => { s.blocked = fullSnapshot().blocked; } },
+    ];
+    for (let i = 0; i < setters.length; i++) {
+      for (let j = i + 1; j < setters.length; j++) {
         const s = emptySnapshot();
-        setters[i](s);
-        setters[j](s);
-        expect(rowOf(s).row, `pair (${i}, ${j})`).toBe(i);
+        setters[i].set(s);
+        setters[j].set(s);
+        expect(
+          rowOf(s).row,
+          `pair (${setters[i].row}, ${setters[j].row})`,
+        ).toBe(setters[i].row);
       }
     }
   });
@@ -1255,6 +1264,164 @@ describe("gatherRepoSnapshot — backlogs, drift, claims, gates", () => {
       expect(s.devReady).toEqual([]);
       expect(s.warnings.some((w) => w.includes("missing spec"))).toBe(true);
       expect(decideRepoNext(s).row).toBe(12);
+    } finally {
+      repo.cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2a-bis. Outcome-due gathering (row 5.5, v2o101)
+// ---------------------------------------------------------------------------
+
+describe("gatherRepoSnapshot — outcome-due workstreams (row 5.5)", () => {
+  function writeClosedWorkstream(
+    repo: ReturnType<typeof makeEngineRepo>,
+    hash: string,
+    slug: string,
+    outcomeLines: string[],
+  ): void {
+    repo.write(
+      `plan/plan-${hash}-2026-07-05T12:00-${slug}.md`,
+      [
+        "---",
+        `hash: ${hash}`,
+        "type: plan",
+        "status: done",
+        "stage: done",
+        "gate_status:",
+        "  prd_validated: true",
+        "  design_verified: true",
+        "  plan_verified: true",
+        "  evals_red: true",
+        ...outcomeLines,
+        `workstream: _devx/workstreams/${slug}`,
+        "---",
+        "body",
+        "",
+      ].join("\n"),
+    );
+    repo.mkdir(`_devx/workstreams/${slug}`);
+  }
+
+  it("pending + past measure_by → outcomeDue signal → row 5.5", () => {
+    const repo = makeEngineRepo();
+    try {
+      writeClosedWorkstream(repo, "out001", "shipped", [
+        "outcome:",
+        "  status: pending",
+        "  measure_by: 2026-06-01",
+      ]);
+      const s = gather(repo);
+      expect(s.outcomeDue).toEqual([
+        { hash: "out001", slug: "shipped", measureBy: "2026-06-01" },
+      ]);
+      const d = decideRepoNext(s);
+      expect(d.row).toBe(5.5);
+      expect(d.command).toBe("/devx outcome out001");
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("pending + future measure_by → NOT due, NOT mid-pipeline (waiting)", () => {
+    const repo = makeEngineRepo();
+    try {
+      writeClosedWorkstream(repo, "out002", "waiting", [
+        "outcome:",
+        "  status: pending",
+        "  measure_by: 2026-12-31",
+      ]);
+      const s = gather(repo);
+      expect(s.outcomeDue).toEqual([]);
+      // v1 row 3 (pending-not-due) yields command null → row 9 stays quiet.
+      expect(s.midPipeline).toEqual([]);
+      expect(decideRepoNext(s).row).toBe(12);
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("unarmed (outcome null) done workstream still surfaces at row 9 (arm it)", () => {
+    const repo = makeEngineRepo();
+    try {
+      writeClosedWorkstream(repo, "out003", "unarmed", [
+        "outcome:",
+        "  status: null",
+        "  measure_by: null",
+      ]);
+      const s = gather(repo);
+      expect(s.outcomeDue).toEqual([]);
+      const d = decideRepoNext(s);
+      expect(d.row).toBe(9);
+      expect(d.command).toBe("/devx outcome out003");
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("scored outcome (keep) is silent — no due signal, no stage row", () => {
+    const repo = makeEngineRepo();
+    try {
+      writeClosedWorkstream(repo, "out004", "kept", [
+        "outcome:",
+        "  status: keep",
+        "  measure_by: 2026-06-01",
+      ]);
+      const s = gather(repo);
+      expect(s.outcomeDue).toEqual([]);
+      expect(s.midPipeline).toEqual([]);
+      expect(decideRepoNext(s).row).toBe(12);
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("pending with a malformed measure_by counts as due (never waits forever)", () => {
+    const repo = makeEngineRepo();
+    try {
+      writeClosedWorkstream(repo, "out005", "garbled", [
+        "outcome:",
+        "  status: pending",
+        "  measure_by: whenever",
+      ]);
+      const s = gather(repo);
+      expect(s.outcomeDue).toEqual([
+        { hash: "out005", slug: "garbled", measureBy: "whenever" },
+      ]);
+      expect(decideRepoNext(s).row).toBe(5.5);
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("pending + due but stage rolled back (revise) does NOT fire 5.5 — no livelock on an un-scorable command", () => {
+    // `devx outcome score` refuses unless stage is done; emitting its
+    // command for a revised workstream would shadow rows 6-12 forever
+    // (adversarial-review BH#1). The workstream's stage rows surface at
+    // row 9 instead.
+    const repo = makeEngineRepo();
+    try {
+      writeClosedWorkstream(repo, "out006", "revised", [
+        "outcome:",
+        "  status: pending",
+        "  measure_by: 2026-06-01",
+      ]);
+      const content = repo.read("plan/plan-out006-2026-07-05T12:00-revised.md");
+      repo.write(
+        "plan/plan-out006-2026-07-05T12:00-revised.md",
+        content
+          .replace("stage: done", "stage: red")
+          .replace("  evals_red: true", "  evals_red: false"),
+      );
+      for (const f of ["prd.md", "expectations.md", "design.md", "plan.md"]) {
+        repo.write(`_devx/workstreams/revised/${f}`, "x");
+      }
+      const s = gather(repo);
+      expect(s.outcomeDue).toEqual([]);
+      const d = decideRepoNext(s);
+      expect(d.row).toBe(9);
+      expect(d.command).toBe("/devx red out006"); // evals/ empty → author RED
     } finally {
       repo.cleanup();
     }

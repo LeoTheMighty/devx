@@ -36,3 +36,16 @@ describe("/devx loop discipline (v2l101)", () => {
     expect(body).toMatch(/read the report's\s+claims as claims/);
   });
 });
+
+describe("/devx outcome discipline (v2o101)", () => {
+  it("has the Stage: Outcome section with CLI delegation", () => {
+    expect(body).toContain("## Stage: Outcome (`/devx outcome <hash>`");
+    expect(body).toContain("devx outcome arm <hash>");
+    expect(body).toMatch(/--verdict keep\|tune\|restart\|retire/);
+  });
+
+  it("pins sources-not-vibes and the unattended-judgment rule", () => {
+    expect(body).toMatch(/never vibes/);
+    expect(body).toMatch(/file the\s+recommendation in INTERVIEW\.md instead of deciding silently/);
+  });
+});

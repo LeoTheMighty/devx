@@ -77,6 +77,38 @@ describe("engine prose-budget canary (S-1)", () => {
     const found = readdirSync(ENGINE_TEMPLATES_DIR).filter((n) => n.endsWith(".md"));
     expect(found.length).toBeGreaterThanOrEqual(9);
   });
+
+  // S-1 full-run measurement (v2o101, migration retro): the prose actually
+  // loadable across one full PRD→merge run is the planning surface above
+  // PLUS the /devx dispatcher body (.claude/commands/devx.md), which
+  // carries the execute arm — a surface the BMAD era also paid
+  // (~48KB/story dev-story + code-review) inside its ~550KB total.
+  //
+  // Measured at v2o101 (2026-07-05): planning surface 24,426 B (~23.9KB —
+  // well inside the 60KB budget); full run incl. devx.md 65,767 B
+  // (~64.2KB — ~7% over the 60KB end-to-end target, ~88% under the BMAD
+  // baseline). The honest S-1 verdict + both numbers are recorded in
+  // `_devx/retros/v2-migration-2026-07-05.md`; whether to trim devx.md
+  // (it carries six arms: execute/debug/address/retro/loop/dispatch) or
+  // raise the budget is a product call, not a test's. This assertion is a
+  // drift tripwire only — 2× budget — so unnoticed growth still fails CI
+  // without this test quietly re-deciding the budget question.
+  it("S-1 full-run surface (+ devx.md execute arm) stays under the 2x drift tripwire", () => {
+    let total = 0;
+    for (const name of readdirSync(ENGINE_TEMPLATES_DIR).sort()) {
+      if (!name.endsWith(".md")) continue;
+      total += statSync(join(ENGINE_TEMPLATES_DIR, name)).size;
+    }
+    for (const rel of [...STAGE_SKILL_SECTIONS, ".claude/commands/devx.md"]) {
+      total += Buffer.byteLength(
+        readFileSync(join(REAL_REPO_ROOT, ...rel.split("/"))),
+      );
+    }
+    expect(
+      total,
+      `S-1 full-run prose is ${total} bytes — past the 2x-budget drift tripwire; re-measure and re-record the retro verdict`,
+    ).toBeLessThanOrEqual(budgetBytes() * 2);
+  });
 });
 
 describe("engineConfigFrom — defensive engine.* reads (AC #12)", () => {

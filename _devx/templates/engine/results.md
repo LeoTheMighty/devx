@@ -13,7 +13,10 @@ successor: null             # workstream slug, when outcome = restart
      numeric goals against reality. keep = mechanical; tune/restart/retire =
      recorded judgment. tune reopens via the revision cascade keyed to the
      missed expectations; restart links a v2 workstream with
-     learns_from/superseded_by lineage. -->
+     learns_from/superseded_by lineage.
+     (tune's reopen is verification-scoped: evals_red clears and the stage
+     rolls back to red so the missed expectations' RED artifacts re-run;
+     revising the expectation/design/plan itself goes through devx revise.) -->
 
 ## Goal scores
 

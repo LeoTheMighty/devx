@@ -201,6 +201,10 @@ describe("cli303 — devx --help command listing", () => {
                                      repo-level 12-row dispatcher table over
                                      backlogs, PRs + CI, and .devx-cache state
                                      (v2d101).
+        outcome                      Outcome loop (v2 engine, §4.10): arm measure_by
+                                     at workstream close; score the PRD's G- goals vs
+                                     reality into RESULTS.md with verdict
+                                     keep|tune|restart|retire.
         plan-helper                  Helpers invoked by the /devx-plan skill body
                                      (Phase 1). Subcommand-driven; mirrors \`devx
                                      merge-gate\`'s passthrough pattern.

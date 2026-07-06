@@ -14,8 +14,8 @@
 //   | # | Condition                                   | Next command            |
 //   |---|---------------------------------------------|-------------------------|
 //   | 1 | stage retired                               | (nothing)               |
-//   | 2 | stage done, outcome null/pending            | /devx outcome <hash>    |
-//   | 3 | stage done, outcome scored                  | (nothing)               |
+//   | 2 | stage done, outcome unarmed OR pending+due  | /devx outcome <hash>    |
+//   | 3 | stage done, outcome scored or pending+early | (nothing / wait)        |
 //   | 4 | prd.md or expectations.md missing           | /devx prd <hash>        |
 //   | 5 | ¬prd_validated                              | devx gate prd <hash>    |
 //   | 6 | design.md missing                           | /devx design <hash>     |
@@ -30,6 +30,7 @@
 // Design: v2/05-dispatcher.md §2 rows 9–12; v2/02-engine.md §5
 
 import { type EngineState } from "./frontmatter.js";
+import { isMeasureByDue, isOutcomeVerdict } from "./outcome.js";
 
 export interface WorkstreamArtifacts {
   prd: boolean;
@@ -50,8 +51,27 @@ export interface NextDecision {
 
 interface NextRow {
   row: number;
-  matches(s: EngineState, a: WorkstreamArtifacts): boolean;
-  decide(hash: string): { command: string | null; reason: string };
+  matches(s: EngineState, a: WorkstreamArtifacts, today: string | null): boolean;
+  decide(
+    hash: string,
+    s: EngineState,
+  ): { command: string | null; reason: string };
+}
+
+/** Row 2's due predicate: an unarmed outcome is always actionable (arm it);
+ *  a pending outcome is actionable only once measure_by ≤ today; only a
+ *  REAL verdict (keep|tune|restart|retire) counts as scored — a typo'd
+ *  status ("keeep") must surface as actionable, not silently read as
+ *  "scored — nothing next" (adversarial-review BH#5; `devx outcome score`
+ *  agrees: its already-scored refusal uses the same isOutcomeVerdict).
+ *  When no `today` is supplied the pre-v2o101 behavior holds (pending =
+ *  actionable) — callers that care about the window pass the date. */
+function outcomeActionable(s: EngineState, today: string | null): boolean {
+  if (isOutcomeVerdict(s.outcome.status)) return false;
+  if (s.outcome.status === "pending") {
+    return today === null || isMeasureByDue(s.outcome.measure_by, today);
+  }
+  return true; // null or garbage — arm/score it
 }
 
 const TABLE: NextRow[] = [
@@ -65,20 +85,25 @@ const TABLE: NextRow[] = [
   },
   {
     row: 2,
-    matches: (s) =>
-      s.stage === "done" &&
-      (s.outcome.status === null || s.outcome.status === "pending"),
-    decide: (hash) => ({
+    matches: (s, _a, today) =>
+      s.stage === "done" && outcomeActionable(s, today),
+    decide: (hash, s) => ({
       command: `/devx outcome ${hash}`,
-      reason: "workstream is done but its outcome has not been scored",
+      reason:
+        s.outcome.status === "pending"
+          ? `workstream is done and its outcome came due (measure_by ${s.outcome.measure_by ?? "unset"}) — score it`
+          : "workstream is done but its outcome has not been armed/scored",
     }),
   },
   {
     row: 3,
     matches: (s) => s.stage === "done",
-    decide: () => ({
+    decide: (_hash, s) => ({
       command: null,
-      reason: "workstream is done and its outcome is scored — nothing next",
+      reason:
+        s.outcome.status === "pending"
+          ? `workstream is done; outcome armed (measure_by ${s.outcome.measure_by ?? "unset"}) — waiting for the measurement window`
+          : "workstream is done and its outcome is scored — nothing next",
     }),
   },
   {
@@ -160,10 +185,13 @@ export function nextForWorkstream(
   hash: string,
   state: EngineState,
   artifacts: WorkstreamArtifacts,
+  /** YYYY-MM-DD; gates row 2's pending-outcome branch on measure_by. Omit
+   *  for the pre-v2o101 behavior (pending outcomes always actionable). */
+  today: string | null = null,
 ): NextDecision {
   for (const row of TABLE) {
-    if (row.matches(state, artifacts)) {
-      return { row: row.row, ...row.decide(hash) };
+    if (row.matches(state, artifacts, today)) {
+      return { row: row.row, ...row.decide(hash, state) };
     }
   }
   // Unreachable — row 12 always matches. Kept for the type system.

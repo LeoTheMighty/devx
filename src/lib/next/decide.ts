@@ -7,20 +7,26 @@
 //
 // First match wins:
 //
-//   | #  | Condition                                        | Action            |
-//   |----|--------------------------------------------------|-------------------|
-//   | 1  | loop/manager run live (heartbeat fresh)          | report-loop       |
-//   | 2  | own PR open with CI red                          | fix-ci            |
-//   | 3  | own PR open, CI green, unmerged                  | merge-tail        |
-//   | 4  | PR merged but spec/backlog not reconciled        | reconcile-merge   |
-//   | 5  | spec claimed by me, in-progress                  | resume            |
-//   | 6  | INTERVIEW.md unanswered items block ready work   | interview         |
-//   | 7  | DEBUG.md has ready items                         | execute-debug     |
-//   | 8  | DEV.md ready items whose workstream gates pass   | execute-dev       |
-//   | 9  | a workstream is mid-pipeline                     | workstream-stage  |
-//   | 10 | PLAN.md has ready plan items                     | plan-prd          |
-//   | 11 | nothing ready, blocked items exist               | report-blocked    |
-//   | 12 | genuinely empty                                  | propose-interview |
+//   | #   | Condition                                        | Action            |
+//   |-----|--------------------------------------------------|-------------------|
+//   | 1   | loop/manager run live (heartbeat fresh)          | report-loop       |
+//   | 2   | own PR open with CI red                          | fix-ci            |
+//   | 3   | own PR open, CI green, unmerged                  | merge-tail        |
+//   | 4   | PR merged but spec/backlog not reconciled        | reconcile-merge   |
+//   | 5   | spec claimed by me, in-progress                  | resume            |
+//   | 5.5 | outcome due (status pending, measure_by ≤ today) | outcome-due       |
+//   | 6   | INTERVIEW.md unanswered items block ready work   | interview         |
+//   | 7   | DEBUG.md has ready items                         | execute-debug     |
+//   | 8   | DEV.md ready items whose workstream gates pass   | execute-dev       |
+//   | 9   | a workstream is mid-pipeline                     | workstream-stage  |
+//   | 10  | PLAN.md has ready plan items                     | plan-prd          |
+//   | 11  | nothing ready, blocked items exist               | report-blocked    |
+//   | 12  | genuinely empty                                  | propose-interview |
+//
+// Row 5.5 (v2o101): inserted as a fractional row rather than renumbering —
+// the canonical 1–12 numbers are pinned across v2/05-dispatcher.md §2, the
+// S-4 matrix, and the skill body, and an outcome that came due outranks new
+// work (rows 6+) but never preempts in-flight work (rows 1–5).
 //
 // Row 8 before row 9 keeps shipping ahead of planning when both are
 // available; `--prefer plan` (opts.preferPlan) flips the 8/9 evaluation
@@ -52,6 +58,7 @@ export type NextAction =
   | "merge-tail"
   | "reconcile-merge"
   | "resume"
+  | "outcome-due"
   | "interview"
   | "execute-debug"
   | "execute-dev"
@@ -156,6 +163,15 @@ export interface WorkstreamSignal {
   decision: NextDecision;
 }
 
+/** A closed workstream whose armed outcome came due (row 5.5, v2o101). */
+export interface OutcomeDueSignal {
+  hash: string;
+  slug: string;
+  /** measure_by as written; null/unparseable dates count as due (a pending
+   *  outcome must never wait forever on a malformed date). */
+  measureBy: string | null;
+}
+
 export interface PlanItemSignal {
   hash: string;
   path: string;
@@ -179,6 +195,8 @@ export interface RepoSnapshot {
   unreconciled: MergeReconcileSignal[];
   /** In-progress rows with a spec lock (ownership per sessionToken). */
   claims: ClaimSignal[];
+  /** Closed workstreams with outcome pending + measure_by ≤ today (row 5.5). */
+  outcomeDue: OutcomeDueSignal[];
   interviewBlocking: InterviewBlockSignal[];
   /** DEBUG.md ready rows, blockers resolved, in file order. */
   debugReady: ReadyItemSignal[];
@@ -323,6 +341,20 @@ const row5: RowFn = (s) => {
   return null;
 };
 
+const row5_5: RowFn = (s) => {
+  const due = s.outcomeDue[0];
+  if (!due) return null;
+  const when = due.measureBy
+    ? `measure_by ${due.measureBy} has passed`
+    : "measure_by is unset/unparseable (counts as due)";
+  return {
+    row: 5.5,
+    action: "outcome-due",
+    command: `/devx outcome ${due.hash}`,
+    detail: `workstream '${due.slug}' (${due.hash}) has an outcome due — ${when}; score its G- goals vs reality (keep|tune|restart|retire)`,
+  };
+};
+
 const row6: RowFn = (s) => {
   if (s.interviewBlocking.length === 0) return null;
   const qs = s.interviewBlocking
@@ -415,6 +447,7 @@ const CANONICAL_ORDER: RowFn[] = [
   row3,
   row4,
   row5,
+  row5_5,
   row6,
   row7,
   row8,
@@ -430,6 +463,7 @@ const PREFER_PLAN_ORDER: RowFn[] = [
   row3,
   row4,
   row5,
+  row5_5,
   row6,
   row7,
   row9, // flipped: planning ahead of shipping

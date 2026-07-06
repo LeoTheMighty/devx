@@ -38,6 +38,7 @@ import type { Command } from "commander";
 import { attachPhase } from "../lib/help.js";
 import { type EngineContext, loadEngineContext } from "../lib/engine/context.js";
 import { nextForWorkstream } from "../lib/engine/next.js";
+import { formatDate } from "../lib/engine/verdict.js";
 import {
   type EngineFs,
   WorkstreamError,
@@ -221,13 +222,19 @@ function runWorkstreamNext(
       .some((name) => name !== "RED-report.md" && !name.startsWith("."));
   }
 
-  const decision = nextForWorkstream(ws.hash, ws.state, {
-    prd: fs.exists(join(ws.workstreamAbs, "prd.md")),
-    expectations: fs.exists(join(ws.workstreamAbs, "expectations.md")),
-    design: fs.exists(join(ws.workstreamAbs, "design.md")),
-    plan: fs.exists(join(ws.workstreamAbs, "plan.md")),
-    evalsAuthored,
-  });
+  const decision = nextForWorkstream(
+    ws.hash,
+    ws.state,
+    {
+      prd: fs.exists(join(ws.workstreamAbs, "prd.md")),
+      expectations: fs.exists(join(ws.workstreamAbs, "expectations.md")),
+      design: fs.exists(join(ws.workstreamAbs, "design.md")),
+      plan: fs.exists(join(ws.workstreamAbs, "plan.md")),
+      evalsAuthored,
+    },
+    // Row 2's pending-outcome branch is measure_by-gated (v2o101).
+    formatDate((opts.now ?? (() => new Date()))()),
+  );
 
   out(
     `${JSON.stringify({

@@ -162,6 +162,38 @@ loop can read.
 
 ---
 
+- [ ] **Q#9 — S-1 prose budget: the full-run surface measures 64.2 KB against the 60 KB end-to-end target.** (from /devx on dev-v2o101)
+  - Context: v2o101's migration retro measured the prose actually loadable
+    for one full PRD→merge run: planning surface (engine templates +
+    `.claude/commands/devx-plan.md`) = 24,426 B — comfortably inside the
+    60 KB budget — but adding `.claude/commands/devx.md` (which carries six
+    arms: dispatch/execute/debug/address/retro/loop) brings the total to
+    65,767 B, ~7% over the end-to-end target (and ~88% under the ~550 KB
+    BMAD-era baseline). CI keeps gating the planning surface at 60 KB; a
+    2×-budget drift tripwire on the full surface landed in
+    `test/engine-prose-budget.test.ts`. Full record:
+    `_devx/retros/v2-migration-2026-07-05.md` §"S-1 verification" +
+    `LEARN.md § v2-migration` E8.
+  - Question: Accept 64.2 KB as the new end-to-end budget reality, or
+    shrink it back under 60 KB?
+  - Blocks: nothing operationally (CI is green either way); blocks closing
+    the S-1 ledger line honestly.
+  - Options:
+    - (a) Raise `engine.prose_budget_kb` to 70 with a rationale comment and
+      add `devx.md` to the gated surface list — the budget becomes honest
+      and enforced end-to-end.
+    - (b) Split `devx.md`'s arms into lazily-referenced per-stage files so
+      one run loads only its arm; keep the 60 KB budget.
+    - (c) Leave as-is: planning surface gated at 60 KB, full surface
+      tripwired at 120 KB, the number recorded in the retro.
+  - Agent recommendation: (a) — the 60 KB figure predates the dispatcher
+    absorbing six arms into one file; each per-stage §6 target is
+    individually met, and (b) trades a real regression class (arm drift
+    across files) for a symbolic 4 KB. Cheap, honest, enforced.
+  → Answer:
+
+---
+
 ## Phase 0 / cli301 prerequisites
 
 Filled by `/devx` automatically when it tries to claim `cli301` and finds the

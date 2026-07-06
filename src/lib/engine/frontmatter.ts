@@ -81,6 +81,12 @@ export interface EnginePatch {
   gateStatus?: Partial<GateStatus>;
   outcome?: Partial<Outcome>;
   workstream?: string;
+  /** Outcome-loop lineage fields (v2o101, v2/02-engine.md §4.10):
+   *  `successor:` on the restarted (old) spec; `learns_from:` on the
+   *  successor (new) spec; `superseded_by:` on the old spec. */
+  successor?: string;
+  learnsFrom?: string;
+  supersededBy?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -240,6 +246,13 @@ export function applyEnginePatch(content: string, patch: EnginePatch): string {
     if (patch.outcome.measure_by !== undefined) {
       doc.setIn(["outcome", "measure_by"], patch.outcome.measure_by);
     }
+  }
+  if (patch.successor !== undefined) doc.setIn(["successor"], patch.successor);
+  if (patch.learnsFrom !== undefined) {
+    doc.setIn(["learns_from"], patch.learnsFrom);
+  }
+  if (patch.supersededBy !== undefined) {
+    doc.setIn(["superseded_by"], patch.supersededBy);
   }
 
   return joinFrontmatter(docToFmText(doc), split);
