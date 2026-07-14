@@ -15,7 +15,7 @@
   include `skills/devx.md`, `skills/devx-plan.md`, and
   `skills/devx-interview.md` in the tarball file list.
 - **Threshold:** 3/3 skill files present in the pack manifest.
-- **Verified by:** test/skills-packaging.test.ts
+- **Verified by:** _devx/workstreams/portability-install/evals/E-1_skills-packaging.ts
 
 ## E-2: Repo commands cannot silently diverge from packaged skills
 
@@ -27,7 +27,7 @@
   its `skills/*.md` counterpart, the system SHALL fail the test suite
   naming the divergent file.
 - **Threshold:** 0 divergences tolerated; failure message names the file.
-- **Verified by:** test/skills-sync.test.ts
+- **Verified by:** _devx/workstreams/portability-install/evals/E-2_skills-sync.ts
 
 ## E-3: `devx init` scaffolds a working repo including skills
 
@@ -41,7 +41,7 @@
   `devx-skill` version header, exiting 0.
 - **Threshold:** full artifact set present; exit code 0; 3/3 skill files
   carry the version header.
-- **Verified by:** test/init-cli-scaffold.test.ts
+- **Verified by:** _devx/workstreams/portability-install/evals/E-3_init-scaffold.ts
 
 ## E-4: Re-init is idempotent and never clobbers user-owned files
 
@@ -56,7 +56,7 @@
   while upgrading header-bearing skill files in place.
 - **Threshold:** user-owned file unchanged; 1 MANUAL.md entry filed;
   header-bearing files carry the new version header.
-- **Verified by:** test/init-cli-scaffold.test.ts
+- **Verified by:** _devx/workstreams/portability-install/evals/E-4_reinit-idempotent.ts
 
 ## E-5: Version provenance survives the global install
 
@@ -68,7 +68,7 @@
   installed build, the system SHALL report `<semver>+<git-sha>` with a
   short SHA of at least 7 hex chars.
 - **Threshold:** output matches `/^\d+\.\d+\.\d+\+[0-9a-f]{7,}$/m`.
-- **Verified by:** test/version-sha.test.ts
+- **Verified by:** _devx/workstreams/portability-install/evals/E-5_version-sha.ts
 
 ## E-6: Docs reference only paths and flows that exist
 
@@ -80,7 +80,7 @@
   SHALL find zero references to nonexistent repo paths (e.g. `install.sh`,
   retired v1 skill names) in the install documentation.
 - **Threshold:** 0 phantom references.
-- **Verified by:** evals/E-6_docs-paths.ts
+- **Verified by:** _devx/workstreams/portability-install/evals/E-6_docs-paths.ts
 
 ## E-7: S-5 live — palateful init to working `/devx` in under two minutes
 
@@ -95,4 +95,4 @@
   the repo except `~/.devx/`.
 - **Threshold:** < 120s to dispatcher; 1 merged PR; 1 morning report;
   0 out-of-repo writes (excluding `~/.devx/`).
-- **Verified by:** evals/E-7_s5-palateful.md
+- **Verified by:** _devx/workstreams/portability-install/evals/E-7_s5-palateful.md

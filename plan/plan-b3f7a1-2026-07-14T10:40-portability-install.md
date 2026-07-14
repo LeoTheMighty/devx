@@ -11,12 +11,12 @@ project_shape: empty-dream
 thoroughness: send-it
 stack_layers: [ backend ]
 blocked_by: []
-stage: plan
+stage: red
 entered_at: prd
 gate_status:
   prd_validated: true
   design_verified: true
-  plan_verified: false
+  plan_verified: true
   evals_red: false
 outcome:
   status: null
@@ -117,6 +117,21 @@ repo + palateful) → ret.
   map + out-of-repo write audit), step-by-step shape deferred to the plan
   stage's val-phase verification plan. Report:
   decisions/2026-07-14-design-verify.md.
+- 2026-07-14T11:45 — Plan stage: plan.md authored — 5 phases (skl101
+  skills mirror + drift guard → ini601 installer lib → ini602 CLI
+  scaffold → dst101 install:global + SHA + docs → val101 S-5 validation),
+  E-1..7 coverage table. Critique skipped (send-it + 1 stack layer <
+  engine.critique.min_surfaces 2). Mid-stage correction: Verified-by
+  paths retargeted test/*.test.ts → workstream evals scripts (RED
+  artifacts at test/ paths would hold npm test red across all 5 PRs;
+  v2x101 precedent + `projects: workstream-evals` runner is the CI-safe
+  shape; permanent vitest suites remain phase deliverables). Applied via
+  `devx revise b3f7a1 --touched expectations.md` (cleared 3 flags) +
+  full gate replay: gate prd PASS, gate coverage design PASS (fresh
+  judge, 20/20 covered — the 4 prior CONCERNS amendments verified),
+  gate coverage plan PASS (7/7 covered; one judge-table extras-shape
+  retry, `note`→`item`). plan_verified flipped, stage: red. Reports:
+  decisions/2026-07-14-{design,plan}-verify.md.
 
 ## Links
 
