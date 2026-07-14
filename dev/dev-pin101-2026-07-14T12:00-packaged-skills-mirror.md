@@ -5,8 +5,8 @@ created: 2026-07-14T12:00:00-07:00
 title: Packaged skills mirror + drift guard (skills/, sync script, npm-test lock)
 from: plan/plan-b3f7a1-2026-07-14T10:40-portability-install.md
 plan: _devx/workstreams/portability-install
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-07-14T1116-78325
 blocked_by: []
 branch: feat/dev-pin101
 ---
@@ -47,3 +47,4 @@ drift test in the default suite. Phase 1 of workstream
 ## Status log
 
 - 2026-07-14T12:00 — emitted by /devx-plan RED stage (b3f7a1, phase 1/5).
+- 2026-07-14T11:16:52-06:00 — claimed by /devx in session /devx-2026-07-14T1116-78325
