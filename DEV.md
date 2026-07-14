@@ -11,7 +11,7 @@ planned; this section outranks the paused mobile backlog below.
 
 ### Epic — portability-install (Track 1, plan: b3f7a1)
 - [x] `dev/dev-pin101-2026-07-14T12:00-packaged-skills-mirror.md` — Packaged skills mirror + drift guard (skills/, sync script, npm-test lock). Status: done. From: epic-portability-install. PR: https://github.com/LeoTheMighty/devx/pull/69 (merged 33d236c)
-- [/] `dev/dev-pin102-2026-07-14T12:01-skills-installer-library.md` — Skills installer library (init-skills.ts pure decision fn + atomic applier). Status: in-progress. Blocked-by: pin101.
+- [x] `dev/dev-pin102-2026-07-14T12:01-skills-installer-library.md` — Skills installer library (init-skills.ts pure decision fn + atomic applier). Status: done. Blocked-by: pin101. PR: https://github.com/LeoTheMighty/devx/pull/70 (merged adebcf1)
 - [ ] `dev/dev-pin103-2026-07-14T12:02-init-noninteractive-scaffold.md` — Bare `devx init` non-interactive scaffold (defaults AnswerProvider + skills install). Status: ready. Blocked-by: pin102.
 - [ ] `dev/dev-pin104-2026-07-14T12:03-install-global-sha-docs.md` — install:global + SHA provenance + docs-to-reality. Status: ready. Blocked-by: pin101. Parallel-safe with pin102/pin103.
 - [ ] `dev/dev-pin105-2026-07-14T12:04-s5-validation.md` — S-5 validation: timed scratch scenario + live palateful checklist. Status: ready. Blocked-by: pin103, pin104. Requires user action (live palateful run).

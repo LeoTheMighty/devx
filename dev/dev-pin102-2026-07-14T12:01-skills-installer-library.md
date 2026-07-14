@@ -5,7 +5,7 @@ created: 2026-07-14T12:01:00-07:00
 title: Skills installer library (init-skills.ts pure decision fn + atomic applier)
 from: plan/plan-b3f7a1-2026-07-14T10:40-portability-install.md
 plan: _devx/workstreams/portability-install
-status: in-progress
+status: done
 owner: /devx-2026-07-14T1136-53237
 blocked_by: [pin101]
 branch: feat/dev-pin102
@@ -55,3 +55,5 @@ library variant); the consumer lands in pin103. Phase 2 of workstream
 - 2026-07-14T11:41 — phase 3: implemented src/lib/init-skills.ts (parseSkillHeader + decideSkillInstall pure fn + installSkills applier) reusing writeAtomic (supervisor-internal) + appendManualEntry (init-failure, newly exported); 22 tests green. Documented convergence rule: header + ANY version mismatch (incl. newer) → overwrite — header is an ownership marker, not a precedence record.
 - 2026-07-14T11:49 — phase 4: 3-agent parallel adversarial review (Blind Hunter + Edge Case Hunter + Acceptance Auditor; marker-bearing surface); 12 unique findings (0 HIGH, 3 MED, 9 LOW/INFO); ALL fixed in-place — most load-bearing: CRLF/BOM/trailing-ws on the header line misclassified machine-owned files as user-owned, permanently wedging upgrades (parseSkillHeader now strips both); also replaced the vacuous injected-failure test (threw at readFileSync, never reached writeAtomic) with real EACCES + rename-failure injections, keyed MANUAL idempotency on resolved targetPath not basename, non-file targets → skip-user-owned instead of EISDIR crash, version validated up front. 22 → 35 tests. Re-review of fixed hunks clean.
 - 2026-07-14T12:03 — phase 5: local CI green — full npm test 2095/2095 (schema smoke + config-io + config-validate + build + typecheck + vitest). One env repair: diff2html was missing from node_modules (pre-existing, failed identically on main; npm install fixed; no code change). Coverage: informational under YOLO.
+- 2026-07-14T12:10 — phase 7: PR opened https://github.com/LeoTheMighty/devx/pull/70 (tour published to devx-tours); remote CI devx-ci run 29356602719 → success.
+- 2026-07-14T12:14 — merged via PR #70 (squash → adebcf1).
