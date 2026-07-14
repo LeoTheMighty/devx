@@ -5,19 +5,19 @@ created: 2026-07-14T10:40:00-07:00
 title: "Vision-gap Track 1 — Portability & install: packaged skills, real `devx init` scaffold, S-5 on a real external repo"
 status: ready
 from: PLAN.md#vision-gap-tracks (drift audit 2026-07-14; approved plan sparkling-bubbling-pie)
-spawned: []
+spawned: [pin101, pin102, pin103, pin104, pin105, pinret]
 mode: YOLO
 project_shape: empty-dream
 thoroughness: send-it
 stack_layers: [ backend ]
 blocked_by: []
-stage: red
+stage: executing
 entered_at: prd
 gate_status:
   prd_validated: true
   design_verified: true
   plan_verified: true
-  evals_red: false
+  evals_red: true
 outcome:
   status: null
   measure_by: null
@@ -132,6 +132,20 @@ repo + palateful) → ret.
   gate coverage plan PASS (7/7 covered; one judge-table extras-shape
   retry, `note`→`item`). plan_verified flipped, stage: red. Reports:
   decisions/2026-07-14-{design,plan}-verify.md.
+- 2026-07-14T12:15 — RED stage: 7 artifacts authored at the exact
+  Verified-by paths (E-1..E-6 standalone tsx evals; E-7 human checklist
+  stub — deferred legal at P2/human). `devx gate evals b3f7a1 --dry-run`
+  resolution clean; real run → **PASS** — 6/6 runnable expectations
+  observed RED right-reason (failure quotes confirmed in
+  evals/RED-report.md: missing skills mirror, missing scaffold artifacts,
+  missing build-info, phantom doc paths; zero wiring errors); E-7
+  deferred. evals_red flipped, stage: executing. Dev specs emitted: 5
+  phases as pin101–pin105 (renamed from the sketch's mixed prefixes —
+  `emit-retro-story` requires a shared 3-char prefix for the retro-hash
+  derivation; plan.md phase names synced) + pinret co-emitted via
+  `devx plan-helper emit-retro-story`; DEV.md § Vision-gap tracks rows
+  appended in dependency order; `devx plan-helper validate-emit
+  portability-install` → ok. PLAN.md flipped [x] planned.
 
 ## Links
 

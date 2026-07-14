@@ -9,7 +9,13 @@ portability & install → usage-window governor → interim blocker push →
 fleet layer. Dev specs are emitted here by `/devx-plan` as each track is
 planned; this section outranks the paused mobile backlog below.
 
-*(awaiting first `/devx-plan b3f7a1` emission)*
+### Epic — portability-install (Track 1, plan: b3f7a1)
+- [ ] `dev/dev-pin101-2026-07-14T12:00-packaged-skills-mirror.md` — Packaged skills mirror + drift guard (skills/, sync script, npm-test lock). Status: ready. From: epic-portability-install.
+- [ ] `dev/dev-pin102-2026-07-14T12:01-skills-installer-library.md` — Skills installer library (init-skills.ts pure decision fn + atomic applier). Status: ready. Blocked-by: pin101.
+- [ ] `dev/dev-pin103-2026-07-14T12:02-init-noninteractive-scaffold.md` — Bare `devx init` non-interactive scaffold (defaults AnswerProvider + skills install). Status: ready. Blocked-by: pin102.
+- [ ] `dev/dev-pin104-2026-07-14T12:03-install-global-sha-docs.md` — install:global + SHA provenance + docs-to-reality. Status: ready. Blocked-by: pin101. Parallel-safe with pin102/pin103.
+- [ ] `dev/dev-pin105-2026-07-14T12:04-s5-validation.md` — S-5 validation: timed scratch scenario + live palateful checklist. Status: ready. Blocked-by: pin103, pin104. Requires user action (live palateful run).
+- [ ] `dev/dev-pinret-2026-07-14T11:11-retro-portability-install.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: pin101, pin102, pin103, pin104, pin105.
 
 ## Phase 0 — Foundation (plan: plan-a01000)
 

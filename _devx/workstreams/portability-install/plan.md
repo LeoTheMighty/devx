@@ -65,15 +65,15 @@ checks and flip green as the phases ship.
 
 ## Phase checklist
 
-- [ ] Phase 1: skl101 — packaged skills mirror + drift guard
-- [ ] Phase 2: ini601 — skills installer library
-- [ ] Phase 3: ini602 — `devx init` non-interactive scaffold
-- [ ] Phase 4: dist101 — install:global + SHA provenance + docs-to-reality
-- [ ] Phase 5: val101 — S-5 validation (scripted + live checklist)
+- [ ] Phase 1: pin101 — packaged skills mirror + drift guard
+- [ ] Phase 2: pin102 — skills installer library
+- [ ] Phase 3: pin103 — `devx init` non-interactive scaffold
+- [ ] Phase 4: pin104 — install:global + SHA provenance + docs-to-reality
+- [ ] Phase 5: pin105 — S-5 validation (scripted + live checklist)
 
 ## Phases
 
-### 1. Phase: skl101 — packaged skills mirror + drift guard
+### 1. Phase: pin101 — packaged skills mirror + drift guard
 
 **Overview**: Create `skills/` as byte-identical copies of
 `.claude/commands/*.md`, add it to `package.json → files`, add
@@ -106,7 +106,7 @@ consumes the packaged skills. Reads `.claude/` only — no harness gate.
 - [ ] T1.2 generate committed `skills/*` via the script — files: `skills/*.md`
 - [ ] T1.3 make E-1 + E-2 RED artifacts pass — files: `test/skills-packaging.test.ts`, `test/skills-sync.test.ts`
 
-### 2. Phase: ini601 — skills installer library
+### 2. Phase: pin102 — skills installer library
 
 **Overview**: `src/lib/init-skills.ts` — pure decision fn
 (file state × `devx-skill` header × version → `write | overwrite |
@@ -138,7 +138,7 @@ CLI-passthrough pattern, library variant — consumer lands in Phase 3).
 - [ ] T2.1 decision fn + truth-table tests — files: `src/lib/init-skills.ts`, `test/init-skills.test.ts`
 - [ ] T2.2 applier + MANUAL wiring + fs tests — files: same
 
-### 3. Phase: ini602 — `devx init` non-interactive scaffold
+### 3. Phase: pin103 — `devx init` non-interactive scaffold
 
 **Overview**: Bare `devx init` = `detectInitState()` →
 non-interactive AnswerProvider (stack answers from `detectedStack`,
@@ -175,7 +175,7 @@ land here via a new scenario in the ini508 e2e fixture harness.
 - [ ] T3.3 e2e scenarios green (E-3, E-4) — files: `test/init-cli-scaffold.test.ts`
 - [ ] T3.4 scratch-repo first-real-run + findings to status log
 
-### 4. Phase: dist101 — install:global + SHA provenance + docs-to-reality
+### 4. Phase: pin104 — install:global + SHA provenance + docs-to-reality
 
 **Overview**: Build embeds `dist/build-info.json` (`git rev-parse --short
 HEAD`); version surface composes `<semver>+<sha>` when present
@@ -209,7 +209,7 @@ work-repo caveat). E-6's docs eval ships and passes here.
 - [ ] T4.2 install:global script + INSTALL.md rewrite — files: `package.json`, `INSTALL.md`
 - [ ] T4.3 SETUP.md Part 2 rewrite + E-6 eval green — files: `docs/SETUP.md`, `evals/E-6_docs-paths.ts`
 
-### 5. Phase: val101 — S-5 validation (scripted + live checklist)
+### 5. Phase: pin105 — S-5 validation (scripted + live checklist)
 
 **Overview**: Close the loop on G-1/G-3: author + execute the
 `evals/E-7_s5-palateful.md` checklist. Scripted half runs here (timed
