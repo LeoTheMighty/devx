@@ -3,7 +3,7 @@ hash: b3f7a1
 type: plan
 created: 2026-07-14T10:40:00-07:00
 title: "Vision-gap Track 1 — Portability & install: packaged skills, real `devx init` scaffold, S-5 on a real external repo"
-status: planned
+status: done
 from: PLAN.md#vision-gap-tracks (drift audit 2026-07-14; approved plan sparkling-bubbling-pie)
 spawned: [pin101, pin102, pin103, pin104, pin105, pinret]
 mode: YOLO
