@@ -9,8 +9,19 @@ spawned: []
 mode: YOLO
 project_shape: empty-dream
 thoroughness: send-it
-stack_layers: [backend]
+stack_layers: [ backend ]
 blocked_by: []
+stage: design
+entered_at: prd
+gate_status:
+  prd_validated: true
+  design_verified: false
+  plan_verified: false
+  evals_red: false
+outcome:
+  status: null
+  measure_by: null
+workstream: _devx/workstreams/portability-install
 ---
 
 ## Goal
@@ -79,6 +90,15 @@ repo + palateful) → ret.
 
 - 2026-07-14T10:40 — filed from the vision-gap drift audit (plan
   sparkling-bubbling-pie, approved 2026-07-14). Track 1 of 4; ships first.
+- 2026-07-14T11:05 — PRD stage: workstream scaffolded (`devx workstream new
+  portability-install --hash b3f7a1`); prd.md (G-1..4, UC-1..4, CAP-1..5,
+  FR-1..7) + expectations.md (E-1..7; 3×P0, 2×P1, 2×P2) authored from the
+  approved drift-audit plan + this session's code research (no fresh
+  Explore fan-out — audit already grounded every claim). Critique skipped
+  (thoroughness send-it). `devx gate prd b3f7a1` → FAIL ×2 (E-7
+  Verified-by trailing prose — parser folds continuation lines; trimmed to
+  bare path) → **PASS**; prd_validated flipped, stage: design. Artifacts:
+  _devx/workstreams/portability-install/{prd,expectations}.md.
 
 ## Links
 
