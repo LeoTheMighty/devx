@@ -17,13 +17,25 @@ Each maps to a phase in [`ROADMAP.md`](./docs/ROADMAP.md). Pick one off the top 
 ## v2 — Native engine migration (2026-07-05)
 
 - [x] `v2/` — BMAD → native engine, review tours, universal dispatcher, overnight loop. Status: done (closed 2026-07-05, PRs #59–#68 in one day; retro: `_devx/retros/v2-migration-2026-07-05.md`; outcome scored: v2x101 keep 3/3). Source of truth: `v2/06-phases.md`; decisions: `v2/07-decisions.md`.
-- [-] `plan/plan-d01000-2026-04-26T19:30-parallelism.md` — Phase 3 — Parallelism & coordination (locks, intents, capacity, permissions). Status: deferred. Blocked-by: c4f1a2.
-- [-] `plan/plan-e01000-2026-04-26T19:30-observability-surfaces.md` — Phase 4 — Observability surfaces (TUI, web dashboard, mobile relay). Status: deferred. Blocked-by: c4f1a2. Parallel-with: f01000.
+- [-] `plan/plan-d01000-2026-04-26T19:30-parallelism.md` — Phase 3 — Parallelism & coordination (locks, intents, capacity, permissions). Status: deferred. Blocked-by: c4f1a2. Note 2026-07-14: capacity-management slice re-homed to c8e2d4 (vision-gap Track 2).
+- [-] `plan/plan-e01000-2026-04-26T19:30-observability-surfaces.md` — Phase 4 — Observability surfaces (TUI, web dashboard, mobile relay). Status: deferred. Blocked-by: c4f1a2. Parallel-with: f01000. Note 2026-07-14: interim notification slice re-homed to e5a9c0 (vision-gap Track 3).
 - [-] `plan/plan-f01000-2026-04-26T19:30-test-debug-learn.md` — Phase 5 — Test, debug, retro, learn. Status: deferred. Blocked-by: c4f1a2.
 - [-] `plan/plan-a02000-2026-04-26T19:30-focus-group.md` — Phase 6 — Focus group (persistent persona panel). Status: deferred. Blocked-by: f01000.
 - [-] `plan/plan-b02000-2026-04-26T19:30-exploratory-qa.md` — Phase 7 — Exploratory QA (browser-use subprocesses). Status: deferred. Blocked-by: e01000, a02000.
 - [-] `plan/plan-d02000-2026-04-26T19:30-modes-and-gates.md` — Phase 9 — Modes & full gate cascade. Status: deferred. Blocked-by: b02000.
 - [-] `plan/plan-e02000-2026-04-26T19:30-polish-and-dogfood.md` — Phase 10 — Polish + dogfood (continuous; final pass). Status: deferred. Blocked-by: d02000.
+
+## Vision-gap tracks (2026-07-14 drift audit)
+
+Owner-approved 2026-07-14 (plan `sparkling-bubbling-pie`): close the gap
+between the built single-repo system and the owner's intended use — portable
+install, overnight usage-window riding, blocker push, multi-repo fleet.
+Ship order = list order; mobile backlog (below) pauses until f1d6b2 ships.
+
+- [ ] `plan/plan-b3f7a1-2026-07-14T10:40-portability-install.md` — Track 1 — Portability & install (packaged skills, real `devx init` scaffold, S-5 on palateful). Status: ready. Blocked-by: —.
+- [ ] `plan/plan-c8e2d4-2026-07-14T10:41-usage-window-governor.md` — Track 2 — Usage-window governor (`devx loop` pauses on subscription limit, resumes on reset; re-homes d01000's capacity slice + OPEN_QUESTIONS §3). Status: ready. Blocked-by: —.
+- [ ] `plan/plan-e5a9c0-2026-07-14T10:42-blocker-push-interim.md` — Track 3 — Interim blocker push (GitHub blockers-issue @mention; retired by mobile relay). Status: ready. Blocked-by: —.
+- [-] `plan/plan-f1d6b2-2026-07-14T10:43-fleet-layer.md` — Track 4 — Fleet layer (`~/.devx/projects.yaml`, `devx fleet loop`, aggregated report, `/devx-fleet`; supersedes ROADMAP:16 scope per INTERVIEW Q#10). Status: blocked. Blocked-by: b3f7a1, c8e2d4.
 
 ## Cross-cutting plans
 

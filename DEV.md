@@ -2,6 +2,15 @@
 
 Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 
+## Vision-gap tracks (plans: b3f7a1 → c8e2d4 → e5a9c0 → f1d6b2)
+
+Owner-approved 2026-07-14 drift audit (`PLAN.md § Vision-gap tracks`):
+portability & install → usage-window governor → interim blocker push →
+fleet layer. Dev specs are emitted here by `/devx-plan` as each track is
+planned; this section outranks the paused mobile backlog below.
+
+*(awaiting first `/devx-plan b3f7a1` emission)*
+
 ## Phase 0 — Foundation (plan: plan-a01000)
 
 ### Epic 1 — BMAD audit
@@ -44,7 +53,14 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 - [x] `dev/dev-ini508-2026-04-26T19:35-init-end-to-end-test.md` — End-to-end integration test. Status: done. Blocked-by: ini506, ini507. PR: https://github.com/LeoTheMighty/devx/pull/29 (merged fa0aa0e).
 - [x] `dev/dev-iniret-2026-04-27T08:00-retro-init-skill.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: done. Blocked-by: ini501, ini502, ini503, ini504, ini505, ini506, ini507, ini508. PR: https://github.com/LeoTheMighty/devx/pull/30 (merged 2634254). Phase 0 closed.
 
-## Mobile companion v0.1 (plan: plan-7a2d1f)
+## Mobile companion v0.1 (plan: plan-7a2d1f) — PAUSED 2026-07-14
+
+**Paused until the fleet layer (f1d6b2) ships** — vision-gap tracks above
+execute first (owner sequencing decision 2026-07-14; this backlog was also
+gated on user actions: Apple Team ID, on-device run, App Store Connect).
+Statuses below stay `ready` — the section is outranked, not blocked; the
+Track 3 interim GitHub notifier is retired by this backlog's Epic 4 relay
+when it resumes.
 
 ### Epic 1 — Flutter scaffold & iOS on device (M1)
 - [ ] `dev/dev-a10001-2026-04-23T13:01-flutter-project-scaffold.md` — Flutter project scaffold + nav shell. Status: ready. From: epic-flutter-scaffold-ios-device.

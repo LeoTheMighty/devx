@@ -194,6 +194,50 @@ loop can read.
 
 ---
 
+- [x] **Q#10 — Supersede ROADMAP:16 "multi-project switcher deferred to v1.5": build the thin fleet layer now.** (from /devx drift-audit session 2026-07-14)
+  - Context: The owner's intended use (palateful + a new website repo worked
+    overnight on one machine, one shared Claude usage pool, one
+    conversational front door) requires multi-repo orchestration.
+    `docs/ROADMAP.md:16` locked "single-repo MVP; multi-project switcher
+    deferred to v1.5" and ledger O-5 (`v2/07-decisions.md`) holds the
+    single-repo invariant. Working agreements forbid silent product
+    decisions — this entry is the provenance for the ledger amendment.
+  - Question: Bring multi-project forward as a thin outer layer now?
+  - Blocks: f1d6b2 (fleet layer plan) and its ledger/docs amendments.
+  - Options: (a) thin fleet layer now — registry + serial `devx fleet loop`
+    child-processing each repo's own loop + aggregated report + `/devx-fleet`
+    front door; each repo stays a standalone single-repo instance;
+    cross-repo *workstreams* stay out per O-5. (b) keep the v1.5 deferral.
+  - Agent recommendation: (a) — preserves the single-repo invariant per
+    instance; fleet is portfolio *scheduling*, not cross-repo planning.
+  → Answer: (a) — owner decision 2026-07-14 (approved plan
+    `sparkling-bubbling-pie`). Sequencing: vision-gap tracks first, mobile
+    backlog paused until f1d6b2 ships. Interim notifications via GitHub
+    blockers-issue @mention (doubles as phone-editable TODO), retired by the
+    mobile relay when that backlog resumes.
+
+---
+
+- [ ] **Q#11 — Bringing devx into the work repo: mode + org-policy call.** (from /devx drift-audit session 2026-07-14)
+  - Context: Portability (b3f7a1) makes `devx init` on any repo real. The
+    owner floated using devx on a work repo. Mechanically identical to
+    palateful, but two decisions are the owner's alone: (1) YOLO auto-merge
+    is wrong for a shared work repo — mode must be BETA/PROD there; (2) org
+    policy on sending proprietary code to Claude / running autonomous agents
+    against a work codebase.
+  - Question: When (if ever) do we init devx on the work repo, and under
+    which mode/permissions profile?
+  - Blocks: nothing — palateful + website are the near-term targets; this is
+    deferred until the owner actually wants it.
+  - Options: (a) defer until after the first successful palateful fleet
+    night, then decide with evidence in hand, (b) never — personal projects
+    only, (c) now, BETA mode, after checking org policy.
+  - Agent recommendation: (a) — no reason to decide before the system has
+    proven a real overnight night on a personal repo.
+  → Answer:
+
+---
+
 ## Phase 0 / cli301 prerequisites
 
 Filled by `/devx` automatically when it tries to claim `cli301` and finds the
