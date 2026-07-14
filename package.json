@@ -16,6 +16,7 @@
     "scripts/postinstall-lib.mjs",
     "_devx/config-schema.json",
     "_devx/templates",
+    "skills",
     "INSTALL.md"
   ],
   "scripts": {
@@ -26,6 +27,7 @@
     "test:config-io": "tsx test/config-io.test.ts",
     "test:config-validate": "tsx test/config-validate.test.ts",
     "test:vitest": "vitest run",
+    "sync:skills": "node scripts/sync-skills.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
