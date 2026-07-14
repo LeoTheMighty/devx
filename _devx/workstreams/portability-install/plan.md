@@ -65,7 +65,7 @@ checks and flip green as the phases ship.
 
 ## Phase checklist
 
-- [ ] Phase 1: pin101 — packaged skills mirror + drift guard
+- [x] Phase 1: pin101 — packaged skills mirror + drift guard
 - [ ] Phase 2: pin102 — skills installer library
 - [ ] Phase 3: pin103 — `devx init` non-interactive scaffold
 - [ ] Phase 4: pin104 — install:global + SHA provenance + docs-to-reality

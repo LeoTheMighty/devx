@@ -10,7 +10,7 @@ fleet layer. Dev specs are emitted here by `/devx-plan` as each track is
 planned; this section outranks the paused mobile backlog below.
 
 ### Epic — portability-install (Track 1, plan: b3f7a1)
-- [/] `dev/dev-pin101-2026-07-14T12:00-packaged-skills-mirror.md` — Packaged skills mirror + drift guard (skills/, sync script, npm-test lock). Status: in-progress. From: epic-portability-install.
+- [x] `dev/dev-pin101-2026-07-14T12:00-packaged-skills-mirror.md` — Packaged skills mirror + drift guard (skills/, sync script, npm-test lock). Status: done. From: epic-portability-install. PR: https://github.com/LeoTheMighty/devx/pull/69 (merged 33d236c)
 - [ ] `dev/dev-pin102-2026-07-14T12:01-skills-installer-library.md` — Skills installer library (init-skills.ts pure decision fn + atomic applier). Status: ready. Blocked-by: pin101.
 - [ ] `dev/dev-pin103-2026-07-14T12:02-init-noninteractive-scaffold.md` — Bare `devx init` non-interactive scaffold (defaults AnswerProvider + skills install). Status: ready. Blocked-by: pin102.
 - [ ] `dev/dev-pin104-2026-07-14T12:03-install-global-sha-docs.md` — install:global + SHA provenance + docs-to-reality. Status: ready. Blocked-by: pin101. Parallel-safe with pin102/pin103.
