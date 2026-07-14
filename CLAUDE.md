@@ -404,12 +404,29 @@ tours, universal dispatcher, overnight loop); `dev-roc101`
 and is inherited by the v2 dispatcher.
 Mobile companion v0.1 runs in parallel from Phase 8.
 
-## Status: v2 migration (closed 2026-07-05)
+## Status: v2 migration (closed 2026-07-05 — planned AND shipped in one day)
 
-Shipped so far: v2s101 (engine templates seed, PR #59), roc101
-(verify-claim resume-owner check, PR #60), mgrret (final BMAD-era retro,
-PR #61), v2e101 (engine gate CLIs, PR #62), v2e102 (planning stages
-dogfood, PR #63). v2x101 (this PR) executes the re-home + BMAD ejection:
-`/devx` Phases 2–4 native, `engine:`/`loop:` config blocks replace
-`bmad:`, `.claude/skills/bmad-*` + `_bmad/` deleted, `devx init`
-de-BMAD'd, docs sweep. Phase sequencing: `v2/06-phases.md`.
+All 10 items merged, PRs #59–#68: v2s101 engine templates (#59), roc101
+verify-claim (#60), mgrret final BMAD retro (#61), v2e101 gate CLIs
+(#62), v2e102 planning stages + first real gate run (#63), v2x101 BMAD
+ejection (~950 files deleted, `/devx` native, `engine:`/`loop:` config)
+(#64), v2t101 review tours + `devx: hold` (#65), v2d101 universal
+dispatcher + 12-row `devx next` (#66), v2l101 overnight loop (#67),
+v2o101 outcome loop + migration retro (#68).
+
+Numbers: 1,309 → 2,039 tests; ~111 adversarial-review findings fixed
+in-place; planning prose ~550KB → 23.9KB (S-1, CI-gated at 60KB); net
+−247K lines. First real outcome verdict: v2x101 scored **keep, 3/3
+goals**. Retro: `_devx/retros/v2-migration-2026-07-05.md` (LEARN.md §
+v2-migration E1–E10 + 1 cross-epic promotion). Every PR since #65
+carries a review tour on the `devx-tours` branch.
+
+The system's surfaces now: `/devx` (universal dispatcher; no-args →
+`devx next`), `/devx-plan` (PRD → Design → Plan → RED gates),
+`devx loop` (overnight; D-6/D-11), `devx tour` (review artifacts),
+`devx outcome` (post-ship scoring). Decision ledger: `v2/07-decisions.md`.
+
+Open human items: INTERVIEW.md Q#9 (full-surface prose budget, 64.2KB vs
+60KB target) + MANUAL.md MV2.1 (S-3 supervised first night of
+`devx loop`). Next work per `devx next`: the mobile companion backlog
+(a10001 Flutter scaffold onward), unchanged and migration-safe.
