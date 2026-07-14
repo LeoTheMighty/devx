@@ -245,7 +245,7 @@ export function assertNotPartial(opts: ConfigPathOpts): void {
 // MANUAL.md append (idempotent per kind)
 // ---------------------------------------------------------------------------
 
-interface AppendManualOpts {
+export interface AppendManualOpts {
   manualPath: string;
   kind: string;
   /** Single-line title (becomes the bullet's bold header). */
@@ -255,7 +255,7 @@ interface AppendManualOpts {
   now: Date;
 }
 
-interface AppendManualOutcome {
+export interface AppendManualOutcome {
   appended: boolean;
 }
 
@@ -265,8 +265,11 @@ function anchorFor(kind: string): string {
 
 /** Append a single bullet to MANUAL.md under a "## /devx-init deferred work"
  *  section. If a bullet for this kind is already present (detected via the
- *  per-kind anchor comment), do nothing. */
-function appendManualEntry(opts: AppendManualOpts): AppendManualOutcome {
+ *  per-kind anchor comment), do nothing. Exported for init-skills (pin102):
+ *  skip-user-owned skill files file their MANUAL entry through this same
+ *  path — the anchor's `devx:init-failure:` namespace is an internal
+ *  idempotency marker, not a semantic claim about the entry. */
+export function appendManualEntry(opts: AppendManualOpts): AppendManualOutcome {
   const anchor = anchorFor(opts.kind);
 
   let existing = "";
