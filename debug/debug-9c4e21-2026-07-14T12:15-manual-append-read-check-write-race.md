@@ -4,8 +4,8 @@ type: debug
 created: 2026-07-14T12:15:00-06:00
 title: appendManualEntry read-check-write race can double-append or clobber concurrent MANUAL.md writes
 from: dev/dev-pin102-2026-07-14T12:01-skills-installer-library.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-07-14T1217-1080
 branch: feat/debug-9c4e21
 ---
 
@@ -43,3 +43,4 @@ double-append the same anchor kind and never lose each other's bullet.
 
 - 2026-07-14T12:15 — filed by /devx during pin102 cleanup (out-of-scope
   finding from the 3-agent review; see PR #70 notes + tour blast radius).
+- 2026-07-14T12:17:38-06:00 — claimed by /devx in session /devx-2026-07-14T1217-1080
