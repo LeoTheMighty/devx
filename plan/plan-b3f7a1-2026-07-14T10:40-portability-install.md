@@ -11,11 +11,11 @@ project_shape: empty-dream
 thoroughness: send-it
 stack_layers: [ backend ]
 blocked_by: []
-stage: design
+stage: plan
 entered_at: prd
 gate_status:
   prd_validated: true
-  design_verified: false
+  design_verified: true
   plan_verified: false
   evals_red: false
 outcome:
@@ -41,11 +41,14 @@ to loop on; fleet needs ≥2 initialized repos).
 
 ## Scope
 
-- **Packaged skills**: new top-level `skills/` dir = canonical skill bodies,
-  added to `package.json → files`. This repo's `.claude/commands/*.md` become
-  symlinks into `skills/`, with a content-sync check in `npm test`.
-  **The symlink move is user-foreground** (harness gates `.claude/` writes in
-  this repo). Writing *other* repos' `.claude/` from the CLI is ungated.
+- **Packaged skills**: new top-level `skills/` dir = shipped byte-identical
+  **copies** of this repo's `.claude/commands/*.md` (design stage superseded
+  the original symlink idea: `npm pack` excludes symlinks, and symlinking
+  the live commands would let ungated `skills/` edits mutate harness
+  behavior — see design.md § Resolved design questions). `.claude/commands/`
+  stays canonical + user-foreground; `skills/` refresh is mechanical
+  (`npm run sync:skills`) with a content-sync check in `npm test`.
+  Writing *other* repos' `.claude/` from the CLI is ungated.
 - **`devx init` real scaffold path**: bare `devx init` = non-interactive
   scaffold reusing `src/lib/init-orchestrator.ts` + `init-write.ts` (already
   stamps `devx_version`), plus a new skills-install step writing the target
@@ -99,6 +102,21 @@ repo + palateful) → ret.
   Verified-by trailing prose — parser folds continuation lines; trimmed to
   bare path) → **PASS**; prd_validated flipped, stage: design. Artifacts:
   _devx/workstreams/portability-install/{prd,expectations}.md.
+- 2026-07-14T11:20 — Design stage: design.md authored (copies-not-symlinks
+  resolution; `.claude/commands/` canonical, `skills/` shipped mirror;
+  skills installer as pure-fn + applier; non-interactive AnswerProvider
+  over existing `runInit()`/`detectStack()`; build-info SHA embed).
+  Override flow applied: Scope bullet's symlink wording superseded per
+  design.md § Resolved design questions. Coverage judge (1 subagent,
+  20/20 IDs): 16 covered / 4 partial / 0 missing. `devx gate coverage
+  b3f7a1 --table …` → **CONCERNS** (G-3, FR-3, FR-6, FR-7 partial);
+  design_verified flipped, stage: plan. All four concerns addressed
+  post-flip: FR-3 grounded in existing `detectStack()`
+  (src/lib/init-state.ts:248); FR-6 work-repo caveat carved into the
+  migration plan; G-3/FR-7 live-checklist contract pinned (step↔threshold
+  map + out-of-repo write audit), step-by-step shape deferred to the plan
+  stage's val-phase verification plan. Report:
+  decisions/2026-07-14-design-verify.md.
 
 ## Links
 
