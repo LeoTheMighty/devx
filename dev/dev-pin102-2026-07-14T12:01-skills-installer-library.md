@@ -5,8 +5,8 @@ created: 2026-07-14T12:01:00-07:00
 title: Skills installer library (init-skills.ts pure decision fn + atomic applier)
 from: plan/plan-b3f7a1-2026-07-14T10:40-portability-install.md
 plan: _devx/workstreams/portability-install
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-07-14T1136-53237
 blocked_by: [pin101]
 branch: feat/dev-pin102
 ---
@@ -50,3 +50,4 @@ library variant); the consumer lands in pin103. Phase 2 of workstream
 ## Status log
 
 - 2026-07-14T12:01 — emitted by /devx-plan RED stage (b3f7a1, phase 2/5).
+- 2026-07-14T11:36:30-06:00 — claimed by /devx in session /devx-2026-07-14T1136-53237
