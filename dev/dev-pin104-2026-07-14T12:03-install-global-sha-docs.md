@@ -5,8 +5,8 @@ created: 2026-07-14T12:03:00-07:00
 title: install:global + SHA provenance + docs-to-reality (INSTALL.md, SETUP.md)
 from: plan/plan-b3f7a1-2026-07-14T10:40-portability-install.md
 plan: _devx/workstreams/portability-install
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-07-15T1014-98093
 blocked_by: [pin101]
 branch: feat/dev-pin104
 ---
@@ -55,3 +55,4 @@ parallel-safe with pin102/pin103.
 ## Status log
 
 - 2026-07-14T12:03 — emitted by /devx-plan RED stage (b3f7a1, phase 4/5).
+- 2026-07-15T10:14:45-06:00 — claimed by /devx in session /devx-2026-07-15T1014-98093
