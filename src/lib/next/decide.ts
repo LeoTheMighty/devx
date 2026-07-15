@@ -101,7 +101,9 @@ export interface OwnPrSignal {
   ci: CiState;
   /** Spec type derived from the branch tail (`feat/debug-<hash>` → "debug").
    *  Row 3 routes dev PRs to `devx merge-gate` and everything else through
-   *  the `/devx <hash>` dispatcher (merge-gate resolves dev/ specs only). */
+   *  the `/devx <hash>` dispatcher, whose execute/debug arm owns the full
+   *  merge tail (spec/backlog bookkeeping included). merge-gate itself is
+   *  type-aware since debug-6a913f. */
   specType: string | null;
   /** Spec hash derived from the branch tail (`feat/dev-<hash>` → hash). */
   hash: string | null;
@@ -279,8 +281,9 @@ const row3: RowFn = (s) => {
   const pr = s.prs.find((p) => p.ci === "green" || p.ci === "none");
   if (!pr) return null;
   const ciNote = pr.ci === "none" ? " (no checks reported)" : "";
-  // merge-gate resolves dev/ specs only; debug/plan/etc. PRs route through
-  // the dispatcher, whose execute/debug arm owns their merge tail.
+  // debug/plan/etc. PRs route through the dispatcher, whose execute/debug
+  // arm owns their full merge tail (bookkeeping included); merge-gate itself
+  // is type-aware since debug-6a913f.
   let command: string;
   if (pr.hash && pr.specType === "dev") {
     command = `devx merge-gate ${pr.hash}`;

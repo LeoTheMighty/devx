@@ -157,6 +157,21 @@ describe("debug-6a913f — merge-gate resolves non-dev specs", () => {
     expect(prList).toContain("feat/debug-abc902");
   });
 
+  it("emits exit 2 'spec resolution failed' on a cross-dir hash collision", () => {
+    const fx = makeGateFixture({ hash: "abc906", type: "debug" });
+    // Same hash squatting in dev/ — resolution must refuse, not pick one.
+    mkdirSync(join(fx.dir, "dev"), { recursive: true });
+    writeFileSync(
+      join(fx.dir, "dev", "dev-abc906-2026-07-15T08:27-dupe.md"),
+      "---\nhash: abc906\ntype: dev\n---\n",
+    );
+    const r = runGate(fx, "abc906", () => {
+      throw new Error("exec should not be called on ambiguous hash");
+    });
+    expect(r.code).toBe(2);
+    expect(r.decision).toEqual({ merge: false, reason: "spec resolution failed" });
+  });
+
   it("emits the exit-2 investigation shape (no advice) when no spec dir has the hash", () => {
     const fx = makeGateFixture({ hash: "abc903", type: "debug" });
     const r = runGate(fx, "beef99", () => {
@@ -234,8 +249,9 @@ describe("debug-6a913f — tour gather resolves non-dev specs", () => {
   it("gathers a debug/ spec's tour inputs", () => {
     const repo = makeTourRepo("abc904", "debug");
     const g = gatherTour("abc904", { repoRoot: repo });
-    expect(g.spec.hash).toBe("abc904");
-    expect(g.branch).toBe("feat/debug-abc904");
+    expect(g.meta.hash).toBe("abc904");
+    expect(g.meta.branch).toBe("feat/debug-abc904");
+    expect(g.meta.specPath).toContain("debug/debug-abc904");
   });
 
   it("still throws no-spec for a hash that matches no type dir", () => {

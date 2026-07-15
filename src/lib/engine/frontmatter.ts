@@ -352,3 +352,63 @@ export function findSpecForHashIn(
   }
   return null;
 }
+
+/** The backlog spec types whose dirs a bare hash can resolve into —
+ *  CLAUDE.md "Spec file convention". `focus-group/personas` (init-write's
+ *  extra scaffold dir) is not a spec type and is deliberately absent. */
+export const SPEC_TYPE_DIRS: ReadonlyArray<string> = [
+  "dev",
+  "plan",
+  "test",
+  "debug",
+  "focus",
+  "learn",
+  "qa",
+];
+
+export interface SpecResolution {
+  /** Absolute path to the spec file. */
+  path: string;
+  /** The spec type == the dir it was found under (`dev`, `debug`, …). */
+  type: string;
+}
+
+/** Thrown when the same hash resolves in more than one type dir. Hashes are
+ *  unique by convention (6 random hex chars); a collision means a
+ *  hand-authored duplicate, and picking one silently would gate/tour the
+ *  wrong spec. */
+export class AmbiguousSpecHashError extends Error {
+  constructor(
+    public readonly hash: string,
+    public readonly paths: ReadonlyArray<string>,
+  ) {
+    super(
+      `hash '${hash}' resolves to ${paths.length} spec files (${paths.join(", ")}); ` +
+        `spec hashes must be unique across type dirs`,
+    );
+    this.name = "AmbiguousSpecHashError";
+  }
+}
+
+/**
+ * Resolve a bare hash across every spec type dir (debug-6a913f). The single
+ * type-aware resolution point for CLIs that take only a hash (`devx
+ * merge-gate`, `devx tour gather`, …) — per-command `dev/` hardcoding is the
+ * regression class this replaces. Returns null when no dir has the hash;
+ * throws AmbiguousSpecHashError on a cross-dir collision.
+ */
+export function findSpecForHashAnyType(
+  repoRoot: string,
+  hash: string,
+): SpecResolution | null {
+  const matches: SpecResolution[] = [];
+  for (const type of SPEC_TYPE_DIRS) {
+    const path = findSpecForHashIn(repoRoot, type, hash);
+    if (path !== null) matches.push({ path, type });
+  }
+  if (matches.length === 0) return null;
+  if (matches.length > 1) {
+    throw new AmbiguousSpecHashError(hash, matches.map((m) => m.path));
+  }
+  return matches[0];
+}

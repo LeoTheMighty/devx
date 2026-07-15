@@ -24,12 +24,15 @@
 
 import { readFileSync } from "node:fs";
 
-import { findSpecForHashIn } from "../engine/frontmatter.js";
+import {
+  AmbiguousSpecHashError,
+  SPEC_TYPE_DIRS,
+  findSpecForHashAnyType,
+} from "../engine/frontmatter.js";
 import { extractAcChecklist } from "../pr-body.js";
 import { deriveBranch, type DeriveBranchConfig } from "../plan/derive-branch.js";
 import { type Exec, realExec } from "./exec.js";
 
-const SPEC_DIR = "dev";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -186,13 +189,24 @@ export function gatherTour(hash: string, opts: GatherOpts): TourGather {
   const exec = opts.exec ?? realExec;
   const config = opts.config ?? {};
 
-  const specPath = findSpecForHashIn(opts.repoRoot, SPEC_DIR, hash);
-  if (!specPath) {
+  // Type-aware resolution (debug-6a913f): a hash can name a spec of any
+  // backlog type — debug-loop PRs need tours too.
+  let resolved;
+  try {
+    resolved = findSpecForHashAnyType(opts.repoRoot, hash);
+  } catch (e) {
+    if (e instanceof AmbiguousSpecHashError) {
+      throw new GatherError("no-spec", e.message);
+    }
+    throw e;
+  }
+  if (!resolved) {
     throw new GatherError(
       "no-spec",
-      `no spec file for hash '${hash}' under ${SPEC_DIR}/`,
+      `no spec file for hash '${hash}' under any spec dir (${SPEC_TYPE_DIRS.join("/, ")}/)`,
     );
   }
+  const specPath = resolved.path;
   // BOM strip + CRLF normalization (same treatment as pr-body's
   // loadTemplate): the frontmatter/Goal/AC regexes anchor on bare `\n`, so
   // a CRLF-saved spec would otherwise silently lose ALL frontmatter

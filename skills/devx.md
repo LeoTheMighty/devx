@@ -357,7 +357,7 @@ It emits a JSON decision to stdout and exits with one of three codes:
 |---|---|---|
 | `0` | `{"merge": true}` | Run the merge command below. |
 | `1` | `{"merge": false, "reason": "...", "advice": [...]}` | Dispatch on `advice` array — see "Advice routing" below. Always append the gate's `reason` to the spec status log first. |
-| `2` | `{"merge": false, "reason": "no PR yet" \| "gh signal collection failed"}` (no `advice` field — exit 2 is investigation, not a routing decision) | Investigation: missing PR → re-check Phase 7 actually opened one; `gh` failure → check auth (`gh auth status`) and re-run. Do NOT write a MANUAL.md row for exit 2 — these are transient. Never auto-merge on exit 2 — uncertainty defaults to safe. |
+| `2` | `{"merge": false, "reason": "no PR yet" \| "no spec file …" \| "gh signal collection failed"}` (no `advice` field — exit 2 is investigation, not a routing decision) | Investigation: missing PR → re-check Phase 7 actually opened one; missing/ambiguous spec → check the hash against the backlog (typo, or a duplicated hash across type dirs); `gh` failure → check auth (`gh auth status`) and re-run. Do NOT write a MANUAL.md row for exit 2 — these are transient. Never auto-merge on exit 2 — uncertainty defaults to safe. |
 
 Pass `--coverage <pct>` (a value in `[0, 1]`) iff Phase 5's coverage runner produced one — under YOLO/BETA the gate ignores it; under PROD the gate uses it.
 
