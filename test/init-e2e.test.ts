@@ -362,12 +362,14 @@ describe("ini508 — empty fixture", () => {
       }) as GhExec,
       skipSupervisor: true,
     });
-    // Repo has no HEAD commit → still routes fresh; writeEngineTemplates
-    // runs again and must skip every existing file.
+    // pin103: devx-on-disk wins over commit count — the re-run routes to the
+    // UPGRADE path now (previously the no-HEAD repo re-ran fresh, which only
+    // preserved the tuned file because writeEngineTemplates happens to skip
+    // existing files). The load-bearing assertion is unchanged: the
+    // user-tuned template survives byte-identical.
     expect(second.status).toBe("completed");
+    expect(second.mode).toBe("upgrade");
     expect(readFileSync(tuned, "utf8")).toBe("# user-tuned PRD template\n");
-    expect(second.fresh?.engineTemplates.written).toEqual([]);
-    expect(second.fresh?.engineTemplates.skipped.length).toBeGreaterThan(0);
   });
 
   it("S-5 (v2d101): init → devx next → correct first action, zero BMAD", async () => {

@@ -1,43 +1,57 @@
-// `devx init` — Phase 0 real-functional command (12th non-stub).
-//
-// Today the only subcommand is `--resume-gh`: replay the deferred GitHub-side
-// ops queued by /devx-init's failure-mode handlers (init-failure.ts handles
-// the queue write; this command consumes it).
-//
-// The fresh-init flow is a Claude slash command (`/devx-init`), not a CLI
-// subcommand — `/devx-init` orchestrates `init-questions.ts` (interactive) +
-// `init-state.ts` (reads) + `init-write.ts` (writes) + `init-gh.ts` (gh ops)
-// + `init-failure.ts` (failure modes) + `init-personas.ts` + `init-interview.ts`
-// + `init-supervisor.ts`. All of those are pure modules so the slash command
-// can call them with scripted inputs; `devx init` itself never re-runs the
-// full flow.
+// `devx init` — non-interactive scaffold (pin103) + `--resume-gh` replay (ini506).
 //
 // Surfaces:
-//   devx init                 → prints usage to stderr, exit 0 (Phase 0 stub policy)
+//   devx init                 → full non-interactive scaffold: detectInitState()
+//                               → defaults AnswerProvider → runInit() (fresh|upgrade)
+//                               → installSkills(). Deferred product decisions land
+//                               in INTERVIEW.md; supervisor install is deferred to
+//                               MANUAL.md (an unattended run must not launchctl/
+//                               systemctl the host).
+//   devx init --global        → skills land in ~/.claude/commands instead of the repo
+//   devx init --skip-skills   → scaffold without the skills install
 //   devx init --resume-gh     → replay queued gh ops; clear init_partial iff all-green
+//                               (ini506 behavior, unchanged)
 //   devx init --help          → commander's standard help
 //
+// Zero write logic lives here — orchestrator + init-write + init-upgrade +
+// init-skills + init-defaults own every write (wrap-don't-duplicate).
+//
+// Spec: dev/dev-pin103-2026-07-14T12:02-init-noninteractive-scaffold.md
 // Spec: dev/dev-ini506-2026-04-26T19:35-init-failure-modes.md (AC #5, #8)
-// Reuses: src/lib/init-failure.ts (replay + flag), src/lib/init-gh.ts (queue types).
+// Plan: _devx/workstreams/portability-install/plan.md § Phase 3
 
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Command } from "commander";
 
+import { appendDeferredDecisions, buildDefaultsAsk } from "../lib/init-defaults.js";
 import {
+  appendManualEntry,
   readInitPartial,
   replayPendingGhOps,
   setInitPartial,
   writeRemainingPendingOps,
 } from "../lib/init-failure.js";
+import { runInit as runInitOrchestrator } from "../lib/init-orchestrator.js";
+import type { RunInitOpts as OrchestratorOpts } from "../lib/init-orchestrator.js";
+import { installSkills } from "../lib/init-skills.js";
+import { detectInitState } from "../lib/init-state.js";
 import { attachPhase } from "../lib/help.js";
 
 const USAGE = [
-  "Usage: devx init --resume-gh",
+  "Usage: devx init [--global] [--skip-skills] | devx init --resume-gh",
   "",
-  "Replays the GitHub-side scaffolding queued by /devx-init when `gh` was",
+  "Bare `devx init` scaffolds a working devx repo non-interactively:",
+  "config, backlogs, spec dirs, CLAUDE.md block, CI workflows, and the",
+  "packaged skills (repo-local .claude/commands, or ~/.claude/commands",
+  "with --global). Product decisions it can't derive are filed in",
+  "INTERVIEW.md; the OS-supervisor install is deferred to MANUAL.md.",
+  "",
+  "--resume-gh replays the GitHub-side scaffolding queued when `gh` was",
   "unauthenticated, the repo had no remote, or branch protection couldn't",
   "be applied. Clears `init_partial: true` once every queued op succeeds.",
-  "",
-  "The fresh-init flow lives in the `/devx-init` Claude slash command.",
 ].join("\n");
 
 export interface RunInitOpts {
@@ -55,37 +69,199 @@ export interface RunInitOpts {
   gh?: Parameters<typeof replayPendingGhOps>[0]["gh"];
   /** Test seam: bypass node:child_process by injecting a fake git. */
   git?: Parameters<typeof replayPendingGhOps>[0]["git"];
+
+  // ---- scaffold seams (pin103) ----
+  /** Fixed `now` for reproducible timestamps. */
+  now?: () => Date;
+  /** Forwarded to detectInitState + the orchestrator. */
+  detectOpts?: OrchestratorOpts["detectOpts"];
+  /** Override the packaged templates dir (orchestrator seam). */
+  templatesRoot?: string;
+  /** Override the packaged skills dir (installSkills seam). */
+  skillsRoot?: string;
+  /** Override the version stamped into skill headers. Defaults to the
+   *  package.json version. */
+  version?: string;
+  /** Override the home dir used by --global. */
+  homeDir?: string;
+  /** Forwarded to the orchestrator's supervisor phase. Defaults to true —
+   *  see the MANUAL.md deferral note in runScaffold. */
+  skipSupervisor?: boolean;
 }
 
-/** Pure entrypoint — exported for tests. Returns void on success; throws on
- *  any error so commander's exitOverride / the top-level CLI catch translate
- *  into a non-zero exit. No-args = usage = exit 0 (matches `devx config`). */
-export function runInit(args: string[], opts: RunInitOpts = {}): void {
+/** Pure entrypoint — exported for tests. Resolves on success; throws on any
+ *  error so commander's exitOverride / the top-level CLI catch translate
+ *  into a non-zero exit. */
+export async function runInit(args: string[], opts: RunInitOpts = {}): Promise<void> {
   const out = opts.out ?? ((s) => process.stdout.write(s));
   const err = opts.err ?? ((s) => process.stderr.write(s));
   const repoRoot = opts.repoRoot ?? process.cwd();
 
-  if (args.length === 0) {
-    err(`${USAGE}\n`);
+  let resumeGh = false;
+  let global = false;
+  let skipSkills = false;
+  for (const a of args) {
+    if (a === "--resume-gh") resumeGh = true;
+    else if (a === "--global") global = true;
+    else if (a === "--skip-skills") skipSkills = true;
+    else {
+      throw new Error(`devx init: unknown subcommand or flag '${a}'\n${USAGE}`);
+    }
+  }
+  if (resumeGh && (global || skipSkills)) {
+    throw new Error(
+      `devx init --resume-gh: does not combine with --global/--skip-skills\n${USAGE}`,
+    );
+  }
+
+  if (resumeGh) {
+    runResumeGh({ repoRoot, opts, out, err });
     return;
   }
 
-  // Single supported flag today; fail loud on anything else so we don't
-  // silently swallow a typo.
-  const [first, ...rest] = args;
-  if (first !== "--resume-gh") {
-    throw new Error(
-      `devx init: unknown subcommand or flag '${first}'\n${USAGE}`,
+  await runScaffold({ repoRoot, opts, out, err, global, skipSkills });
+}
+
+// ---------------------------------------------------------------------------
+// Non-interactive scaffold (pin103)
+// ---------------------------------------------------------------------------
+
+interface ScaffoldArgs {
+  repoRoot: string;
+  opts: RunInitOpts;
+  out: (s: string) => void;
+  err: (s: string) => void;
+  global: boolean;
+  skipSkills: boolean;
+}
+
+async function runScaffold({ repoRoot, opts, out, err, global, skipSkills }: ScaffoldArgs): Promise<void> {
+  const now = opts.now ?? (() => new Date());
+  const skipSupervisor = opts.skipSupervisor ?? true;
+  const state = detectInitState({ repoRoot, ...(opts.detectOpts ?? {}) });
+  const { ask, onHalt, deferred } = buildDefaultsAsk(state, { warn: (m) => err(`devx init: ${m}\n`) });
+
+  // Known gap (recorded in the pin103 review): ~/.devx/config.yaml user
+  // prefs are not loaded here — no UserPrefs loader exists in src yet, so
+  // the skip table's reuse rows (n9/n10/n12/n13) can't fire on this path.
+  // Same behavior as the current interactive flow; wire it when a loader
+  // lands.
+  const result = await runInitOrchestrator({
+    repoRoot,
+    ask,
+    // Bypassed halts are recorded as DeferredDecisions + warned, never
+    // silently waved through (pin103 review finding).
+    onHalt,
+    now,
+    detectOpts: opts.detectOpts,
+    templatesRoot: opts.templatesRoot,
+    // Unattended runs must not launchctl/systemctl the host: the supervisor
+    // install is deferred to a MANUAL.md entry below (graceful-degradation
+    // precedent, ini506). `/devx-init` remains the interactive path that
+    // installs it for real. The upgrade arm has its own supervisor repair
+    // (init-upgrade defaultRepairSupervisor → real runInitSupervisor) — pin
+    // its detector to "present" for the same reason (empirically confirmed:
+    // the unpinned upgrade rewrote a real ~/Library/LaunchAgents plist
+    // during this story's eval run).
+    skipSupervisor,
+    ...(skipSupervisor
+      ? { upgradeOpts: { detect: { "supervisor-units": () => true } } }
+      : {}),
+  });
+
+  if (result.status !== "completed") {
+    err(
+      `devx init: scaffold aborted (${result.status}${result.reason ? `: ${result.reason}` : ""})\n`,
     );
-  }
-  if (rest.length > 0) {
-    throw new Error(
-      `devx init --resume-gh: takes no positional arguments (got ${rest.length})\n${USAGE}`,
-    );
+    throw new Error(`init scaffold aborted (${result.status})`);
   }
 
-  runResumeGh({ repoRoot, opts, out, err });
+  out(`devx init: ${result.mode} scaffold completed\n`);
+
+  // Bookkeeping BEFORE the skills install (pin103 review finding): if a
+  // later step throws, the config is already on disk and the retry routes
+  // to the upgrade path — which never re-asks questions — so entries not
+  // filed now would be lost forever. All writers below are idempotent.
+  if (result.mode === "fresh") {
+    // Deferred product decisions → INTERVIEW.md (upgrade runs never ask, so
+    // this is fresh-only by construction; gating makes it structural).
+    if (deferred.length > 0) {
+      const dd = appendDeferredDecisions({ repoRoot, deferred });
+      out(
+        `devx init: ${dd.appended} decision(s) filed in INTERVIEW.md — review them before planning\n`,
+      );
+    }
+    // Degraded gh-side scaffold is invisible on stdout otherwise — the
+    // interactive flow narrates it; here the summary line is all the user
+    // gets (pin103 review finding).
+    const degraded = result.fresh?.failureBookkeeping.length ?? 0;
+    if (degraded > 0) {
+      out(
+        `devx init: ${degraded} GitHub-side op group(s) deferred — run 'devx init --resume-gh' once gh is authenticated / a remote exists\n`,
+      );
+    }
+  }
+
+  // Supervisor deferral is an ACTION for the user, not a decision → MANUAL.md
+  // (idempotent per kind; re-runs don't duplicate). Filed for upgrade runs
+  // too — the upgrade arm's supervisor repair is pinned off above.
+  if (skipSupervisor) {
+    appendManualEntry({
+      manualPath: join(repoRoot, "MANUAL.md"),
+      kind: "supervisor-install-deferred",
+      title: "OS-supervisor install deferred by non-interactive `devx init`",
+      body: [
+        "Bare `devx init` never installs launchd/systemd/Task Scheduler units",
+        "unattended. To install the manager/concierge supervisor, run the",
+        "interactive `/devx-init` flow (or see docs/SETUP.md). Until then,",
+        "`devx manage` / `devx loop` run only while you start them yourself.",
+      ].join("\n"),
+      now: now(),
+    });
+    out("devx init: OS-supervisor install deferred — see MANUAL.md\n");
+  }
+
+  // Skills install — the pin102 library owns every ownership rule
+  // (absent→write, header+older→overwrite, header+same→no-op,
+  // headerless→skip + MANUAL entry).
+  if (!skipSkills) {
+    const targetDir = global
+      ? join(opts.homeDir ?? homedir(), ".claude", "commands")
+      : join(repoRoot, ".claude", "commands");
+    const outcomes = installSkills({
+      targetDir,
+      version: opts.version ?? readOwnVersion(),
+      skillsRoot: opts.skillsRoot,
+      manualPath: join(repoRoot, "MANUAL.md"),
+      now,
+    });
+    const byAction = new Map<string, number>();
+    for (const o of outcomes) {
+      byAction.set(o.action, (byAction.get(o.action) ?? 0) + 1);
+    }
+    const summary = [...byAction.entries()].map(([a, n]) => `${n} ${a}`).join(", ");
+    out(`devx init: skills → ${targetDir} (${summary})\n`);
+  } else {
+    out("devx init: skills install skipped (--skip-skills)\n");
+  }
+
 }
+
+function readOwnVersion(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  // dist/commands/init.js → ../../package.json; src/commands/init.ts (vitest)
+  // → ../../package.json.
+  const pkgPath = join(here, "..", "..", "package.json");
+  const parsed = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: unknown };
+  if (typeof parsed.version !== "string") {
+    throw new Error(`package.json at ${pkgPath} has no string "version" field`);
+  }
+  return parsed.version;
+}
+
+// ---------------------------------------------------------------------------
+// --resume-gh (ini506 — unchanged)
+// ---------------------------------------------------------------------------
 
 interface ResumeArgs {
   repoRoot: string;
@@ -154,13 +330,21 @@ function runResumeGh({ repoRoot, opts, out, err }: ResumeArgs): void {
 export function register(program: Command): void {
   const sub = program
     .command("init")
-    .description("Resume deferred /devx-init work (--resume-gh). Fresh-init lives in the /devx-init slash command.")
+    .description(
+      "Scaffold a devx repo non-interactively (config, backlogs, CLAUDE.md, CI, skills); --resume-gh replays deferred GitHub-side ops.",
+    )
     .option("--resume-gh", "Replay queued GitHub-side ops; clear init_partial iff all-green")
+    .option("--global", "Install skills to ~/.claude/commands instead of the repo")
+    .option("--skip-skills", "Scaffold without installing the packaged skills")
     .allowUnknownOption(false)
-    .action((opts: { resumeGh?: boolean }) => {
-      const args = opts.resumeGh ? ["--resume-gh"] : [];
-      runInit(args);
+    .action(async (opts: { resumeGh?: boolean; global?: boolean; skipSkills?: boolean }) => {
+      const args: string[] = [];
+      if (opts.resumeGh) args.push("--resume-gh");
+      if (opts.global) args.push("--global");
+      if (opts.skipSkills) args.push("--skip-skills");
+      await runInit(args);
     });
-  // cli303: init shipped in Phase 0 (ini506); same phase bucket as `config`.
+  // cli303: init shipped in Phase 0 (ini506) as --resume-gh; pin103 (Phase 3
+  // of portability-install) added the bare scaffold path.
   attachPhase(sub, 0);
 }

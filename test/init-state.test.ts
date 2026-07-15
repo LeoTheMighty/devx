@@ -127,6 +127,16 @@ describe("ini501 — detectInitState — repo kind classification", () => {
     expect(state.devxVersion).toBeNull();
   });
 
+  it("devx.config.yaml with devx_version but NO commits → kind=already-on-devx (pin103: re-init on an uncommitted scaffold must take the upgrade path)", () => {
+    writeFileSync(join(repo, "devx.config.yaml"), "devx_version: 0.1.0\nmode: YOLO\n");
+    const state = detectInitState({
+      repoRoot: repo,
+      git: makeGitStub({ hasCommits: false, defaultBranch: "main", currentBranch: "main" }),
+      env: () => undefined,
+    });
+    expect(state.kind).toBe("already-on-devx");
+  });
+
   it("devx.config.yaml with devx_version → kind=already-on-devx", () => {
     writeFileSync(join(repo, "devx.config.yaml"), `devx_version: 0.2.1\nmode: YOLO\n`);
     const state = detectInitState({
