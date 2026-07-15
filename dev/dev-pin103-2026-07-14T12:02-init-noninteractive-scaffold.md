@@ -59,3 +59,4 @@ Bare `devx init` scaffolds a working devx repo non-interactively:
 
 - 2026-07-14T12:02 — emitted by /devx-plan RED stage (b3f7a1, phase 3/5).
 - 2026-07-15T08:54:27-06:00 — claimed by /devx in session /devx-2026-07-15T0854-58427
+- 2026-07-15T09:02 — phase 2: spec ACs direct (v2 native); 7 ACs; workstream=portability-install; red-artifacts=E-3_init-scaffold.ts,E-4_reinit-idempotent.ts — re-ran both, RED confirmed (E-3: 16 missing artifacts; E-4: no skills from first init).
