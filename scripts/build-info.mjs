@@ -10,11 +10,17 @@
 // Spec: dev/dev-pin104-2026-07-14T12:03-install-global-sha-docs.md
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+// tsc emits dist/cli.js mode 644; the package bin points straight at it, and
+// `npm i -g .` does not restore the exec bit (debug-e3f1c2 live repro). Set
+// it here — this script runs on every build, git checkout or not. A missing
+// dist/cli.js means tsc failed to emit the entrypoint: fail loud.
+chmodSync(join(repoRoot, "dist", "cli.js"), 0o755);
 
 const r = spawnSync("git", ["rev-parse", "--short", "HEAD"], {
   cwd: repoRoot,
