@@ -1,4 +1,9 @@
 // Manager singleton lock — mgr101 scaffold + mgr106 stale-PID hardening.
+// debug-9c4e21 extracts the O_EXCL + stale-PID machinery into the generic
+// `acquirePathLock` / `acquirePathLockBlocking` so other short-critical-
+// section writers (appendManualEntry's MANUAL.md read-check-write) can
+// reuse it instead of growing their own lock; `acquireManagerLock` is now
+// a thin wrapper that keeps its historical error type + warn prefix.
 //
 // O_EXCL create on `.devx-cache/locks/manager.lock` writing `{pid,
 // acquired_at}` JSON. release() deletes the file. mgr106 adds:
@@ -35,12 +40,19 @@ export interface AcquireExtra {
   warn?: (msg: string) => void;
 }
 
-export class ManagerLockHeldError extends Error {
+export class PathLockHeldError extends Error {
   public readonly path: string;
-  constructor(path: string) {
-    super(`manager lock already held: ${path}`);
-    this.name = "ManagerLockHeldError";
+  constructor(path: string, message?: string) {
+    super(message ?? `lock already held: ${path}`);
+    this.name = "PathLockHeldError";
     this.path = path;
+  }
+}
+
+export class ManagerLockHeldError extends PathLockHeldError {
+  constructor(path: string) {
+    super(path, `manager lock already held: ${path}`);
+    this.name = "ManagerLockHeldError";
   }
 }
 
@@ -54,14 +66,32 @@ export function acquireManagerLock(
   cacheDir: string = ".devx-cache",
   opts: AcquireExtra = {},
 ): LockHandle {
-  const path = managerLockPath(cacheDir);
+  return acquirePathLock(managerLockPath(cacheDir), {
+    warn: (msg) => process.stderr.write(`manage: ${msg}\n`),
+    ...opts,
+    heldError: (p) => new ManagerLockHeldError(p),
+  });
+}
+
+/**
+ * Generic O_EXCL path lock with the full mgr106 stale-PID posture:
+ * unparseable / dead-PID / recycled-PID locks are reaped (one bounded
+ * retry); live-holder locks throw `heldError(path)` (default
+ * PathLockHeldError). Non-blocking — see acquirePathLockBlocking for the
+ * short-critical-section retry shape.
+ */
+export function acquirePathLock(
+  path: string,
+  opts: AcquireExtra & { heldError?: (path: string) => Error } = {},
+): LockHandle {
+  const heldError = opts.heldError ?? ((p: string) => new PathLockHeldError(p));
   try {
     mkdirSync(dirname(path), { recursive: true });
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "ENOTDIR" || code === "EEXIST") {
       throw new Error(
-        `manager lock dir is not a directory: ${dirname(path)} (${code})`,
+        `lock dir is not a directory: ${dirname(path)} (${code})`,
       );
     }
     throw err;
@@ -69,7 +99,7 @@ export function acquireManagerLock(
 
   const pidAlive = opts.pidAlive ?? defaultPidAlive;
   const pidStartedAt = opts.pidStartedAt ?? ((pid) => probePidStartedAt(pid));
-  const warn = opts.warn ?? ((msg) => process.stderr.write(`manage: ${msg}\n`));
+  const warn = opts.warn ?? ((msg) => process.stderr.write(`devx lock: ${msg}\n`));
 
   let staleRetries = 0;
 
@@ -85,11 +115,11 @@ export function acquireManagerLock(
         // Already cleaned up once; treat as genuinely held to avoid an
         // infinite loop (worst case: another writer keeps re-creating the
         // lock between our unlink and reopen).
-        throw new ManagerLockHeldError(path);
+        throw heldError(path);
       }
       const decision = classifyExistingLock(path, pidAlive, pidStartedAt);
       if (decision.kind === "held") {
-        throw new ManagerLockHeldError(path);
+        throw heldError(path);
       }
       // stale (unparseable / dead-pid / recycled) — WARN + unlink + retry.
       warn(decision.message);
@@ -101,7 +131,7 @@ export function acquireManagerLock(
         // Anything else means we can't reclaim the lock; surface as held
         // so the operator sees a real error rather than an infinite loop.
         if (ucode !== "ENOENT") {
-          throw new ManagerLockHeldError(path);
+          throw heldError(path);
         }
       }
       staleRetries++;
@@ -157,6 +187,53 @@ export function acquireManagerLock(
   }
 }
 
+export interface BlockingAcquireOpts extends AcquireExtra {
+  /** Give up and rethrow the held error after this long. Default 5s —
+   *  callers guard sub-millisecond critical sections, so a healthy queue
+   *  drains orders of magnitude faster; hitting the deadline means a
+   *  wedged holder the stale-PID reaper couldn't classify. */
+  timeoutMs?: number;
+  /** Sleep between acquire attempts. Default 20ms. */
+  pollMs?: number;
+  /** Test seam — monotonic-ish clock for the deadline. */
+  nowMs?: () => number;
+  /** Test seam — synchronous sleep. Default Atomics.wait. */
+  sleep?: (ms: number) => void;
+}
+
+/**
+ * Blocking flavor of acquirePathLock for short critical sections: retry on
+ * held (live holder) with a small synchronous sleep until timeoutMs, then
+ * rethrow the held error. Stale locks are still reaped by each underlying
+ * attempt, so a crashed holder delays a caller by at most one poll interval.
+ */
+export function acquirePathLockBlocking(
+  path: string,
+  opts: BlockingAcquireOpts = {},
+): LockHandle {
+  const timeoutMs = opts.timeoutMs ?? 5_000;
+  const pollMs = opts.pollMs ?? 20;
+  const nowMs = opts.nowMs ?? (() => Date.now());
+  const sleep = opts.sleep ?? sleepSync;
+  const deadline = nowMs() + timeoutMs;
+  while (true) {
+    try {
+      return acquirePathLock(path, opts);
+    } catch (err) {
+      if (!(err instanceof PathLockHeldError)) throw err;
+      if (nowMs() >= deadline) throw err;
+      sleep(pollMs);
+    }
+  }
+}
+
+/** Synchronous sleep without burning CPU — Node permits Atomics.wait on the
+ *  main thread (unlike browsers). The array value never changes, so the wait
+ *  always runs to its timeout. */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 interface LockBody {
   pid: number;
   acquired_at: string;
@@ -191,7 +268,7 @@ function classifyExistingLock(
     // Treat as stale → caller's retry will succeed on the open.
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "ENOENT") {
-      return { kind: "stale", message: `manager.lock vanished between EEXIST and read; retrying` };
+      return { kind: "stale", message: `lock at ${path} vanished between EEXIST and read; retrying` };
     }
     // EACCES, EIO etc. — can't determine, treat as held (conservative).
     return { kind: "held" };
@@ -212,13 +289,13 @@ function classifyExistingLock(
   if (!body) {
     return {
       kind: "stale",
-      message: `manager.lock at ${path} is unparseable; deleting and retrying`,
+      message: `lock at ${path} is unparseable; deleting and retrying`,
     };
   }
   if (!pidAlive(body.pid)) {
     return {
       kind: "stale",
-      message: `manager.lock holds pid ${body.pid} (not running); deleting and retrying`,
+      message: `lock at ${path} holds pid ${body.pid} (not running); deleting and retrying`,
     };
   }
   // PID alive — cross-check against PID-recycling.
@@ -242,7 +319,7 @@ function classifyExistingLock(
     return {
       kind: "stale",
       message:
-        `manager.lock holds pid ${body.pid} but its process started ` +
+        `lock at ${path} holds pid ${body.pid} but its process started ` +
         `${startedAt.toISOString()} (after acquired_at ${body.acquired_at}); ` +
         `pid recycled — deleting and retrying`,
     };

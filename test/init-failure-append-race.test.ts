@@ -17,7 +17,7 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 const WORKER = join(__dirname, "fixtures", "append-manual-worker.ts");
 
@@ -68,6 +68,21 @@ describe("debug-9c4e21 — appendManualEntry under concurrent processes", () => 
       rmSync(tmpDirs.pop()!, { recursive: true, force: true });
     }
   });
+
+  // Warm tsx's compile cache with a single worker before the concurrent
+  // batches — a cold-cache stampede of 4 simultaneous tsx compiles is a
+  // flake vector unrelated to the race under test.
+  beforeAll(async () => {
+    const dir = mkdtempSync(join(tmpdir(), "devx-append-race-warmup-"));
+    try {
+      const goFile = join(dir, "go");
+      writeFileSync(goFile, "go\n");
+      const r = await runWorker(join(dir, "MANUAL.md"), goFile, ["warmup"]);
+      expect(r.code, `warmup worker failed: ${r.stderr}`).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   it("never loses a bullet when N processes append distinct kinds concurrently", async () => {
     const dir = makeTmp();
