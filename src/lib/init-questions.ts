@@ -20,6 +20,7 @@
 // Spec: dev/dev-ini501-2026-04-26T19:35-init-question-flow.md
 // Epic: _bmad-output/planning-artifacts/epic-init-skill.md
 
+import { resolveVersion } from "./version.js";
 import type {
   HaltAndConfirm,
   InitState,
@@ -698,7 +699,15 @@ const DEFAULT_BASH_ALLOW: readonly string[] = [
   "node",
 ];
 
-const DEVX_VERSION = "0.1.0";
+// pin104: the devx_version stamp carries the same resolved string as
+// `devx --version` and the skills header — `<semver>+<sha>` when build
+// provenance exists. Resolved lazily (cached) so importing this module
+// stays IO-free.
+let resolvedDevxVersion: string | null = null;
+function devxVersion(): string {
+  resolvedDevxVersion ??= resolveVersion();
+  return resolvedDevxVersion;
+}
 
 export function buildConfig(
   state: InitState,
@@ -744,7 +753,7 @@ export function buildConfig(
     | undefined;
 
   const config: PartialConfig = {
-    devx_version: DEVX_VERSION,
+    devx_version: devxVersion(),
     mode,
     project: { shape },
     thoroughness: mode === "YOLO" ? "send-it" : mode === "PROD" ? "thorough" : "balanced",

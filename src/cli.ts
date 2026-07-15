@@ -47,6 +47,7 @@ import * as uiCommand from "./commands/ui.js";
 import * as workstreamCommand from "./commands/workstream.js";
 
 import { installPhaseSortedHelp } from "./lib/help.js";
+import { resolveVersion } from "./lib/version.js";
 
 interface CommandModule {
   register(program: Command): void;
@@ -79,24 +80,14 @@ const commands: CommandModule[] = [
   workstreamCommand,
 ];
 
-function readPackageVersion(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  // From dist/cli.js → ../package.json. From src/cli.ts (vitest) → ../package.json.
-  const pkgPath = join(here, "..", "package.json");
-  const raw = readFileSync(pkgPath, "utf8");
-  const parsed = JSON.parse(raw) as { version?: unknown };
-  if (typeof parsed.version !== "string") {
-    throw new Error(`package.json at ${pkgPath} has no string "version" field`);
-  }
-  return parsed.version;
-}
+
 
 export function buildProgram(): Command {
   const program = new Command();
   program
     .name("devx")
     .description("devx — self-contained closed-loop autonomous development system")
-    .version(readPackageVersion());
+    .version(resolveVersion());
 
   for (const cmd of commands) {
     cmd.register(program);

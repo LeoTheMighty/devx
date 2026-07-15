@@ -20,10 +20,8 @@
 // Spec: dev/dev-ini506-2026-04-26T19:35-init-failure-modes.md (AC #5, #8)
 // Plan: _devx/workstreams/portability-install/plan.md § Phase 3
 
-import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import type { Command } from "commander";
 
 import { appendDeferredDecisions, buildDefaultsAsk } from "../lib/init-defaults.js";
@@ -38,6 +36,7 @@ import { runInit as runInitOrchestrator } from "../lib/init-orchestrator.js";
 import type { RunInitOpts as OrchestratorOpts } from "../lib/init-orchestrator.js";
 import { installSkills } from "../lib/init-skills.js";
 import { detectInitState } from "../lib/init-state.js";
+import { resolveVersion } from "../lib/version.js";
 import { attachPhase } from "../lib/help.js";
 
 const USAGE = [
@@ -230,7 +229,7 @@ async function runScaffold({ repoRoot, opts, out, err, global, skipSkills }: Sca
       : join(repoRoot, ".claude", "commands");
     const outcomes = installSkills({
       targetDir,
-      version: opts.version ?? readOwnVersion(),
+      version: opts.version ?? resolveVersion(),
       skillsRoot: opts.skillsRoot,
       manualPath: join(repoRoot, "MANUAL.md"),
       now,
@@ -245,18 +244,6 @@ async function runScaffold({ repoRoot, opts, out, err, global, skipSkills }: Sca
     out("devx init: skills install skipped (--skip-skills)\n");
   }
 
-}
-
-function readOwnVersion(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  // dist/commands/init.js → ../../package.json; src/commands/init.ts (vitest)
-  // → ../../package.json.
-  const pkgPath = join(here, "..", "..", "package.json");
-  const parsed = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: unknown };
-  if (typeof parsed.version !== "string") {
-    throw new Error(`package.json at ${pkgPath} has no string "version" field`);
-  }
-  return parsed.version;
 }
 
 // ---------------------------------------------------------------------------
