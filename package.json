@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "devx CLI — autonomous development system. Phase 0 surface area: scaffolded entrypoint + commander dispatch (cli301); 10 stubs + config command land in cli302/cfg204; --help annotations in cli303; --version + postinstall in cli304/cli305.",
+  "description": "devx CLI \u2014 autonomous development system. Phase 0 surface area: scaffolded entrypoint + commander dispatch (cli301); 10 stubs + config command land in cli302/cfg204; --help annotations in cli303; --version + postinstall in cli304/cli305.",
   "bin": {
     "devx": "./dist/cli.js"
   },
@@ -20,7 +20,7 @@
     "INSTALL.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/build-info.mjs",
     "postinstall": "node scripts/postinstall.js",
     "test": "node test/schema-smoke.mjs && tsx test/config-io.test.ts && tsx test/config-validate.test.ts && npm run build && npm run typecheck && vitest run",
     "test:schema": "node test/schema-smoke.mjs",
@@ -28,7 +28,8 @@
     "test:config-validate": "tsx test/config-validate.test.ts",
     "test:vitest": "vitest run",
     "sync:skills": "node scripts/sync-skills.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "install:global": "npm run build && npm i -g ."
   },
   "dependencies": {
     "commander": "^12.1.0",
