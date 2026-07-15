@@ -38,20 +38,24 @@
 // Epic: _bmad-output/planning-artifacts/epic-merge-gate-modes.md
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Command } from "commander";
 
 import { findProjectConfig, loadMerged } from "../lib/config-io.js";
+import {
+  AmbiguousSpecHashError,
+  SPEC_TYPE_DIRS,
+  findSpecForHashAnyType,
+} from "../lib/engine/frontmatter.js";
 import { attachPhase } from "../lib/help.js";
 import { deriveMergeAdvice } from "../lib/devx/auto-merge-action.js";
+import { deriveBranch } from "../lib/plan/derive-branch.js";
 import {
   type GateDecision,
   type GateSignals,
   mergeGateFor,
 } from "../lib/merge-gate.js";
-
-const SPEC_DIR = "dev";
 
 export interface ExecResult {
   stdout: string;
@@ -88,6 +92,7 @@ interface ConfigShape {
   mode?: string;
   promotion?: { autonomy?: { count?: number; initial_n?: number } };
   coverage?: { enabled?: boolean };
+  git?: { integration_branch?: string | null; branch_prefix?: string };
 }
 
 interface GhStatusCheck {
@@ -128,17 +133,6 @@ function readFrontmatter(specPath: string): ParsedFrontmatter {
     }
   }
   return result;
-}
-
-function findSpecForHash(projectDir: string, hash: string): string | null {
-  const dir = join(projectDir, SPEC_DIR);
-  if (!existsSync(dir)) return null;
-  for (const name of readdirSync(dir)) {
-    if (name.startsWith(`dev-${hash}-`) && name.endsWith(".md")) {
-      return join(dir, name);
-    }
-  }
-  return null;
 }
 
 function defaultExec(cmd: string, args: string[]): ExecResult {
@@ -219,11 +213,12 @@ export function blockingReviewCount(reviews: GhReview[]): number {
  *
  *   • Exit 0 (merge:true) → emit `{merge:true}` verbatim. No advice.
  *   • Exit 1 (real gate decision: trust-gradient, CI, lockdown, coverage,
- *     comments, unknown mode, no-spec-file) → augment with one of three
+ *     comments, unknown mode) → augment with one of three
  *     advice keywords via `deriveMergeAdvice` so the skill body's Phase 8
  *     dispatch table can route purely on `advice`.
- *   • Exit 2 (signal-collection failure: "no PR yet", "gh signal collection
- *     failed") → emit decision verbatim WITHOUT advice. Exit 2 means the
+ *   • Exit 2 (signal-collection failure: "no PR yet", "no spec file …" /
+ *     ambiguous hash, "gh signal collection failed") → emit decision
+ *     verbatim WITHOUT advice. Exit 2 means the
  *     gate could not determine — this is an investigation case (re-check
  *     Phase 7, retry gh, fix auth). Routing exit-2 cases to advice keywords
  *     would either spin Phase 8 in a poll loop ("wait for CI") or write a
@@ -289,13 +284,43 @@ export function runMergeGate(
   }
   const projectDir = dirname(projectConfigPath);
 
-  const specPath = findSpecForHash(projectDir, hash);
-  if (!specPath) {
+  // Type-aware resolution (debug-6a913f): the gate serves every backlog
+  // type's PRs, not just dev/. A resolution miss is the exit-2 investigation
+  // shape (like "no PR yet") — the gate could not determine anything about
+  // the PR, so routing it to an advice keyword would file a spurious
+  // MANUAL.md row for what is a typo'd hash or a missing file.
+  let resolved: { path: string; type: string } | null;
+  try {
+    resolved = findSpecForHashAnyType(projectDir, hash);
+  } catch (e) {
+    if (e instanceof AmbiguousSpecHashError) {
+      return safeFailureExit("spec resolution failed", out, err, e.message);
+    }
+    throw e;
+  }
+  if (!resolved) {
     return emitDecision(
-      { merge: false, reason: `no spec file for hash '${hash}' under ${SPEC_DIR}/` },
-      1,
+      {
+        merge: false,
+        reason: `no spec file for hash '${hash}' under any spec dir (${SPEC_TYPE_DIRS.join("/, ")}/)`,
+      },
+      2,
       out,
     );
+  }
+  const specPath = resolved.path;
+
+  // Load + type-narrow config. Needed before branch fallback (deriveBranch
+  // reads git.integration_branch / git.branch_prefix) as well as for the
+  // gate knobs below.
+  let merged: ConfigShape;
+  try {
+    const raw = loadMerged({ projectPath: projectConfigPath });
+    merged = (raw && typeof raw === "object" ? raw : {}) as ConfigShape;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    err(`devx merge-gate: config load failed: ${msg}\n`);
+    return 64;
   }
 
   const fm = readFrontmatter(specPath);
@@ -308,7 +333,7 @@ export function runMergeGate(
   const branch =
     typeof fm.branch === "string" && fm.branch.length > 0
       ? fm.branch
-      : `feat/dev-${hash}`;
+      : deriveBranch(merged, resolved.type, hash);
 
   let prNumber: number | undefined = fm.pr;
   if (prNumber === undefined) {
@@ -353,18 +378,6 @@ export function runMergeGate(
     prNumber = parsed[0].number;
   }
 
-  // Load + type-narrow config. Treating the merged blob as ConfigShape after
-  // a runtime object-shape check lets us pull the three knobs we need without
-  // hauling in the full schema.
-  let merged: ConfigShape;
-  try {
-    const raw = loadMerged({ projectPath: projectConfigPath });
-    merged = (raw && typeof raw === "object" ? raw : {}) as ConfigShape;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    err(`devx merge-gate: config load failed: ${msg}\n`);
-    return 64;
-  }
   const mode = String(merged.mode ?? "");
   const trustCount = Number(merged.promotion?.autonomy?.count ?? 0);
   const trustInitialN = Number(merged.promotion?.autonomy?.initial_n ?? 0);

@@ -322,15 +322,17 @@ describe("runMergeGate — spec resolution", () => {
     destroy(fx);
   });
 
-  it("returns exit 1 + 'no spec file' when hash matches no file", () => {
+  it("returns exit 2 + 'no spec file' (no advice) when hash matches no file", () => {
+    // debug-6a913f: a resolution miss is investigation (like "no PR yet"),
+    // not a gate decision — advice would route Phase 8 into a spurious
+    // MANUAL.md row for a typo'd hash.
     const r = run(fx, "missing", () => {
       throw new Error("exec should not be called when spec missing");
     });
-    expect(r.code).toBe(1);
+    expect(r.code).toBe(2);
     expect(r.decision).toEqual({
       merge: false,
       reason: expect.stringContaining("no spec file for hash 'missing'"),
-      advice: ["manual merge required"],
     });
   });
 });

@@ -104,6 +104,7 @@ export function deriveMergeAdvice(decision: GateDecision): AdviceKeyword[] {
   //   - blocking reviewer comments (reviewer must resolve)
   //   - coverage missing/below threshold (test/coverage config or new tests)
   //   - unknown mode (config fix)
-  //   - "no spec file for hash" (typo'd hash in DEV.md — user must correct)
+  // (A spec-resolution miss is exit 2 — investigation — since debug-6a913f;
+  // it never reaches advice derivation.)
   return [ADVICE_MANUAL];
 }
