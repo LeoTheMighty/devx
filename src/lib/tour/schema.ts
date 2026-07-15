@@ -19,8 +19,9 @@
 //
 // Validation is hand-rolled (not ajv) for the same reason merge-gate
 // hand-rolls its frontmatter read: we control both sides of the contract,
-// the shape is small, and ajv is a devDependency we don't want in the
-// runtime graph. `TOUR_JSON_SCHEMA` is the JSON-schema rendering of the same
+// the shape is small, and this module shouldn't grow the runtime graph.
+// (ajv is now a production dependency regardless — config-validate loads it
+// on every command's entry path; see debug-b365ac.) `TOUR_JSON_SCHEMA` is the JSON-schema rendering of the same
 // contract — shipped for documentation + the drift-pin test that asserts the
 // schema object and the validator vocabularies never diverge (dvx107 move).
 //
