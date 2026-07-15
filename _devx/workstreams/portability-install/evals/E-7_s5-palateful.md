@@ -19,7 +19,7 @@ threshold per the design contract (design.md § Migration plan).
 | 1 | `cd ~/palateful && time devx init` then open Claude Code and run `/devx` | dispatcher renders < 120s total (G-1) | ____ |
 | 2 | Pick one real bug; run `/devx "<symptom>"` through merge | 1 merged PR (G-3) | ____ |
 | 3 | `devx loop --max-items 1` overnight-style run | morning report exists (G-3) | ____ |
-| 4 | Write audit: `find ~/.claude ~/.devx -newer /tmp/devx-s5-stamp -not -path '*/palateful/*'` reviewed | only `~/.devx/` entries (FR-7) | ____ |
+| 4 | Write audit: `find ~/.claude ~/.devx ~/palateful -newer /tmp/devx-s5-stamp -not -path '*/palateful/.git/*'` reviewed (design contract: `find ~/.claude ~/.devx <repo> -newer <stamp>`) | outside the repo, only `~/.devx/` entries (FR-7) | ____ |
 
 ## Results record
 
