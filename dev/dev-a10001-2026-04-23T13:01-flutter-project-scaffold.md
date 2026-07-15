@@ -5,7 +5,8 @@ created: 2026-04-23T13:01:00-07:00
 title: Flutter project scaffold + nav shell
 from: _bmad-output/planning-artifacts/epic-flutter-scaffold-ios-device.md
 plan: plan/plan-7a2d1f-2026-04-23T13:00-mobile-companion-v01.md
-status: ready
+status: in-progress
+owner: /devx-2026-07-15T1114-74717
 branch: develop/dev-a10001
 ---
 
@@ -26,6 +27,7 @@ Initialize the Flutter project under `mobile/` inside the devx repo with a 4-tab
 
 ## Status log
 - 2026-04-23T13:01 — created by /dev-plan
+- 2026-07-15T11:14:00-06:00 — claimed by /devx in session /devx-2026-07-15T1114-74717
 
 ## Files expected
 - `mobile/pubspec.yaml`
