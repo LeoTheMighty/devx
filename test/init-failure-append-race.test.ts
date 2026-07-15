@@ -19,6 +19,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import {
+  PathLockHeldError,
+  acquirePathLock,
+  acquirePathLockBlocking,
+} from "../src/lib/manage/lock.js";
+
 const WORKER = join(__dirname, "fixtures", "append-manual-worker.ts");
 
 interface WorkerResult {
@@ -135,4 +141,69 @@ describe("debug-9c4e21 — appendManualEntry under concurrent processes", () => 
       .filter((x) => x.appended).length;
     expect(appendedTrue, "exactly one process should win the append").toBe(1);
   }, 60_000);
+});
+
+describe("debug-9c4e21 — acquirePathLockBlocking", () => {
+  const tmpDirs: string[] = [];
+
+  function makeTmp(): string {
+    const dir = mkdtempSync(join(tmpdir(), "devx-path-lock-"));
+    tmpDirs.push(dir);
+    return dir;
+  }
+
+  afterEach(() => {
+    while (tmpDirs.length > 0) {
+      rmSync(tmpDirs.pop()!, { recursive: true, force: true });
+    }
+  });
+
+  it("rethrows PathLockHeldError once the deadline passes (live holder)", () => {
+    const lockPath = join(makeTmp(), "locks", "x.lock");
+    const held = acquirePathLock(lockPath);
+    try {
+      let clock = 0;
+      const sleeps: number[] = [];
+      expect(() =>
+        acquirePathLockBlocking(lockPath, {
+          timeoutMs: 100,
+          pollMs: 20,
+          nowMs: () => clock,
+          sleep: (ms) => {
+            sleeps.push(ms);
+            clock += ms;
+          },
+          // The holder is this same live process — force the live-PID answer
+          // so the stale reaper can't cut the wait short.
+          pidAlive: () => true,
+          pidStartedAt: () => null,
+        }),
+      ).toThrow(PathLockHeldError);
+      // 100ms budget at 20ms polls → 5 sleeps before the deadline rethrow.
+      expect(sleeps).toEqual([20, 20, 20, 20, 20]);
+    } finally {
+      held.release();
+    }
+  });
+
+  it("reaps a dead-PID stale lock without waiting out the timeout", () => {
+    const dir = makeTmp();
+    const lockPath = join(dir, "locks", "x.lock");
+    const stale = acquirePathLock(lockPath);
+    // Leave the file on disk but claim its holder is dead.
+    let slept = 0;
+    const handle = acquirePathLockBlocking(lockPath, {
+      timeoutMs: 100,
+      pollMs: 20,
+      sleep: () => {
+        slept++;
+      },
+      pidAlive: () => false,
+      warn: () => {},
+    });
+    handle.release();
+    expect(slept, "stale reap should succeed on the first attempt").toBe(0);
+    // The original handle's release must tolerate the reaped (re-unlinked) file.
+    stale.release();
+  });
 });

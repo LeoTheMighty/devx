@@ -16,7 +16,8 @@
 //      holder died, OS reused the PID); WARN, delete, retry once.
 //
 // Both cross-checks share the same retry budget (`MAX_STALE_RETRIES = 1`):
-// at most one cleanup pass before we surface ManagerLockHeldError.
+// at most one cleanup pass before we surface the held error
+// (ManagerLockHeldError for the manager path, PathLockHeldError generically).
 
 import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
