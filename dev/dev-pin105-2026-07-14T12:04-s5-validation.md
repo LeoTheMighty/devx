@@ -5,8 +5,8 @@ created: 2026-07-14T12:04:00-07:00
 title: S-5 validation — timed scratch scenario + live palateful checklist
 from: plan/plan-b3f7a1-2026-07-14T10:40-portability-install.md
 plan: _devx/workstreams/portability-install
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-07-15T1035-81896
 blocked_by: [pin103, pin104]
 branch: feat/dev-pin105
 ---
@@ -49,3 +49,4 @@ working `/devx` in under two minutes — scripted in the harness, live on
 ## Status log
 
 - 2026-07-14T12:04 — emitted by /devx-plan RED stage (b3f7a1, phase 5/5).
+- 2026-07-15T10:35:45-06:00 — claimed by /devx in session /devx-2026-07-15T1035-81896
