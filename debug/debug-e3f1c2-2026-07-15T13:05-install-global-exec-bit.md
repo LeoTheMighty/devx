@@ -4,7 +4,7 @@ type: debug
 created: 2026-07-15T13:05:00-06:00
 title: install:global produces non-executable devx (dist/cli.js missing +x)
 from: user report 2026-07-15 (devx command not found after npm run install:global)
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-15T18-11-34-721-81197
 ---
 
@@ -34,3 +34,4 @@ symlink points at `dist/cli.js` which tsc emits mode 644; exec fails with
   - Learning: The exec bit set at build time survives npm pack and a global tarball install (verified in a throwaway prefix), so a build-time chmod is sufficient — no postinstall hook needed
   - Learning: A clean-machine install of the current package is broken independently of the exec bit: yaml lives in devDependencies but is a runtime import, crashing devx before argv parsing; dev-repo runs mask this because node_modules contains dev deps (filed as debug-b365ac)
   - Learning: npm i -g does not restore the exec bit on the bin target file itself, confirming the fix must happen at pack/build time
+- 2026-07-15T18:24:48.884Z — merged via devx loop — PR https://github.com/LeoTheMighty/devx/pull/78
