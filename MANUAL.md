@@ -107,3 +107,24 @@ to settle:
       launchctl bootout gui/$(id -u)/dev.devx.concierge; rm -f
       ~/Library/LaunchAgents/dev.devx.*.plist` — or reinstall properly via the
       interactive `/devx-init` when you want the supervisor running (MV2.1).
+
+## MV-pin105.1 — S-5 live validation on palateful (owner at the keyboard)
+
+The scripted half of pin105 shipped; these three steps close S-5 (G-1/G-3)
+and feed `devx outcome` for the portability-install workstream. Full
+step↔threshold table + results record:
+`_devx/workstreams/portability-install/evals/E-7_s5-palateful.md`.
+
+- [ ] **Timed init**: from the devx checkout `npm run install:global`, then
+      `touch /tmp/devx-s5-stamp && cd ~/palateful && time devx init`, open
+      Claude Code and confirm `/devx` renders the dispatcher. Threshold:
+      < 120s total. Record the timing in E-7.
+- [ ] **Bug pick → merged fix**: pick one real palateful bug and run
+      `/devx "<symptom>"` through merge. Threshold: 1 merged PR. Record the
+      PR link in E-7.
+- [ ] **Loop + audit**: `devx loop --max-items 1` (overnight-style), then
+      the write audit from E-7 step 4. Thresholds: morning report exists;
+      outside the repo only `~/.devx/` was written. Record both in E-7.
+- [ ] While you're in there (design § Unresolved): note which `/devx`
+      command wins when both repo-level and user-level copies exist —
+      record the observation in E-7's Results.
