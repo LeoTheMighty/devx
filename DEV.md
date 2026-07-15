@@ -69,7 +69,7 @@ Track 3 interim GitHub notifier is retired by this backlog's Epic 4 relay
 when it resumes.
 
 ### Epic 1 — Flutter scaffold & iOS on device (M1)
-- [/] `dev/dev-a10001-2026-04-23T13:01-flutter-project-scaffold.md` — Flutter project scaffold + nav shell. Status: in-progress. From: epic-flutter-scaffold-ios-device.
+- [x] `dev/dev-a10001-2026-04-23T13:01-flutter-project-scaffold.md` — Flutter project scaffold + nav shell. Status: done. From: epic-flutter-scaffold-ios-device. PR: https://github.com/LeoTheMighty/devx/pull/76 (merged 4e5e541)
 - [ ] `dev/dev-a10002-2026-04-23T13:02-riverpod-theme-router.md` — Riverpod + Material 3 theme + go_router foundations. Status: ready. Blocked-by: a10001.
 - [ ] `dev/dev-a10003-2026-04-23T13:03-ios-project-config.md` — iOS project configuration (bundle ID, signing, push capability). Status: ready. Blocked-by: a10001. Requires user action (Team ID).
 - [ ] `dev/dev-a10004-2026-04-23T13:04-first-ondevice-run.md` — First on-device run. Status: ready. Blocked-by: a10002, a10003. Requires user action (plug in phone).
