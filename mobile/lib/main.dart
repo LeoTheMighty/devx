@@ -1,25 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'shared/app_shell.dart';
+import 'core/providers.dart';
+import 'shared/theme.dart';
 
 void main() {
   runApp(const ProviderScope(child: DevxApp()));
 }
 
-/// Root widget for the devx mobile companion.
-///
-/// Theme + router foundations land in a10002; until then this is a plain
-/// MaterialApp hosting the 4-tab [AppShell].
-class DevxApp extends StatelessWidget {
+/// Root widget for the devx mobile companion: Material 3 light/dark themes
+/// (mode driven by [themeModeProvider], default follows the system) over the
+/// go_router 4-tab shell.
+class DevxApp extends ConsumerWidget {
   const DevxApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
+    final router = ref.watch(routerProvider);
+    return MaterialApp.router(
       title: 'devx',
-      theme: ThemeData(useMaterial3: true),
-      home: const AppShell(),
+      theme: buildLightTheme(),
+      darkTheme: buildDarkTheme(),
+      themeMode: themeMode,
+      routerConfig: router,
     );
   }
 }
