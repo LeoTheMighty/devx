@@ -5,8 +5,8 @@ created: 2026-07-14T12:02:00-07:00
 title: Bare `devx init` non-interactive scaffold (defaults AnswerProvider + skills install)
 from: plan/plan-b3f7a1-2026-07-14T10:40-portability-install.md
 plan: _devx/workstreams/portability-install
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-07-15T0854-58427
 blocked_by: [pin102]
 branch: feat/dev-pin103
 ---
@@ -58,3 +58,4 @@ Bare `devx init` scaffolds a working devx repo non-interactively:
 ## Status log
 
 - 2026-07-14T12:02 — emitted by /devx-plan RED stage (b3f7a1, phase 3/5).
+- 2026-07-15T08:54:27-06:00 — claimed by /devx in session /devx-2026-07-15T0854-58427
