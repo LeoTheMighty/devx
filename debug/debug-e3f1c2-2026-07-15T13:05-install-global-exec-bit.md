@@ -4,7 +4,8 @@ type: debug
 created: 2026-07-15T13:05:00-06:00
 title: install:global produces non-executable devx (dist/cli.js missing +x)
 from: user report 2026-07-15 (devx command not found after npm run install:global)
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-15T18-11-34-721-81197
 ---
 
 ## Goal
@@ -25,3 +26,4 @@ symlink points at `dist/cli.js` which tsc emits mode 644; exec fails with
 
 ## Status log
 - 2026-07-15T13:05 — filed after live repro; user's install hand-patched with chmod +x as a workaround
+- 2026-07-15T12:11:34-06:00 — claimed by /devx in session /devx-loop-2026-07-15T18-11-34-721-81197
