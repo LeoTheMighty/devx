@@ -5,7 +5,7 @@ created: 2026-07-14T12:03:00-07:00
 title: install:global + SHA provenance + docs-to-reality (INSTALL.md, SETUP.md)
 from: plan/plan-b3f7a1-2026-07-14T10:40-portability-install.md
 plan: _devx/workstreams/portability-install
-status: in-progress
+status: done
 owner: /devx-2026-07-15T1014-98093
 blocked_by: [pin101]
 branch: feat/dev-pin104
@@ -56,3 +56,11 @@ parallel-safe with pin102/pin103.
 
 - 2026-07-14T12:03 — emitted by /devx-plan RED stage (b3f7a1, phase 4/5).
 - 2026-07-15T10:14:45-06:00 — claimed by /devx in session /devx-2026-07-15T1014-98093
+- 2026-07-15T10:16 — phase 2: spec ACs direct (v2 native); 8 ACs; workstream=portability-install; red-artifacts=E-5_version-sha.ts,E-6_docs-paths.ts — re-ran both, RED confirmed (E-5: no build-info.mjs; E-6: 4 phantom/missing doc checks).
+- 2026-07-15T10:35 — phase 3: implemented — scripts/build-info.mjs (+ stale-embed cleanup), src/lib/version.ts resolveVersion() consumed by cli.ts/--version + init.ts skills header + init-questions devx_version stamp (hardcoded DEVX_VERSION const removed); npm run install:global; INSTALL.md + docs/SETUP.md rewritten (phantom install.sh + devx-triage deleted; npm-link warning; work-repo BETA/PROD + org-policy caveat). E-5 + E-6 GREEN.
+- 2026-07-15T10:33 — AC 3 verified on this machine: `npm run install:global` → `devx --version` = 0.1.0+e83febb.
+- 2026-07-15T10:36 — phase 4: single-pass adversarial review (~160 src LoC, docs-dominated diff, under 3-agent threshold); 4 findings (0 HIGH, 1 MED, 3 LOW); ALL fixed in-place — MED: stale dist/build-info.json survived a failed SHA probe (version could report a sha the build didn't come from; now rmSync'd); LOW: verified decideSkillInstall exact-string compare means +sha differences correctly overwrite (pin102 anticipated), config schema devx_version accepts the composed string, cli --version test is prefix-tolerant; re-review clean.
+- 2026-07-15T10:42 — phase 5: local CI green — full suite 2126 passed (109 files; was 2121), typecheck + schema + config gates in npm test.
+- 2026-07-15T10:36 — phase 7: PR opened https://github.com/LeoTheMighty/devx/pull/74; tour built + published; remote CI devx-ci green (run 29432638535).
+- 2026-07-15T10:37 — phase 8: hold clear; merge-gate {"merge":true} exit 0.
+- 2026-07-15T10:37 — merged via PR #74 (squash → 4e6bc43)
