@@ -39,7 +39,7 @@
 // Epic: _bmad-output/planning-artifacts/epic-init-skill.md
 
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Document, parseDocument } from "yaml";
 
 import type {
@@ -54,6 +54,7 @@ import { defaultGhExec, resolveRepoSlug } from "./init-gh.js";
 import type { GitExec } from "./init-state.js";
 import { defaultGitExec } from "./init-state.js";
 import { setLeaf } from "./config-io.js";
+import { acquirePathLockBlocking } from "./manage/lock.js";
 import { writeAtomic } from "./supervisor-internal.js";
 
 // ---------------------------------------------------------------------------
@@ -263,13 +264,36 @@ function anchorFor(kind: string): string {
   return `${MANUAL_ANCHOR_PREFIX}${kind}${MANUAL_ANCHOR_SUFFIX}`;
 }
 
+/** Lock file guarding MANUAL.md's read-check-write sequence. Lives under
+ *  `.devx-cache/locks/` next to the manual file's directory (which is the
+ *  repo root for every production caller) — same convention as the manager
+ *  and spec locks, and outside anything git tracks. */
+function manualAppendLockPath(manualPath: string): string {
+  return join(dirname(manualPath), ".devx-cache", "locks", "manual-append.lock");
+}
+
 /** Append a single bullet to MANUAL.md under a "## /devx-init deferred work"
  *  section. If a bullet for this kind is already present (detected via the
  *  per-kind anchor comment), do nothing. Exported for init-skills (pin102):
  *  skip-user-owned skill files file their MANUAL entry through this same
  *  path — the anchor's `devx:init-failure:` namespace is an internal
- *  idempotency marker, not a semantic claim about the entry. */
+ *  idempotency marker, not a semantic claim about the entry.
+ *
+ *  Safe under concurrent callers (debug-9c4e21): the whole
+ *  read → anchor-check → write sequence holds an O_EXCL file lock (the
+ *  mgr106 primitive — stale locks from crashed holders are reaped), and the
+ *  read happens INSIDE the lock, so a peer's append can neither be clobbered
+ *  by our rename nor double-appended past the anchor check. */
 export function appendManualEntry(opts: AppendManualOpts): AppendManualOutcome {
+  const lock = acquirePathLockBlocking(manualAppendLockPath(opts.manualPath));
+  try {
+    return appendManualEntryLocked(opts);
+  } finally {
+    lock.release();
+  }
+}
+
+function appendManualEntryLocked(opts: AppendManualOpts): AppendManualOutcome {
   const anchor = anchorFor(opts.kind);
 
   let existing = "";
