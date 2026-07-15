@@ -4,7 +4,7 @@ type: debug
 created: 2026-07-15T12:14:00-06:00
 title: yaml in devDependencies but imported at runtime — tarball install crashes on startup
 from: debug/debug-e3f1c2-2026-07-15T13:05-install-global-exec-bit.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-15T18-11-34-721-81197
 ---
 
@@ -48,6 +48,7 @@ artifact hits it on every invocation.
   - Learning: The spec's audit AC was load-bearing: yaml was not the only offender — ajv and ajv-formats were also devDeps imported at runtime, missed by a naive src/ grep because the import specifier is a subpath (ajv/dist/2020.js); scanning built dist/ output is the reliable audit surface
   - Learning: A specifier regex for this scan must reject whitespace inside the quoted specifier, otherwise quoted prose in code (error messages containing the word 'from') produces false positives
   - Learning: src/lib/tour/schema.ts hand-rolled its validation specifically to keep ajv out of the runtime graph, but config-validate.ts had already made ajv load-bearing on every command's entry path — the design intent and reality had diverged
+- 2026-07-15T18:39:22.447Z — merged via devx loop — PR https://github.com/LeoTheMighty/devx/pull/79
 
 ## Links
 - Parent: debug/debug-e3f1c2-2026-07-15T13:05-install-global-exec-bit.md
