@@ -71,7 +71,7 @@ when it resumes.
 ### Epic 1 — Flutter scaffold & iOS on device (M1)
 - [x] `dev/dev-a10001-2026-04-23T13:01-flutter-project-scaffold.md` — Flutter project scaffold + nav shell. Status: done. From: epic-flutter-scaffold-ios-device. PR: https://github.com/LeoTheMighty/devx/pull/76 (merged 4e5e541)
 - [x] `dev/dev-a10002-2026-04-23T13:02-riverpod-theme-router.md` — Riverpod + Material 3 theme + go_router foundations. Status: done. Blocked-by: a10001. PR: https://github.com/LeoTheMighty/devx/pull/77 (merged b0223bd)
-- [ ] `dev/dev-a10003-2026-04-23T13:03-ios-project-config.md` — iOS project configuration (bundle ID, signing, push capability). Status: ready. Blocked-by: a10001. Requires user action (Team ID).
+- [-] `dev/dev-a10003-2026-04-23T13:03-ios-project-config.md` — iOS project configuration (bundle ID, signing, push capability). Status: blocked (MANUAL M1.1 — Apple Team ID). Blocked-by: a10001. Requires user action (Team ID).
 - [ ] `dev/dev-a10004-2026-04-23T13:04-first-ondevice-run.md` — First on-device run. Status: ready. Blocked-by: a10002, a10003. Requires user action (plug in phone).
 - [ ] `dev/dev-a10005-2026-04-23T13:05-testflight-pipeline.md` — TestFlight pipeline. Status: ready. Blocked-by: a10004. Requires user action (App Store Connect upload).
 - [ ] `dev/dev-a10ret-2026-04-27T08:00-retro-flutter-scaffold.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: a10001, a10002, a10003, a10004, a10005.

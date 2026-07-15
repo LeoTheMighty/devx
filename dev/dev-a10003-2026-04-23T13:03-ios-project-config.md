@@ -5,7 +5,7 @@ created: 2026-04-23T13:03:00-07:00
 title: iOS project configuration (bundle ID, signing, push capability)
 from: _bmad-output/planning-artifacts/epic-flutter-scaffold-ios-device.md
 plan: plan/plan-7a2d1f-2026-04-23T13:00-mobile-companion-v01.md
-status: ready
+status: blocked
 branch: develop/dev-a10003
 blocked_by: [a10001]
 requires_user_action: true
@@ -29,6 +29,7 @@ Configure the iOS project under `mobile/ios/` with Leonid's Team ID, a registere
 
 ## Status log
 - 2026-04-23T13:03 — created by /dev-plan — filed MANUAL.md entry for Team ID
+- 2026-07-15T12:30 — marked blocked by /devx: core ACs (Team ID in pbxproj, App ID registration, signing) require MANUAL.md M1.1 (Share Apple Developer Team ID), still unchecked; not claimable until the user provides it
 
 ## Files expected
 - `mobile/ios/Runner.xcodeproj/project.pbxproj` (bundle ID, Team ID)
