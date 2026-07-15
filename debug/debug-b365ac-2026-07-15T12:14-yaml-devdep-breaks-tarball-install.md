@@ -4,8 +4,8 @@ type: debug
 created: 2026-07-15T12:14:00-06:00
 title: yaml in devDependencies but imported at runtime — tarball install crashes on startup
 from: debug/debug-e3f1c2-2026-07-15T13:05-install-global-exec-bit.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-loop-2026-07-15T18-11-34-721-81197
 ---
 
 ## Goal
@@ -39,6 +39,7 @@ artifact hits it on every invocation.
 ## Status log
 - 2026-07-15T12:14 — filed from debug-e3f1c2 iteration 1: exec-bit fix verified
   via throwaway-prefix tarball install, which surfaced this pre-existing crash
+- 2026-07-15T12:24:50-06:00 — claimed by /devx in session /devx-loop-2026-07-15T18-11-34-721-81197
 
 ## Links
 - Parent: debug/debug-e3f1c2-2026-07-15T13:05-install-global-exec-bit.md
