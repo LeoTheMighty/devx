@@ -32,17 +32,17 @@
     "install:global": "npm run build && npm i -g ."
   },
   "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
     "commander": "^12.1.0",
     "diff2html": "3.4.48",
-    "marked": "12.0.2"
+    "marked": "12.0.2",
+    "yaml": "^2.6.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "ajv": "^8.17.1",
-    "ajv-formats": "^3.0.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8",
-    "yaml": "^2.6.1"
+    "vitest": "^2.1.8"
   }
 }

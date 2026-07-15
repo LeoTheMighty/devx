@@ -40,6 +40,14 @@ artifact hits it on every invocation.
 - 2026-07-15T12:14 — filed from debug-e3f1c2 iteration 1: exec-bit fix verified
   via throwaway-prefix tarball install, which surfaced this pre-existing crash
 - 2026-07-15T12:24:50-06:00 — claimed by /devx in session /devx-loop-2026-07-15T18-11-34-721-81197
+- 2026-07-15T18:37:37.516Z — loop iteration 1: Moved yaml, ajv, and ajv-formats from devDependencies to dependencies and added a RED/GREEN-verified static test pinning runtime imports ⊆ dependencies, verified end-to-end via throwaway-prefix tarball install with the full 2130-test gate green.
+  - Change: Moved yaml, ajv, and ajv-formats to dependencies in package.json (audit found ajv/ajv-formats as additional runtime-imported devDeps via src/lib/config-validate.ts, on every command's entry path); package-lock.json updated to mark them as production packages
+  - Change: Added test/runtime-deps.test.ts — scans built dist/ output plus shipped postinstall scripts for bare-specifier imports and fails on any package missing from dependencies, with a self-check that the scanner sees known packages so it can't pass vacuously; verified RED against pre-fix package.json (caught all three packages) and GREEN after
+  - Change: Verified the spec's live repro end-to-end: packed tarball installed into a throwaway prefix now runs devx --version (0.1.0+a4d6601) and --help instead of crashing with ERR_MODULE_NOT_FOUND
+  - Change: Corrected a stale comment in src/lib/tour/schema.ts claiming ajv was a devDependency kept out of the runtime graph
+  - Learning: The spec's audit AC was load-bearing: yaml was not the only offender — ajv and ajv-formats were also devDeps imported at runtime, missed by a naive src/ grep because the import specifier is a subpath (ajv/dist/2020.js); scanning built dist/ output is the reliable audit surface
+  - Learning: A specifier regex for this scan must reject whitespace inside the quoted specifier, otherwise quoted prose in code (error messages containing the word 'from') produces false positives
+  - Learning: src/lib/tour/schema.ts hand-rolled its validation specifically to keep ajv out of the runtime graph, but config-validate.ts had already made ajv load-bearing on every command's entry path — the design intent and reality had diverged
 
 ## Links
 - Parent: debug/debug-e3f1c2-2026-07-15T13:05-install-global-exec-bit.md
