@@ -93,22 +93,19 @@ function fixedGh(responses: GhResult[]): GhExec {
   };
 }
 
-describe("ini506 — devx init (no args)", () => {
-  it("prints usage on no-args without throwing", () => {
-    const { c, out, err } = capture();
-    expect(() => runInit([], { out, err })).not.toThrow();
-    expect(c.err).toContain("Usage: devx init --resume-gh");
-    expect(c.out).toBe("");
+describe("ini506 — devx init argument validation", () => {
+  // No-args now runs the pin103 non-interactive scaffold — covered by
+  // test/init-cli-scaffold.test.ts. This suite keeps the flag validation.
+  it("rejects unknown subcommand with usage hint", async () => {
+    const { out, err } = capture();
+    await expect(runInit(["--frob"], { out, err })).rejects.toThrow(/unknown subcommand or flag/);
   });
 
-  it("rejects unknown subcommand with usage hint", () => {
+  it("rejects positional after --resume-gh", async () => {
     const { out, err } = capture();
-    expect(() => runInit(["--frob"], { out, err })).toThrow(/unknown subcommand or flag/);
-  });
-
-  it("rejects positional after --resume-gh", () => {
-    const { out, err } = capture();
-    expect(() => runInit(["--resume-gh", "extra"], { out, err })).toThrow(/no positional arguments/);
+    await expect(runInit(["--resume-gh", "extra"], { out, err })).rejects.toThrow(
+      /unknown subcommand or flag 'extra'/,
+    );
   });
 });
 
@@ -120,36 +117,34 @@ describe("ini506 — devx init --resume-gh", () => {
   });
   afterEach(() => rmSync(repo, { recursive: true, force: true }));
 
-  it("no queue file → no-op message, exits 0, does not touch flag", () => {
+  it("no queue file → no-op message, exits 0, does not touch flag", async () => {
     const { c, out, err } = capture();
-    expect(() => runInit(["--resume-gh"], { repoRoot: repo, out, err })).not.toThrow();
+    await runInit(["--resume-gh"], { repoRoot: repo, out, err });
     expect(c.out).toContain("no pending ops to replay");
     expect(readInitPartial({ repoRoot: repo })).toBe(false);
   });
 
-  it("no queue file but flag stranded → clears the flag", () => {
+  it("no queue file but flag stranded → clears the flag", async () => {
     setInitPartial({ repoRoot: repo, partial: true });
     const { c, out, err } = capture();
-    expect(() => runInit(["--resume-gh"], { repoRoot: repo, out, err })).not.toThrow();
+    await runInit(["--resume-gh"], { repoRoot: repo, out, err });
     expect(c.out).toContain("cleared init_partial");
     expect(readInitPartial({ repoRoot: repo })).toBe(false);
   });
 
-  it("all-green replay → clears flag, drains queue, exits 0", () => {
+  it("all-green replay → clears flag, drains queue, exits 0", async () => {
     writeQueue(repo, [
       { kind: "create-develop-branch", payload: { from_sha: "a", repo: "o/r" } },
     ]);
     setInitPartial({ repoRoot: repo, partial: true });
     const { c, out, err } = capture();
-    expect(() =>
-      runInit(["--resume-gh"], {
-        repoRoot: repo,
-        out,
-        err,
-        gh: fixedGh([{ exitCode: 0, stdout: "{}", stderr: "" }]),
-        git: okGit,
-      }),
-    ).not.toThrow();
+    await runInit(["--resume-gh"], {
+      repoRoot: repo,
+      out,
+      err,
+      gh: fixedGh([{ exitCode: 0, stdout: "{}", stderr: "" }]),
+      git: okGit,
+    });
     expect(c.out).toContain("[ok] create-develop-branch");
     expect(c.out).toMatch(/init_partial cleared/);
     expect(readInitPartial({ repoRoot: repo })).toBe(false);
@@ -161,14 +156,14 @@ describe("ini506 — devx init --resume-gh", () => {
     expect(queue.ops).toEqual([]);
   });
 
-  it("partial-fail → keeps flag, retains failed op in queue, throws (non-zero exit)", () => {
+  it("partial-fail → keeps flag, retains failed op in queue, throws (non-zero exit)", async () => {
     writeQueue(repo, [
       { kind: "create-develop-branch", payload: { from_sha: "a", repo: "o/r" } },
       { kind: "set-default-branch", payload: { to: "develop", repo: "o/r" } },
     ]);
     setInitPartial({ repoRoot: repo, partial: true });
     const { c, out, err } = capture();
-    expect(() =>
+    await expect(
       runInit(["--resume-gh"], {
         repoRoot: repo,
         out,
@@ -179,7 +174,7 @@ describe("ini506 — devx init --resume-gh", () => {
         ]),
         git: okGit,
       }),
-    ).toThrow(/1\/2 op\(s\) failed/);
+    ).rejects.toThrow(/1\/2 op\(s\) failed/);
 
     // Per-op log lines on stdout, summary on stderr.
     expect(c.out).toContain("[ok] create-develop-branch");
@@ -197,12 +192,12 @@ describe("ini506 — devx init --resume-gh", () => {
     expect(queue.ops[0].kind).toBe("set-default-branch");
   });
 
-  it("corrupt JSON → throws PendingGhOpsCorruptError, flag untouched", () => {
+  it("corrupt JSON → throws PendingGhOpsCorruptError, flag untouched", async () => {
     mkdirSync(join(repo, ".devx-cache"), { recursive: true });
     writeFileSync(join(repo, ".devx-cache", "pending-gh-ops.json"), "{ broken");
     setInitPartial({ repoRoot: repo, partial: true });
     const { out, err } = capture();
-    expect(() =>
+    await expect(
       runInit(["--resume-gh"], {
         repoRoot: repo,
         out,
@@ -210,11 +205,11 @@ describe("ini506 — devx init --resume-gh", () => {
         gh: fixedGh([]),
         git: okGit,
       }),
-    ).toThrow(PendingGhOpsCorruptError);
+    ).rejects.toThrow(PendingGhOpsCorruptError);
     expect(readInitPartial({ repoRoot: repo })).toBe(true);
   });
 
-  it("re-running after a partial-fail picks up only the remaining failed op", () => {
+  it("re-running after a partial-fail picks up only the remaining failed op", async () => {
     writeQueue(repo, [
       { kind: "create-develop-branch", payload: { from_sha: "a", repo: "o/r" } },
       { kind: "set-default-branch", payload: { to: "develop", repo: "o/r" } },
@@ -222,7 +217,7 @@ describe("ini506 — devx init --resume-gh", () => {
     setInitPartial({ repoRoot: repo, partial: true });
 
     const c1 = capture();
-    expect(() =>
+    await expect(
       runInit(["--resume-gh"], {
         repoRoot: repo,
         out: c1.out,
@@ -233,20 +228,18 @@ describe("ini506 — devx init --resume-gh", () => {
         ]),
         git: okGit,
       }),
-    ).toThrow();
+    ).rejects.toThrow();
 
     // Second run only invokes the gh exec ONCE (the create-develop op is gone
     // because it succeeded in run 1; only set-default-branch remains).
     const c2 = capture();
-    expect(() =>
-      runInit(["--resume-gh"], {
-        repoRoot: repo,
-        out: c2.out,
-        err: c2.err,
-        gh: fixedGh([{ exitCode: 0, stdout: "{}", stderr: "" }]),
-        git: okGit,
-      }),
-    ).not.toThrow();
+    await runInit(["--resume-gh"], {
+      repoRoot: repo,
+      out: c2.out,
+      err: c2.err,
+      gh: fixedGh([{ exitCode: 0, stdout: "{}", stderr: "" }]),
+      git: okGit,
+    });
 
     expect(c2.c.out).toContain("[ok] set-default-branch");
     expect(readInitPartial({ repoRoot: repo })).toBe(false);

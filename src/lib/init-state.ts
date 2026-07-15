@@ -401,11 +401,13 @@ export function detectInitState(opts: DetectOpts = {}): InitState {
   const configPath = join(repoRoot, "devx.config.yaml");
   const versionRead = readDevxVersion(configPath);
 
+  // devx-on-disk wins over commit count (pin103): a scaffolded repo whose
+  // user hasn't committed yet is still a devx repo — re-running init must
+  // take the upgrade path, not re-run fresh as if the scaffold never
+  // happened. Only a repo with NO devx.config.yaml keys off hasCommits.
   let kind: RepoStateKind;
-  if (!hasCommits) {
-    kind = "empty";
-  } else if (!versionRead.present) {
-    kind = "existing";
+  if (!versionRead.present) {
+    kind = hasCommits ? "existing" : "empty";
   } else if (versionRead.version === null) {
     kind = "corrupt-config";
   } else {

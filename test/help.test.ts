@@ -181,9 +181,9 @@ describe("cli303 — devx --help command listing", () => {
       Commands:
         config [options] [args...]   Get or set values in devx.config.yaml (project)
                                      or ~/.devx/config.yaml (user)
-        init [options]               Resume deferred /devx-init work (--resume-gh).
-                                     Fresh-init lives in the /devx-init slash
-                                     command.
+        init [options]               Scaffold a devx repo non-interactively (config,
+                                     backlogs, CLAUDE.md, CI, skills); --resume-gh
+                                     replays deferred GitHub-side ops.
         devx-helper                  Helpers invoked by the /devx skill body (Phase
                                      1). Subcommand-driven; mirrors \`devx merge-gate\`
                                      + \`devx plan-helper\`.
