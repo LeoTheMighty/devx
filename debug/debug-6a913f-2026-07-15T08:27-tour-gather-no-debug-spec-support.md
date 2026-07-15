@@ -4,8 +4,8 @@ type: debug
 created: 2026-07-15T08:27:00-06:00
 title: hash→spec resolution hardcodes dev/ across v2 CLIs (tour gather, merge-gate) — debug-loop PRs ship without tours and the merge gate false-negatives
 from: debug/debug-9c4e21-2026-07-14T12:15-manual-append-read-check-write-race.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-07-15T0831-76905
 branch: feat/debug-6a913f
 ---
 
@@ -48,3 +48,4 @@ merge") ships a review tour AND clears the canonical merge gate on debug PRs.
 - 2026-07-15T08:27 — filed by /devx during debug-9c4e21 Phase 7.5 (tour
   fail-soft path; out-of-scope tooling gap).
 - 2026-07-15T08:31 — widened by /devx during 9c4e21 Phase 8: `devx merge-gate` hit the same dev/ hardcoding (false-negative "manual merge required" on PR #71); scope is now the resolution class, not just tour gather.
+- 2026-07-15T08:31:55-06:00 — claimed by /devx in session /devx-2026-07-15T0831-76905
