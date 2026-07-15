@@ -33,7 +33,7 @@ install, overnight usage-window riding, blocker push, multi-repo fleet.
 Ship order = list order; mobile backlog (below) pauses until f1d6b2 ships.
 
 - [x] `plan/plan-b3f7a1-2026-07-14T10:40-portability-install.md` — Track 1 — Portability & install (packaged skills, real `devx init` scaffold, S-5 on palateful). Status: planned (all 4 gates passed 2026-07-14; 5 dev specs pin101–pin105 + pinret emitted to DEV.md § Vision-gap tracks; stage: executing). Blocked-by: —.
-- [ ] `plan/plan-c8e2d4-2026-07-14T10:41-usage-window-governor.md` — Track 2 — Usage-window governor (`devx loop` pauses on subscription limit, resumes on reset; re-homes d01000's capacity slice + OPEN_QUESTIONS §3). Status: ready. Blocked-by: —.
+- [/] `plan/plan-c8e2d4-2026-07-14T10:41-usage-window-governor.md` — Track 2 — Usage-window governor (`devx loop` pauses on subscription limit, resumes on reset; re-homes d01000's capacity slice + OPEN_QUESTIONS §3). Status: ready. Blocked-by: —.
 - [ ] `plan/plan-e5a9c0-2026-07-14T10:42-blocker-push-interim.md` — Track 3 — Interim blocker push (GitHub blockers-issue @mention; retired by mobile relay). Status: ready. Blocked-by: —.
 - [-] `plan/plan-f1d6b2-2026-07-14T10:43-fleet-layer.md` — Track 4 — Fleet layer (`~/.devx/projects.yaml`, `devx fleet loop`, aggregated report, `/devx-fleet`; supersedes ROADMAP:16 scope per INTERVIEW Q#10). Status: blocked. Blocked-by: b3f7a1, c8e2d4.
 

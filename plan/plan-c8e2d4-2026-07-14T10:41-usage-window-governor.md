@@ -9,8 +9,19 @@ spawned: []
 mode: YOLO
 project_shape: empty-dream
 thoroughness: send-it
-stack_layers: [backend]
+stack_layers: [ backend ]
 blocked_by: []
+stage: design
+entered_at: prd
+gate_status:
+  prd_validated: true
+  design_verified: false
+  plan_verified: false
+  evals_red: false
+outcome:
+  status: null
+  measure_by: null
+workstream: _devx/workstreams/usage-window-governor
 ---
 
 ## Goal
@@ -101,6 +112,7 @@ v2 follow-up, not scheduled.
 ## Status log
 
 - 2026-07-14T10:41 — filed from the vision-gap drift audit (plan
+- 2026-07-15T12:55 — PRD stage (/devx-plan): workstream usage-window-governor scaffolded (bound via --hash); 2 Explore passes (loop code map + decision history); prd.md (G-1..3, UC-1..5, CAP-1..6, FR-1..8) + expectations.md (E-1..E-7, 2×P0) written; `devx gate prd c8e2d4` PASS (1 fix: E-4 threshold made numeric) → prd_validated, stage: design. Key research findings recorded in prd.md: ladder is failure-shaped (seam choice → design stage); usage_cap_pct confirmed unwired; gather.ts trusts only status==running.
   sparkling-bubbling-pie, approved 2026-07-14). Track 2 of 4. Full design
   detail lives in the approved plan + this spec's Scope.
 
