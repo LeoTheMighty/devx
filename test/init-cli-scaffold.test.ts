@@ -339,3 +339,33 @@ describe("pin103 — appendDeferredDecisions error path", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// pin105 — S-5 scripted half: timed scratch init
+// ---------------------------------------------------------------------------
+
+describe("pin105 — S-5 timed scratch scenario", () => {
+  it("fresh fixture init completes well under the 120s S-5 budget", async () => {
+    // S-5 (v2/00-vision.md): devx init on a non-devx repo yields a working
+    // /devx in under two minutes. The live half (E-7 on palateful) times the
+    // whole human flow; this scripted half pins the init step itself. 120s
+    // is a deliberately generous CI margin — locally this runs in single-
+    // digit seconds; the assertion exists to catch pathological regressions
+    // (e.g. an accidental network wait or supervisor shell-out), not to
+    // benchmark.
+    const repo = makeRepo();
+    const prevHome = process.env.HOME;
+    process.env.HOME = repo;
+    try {
+      const started = Date.now();
+      await runInit([], { repoRoot: repo, out: () => {}, err: () => {} });
+      const elapsedMs = Date.now() - started;
+      expect(existsSync(join(repo, "devx.config.yaml"))).toBe(true);
+      expect(elapsedMs, `init took ${elapsedMs}ms — S-5 budget is 120s`).toBeLessThan(120_000);
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      rmSync(repo, { recursive: true, force: true });
+    }
+  }, 150_000);
+});
