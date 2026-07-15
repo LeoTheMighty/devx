@@ -91,3 +91,19 @@ declined. If/when this project upgrades to BETA or PROD, revisit.
   - How: (1) with Leo awake, run `devx loop --dry-run` and review the plan; then `devx loop --until <bedtime+2h> --max-items 2` and watch one full item cycle (claim → iterations → PR → merge tail → report). (2) If the supervised run behaves, pick a real night: `devx loop --until 07:30`. (3) In the morning, run `devx next` (row 1 reads the report) and verify every claim from disk — `git log --oneline`, `gh pr view` per PR, preserved-worktree paths for any abandoned item.
   - Blocks: S-3 sign-off (v2/06-phases.md § V2.5 exit AC). The chaos test ships in-repo (`test/loop-chaos.test.ts`); this item is the human half.
   - Spec: `dev/dev-v2l101-2026-07-05T13:06-overnight-loop.md`.
+
+## MV-pin103.1 — Stale/rewritten devx launchd units on this Mac
+
+During pin103's E-4 eval (2026-07-15 ~09:24), the pre-fix upgrade path ran the
+real supervisor repair and rewrote `~/Library/LaunchAgents/dev.devx.manager.plist`.
+Current host state: `dev.devx.manager` + `dev.devx.concierge` are loaded in
+launchd with status 78, pointing at `~/.devx/bin/devx-supervisor-stub.sh`
+which does NOT exist — they are broken regardless of origin (they may predate
+today from Phase 0 supervisor testing). The code is fixed (bare/upgrade
+`devx init` no longer touches launchd; PR pin103), but the host state is yours
+to settle:
+
+- [ ] Either remove the stale units: `launchctl bootout gui/$(id -u)/dev.devx.manager;
+      launchctl bootout gui/$(id -u)/dev.devx.concierge; rm -f
+      ~/Library/LaunchAgents/dev.devx.*.plist` — or reinstall properly via the
+      interactive `/devx-init` when you want the supervisor running (MV2.1).
