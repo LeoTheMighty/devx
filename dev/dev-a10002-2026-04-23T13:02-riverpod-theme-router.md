@@ -5,7 +5,8 @@ created: 2026-04-23T13:02:00-07:00
 title: Riverpod + Material 3 theme + go_router foundations
 from: _bmad-output/planning-artifacts/epic-flutter-scaffold-ios-device.md
 plan: plan/plan-7a2d1f-2026-04-23T13:00-mobile-companion-v01.md
-status: ready
+status: in-progress
+owner: /devx-2026-07-15T1127-76887
 branch: develop/dev-a10002
 blocked_by: [a10001]
 ---
@@ -27,6 +28,7 @@ Wire `ProviderScope`, Material 3 theme (light/dark), and `go_router` for the 4 t
 
 ## Status log
 - 2026-04-23T13:02 — created by /dev-plan
+- 2026-07-15T11:27:49-06:00 — claimed by /devx in session /devx-2026-07-15T1127-76887
 
 ## Files expected
 - `mobile/lib/core/router.dart`
