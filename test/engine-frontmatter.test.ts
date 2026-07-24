@@ -315,6 +315,26 @@ describe("gate_verdicts (hfi102)", () => {
     const twice = applyEnginePatch(once, { gateVerdicts: { evals: "PASS" } });
     expect(twice).toBe(once);
   });
+
+  it("a hand-added bare `gate_verdicts:` (YAML null) doesn't brick the write", () => {
+    // A human adding an empty section header must not make every
+    // subsequent gate/revise run exit 2 until the spec is hand-fixed —
+    // the degenerate node is replaced with a fresh map, matching the
+    // read side's all-null coercion.
+    const spec = "---\nhash: abc123\ngate_verdicts:\nstatus: ready\n---\nbody\n";
+    const updated = applyEnginePatch(spec, { gateVerdicts: { prd: "PASS" } });
+    const s = readEngineState(updated);
+    expect(s.gateVerdicts.prd).toBe("PASS");
+    expect(s.gateVerdicts.design).toBeNull();
+    expect(updated).toContain("status: ready");
+    expect(updated).toContain("body");
+  });
+
+  it("a non-map `gate_verdicts: []` is replaced the same way", () => {
+    const spec = "---\nhash: abc123\ngate_verdicts: []\n---\nbody\n";
+    const updated = applyEnginePatch(spec, { gateVerdicts: { evals: "FAIL" } });
+    expect(readEngineState(updated).gateVerdicts.evals).toBe("FAIL");
+  });
 });
 
 describe("ensureEngineFrontmatter", () => {

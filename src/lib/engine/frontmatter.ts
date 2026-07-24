@@ -24,7 +24,7 @@
 
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { parseDocument } from "yaml";
+import { isMap, parseDocument } from "yaml";
 
 import { VERDICTS, type Verdict } from "./verdict.js";
 
@@ -280,6 +280,14 @@ export function applyEnginePatch(content: string, patch: EnginePatch): string {
     }
   }
   if (patch.gateVerdicts) {
+    // A hand-added bare `gate_verdicts:` (YAML null) or non-map value would
+    // make setIn throw and brick every gate/revise write until hand-fixed.
+    // The read side already treats those shapes as all-null, so replacing
+    // the degenerate node with a fresh map loses nothing.
+    const existing = doc.getIn(["gate_verdicts"], true);
+    if (existing !== undefined && !isMap(existing)) {
+      doc.deleteIn(["gate_verdicts"]);
+    }
     for (const key of GATE_KEYS) {
       const v = patch.gateVerdicts[key];
       if (v !== undefined) doc.setIn(["gate_verdicts", key], v);

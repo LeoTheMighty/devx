@@ -246,9 +246,18 @@ function runWorkstreamNext(
     formatDate((opts.now ?? (() => new Date()))()),
   );
 
-  // hfi102: the decisions/ listing feeds the FAIL fix-path pointers.
+  // hfi102: the decisions/ listing feeds the FAIL fix-path pointers. An
+  // unreadable decisions/ (e.g. a file squatting on the name) degrades to
+  // re-run-only pointers rather than crashing the dispatcher.
   const decisionsAbs = join(ws.workstreamAbs, "decisions");
-  const decisionNames = fs.exists(decisionsAbs) ? fs.readdir(decisionsAbs) : [];
+  let decisionNames: readonly string[] = [];
+  if (fs.exists(decisionsAbs)) {
+    try {
+      decisionNames = fs.readdir(decisionsAbs);
+    } catch {
+      // degrade — the summary falls back to re-run-only fix paths
+    }
+  }
 
   out(
     `${JSON.stringify({
@@ -260,6 +269,9 @@ function runWorkstreamNext(
         hash: ws.hash,
         workstreamRel: ws.workstreamRel,
         decisionNames,
+        evalsReportExists: fs.exists(
+          join(ws.workstreamAbs, "evals", "RED-report.md"),
+        ),
       }),
       row: decision.row,
       next: decision.command,

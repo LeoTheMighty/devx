@@ -37,7 +37,13 @@
 // Spec: dev/dev-v2o101-2026-07-05T13:07-outcome-loop.md
 // Design: v2/02-engine.md §4.10; template _devx/templates/engine/results.md
 
-import { type EngineState, type GateFlag, type Stage, stageIndex } from "./frontmatter.js";
+import {
+  type EngineState,
+  type GateFlag,
+  type GateKey,
+  type Stage,
+  stageIndex,
+} from "./frontmatter.js";
 import { parseExpectations } from "./expectations.js";
 import { extractDefinedIds } from "./gate-prd.js";
 import { replayPath } from "./revise.js";
@@ -366,6 +372,12 @@ export interface TuneComputation {
   /** Verified-by targets of the reopened expectations (the reopen surface). */
   reopenArtifacts: string[];
   flagsCleared: GateFlag[];
+  /** Gate verdicts to erase (hfi102) — the FULL reopened set, not the
+   *  flags-true delta: tune always reopens the evals gate, and a stale
+   *  `gate_verdicts.evals` must not outlive the reopen even when
+   *  `evals_red` was already false (same semantics as revise's
+   *  verdictsCleared). */
+  verdictsCleared: GateKey[];
   stage: Stage;
   replay: string[];
 }
@@ -437,6 +449,7 @@ export function computeTune(
     reopened: sorted,
     reopenArtifacts,
     flagsCleared,
+    verdictsCleared: ["evals"],
     stage,
     replay: replayPath(stage, hash),
   };

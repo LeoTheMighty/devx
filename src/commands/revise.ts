@@ -102,8 +102,8 @@ export function runRevise(
 
   // Apply: clear the cascade's flags (write false for the full reset set —
   // idempotent for already-false flags), erase the same gates' verdicts
-  // (null ≡ never-evaluated; revise is the only eraser — hfi102), and roll
-  // the stage back.
+  // (null ≡ never-evaluated; the erasers are revise and outcome-tune's
+  // evals reopen — hfi102), and roll the stage back.
   const gatePatch: Record<string, boolean> = {};
   for (const flag of computation.resets) gatePatch[flag] = false;
   const verdictPatch: Record<string, null> = {};

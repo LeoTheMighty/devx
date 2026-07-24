@@ -10,6 +10,9 @@
 // Spec: dev/dev-hfi102-2026-07-24T10:41-gate-verdict-persistence.md
 // Eval: _devx/workstreams/harness-fold-in/evals/E-3_gate-verdict-persist.ts
 
+import { rmSync } from "node:fs";
+import { join } from "node:path";
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -254,6 +257,25 @@ describe("gate evals — verdict persistence", () => {
     expect(s.stage).toBe("red");
   });
 
+  it("CONCERNS (P1+ gap) flips the flag AND records CONCERNS verbatim", () => {
+    // No plan.md → every row tests-first; E-1/E-2 (demo.test.mjs) observed
+    // RED, E-3's artifact (test/perf.test.mjs) missing → P2 gap →
+    // CONCERNS. Pins that the combined patch writes result.verdict, not a
+    // hardcoded PASS (adversarial-review test-gap finding).
+    seedSpec({
+      stage: "red",
+      prd_validated: true,
+      design_verified: true,
+      plan_verified: true,
+    });
+    repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
+    repo.write("test/demo.test.mjs", "process.exit(1);\n");
+    expect(gateEvals().code).toBe(0);
+    const s = state();
+    expect(s.gateVerdicts.evals).toBe("CONCERNS");
+    expect(s.gateStatus.evals_red).toBe(true);
+  });
+
   it("refusal (Gate 3 open) writes nothing", () => {
     seedEvals({ plan_verified: false });
     const before = repo.read(SPEC_REL);
@@ -265,6 +287,73 @@ describe("gate evals — verdict persistence", () => {
     seedEvals();
     const before = repo.read(SPEC_REL);
     expect(gateEvals({ dryRun: true }).code).toBe(0);
+    expect(repo.read(SPEC_REL)).toBe(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Evaluated FAIL whose verdict write fails: diagnostics survive, exit 2
+// ---------------------------------------------------------------------------
+
+/** Seed the spec with a duplicated frontmatter key: readEngineState (toJS)
+ *  tolerates it, applyEnginePatch (doc.errors) refuses — so the gate
+ *  evaluates normally and only the verdict write fails. */
+function seedBrokenSpec(flags: {
+  stage?: string;
+  prd_validated?: boolean;
+}): void {
+  repo.write(
+    SPEC_REL,
+    [
+      "---",
+      "hash: abc123",
+      "type: plan",
+      "type: plan", // duplicate key — botched-merge shape
+      "status: in-progress",
+      `stage: ${flags.stage ?? "prd"}`,
+      "gate_status:",
+      `  prd_validated: ${flags.prd_validated ?? false}`,
+      "  design_verified: false",
+      "  plan_verified: false",
+      "  evals_red: false",
+      `workstream: ${WS}`,
+      "---",
+      "body",
+      "",
+    ].join("\n"),
+  );
+  repo.mkdir(WS);
+  repo.write(`${WS}/prd.md`, validPrd());
+  repo.write(`${WS}/expectations.md`, validExpectations());
+}
+
+describe("FAIL verdict write failure — gap diagnostics are never swallowed", () => {
+  it("gate prd: gaps print, exit is 2, the spec is untouched", () => {
+    seedBrokenSpec({});
+    repo.write(
+      `${WS}/expectations.md`,
+      validExpectations().replace("- **Threshold:** tour present on 100% of PRs\n", ""),
+    );
+    const before = repo.read(SPEC_REL);
+    const { code, io } = gatePrd();
+    expect(code).toBe(2);
+    const j = io.json() as { gate: string; gaps: unknown[] };
+    expect(j.gate).toBe("FAIL");
+    expect(j.gaps.length).toBeGreaterThan(0);
+    expect(io.stderr()).toContain("frontmatter write failed");
+    expect(repo.read(SPEC_REL)).toBe(before);
+  });
+
+  it("gate coverage: the JSON still names the verify report already on disk", () => {
+    seedBrokenSpec({ prd_validated: true, stage: "design" });
+    repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
+    const before = repo.read(SPEC_REL);
+    const { code, io } = gateCoverage(designTable({ "FR-1": "missing" }));
+    expect(code).toBe(2);
+    const j = io.json() as { gate: string; report: string };
+    expect(j.gate).toBe("FAIL");
+    expect(j.report).toBe(`${WS}/decisions/2026-07-24-design-verify.md`);
+    expect(repo.exists(`${WS}/decisions/2026-07-24-design-verify.md`)).toBe(true);
     expect(repo.read(SPEC_REL)).toBe(before);
   });
 });
@@ -396,5 +485,23 @@ describe("devx next — FAIL vs never-run (T2.5)", () => {
     const { verdicts, summary } = next();
     expect(verdicts.prd).toBe(null);
     expect(summary).toBe("gates: prd PASS · design — · plan — · evals —");
+  });
+
+  it("a file squatting on decisions/ degrades to re-run-only — no crash", () => {
+    // fs.exists is true but readdir throws ENOTDIR; the dispatcher must
+    // degrade the fix path, not die (adversarial-review finding).
+    seedSpec({});
+    expect(gatePrd().code).toBe(0);
+    repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
+    expect(gateCoverage(designTable({ "FR-1": "missing" })).code).toBe(1);
+    rmSync(join(repo.root, WS, "decisions"), { recursive: true });
+    repo.write(`${WS}/decisions`, "not a directory");
+    const { summary } = next();
+    expect(summary).toBe(
+      [
+        "gates: prd PASS · design FAIL · plan — · evals —",
+        "  design FAIL → re-run: devx gate coverage abc123",
+      ].join("\n"),
+    );
   });
 });

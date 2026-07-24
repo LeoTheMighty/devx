@@ -12,7 +12,10 @@
 //       gate_status booleans and stage stay untouched; refusals (missing
 //       inputs, open predecessor) write nothing.
 //   2 — error: unresolvable hash/workstream, malformed --table, missing
-//       config. Nothing written.
+//       config. Nothing written. One exception: an evaluated FAIL whose
+//       verdict write fails still prints its gap JSON (and keeps any report
+//       already on disk) before exiting 2 — the spec is never half-written,
+//       but the diagnostics are never swallowed either.
 //
 // Spec: dev/dev-v2e101-2026-07-05T13:01-engine-cli-primitives.md
 // Design: v2/02-engine.md §4.2, §4.4, §4.6
@@ -186,11 +189,13 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
   });
 
   if (result.verdict === "FAIL") {
-    if (!writeFailVerdict(ws, "prd", "devx gate prd", io)) return 2;
+    // Gap diagnostics print BEFORE the verdict write: a spec whose
+    // frontmatter can't be patched must not swallow the reason the gate
+    // failed (adversarial review — the write failure exits 2 after).
     io.out(
       `${JSON.stringify({ gate: "FAIL", hash: ws.hash, gaps: result.gaps })}\n`,
     );
-    return 1;
+    return writeFailVerdict(ws, "prd", "devx gate prd", io) ? 1 : 2;
   }
 
   // PASS: flip prd_validated + stage: design + verdict in one patch.
@@ -350,10 +355,11 @@ export function runGateCoverage(
       );
       return 2;
     }
-  } else if (!writeFailVerdict(ws, FLAG_TO_GATE_KEY[flag], "devx gate coverage", io)) {
-    return 2;
   }
 
+  // The result JSON (which names the just-written report) prints BEFORE the
+  // FAIL verdict write: a spec whose frontmatter can't be patched must not
+  // swallow the gap diagnostics or the report pointer (adversarial review).
   io.out(
     `${JSON.stringify({
       gate: computation.verdict,
@@ -364,6 +370,12 @@ export function runGateCoverage(
       flipped,
     })}\n`,
   );
+  if (
+    computation.verdict === "FAIL" &&
+    !writeFailVerdict(ws, FLAG_TO_GATE_KEY[flag], "devx gate coverage", io)
+  ) {
+    return 2;
+  }
   return computation.verdict === "FAIL" ? 1 : 0;
 }
 
@@ -474,10 +486,10 @@ export function runGateEvalsCli(
       );
       return 2;
     }
-  } else if (!writeFailVerdict(ws, "evals", "devx gate evals", io)) {
-    return 2;
   }
 
+  // Same print-before-verdict-write ordering as gate coverage: the JSON
+  // names the RED report already on disk and must survive a failed patch.
   io.out(
     `${JSON.stringify({
       gate: result.verdict,
@@ -487,6 +499,12 @@ export function runGateEvalsCli(
       flipped,
     })}\n`,
   );
+  if (
+    result.verdict === "FAIL" &&
+    !writeFailVerdict(ws, "evals", "devx gate evals", io)
+  ) {
+    return 2;
+  }
   return result.verdict === "FAIL" ? 1 : 0;
 }
 

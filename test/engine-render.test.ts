@@ -119,6 +119,19 @@ describe("renderGateSummary — FAIL fix-path lines", () => {
     );
   });
 
+  it("evals FAIL degrades to re-run-only when the caller reports the RED report missing", () => {
+    // Hand-authored FAIL or a deleted report: pointing at a file that
+    // isn't there would break the "never a broken pointer" contract.
+    const s = state({ verdicts: { evals: "FAIL" } });
+    const out = renderGateSummary(s, {
+      workstreamRel: WS,
+      evalsReportExists: false,
+    });
+    expect(out.split("\n")[1]).toBe(
+      "  evals FAIL → re-run: devx gate evals eac479",
+    );
+  });
+
   it("prd FAIL carries the re-run command only — no report artifact exists", () => {
     const s = state({ verdicts: { prd: "FAIL" } });
     const out = renderGateSummary(s, {

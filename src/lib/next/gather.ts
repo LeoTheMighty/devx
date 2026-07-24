@@ -617,12 +617,19 @@ function gatherWorkstreamSignals(
     // (that is row 8's domain via DEV.md).
     if (decision.command !== null && decision.row !== 12) {
       // hfi102: FAIL fix-path lines need the decisions/ listing (newest
-      // <date>-<mode>-verify.md); the renderer itself stays pure.
+      // <date>-<mode>-verify.md); the renderer itself stays pure. An
+      // unreadable decisions/ (e.g. a file squatting on the name) degrades
+      // to re-run-only pointers with a warning — same posture as the
+      // per-spec read failures above, never a dispatcher crash.
       const decisionsAbs = wsAbs !== null ? join(wsAbs, "decisions") : null;
-      const decisionNames =
-        decisionsAbs !== null && fs.exists(decisionsAbs)
-          ? fs.readdir(decisionsAbs)
-          : [];
+      let decisionNames: readonly string[] = [];
+      if (decisionsAbs !== null && fs.exists(decisionsAbs)) {
+        try {
+          decisionNames = fs.readdir(decisionsAbs);
+        } catch (e) {
+          warnings.push(`${wsRel}/decisions unreadable: ${errMessage(e)}`);
+        }
+      }
       midPipeline.push({
         hash,
         slug,
@@ -633,6 +640,9 @@ function gatherWorkstreamSignals(
           hash,
           workstreamRel: wsRel,
           decisionNames,
+          evalsReportExists:
+            wsAbs !== null &&
+            fs.exists(join(wsAbs, "evals", "RED-report.md")),
         }),
       });
     }

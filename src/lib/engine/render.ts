@@ -47,6 +47,12 @@ export interface GateSummaryContext {
   /** Plain listing of `<workstreamRel>/decisions/` (names only, unsorted).
    *  Absent dir ≡ []. */
   decisionNames?: readonly string[];
+  /** Whether `<workstreamRel>/evals/RED-report.md` exists. Omitted ≡ true
+   *  (a machine-written evals FAIL always has the report — gate.ts writes
+   *  it before the verdict); pass false when the caller checked and it's
+   *  gone (hand-authored FAIL, deleted report) to degrade to re-run-only
+   *  instead of a dangling pointer. */
+  evalsReportExists?: boolean;
 }
 
 /** The coverage gate writes `decisions/<date>-<mode>-verify.md`; the map
@@ -104,7 +110,11 @@ function failReportPointer(
 ): string | null {
   const ws = ctx.workstreamRel ?? null;
   if (ws === null) return null;
-  if (key === "evals") return `${ws}/evals/RED-report.md`;
+  if (key === "evals") {
+    return ctx.evalsReportExists === false
+      ? null
+      : `${ws}/evals/RED-report.md`;
+  }
   const mode = COVERAGE_MODE[key];
   if (mode === undefined) return null; // prd — re-run command only
   const report = newestDecisionReport(ctx.decisionNames ?? [], mode);
