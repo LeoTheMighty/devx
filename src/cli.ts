@@ -28,6 +28,7 @@ import * as ejectCommand from "./commands/eject.js";
 import * as gateCommand from "./commands/gate.js";
 import * as initCommand from "./commands/init.js";
 import * as killCommand from "./commands/kill.js";
+import * as learnHelperCommand from "./commands/learn-helper.js";
 import * as loopCommand from "./commands/loop.js";
 import * as manageCommand from "./commands/manage.js";
 import * as mergeGateCommand from "./commands/merge-gate.js";
@@ -61,6 +62,7 @@ const commands: CommandModule[] = [
   gateCommand,
   initCommand,
   killCommand,
+  learnHelperCommand,
   loopCommand,
   manageCommand,
   mergeGateCommand,
