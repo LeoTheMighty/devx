@@ -20,7 +20,7 @@ planned; this section outranks the paused mobile backlog below.
 ## Cross-cutting plans
 
 ### Epic — harness-fold-in (plan: eac479)
-- [/] `dev/dev-hfi101-2026-07-24T10:41-todo-core.md` — Todo core — template, parser, scaffold, gate isolation (E-1, E-2). Status: in-progress. From: epic-harness-fold-in.
+- [x] `dev/dev-hfi101-2026-07-24T10:41-todo-core.md` — Todo core — template, parser, scaffold, gate isolation (E-1, E-2). Status: done. From: epic-harness-fold-in. PR: https://github.com/LeoTheMighty/devx/pull/80
 - [ ] `dev/dev-hfi102-2026-07-24T10:41-gate-verdict-persistence.md` — Gate-verdict persistence + revise clearing + gate summary (E-3). Status: ready. Parallel-safe with hfi101 (zero shared files).
 - [ ] `dev/dev-hfi103-2026-07-24T10:41-todo-sync-renderers-status.md` — Todo sync + focus/drift renderers + real devx status (E-4, E-5). Status: ready. Blocked-by: hfi101, hfi102.
 - [ ] `dev/dev-hfi104-2026-07-24T10:41-devx-learn-skill.md` — /devx-learn skill + slug helper (E-6). Status: ready. Parallel-safe with hfi101/hfi102/hfi103 (no shared files).
