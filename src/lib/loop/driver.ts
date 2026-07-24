@@ -112,6 +112,7 @@ import {
 } from "./state.js";
 import {
   appendStatusEntryToFile,
+  hasPhase4StatusLine,
   markBacklogRowDone,
   setSpecStatus,
   type EntryPrefix,
@@ -1472,6 +1473,21 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       }
     } catch (e) {
       event("item:done-status-flip-failed", { error: serializeError(e) });
+    }
+    // dvx103 (cf65aa): the interactive /devx skill writes the mandatory
+    // `phase 4:` status-log line itself, but in the loop the orchestrator
+    // owns the Status log and workers may not touch it — so the merge tail
+    // appends the line when it's missing, or every loop-shipped spec reds
+    // test/devx-status-log-discipline.test.ts on the next branch cut.
+    try {
+      if (!hasPhase4StatusLine(readFileSync(mainSpecPath, "utf8"))) {
+        appendMainEntry(
+          "",
+          "phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103",
+        );
+      }
+    } catch (e) {
+      event("item:phase4-append-failed", { error: serializeError(e) });
     }
     appendMainEntry("", `merged via devx loop — PR ${prUrl}`);
     try {

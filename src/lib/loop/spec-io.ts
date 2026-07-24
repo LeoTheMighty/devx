@@ -112,6 +112,22 @@ function stripCR(line: string): string {
   return line.endsWith("\r") ? line.slice(0, -1) : line;
 }
 
+/**
+ * Does the spec's `## Status log` section already carry a `phase 4:` line?
+ *
+ * Mirrors the dvx103 discipline detection in
+ * test/devx-status-log-discipline.test.ts exactly (section-bounded,
+ * case-sensitive, colon-suffixed, top-level bullet only) — the merge tail
+ * uses this to decide whether it must append the line itself (cf65aa). The
+ * two regexes must stay in lockstep: a looser check here ships specs the
+ * discipline test then rejects on the next branch cut.
+ */
+export function hasPhase4StatusLine(content: string): boolean {
+  const section = content.match(/^## Status log\s*\n([\s\S]*?)(?=\n## |$(?![\r\n]))/m);
+  const body = section ? section[1] : "";
+  return /^- .*\bphase 4:/m.test(body);
+}
+
 /** Read-modify-write a spec file: append one status entry. Atomic
  *  (tmp+rename). Throws on read/write failure — callers decide best-effort. */
 export function appendStatusEntryToFile(

@@ -50,6 +50,13 @@ describe("buildIterationPrompt — load-bearing sentence pins (§2.2)", () => {
     expect(prompt).toContain("Run the relevant build/tests/linters before reporting success");
   });
 
+  it("pins verification-is-a-valid-slice (cf65aa — no iteration ends with verification outstanding)", () => {
+    expect(prompt).toContain(
+      "that verification IS this iteration's unit of work: run it to completion inside this iteration and set acs_met from the result",
+    );
+    expect(prompt).toContain("Never end an iteration with verification outstanding");
+  });
+
   it("pins no-commits / no-status-log-edits (the loop owns both)", () => {
     expect(prompt).toContain("Do NOT commit; do NOT edit the Status log — the loop owns both.");
   });

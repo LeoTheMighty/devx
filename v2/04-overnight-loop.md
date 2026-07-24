@@ -58,6 +58,10 @@ wall-clock `--until`, global token cap) checked before each claim.
    - "If your attempt didn't move the needle, record learnings and report
      failure rather than continuously pivoting."
    - "Run the relevant build/tests/linters before reporting success."
+   - "When the only remaining work is final verification, that verification
+     IS this iteration's unit of work — never end an iteration with
+     verification outstanding." (cf65aa — hfi102 burned its last 3 iterations
+     deferring the full-suite run.)
    - "Stop any background processes you started."
    - "Do NOT commit; do NOT edit the Status log — the loop owns both."
 3. **Structured self-report**, schema-validated (retry on shape mismatch):

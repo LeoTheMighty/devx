@@ -329,6 +329,13 @@ describe("runLoop scenarios", () => {
     const spec = readFileSync(join(fixture.repoRoot, fixture.specRel({ hash: "aaa111" })), "utf8");
     expect(spec).toContain("status: done");
     expect(spec).toContain("merged via devx loop — PR https://github.com/x/y/pull/99");
+    // cf65aa: the merge tail appends the dvx103 `phase 4:` line (workers are
+    // barred from the Status log), before the merged line, in the exact shape
+    // test/devx-status-log-discipline.test.ts detects.
+    expect(spec).toMatch(/^- .*\bphase 4: loop-shipped/m);
+    expect(spec.indexOf("phase 4: loop-shipped")).toBeLessThan(
+      spec.indexOf("merged via devx loop"),
+    );
     expect(existsSync(join(fixture.cacheDir, "locks", "spec-aaa111.lock"))).toBe(false);
     expect(existsSync(join(fixture.repoRoot, ".worktrees", "dev-aaa111"))).toBe(false);
     expect(existsSync(join(fixture.cacheDir, "locks", "manager.lock"))).toBe(false);
@@ -343,6 +350,33 @@ describe("runLoop scenarios", () => {
     for (const expected of ["loop:start", "item:claimed", "iteration:start", "iteration:end", "item:pushed", "item:tail", "loop:end"]) {
       expect(events).toContain(expected);
     }
+  });
+
+  it("merge tail does not duplicate an existing phase-4 line (cf65aa)", async () => {
+    fixture = makeFixture([{ hash: "ccc333" }]);
+    // Simulate a spec that already carries the line (e.g. appended manually
+    // or by a prior partial run) before the loop merges it.
+    const specAbs = join(fixture.repoRoot, fixture.specRel({ hash: "ccc333" }));
+    writeFileSync(
+      specAbs,
+      readFileSync(specAbs, "utf8").replace(
+        "- 2026-07-05T13:00 — created.",
+        "- 2026-07-05T13:00 — created.\n- 2026-07-05T14:00 — phase 4: self-review found nothing actionable",
+      ),
+      "utf8",
+    );
+    g(fixture.repoRoot, "add", "-A");
+    g(fixture.repoRoot, "commit", "-q", "-m", "pre-existing phase 4 line");
+    g(fixture.repoRoot, "push", "-q", "origin", "main");
+
+    const { worker } = scriptedWorker([
+      { kind: "report", files: { "w.txt": "w\n" }, report: { acs_met: true } },
+    ]);
+    const r = await runLoop(baseOpts(fixture, { worker, tail: mergedTail().tail }));
+    expect(r.summary?.items[0]?.outcome).toBe("merged");
+    const spec = readFileSync(specAbs, "utf8");
+    expect(spec.match(/^- .*\bphase 4:/gm)).toHaveLength(1);
+    expect(spec).not.toContain("phase 4: loop-shipped");
   });
 
   it("3 consecutive reported failures abandon the item: [-] blocked, lock released, worktree PRESERVED", async () => {
