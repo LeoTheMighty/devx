@@ -62,13 +62,24 @@
 
 | E-id | Priority | Verified in phase | Validation type | Eval artifact | Coverage |
 |---|---|---|---|---|---|
-| E-1 | P0 | 1 | tests-first | `test/workstream-todo-scaffold.test.ts` | full |
-| E-2 | P0 | 1 | tests-first | `test/gate-todo-isolation.test.ts` | full |
-| E-3 | P0 | 2 | tests-first | `test/gate-verdict-persist.test.ts` | full |
-| E-4 | P1 | 3 | tests-first | `test/next-todo-drift.test.ts` | full |
-| E-5 | P1 | 3 | tests-first | `test/next-current-focus.test.ts` | full |
-| E-6 | P1 | 4 | tests-first | `test/learn-skill-guards.test.ts` | full |
-| E-7 | P2 | 5 | tests-first | `test/skill-todo-discipline.test.ts` | full |
+| E-1 | P0 | 1 | tests-first | `_devx/workstreams/harness-fold-in/evals/E-1_todo-scaffold.ts` | full |
+| E-2 | P0 | 1 | tests-first | `_devx/workstreams/harness-fold-in/evals/E-2_gate-todo-isolation.ts` | full |
+| E-3 | P0 | 2 | tests-first | `_devx/workstreams/harness-fold-in/evals/E-3_gate-verdict-persist.ts` | full |
+| E-4 | P1 | 3 | tests-first | `_devx/workstreams/harness-fold-in/evals/E-4_next-todo-drift.ts` | full |
+| E-5 | P1 | 3 | tests-first | `_devx/workstreams/harness-fold-in/evals/E-5_next-current-focus.ts` | full |
+| E-6 | P1 | 4 | tests-first | `_devx/workstreams/harness-fold-in/evals/E-6_learn-skill-guards.ts` | full |
+| E-7 | P2 | 5 | tests-first | `_devx/workstreams/harness-fold-in/evals/E-7_skill-todo-discipline.ts` | full |
+
+Eval artifacts are standalone tsx scripts under the workstream's `evals/`
+(the `workstream-evals` runner; never part of `npm test`, so RED artifacts
+don't break CI across this workstream's five PRs — the v2x101 precedent,
+reaffirmed by portability-install). Each phase ALSO lands the permanent
+vitest suite at the `test/*.test.ts` path named in the E-block's
+Verified-by; the evals are the workstream's acceptance checks (each asserts
+its permanent suite exists + the behavior holds) and flip green as the
+phases ship. Retargeted from the original `test/*.test.ts` table via
+`devx revise` at RED open — see
+`decisions/2026-07-24-red-artifact-retarget.md`.
 
 ## Phase checklist
 
@@ -99,8 +110,10 @@ honors the parse contract (E-1) and gates are firewalled from todo.md
 - `src/lib/engine/workstream.ts` — add `todo.md` to `createWorkstream`'s
   write-if-missing template loop (TEMPLATES list feeding the scaffold at
   ~:257).
-- `test/workstream-todo-scaffold.test.ts` — E-1 RED artifact.
-- `test/gate-todo-isolation.test.ts` — E-2 RED artifact: static
+- `test/workstream-todo-scaffold.test.ts` — E-1 permanent suite (the
+  `evals/E-1_todo-scaffold.ts` acceptance script flips green here).
+- `test/gate-todo-isolation.test.ts` — E-2 permanent suite (acceptance:
+  `evals/E-2_gate-todo-isolation.ts`): static
   read-surface scan (0 `todo.md` references in `src/commands/gate.ts` +
   `src/lib/engine/gate-prd.ts` / `gate-coverage.ts` / `gate-evals.ts`) +
   4-fixture byte-identical gate output (todo present / absent / fully
@@ -179,7 +192,8 @@ summary line in `devx next`. Parallel-safe with Phase 1 — zero shared files
   `src/commands/next.ts` — attach `verdicts` to `WorkstreamSignal`; render
   the gate-summary line under workstream rows (repo scan + `devx next
   <hash>` single form).
-- `test/gate-verdict-persist.test.ts` — E-3 RED artifact.
+- `test/gate-verdict-persist.test.ts` — E-3 permanent suite (acceptance:
+  `evals/E-3_gate-verdict-persist.ts`).
 
 **Context**:
 - D-9 vocabulary reused verbatim from `src/lib/engine/verdict.ts` VERDICTS;
@@ -246,8 +260,10 @@ Depends on Phase 1 (the todo module) and Phase 2 (`render.ts` +
   done-with-outcome-pending); per workstream render
   `<slug> (<hash>)  stage: <stage>` + gate summary + focus line. Read-only;
   exit 0.
-- `test/next-todo-drift.test.ts` — E-4 RED artifact.
-- `test/next-current-focus.test.ts` — E-5 RED artifact.
+- `test/next-todo-drift.test.ts` — E-4 permanent suite (acceptance:
+  `evals/E-4_next-todo-drift.ts`).
+- `test/next-current-focus.test.ts` — E-5 permanent suite (acceptance:
+  `evals/E-5_next-current-focus.ts`).
 
 **Context**:
 - `devx todo sync` is never called from gate code (E-2's static scan keeps
@@ -311,7 +327,8 @@ the other skills land in Phase 5).
 - `src/commands/learn-helper.ts` — new `devx learn-helper slug <raw…>`
   passthrough.
 - `src/cli.ts` — register the `learn-helper` command module.
-- `test/learn-skill-guards.test.ts` — E-6 RED artifact: slug fuzz set
+- `test/learn-skill-guards.test.ts` — E-6 permanent suite (acceptance:
+  `evals/E-6_learn-skill-guards.ts`): slug fuzz set
   (≥8 cases: metachars, unicode, >40 chars, empty, injection strings) +
   static skill-body assertion for both guard sections.
 
@@ -365,7 +382,8 @@ the nudge canonical source (Phase 4).
   todo step (worktree agents write workstream artifacts via absolute paths
   into the main worktree) + the nudge conditional.
 - `skills/devx-plan.md`, `skills/devx.md` — byte-identical mirrors.
-- `test/skill-todo-discipline.test.ts` — E-7 RED artifact: 5/5
+- `test/skill-todo-discipline.test.ts` — E-7 permanent suite (acceptance:
+  `evals/E-7_skill-todo-discipline.ts`): 5/5
   stage+execute sections carry the todo step; nudge sentence defined in
   exactly 1 place (`<!-- nudge-canonical -->` in devx-learn.md) and
   referenced elsewhere; prose-budget canary respected.

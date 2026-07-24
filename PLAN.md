@@ -43,7 +43,7 @@ Independent of phase sequencing — pick up once their named blockers clear.
 
 - [-] `plan/plan-f02000-2026-04-26T19:30-thoroughness-axis.md` — Wire `thoroughness` (`send-it`/`balanced`/`thorough`) through every command. Status: deferred. Blocked-by: a01000.
 - [-] `plan/plan-a03000-2026-04-26T19:30-realtime-live-activities.md` — Mobile v0.3.5: Cloudflare DO stream + iOS Live Activities + Android persistent notification. Status: deferred. Blocked-by: c4f1a2, 7a2d1f.
-- [/] `plan/plan-eac479-2026-07-24T09:57-harness-fold-in.md` — Harness fold-in: per-workstream `todo.md` working memory, `/devx-learn` self-learning skill, gate-verdict persistence (ported shapes from `mycase/8am-harness` PRs #20–#27; no Confluence/Jira/eval-manifests). Status: in-progress (PRD gate PASS 2026-07-24; stage: design). Blocked-by: —.
+- [x] `plan/plan-eac479-2026-07-24T09:57-harness-fold-in.md` — Harness fold-in: per-workstream `todo.md` working memory, `/devx-learn` self-learning skill, gate-verdict persistence (ported shapes from `mycase/8am-harness` PRs #20–#27; no Confluence/Jira/eval-manifests). Status: executing (all 4 gates PASS 2026-07-24; dev specs hfi101–hfi105 + hfiret emitted to `DEV.md § Cross-cutting plans`). Blocked-by: —.
 
 ## Mobile (Phase 8 — runs parallel from Phase 2 onward)
 

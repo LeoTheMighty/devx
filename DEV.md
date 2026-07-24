@@ -17,6 +17,16 @@ planned; this section outranks the paused mobile backlog below.
 - [-] `dev/dev-pin105-2026-07-14T12:04-s5-validation.md` — S-5 validation: timed scratch scenario + live palateful checklist. Status: blocked (scripted half merged; live half waits on MANUAL MV-pin105.1). Blocked-by: pin103, pin104. Requires user action (live palateful run). PR: https://github.com/LeoTheMighty/devx/pull/75 (merged f9e4428; scripted half).
 - [ ] `dev/dev-pinret-2026-07-14T11:11-retro-portability-install.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: pin101, pin102, pin103, pin104, pin105.
 
+## Cross-cutting plans
+
+### Epic — harness-fold-in (plan: eac479)
+- [ ] `dev/dev-hfi101-2026-07-24T10:41-todo-core.md` — Todo core — template, parser, scaffold, gate isolation (E-1, E-2). Status: ready. From: epic-harness-fold-in.
+- [ ] `dev/dev-hfi102-2026-07-24T10:41-gate-verdict-persistence.md` — Gate-verdict persistence + revise clearing + gate summary (E-3). Status: ready. Parallel-safe with hfi101 (zero shared files).
+- [ ] `dev/dev-hfi103-2026-07-24T10:41-todo-sync-renderers-status.md` — Todo sync + focus/drift renderers + real devx status (E-4, E-5). Status: ready. Blocked-by: hfi101, hfi102.
+- [ ] `dev/dev-hfi104-2026-07-24T10:41-devx-learn-skill.md` — /devx-learn skill + slug helper (E-6). Status: ready. Parallel-safe with hfi101/hfi102/hfi103 (no shared files).
+- [ ] `dev/dev-hfi105-2026-07-24T10:41-lifecycle-skill-wiring.md` — Lifecycle skill wiring + nudge single-sourcing (E-7). Status: ready. Blocked-by: hfi103, hfi104.
+- [ ] `dev/dev-hfiret-2026-07-24T10:43-retro-harness-fold-in.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: hfi101, hfi102, hfi103, hfi104, hfi105.
+
 ## Phase 0 — Foundation (plan: plan-a01000)
 
 ### Epic 1 — BMAD audit
