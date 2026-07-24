@@ -4,8 +4,8 @@
 // --dry-run, and exit-2 error paths write nothing to the spec. FAIL runs are
 // verdict-only: gate_status booleans and stage stay untouched.
 //
-// Sections still owed by later hfi102 phases: post-revise verdict clearing
-// (T2.3) and `devx next` FAIL-vs-never-run rendering (T2.5).
+// Section still owed by a later hfi102 phase: `devx next` FAIL-vs-never-run
+// rendering (T2.5).
 //
 // Spec: dev/dev-hfi102-2026-07-24T10:41-gate-verdict-persistence.md
 // Eval: _devx/workstreams/harness-fold-in/evals/E-3_gate-verdict-persist.ts
@@ -17,6 +17,7 @@ import {
   runGateEvalsCli,
   runGatePrd,
 } from "../src/commands/gate.js";
+import { runRevise } from "../src/commands/revise.js";
 import { readEngineState } from "../src/lib/engine/frontmatter.js";
 import {
   type EngineRepo,
@@ -264,5 +265,68 @@ describe("gate evals — verdict persistence", () => {
     const before = repo.read(SPEC_REL);
     expect(gateEvals({ dryRun: true }).code).toBe(0);
     expect(repo.read(SPEC_REL)).toBe(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// devx revise — the only eraser (T2.3)
+// ---------------------------------------------------------------------------
+
+function revise(touched: string) {
+  const io = captureIo();
+  const code = runRevise(["abc123"], { touched }, {
+    ...io,
+    projectPath: repo.configPath,
+  });
+  return { code, io };
+}
+
+describe("devx revise — post-revise verdict clearing", () => {
+  it("gate-written verdicts read null after revise; earlier stages survive", () => {
+    // Real lifecycle: gate prd PASSes (writes prd: PASS), gate coverage
+    // FAILs in design mode (writes design: FAIL, flag stays false), then
+    // design.md is revised — the FAIL must be erased, prd's PASS kept.
+    seedSpec({});
+    expect(gatePrd().code).toBe(0);
+    repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
+    expect(gateCoverage(designTable({ "FR-1": "missing" })).code).toBe(1);
+    expect(state().gateVerdicts).toMatchObject({ prd: "PASS", design: "FAIL" });
+
+    expect(revise("design.md").code).toBe(0);
+    const s = state();
+    expect(s.gateVerdicts.prd).toBe("PASS");
+    expect(s.gateVerdicts.design).toBe(null);
+    expect(s.gateVerdicts.plan).toBe(null);
+    expect(s.gateVerdicts.evals).toBe(null);
+  });
+
+  it("prd.md revise erases all four verdicts", () => {
+    seedSpec({});
+    expect(gatePrd().code).toBe(0);
+    expect(revise("prd.md").code).toBe(0);
+    const s = state();
+    expect(s.gateVerdicts).toEqual({
+      prd: null,
+      design: null,
+      plan: null,
+      evals: null,
+    });
+    expect(s.stage).toBe("prd");
+  });
+
+  it("replay-path stdout shape is unchanged by verdict clearing", () => {
+    seedSpec({});
+    expect(gatePrd().code).toBe(0);
+    const { code, io } = revise("prd.md");
+    expect(code).toBe(0);
+    expect(Object.keys(io.json() as Record<string, unknown>).sort()).toEqual([
+      "flags_cleared",
+      "hash",
+      "replay",
+      "resets",
+      "spec",
+      "stage",
+      "touched",
+    ]);
   });
 });

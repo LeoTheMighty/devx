@@ -91,6 +91,7 @@ describe("computeRevise", () => {
       "plan_verified",
       "evals_red",
     ]);
+    expect(c.verdictsCleared).toEqual(["prd", "design", "plan", "evals"]);
     expect(c.stage).toBe("prd");
     expect(c.replay).toEqual([
       "devx gate prd abc123",
@@ -103,6 +104,7 @@ describe("computeRevise", () => {
   it("design.md: clears 3 flags, prd_validated survives", () => {
     const c = computeRevise(allTrueState(), cascadeFor("design.md")!, "abc123");
     expect(c.flagsCleared).toEqual(["design_verified", "plan_verified", "evals_red"]);
+    expect(c.verdictsCleared).toEqual(["design", "plan", "evals"]);
     expect(c.stage).toBe("design");
     expect(c.replay[0]).toContain("gate coverage");
   });
@@ -130,6 +132,9 @@ describe("computeRevise", () => {
     expect(c.stage).toBe("prd");
     expect(c.flagsCleared).toEqual([]); // nothing was set — reports the delta
     expect(c.resets).toEqual(["plan_verified", "evals_red"]);
+    // verdictsCleared is the FULL reset set, not the flags-true delta — a
+    // FAIL verdict lives on a false flag and must still be erased.
+    expect(c.verdictsCleared).toEqual(["plan", "evals"]);
   });
 
   it("replayPath from every stage", () => {
@@ -155,7 +160,7 @@ afterEach(() => repo.cleanup());
 const SPEC_REL = "plan/plan-abc123-2026-07-05T13:01-demo-feature.md";
 const WS = "_devx/workstreams/demo-feature";
 
-function seed(): void {
+function seed(verdicts?: string[]): void {
   repo.write(
     SPEC_REL,
     [
@@ -169,6 +174,7 @@ function seed(): void {
       "  design_verified: true",
       "  plan_verified: true",
       "  evals_red: true",
+      ...(verdicts ? ["gate_verdicts:", ...verdicts.map((l) => `  ${l}`)] : []),
       `workstream: ${WS}`,
       "---",
       "",
@@ -212,6 +218,45 @@ describe("devx revise — CLI driver", () => {
     expect(state.gateStatus.plan_verified).toBe(false);
     expect(state.gateStatus.evals_red).toBe(false);
     expect(state.stage).toBe("design");
+  });
+
+  it("design.md cascade erases reset gates' verdicts; prd's survives (hfi102)", () => {
+    seed(["prd: PASS", "design: CONCERNS", "plan: PASS", "evals: PASS"]);
+    const { code } = revise("design.md");
+    expect(code).toBe(0);
+    const state = readEngineState(repo.read(SPEC_REL));
+    expect(state.gateVerdicts.prd).toBe("PASS");
+    expect(state.gateVerdicts.design).toBe(null);
+    expect(state.gateVerdicts.plan).toBe(null);
+    expect(state.gateVerdicts.evals).toBe(null);
+  });
+
+  it("erases a FAIL verdict sitting on an already-false flag", () => {
+    seed(["prd: PASS", "design: PASS", "plan: FAIL", "evals: null"]);
+    // plan_verified false + FAIL verdict: the honest-history state after a
+    // failed gate run. Revise must erase the FAIL, not just the true flags.
+    repo.write(
+      SPEC_REL,
+      repo.read(SPEC_REL).replace("  plan_verified: true", "  plan_verified: false"),
+    );
+    const { code } = revise("plan.md");
+    expect(code).toBe(0);
+    const state = readEngineState(repo.read(SPEC_REL));
+    expect(state.gateVerdicts.plan).toBe(null);
+    expect(state.gateVerdicts.design).toBe("PASS"); // untouched by plan row
+  });
+
+  it("legacy spec without gate_verdicts: revise stays clean (all-null map)", () => {
+    seed();
+    const { code } = revise("plan.md");
+    expect(code).toBe(0);
+    const state = readEngineState(repo.read(SPEC_REL));
+    expect(state.gateVerdicts).toEqual({
+      prd: null,
+      design: null,
+      plan: null,
+      evals: null,
+    });
   });
 
   it("expectations.md resets all four flags (same row as prd.md)", () => {

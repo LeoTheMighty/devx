@@ -101,12 +101,17 @@ export function runRevise(
   const computation = computeRevise(ws.state, entry, ws.hash);
 
   // Apply: clear the cascade's flags (write false for the full reset set —
-  // idempotent for already-false flags) + roll the stage back.
+  // idempotent for already-false flags), erase the same gates' verdicts
+  // (null ≡ never-evaluated; revise is the only eraser — hfi102), and roll
+  // the stage back.
   const gatePatch: Record<string, boolean> = {};
   for (const flag of computation.resets) gatePatch[flag] = false;
+  const verdictPatch: Record<string, null> = {};
+  for (const key of computation.verdictsCleared) verdictPatch[key] = null;
   try {
     const updated = applyEnginePatch(ws.content, {
       gateStatus: gatePatch,
+      gateVerdicts: verdictPatch,
       stage: computation.stage,
     });
     fs.writeFile(ws.specAbs, updated);

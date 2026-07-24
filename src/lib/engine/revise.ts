@@ -26,7 +26,9 @@
 
 import {
   type EngineState,
+  FLAG_TO_GATE_KEY,
   type GateFlag,
+  type GateKey,
   type Stage,
   stageIndex,
 } from "./frontmatter.js";
@@ -74,6 +76,10 @@ export interface ReviseComputation {
   flagsCleared: GateFlag[];
   /** Full reset set from the table (delta or not — for the report). */
   resets: GateFlag[];
+  /** Gate verdicts to clear — the full reset set mapped to gate keys, NOT
+   *  the flags-true delta: a FAIL verdict lives on a gate whose flag is
+   *  false, and revise must erase it too (hfi102). */
+  verdictsCleared: GateKey[];
   /** Stage after rollback (earlier of current vs cascade target). */
   stage: Stage;
   stageChanged: boolean;
@@ -100,6 +106,7 @@ export function computeRevise(
   return {
     flagsCleared,
     resets: entry.resets,
+    verdictsCleared: entry.resets.map((f) => FLAG_TO_GATE_KEY[f]),
     stage,
     stageChanged: stage !== state.stage,
     replay: replayPath(stage, hash),
