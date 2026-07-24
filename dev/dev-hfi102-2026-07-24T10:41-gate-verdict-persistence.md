@@ -5,7 +5,8 @@ created: 2026-07-24T10:41:50-06:00
 title: Gate-verdict persistence + revise clearing + gate summary
 from: plan/plan-eac479-2026-07-24T09:57-harness-fold-in.md
 plan: _devx/workstreams/harness-fold-in
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-24T16-46-18-001-62080
 blocked_by: []
 branch: feat/dev-hfi102
 ---
@@ -71,3 +72,4 @@ Parallel-safe with hfi101 — zero shared files.
 ## Status log
 
 - 2026-07-24 — emitted by /devx-plan RED stage (eac479, phase 2/5).
+- 2026-07-24T11:15:28-06:00 — claimed by /devx in session /devx-loop-2026-07-24T16-46-18-001-62080
