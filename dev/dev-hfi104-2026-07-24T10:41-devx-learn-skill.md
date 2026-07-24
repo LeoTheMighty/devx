@@ -5,7 +5,8 @@ created: 2026-07-24T10:41:50-06:00
 title: /devx-learn skill + slug helper
 from: plan/plan-eac479-2026-07-24T09:57-harness-fold-in.md
 plan: _devx/workstreams/harness-fold-in
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-24T16-46-18-001-62080
 blocked_by: []
 branch: feat/dev-hfi104
 ---
@@ -62,3 +63,4 @@ source lands here, its references in the other skills land in hfi105).
 ## Status log
 
 - 2026-07-24 — emitted by /devx-plan RED stage (eac479, phase 4/5).
+- 2026-07-24T12:11:23-06:00 — claimed by /devx in session /devx-loop-2026-07-24T16-46-18-001-62080
