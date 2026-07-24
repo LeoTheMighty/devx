@@ -4,7 +4,7 @@ type: debug
 created: 2026-07-24T13:22:00-06:00
 title: loop merge tail never emits the dvx103 phase-4 line; iterations can end with verification outstanding
 from: dev/dev-hfi104-2026-07-24T10:41-devx-learn-skill.md
-status: in-progress
+status: done
 owner: interactive-session-2026-07-24
 branch: feat/debug-cf65aa
 ---
@@ -68,3 +68,5 @@ Two loop-orchestrator gaps surfaced by the 2026-07-24 overnight run
 - 2026-07-24T13:22 — filed from the loop-2026-07-24 post-run review: main red
   reproduced (hfi104 offender), hfi102 abandonment root-caused to
   verification-parking; both gaps confirmed structural, not worker error.
+- 2026-07-24T14:10-06:00 — phase 4: single-pass adversarial self-review (121-line surface, under the 3-agent threshold): audited numbered-instruction references, prompt-pin same-PR rule, commitOnMain pathspec coverage, handed-off path scoping; one finding (v2/04 prompt-frame doc drift) fixed in the same commit. All 3 touched test files 97/97; full suite green after clean rebuild (stale-dist false positive diagnosed, see PR notes).
+- 2026-07-24T14:10-06:00 — merged via PR https://github.com/LeoTheMighty/devx/pull/82 (squash 8c3d095; CI green, merge-gate merge:true). Tour: https://htmlpreview.github.io/?https://raw.githubusercontent.com/LeoTheMighty/devx/devx-tours/tours/cf65aa/tour.html

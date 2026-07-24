@@ -5,7 +5,7 @@ created: 2026-07-24T10:41:50-06:00
 title: Gate-verdict persistence + revise clearing + gate summary
 from: plan/plan-eac479-2026-07-24T09:57-harness-fold-in.md
 plan: _devx/workstreams/harness-fold-in
-status: in-progress
+status: done
 owner: interactive-session-2026-07-24
 blocked_by: []
 branch: feat/dev-hfi102
@@ -127,3 +127,4 @@ Parallel-safe with hfi101 — zero shared files.
 - 2026-07-24T18:11:21.892Z — [FAIL] loop abandoned hfi102: iteration budget exhausted (8 iterations without acs_met); worktree preserved at .worktrees/dev-hfi102
 - 2026-07-24T13:48-06:00 — re-claimed by interactive session post-abandon (no spec lock held; loop stopped). Post-run review found all 5 ACs implemented in the preserved worktree with E-3 green and the full suite 2213/2214 — the sole failure was the pre-existing hfi101 phase-4 discipline red inherited from main (fixed on main in 5d254f7), and the abandonment root cause was the verification-parking gap now fixed structurally by debug-cf65aa. Revival plan: merge main into feat/dev-hfi102, full suite, PR, CI, merge.
 - 2026-07-24T13:55-06:00 — phase 4: 3-agent parallel adversarial self-review (Blind Hunter + Edge Case Hunter + Acceptance Auditor) ran across loop iterations 6–8 over the full diff; all actionable findings fixed in-place (BH LOW-3 resolved as documented no-change), E-3 re-verified green after fixes. Revival verification: full suite 2253/2253 green post-merge-with-main (the run the loop workers never completed — the cf65aa verification-parking gap).
+- 2026-07-24T14:10-06:00 — merged via PR https://github.com/LeoTheMighty/devx/pull/83 (squash 3248fe1, interactive revival; CI green, merge-gate merge:true).
