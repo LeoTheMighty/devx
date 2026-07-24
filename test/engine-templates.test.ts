@@ -16,6 +16,7 @@ const EXPECTED_TEMPLATES = [
   "checkpoint.md",
   "lessons-entry.md",
   "results.md",
+  "todo.md",
 ];
 
 // D-10 (v2/07-decisions.md): no external-tracker surface anywhere in the
@@ -23,7 +24,7 @@ const EXPECTED_TEMPLATES = [
 const FORBIDDEN = /jira|confluence|atlassian/i;
 
 describe("engine templates (v2s101)", () => {
-  it("ships all nine engine templates", () => {
+  it("ships all engine templates", () => {
     const found = readdirSync(engineDir).filter((f) => f.endsWith(".md"));
     for (const name of EXPECTED_TEMPLATES) {
       expect(found, `missing template ${name}`).toContain(name);
