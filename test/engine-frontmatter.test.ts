@@ -5,7 +5,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  FLAG_TO_GATE_KEY,
   GATE_FLAGS,
+  GATE_KEYS,
   applyEnginePatch,
   ensureEngineFrontmatter,
   findSpecForHashIn,
@@ -29,6 +31,9 @@ const FULL_SPEC = [
   "  design_verified: false",
   "  plan_verified: false",
   "  evals_red: false",
+  "gate_verdicts:",
+  "  prd: PASS",
+  "  design: FAIL",
   "outcome:",
   "  status: null",
   "  measure_by: null",
@@ -61,6 +66,12 @@ describe("readEngineState", () => {
       plan_verified: false,
       evals_red: false,
     });
+    expect(s.gateVerdicts).toEqual({
+      prd: "PASS",
+      design: "FAIL",
+      plan: null,
+      evals: null,
+    });
     expect(s.outcome).toEqual({ status: null, measure_by: null });
     expect(s.workstream).toBe("_devx/workstreams/demo");
     expect(s.blockedBy).toEqual(["q7", "q9"]);
@@ -77,6 +88,12 @@ describe("readEngineState", () => {
       design_verified: false,
       plan_verified: false,
       evals_red: false,
+    });
+    expect(s.gateVerdicts).toEqual({
+      prd: null,
+      design: null,
+      plan: null,
+      evals: null,
     });
     expect(s.outcome).toEqual({ status: null, measure_by: null });
     expect(s.workstream).toBeNull();
@@ -200,6 +217,103 @@ describe("applyEnginePatch — round-trip safety (AC #2)", () => {
     const spec = `---\nhash: abc123\n${longTitle}\nstatus: ready\n---\nbody\n`;
     const updated = applyEnginePatch(spec, { stage: "prd" });
     expect(updated).toContain(`\n${longTitle}\n`);
+  });
+});
+
+describe("gate_verdicts (hfi102)", () => {
+  it("keys and flags map 1:1 (GATE_KEYS ↔ GATE_FLAGS via FLAG_TO_GATE_KEY)", () => {
+    expect(GATE_KEYS).toEqual(["prd", "design", "plan", "evals"]);
+    expect(Object.keys(FLAG_TO_GATE_KEY).sort()).toEqual([...GATE_FLAGS].sort());
+    expect(Object.values(FLAG_TO_GATE_KEY).sort()).toEqual([...GATE_KEYS].sort());
+  });
+
+  it("parses defensively: value outside the D-9 vocabulary reads null", () => {
+    const s = readEngineState(
+      "---\nhash: a\ngate_verdicts:\n  prd: PASSED\n  design: pass\n  plan: CONCERNS\n  evals: 1\n---\nbody\n",
+    );
+    expect(s.gateVerdicts).toEqual({
+      prd: null,
+      design: null,
+      plan: "CONCERNS",
+      evals: null,
+    });
+  });
+
+  it("treats a non-map gate_verdicts as all-null", () => {
+    const s = readEngineState("---\nhash: a\ngate_verdicts: PASS\n---\nbody\n");
+    expect(s.gateVerdicts).toEqual({
+      prd: null,
+      design: null,
+      plan: null,
+      evals: null,
+    });
+  });
+
+  it("verdict-only patch (the FAIL-run shape) leaves flags, stage, and body alone", () => {
+    const updated = applyEnginePatch(FULL_SPEC, {
+      gateVerdicts: { plan: "FAIL" },
+    });
+    const s = readEngineState(updated);
+    expect(s.gateVerdicts.plan).toBe("FAIL");
+    // Siblings untouched; unwritten gate stays null.
+    expect(s.gateVerdicts.prd).toBe("PASS");
+    expect(s.gateVerdicts.evals).toBeNull();
+    // Booleans and stage byte-untouched.
+    expect(s.gateStatus).toEqual({
+      prd_validated: true,
+      design_verified: false,
+      plan_verified: false,
+      evals_red: false,
+    });
+    expect(s.stage).toBe("design");
+    // Round-trip hygiene holds for the new map too.
+    expect(updated).toContain("custom_field: keep-me");
+    expect(updated).toContain("# v1 field, unchanged");
+    expect(updated).toContain("- 2026-07-05T13:00 — created.");
+  });
+
+  it("null in a patch clears a verdict back to never-evaluated (revise shape)", () => {
+    const updated = applyEnginePatch(FULL_SPEC, {
+      gateVerdicts: { prd: null, design: null },
+    });
+    const s = readEngineState(updated);
+    expect(s.gateVerdicts).toEqual({
+      prd: null,
+      design: null,
+      plan: null,
+      evals: null,
+    });
+    // Clearing verdicts never touches the booleans (revise.ts owns those).
+    expect(s.gateStatus.prd_validated).toBe(true);
+  });
+
+  it("combined pass patch (flag + stage + verdict) lands atomically", () => {
+    const updated = applyEnginePatch(FULL_SPEC, {
+      stage: "plan",
+      gateStatus: { design_verified: true },
+      gateVerdicts: { design: "PASS" },
+    });
+    const s = readEngineState(updated);
+    expect(s.stage).toBe("plan");
+    expect(s.gateStatus.design_verified).toBe(true);
+    expect(s.gateVerdicts.design).toBe("PASS");
+  });
+
+  it("creates the gate_verdicts map on a spec that lacks it (legacy migration)", () => {
+    const v1Spec = "---\nhash: abc123\nstatus: ready\n---\n\nbody\n";
+    const updated = applyEnginePatch(v1Spec, {
+      gateVerdicts: { evals: "CONCERNS" },
+    });
+    const s = readEngineState(updated);
+    expect(s.gateVerdicts.evals).toBe("CONCERNS");
+    expect(s.gateVerdicts.prd).toBeNull();
+    expect(updated).toContain("body");
+  });
+
+  it("is idempotent: same verdict patch twice yields identical text", () => {
+    const once = applyEnginePatch(FULL_SPEC, { gateVerdicts: { evals: "PASS" } });
+    const twice = applyEnginePatch(once, { gateVerdicts: { evals: "PASS" } });
+    expect(twice).toBe(once);
   });
 });
 

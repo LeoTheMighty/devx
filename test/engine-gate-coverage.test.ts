@@ -43,6 +43,7 @@ function stateWith(flags: Partial<Record<string, boolean>>) {
       evals_red: false,
       ...flags,
     },
+    gateVerdicts: { prd: null, design: null, plan: null, evals: null },
     outcome: { status: null, measure_by: null },
     workstream: "_devx/workstreams/demo",
     blockedBy: [],
