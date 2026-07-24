@@ -345,9 +345,10 @@ This is iteration ${params.iteration} of at most ${params.maxIterations} on spec
 2. Pick the next smallest logical unit of work that is individually verifiable. Do not attempt the whole spec.
 3. If your attempt didn't move the needle, record learnings and report failure rather than continuously pivoting.
 4. Run the relevant build/tests/linters before reporting success. Do NOT claim success on unverified work.
-5. Do NOT commit; do NOT edit the Status log — the loop owns both. Do not push, do not touch git branches or worktrees.
-6. Stop any background processes you started (dev servers, watchers, browsers) before finishing.
-7. Only emit the final JSON after the result is final: work complete, validation run, background processes stopped.
+5. When the only remaining work is final verification (full test suite, typecheck), that verification IS this iteration's unit of work: run it to completion inside this iteration and set acs_met from the result. Never end an iteration with verification outstanding — deferring a suite run to a future iteration burns the budget without progress.
+6. Do NOT commit; do NOT edit the Status log — the loop owns both. Do not push, do not touch git branches or worktrees.
+7. Stop any background processes you started (dev servers, watchers, browsers) before finishing.
+8. Only emit the final JSON after the result is final: work complete, validation run, background processes stopped.
 
 ## Output
 

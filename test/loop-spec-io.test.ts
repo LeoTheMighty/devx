@@ -9,6 +9,7 @@ import {
   appendStatusEntryToFile,
   appendToStatusLog,
   composeStatusEntry,
+  hasPhase4StatusLine,
   markBacklogRowDone,
   setSpecStatus,
 } from "../src/lib/loop/spec-io.js";
@@ -148,6 +149,49 @@ describe("markBacklogRowDone", () => {
     const next = markBacklogRowDone(dbg, "abc123", "debug", null);
     expect(next).toContain("- [x] `debug/debug-abc123");
     expect(next).toContain("Status: done.");
+  });
+});
+
+describe("hasPhase4StatusLine (cf65aa — dvx103 merge-tail detection)", () => {
+  it("false on a spec whose status log has no phase 4 line", () => {
+    expect(hasPhase4StatusLine(SPEC)).toBe(false);
+  });
+
+  it("true once a `- ... phase 4:` bullet is in the status log", () => {
+    const withLine = appendToStatusLog(
+      SPEC,
+      "- 2026-07-24T18:00 — phase 4: self-review found nothing actionable",
+    );
+    expect(hasPhase4StatusLine(withLine)).toBe(true);
+  });
+
+  it("orchestrator-composed entry (iso — head) matches the detection", () => {
+    const entry = composeStatusEntry({
+      iso: "2026-07-24T18:00:00.000Z",
+      prefix: "",
+      head: "phase 4: loop-shipped — per-iteration verification stood in for the interactive pass",
+    });
+    expect(hasPhase4StatusLine(appendToStatusLog(SPEC, entry))).toBe(true);
+  });
+
+  it("ignores `phase 4:` tokens outside the status-log section (mirrors dvx103 bounding)", () => {
+    const outside = SPEC.replace("Do it.", "Do it. Then phase 4: self-review.");
+    expect(hasPhase4StatusLine(outside)).toBe(false);
+    // A mention in the Links section (after the status log) doesn't count either.
+    const inLinks = SPEC.replace("- none", "- phase 4: notes");
+    expect(hasPhase4StatusLine(inLinks)).toBe(false);
+  });
+
+  it("ignores sub-bullet mentions (only top-level `- ` lines count)", () => {
+    const subBullet = appendToStatusLog(
+      SPEC,
+      "- 2026-07-24T18:00 — iteration 2\n  - Change: appended the phase 4: line elsewhere",
+    );
+    expect(hasPhase4StatusLine(subBullet)).toBe(false);
+  });
+
+  it("false on a spec with no status-log section at all", () => {
+    expect(hasPhase4StatusLine("---\nhash: x\n---\n\n## Goal\n\nphase 4: nope\n")).toBe(false);
   });
 });
 
