@@ -6,7 +6,7 @@ title: Gate-verdict persistence + revise clearing + gate summary
 from: plan/plan-eac479-2026-07-24T09:57-harness-fold-in.md
 plan: _devx/workstreams/harness-fold-in
 status: in-progress
-owner: /devx-loop-2026-07-24T16-46-18-001-62080
+owner: interactive-session-2026-07-24
 blocked_by: []
 branch: feat/dev-hfi102
 ---
@@ -124,3 +124,5 @@ Parallel-safe with hfi101 — zero shared files.
   - Change: Re-ran the E-3 eval after the fixes and confirmed it fully green (exit 0), keeping all previously implemented ACs (revise verdict clearing, renderGateSummary, per-workstream gate-summary line in devx next) intact.
   - Learning: The full test suite takes ~7 minutes; a background suite run's result does not survive across iteration boundaries, so the confirming iteration must run and observe the suite within its own lifetime before claiming acs_met.
   - Learning: The one expected pre-existing failure to discount when reading full-suite results is hfi101's 'phase 4:' status-log-discipline violation, which exists at the branch base and on origin/main and is not caused by hfi102.
+- 2026-07-24T18:11:21.892Z — [FAIL] loop abandoned hfi102: iteration budget exhausted (8 iterations without acs_met); worktree preserved at .worktrees/dev-hfi102
+- 2026-07-24T13:48-06:00 — re-claimed by interactive session post-abandon (no spec lock held; loop stopped). Post-run review found all 5 ACs implemented in the preserved worktree with E-3 green and the full suite 2213/2214 — the sole failure was the pre-existing hfi101 phase-4 discipline red inherited from main (fixed on main in 5d254f7), and the abandonment root cause was the verification-parking gap now fixed structurally by debug-cf65aa. Revival plan: merge main into feat/dev-hfi102, full suite, PR, CI, merge.

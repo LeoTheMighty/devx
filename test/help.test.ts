@@ -191,6 +191,9 @@ describe("cli303 — devx --help command listing", () => {
                                      (mechanical PRD checks); coverage = Gates 2/3
                                      (two-mode tri-state verify); evals = Gate 4 (RED
                                      runner). Exit 0 pass / 1 fail / 2 error.
+        learn-helper                 Helpers invoked by the /devx-learn skill body.
+                                     Subcommand-driven; mirrors \`devx plan-helper\`'s
+                                     passthrough pattern.
         manage [options]             Run the /devx-manage scheduler loop (Phase 1
                                      minimal: hard cap N=1; reconcile + spawn wired)
         merge-gate [options] <hash>  Compute the mode-derived merge decision for a
