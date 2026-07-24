@@ -5,7 +5,8 @@ created: 2026-07-24T10:41:50-06:00
 title: Todo sync + focus/drift renderers + real devx status
 from: plan/plan-eac479-2026-07-24T09:57-harness-fold-in.md
 plan: _devx/workstreams/harness-fold-in
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-24T21-19-34-321-15697
 blocked_by: [hfi101, hfi102]
 branch: feat/dev-hfi103
 ---
@@ -71,3 +72,4 @@ hfi102 (`render.ts` + `WorkstreamSignal` plumbing + gate summary).
 ## Status log
 
 - 2026-07-24 — emitted by /devx-plan RED stage (eac479, phase 3/5).
+- 2026-07-24T15:19:34-06:00 — claimed by /devx in session /devx-loop-2026-07-24T21-19-34-321-15697
