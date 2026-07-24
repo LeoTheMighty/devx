@@ -381,4 +381,44 @@ describe("devx next — CLI driver", () => {
       evals_red: false,
     });
   });
+
+  it("emits gate_verdicts + gate_summary — never-run renders as em-dash (hfi102)", () => {
+    seed(ALL_FALSE);
+    const { io } = next("abc123");
+    const j = io.json() as {
+      gate_verdicts: Record<string, string | null>;
+      gate_summary: string;
+    };
+    expect(j.gate_verdicts).toEqual({
+      prd: null,
+      design: null,
+      plan: null,
+      evals: null,
+    });
+    expect(j.gate_summary).toBe("gates: prd — · design — · plan — · evals —");
+  });
+
+  it("gate_summary FAIL row carries the report pointer + re-run command (hfi102)", () => {
+    seed(
+      [
+        "  prd_validated: true",
+        "  design_verified: false",
+        "  plan_verified: false",
+        "  evals_red: false",
+        "gate_verdicts:",
+        "  prd: PASS",
+        "  design: FAIL",
+      ].join("\n"),
+      "design",
+    );
+    repo.write(`${WS}/decisions/2026-07-05-design-verify.md`, "report");
+    const { io } = next("abc123");
+    const j = io.json() as { gate_summary: string };
+    expect(j.gate_summary).toBe(
+      [
+        "gates: prd PASS · design FAIL · plan — · evals —",
+        `  design FAIL → report: ${WS}/decisions/2026-07-05-design-verify.md · re-run: devx gate coverage abc123`,
+      ].join("\n"),
+    );
+  });
 });

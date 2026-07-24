@@ -135,6 +135,8 @@ function fullSnapshot(): RepoSnapshot {
         command: "devx gate prd ws0001",
         reason: "Gate 1 open",
       },
+      verdicts: { prd: null, design: null, plan: null, evals: null },
+      gateSummary: "gates: prd — · design — · plan — · evals —",
     },
   ];
   s.planReady = [
@@ -412,6 +414,35 @@ describe("decideRepoNext — each row fires in isolation", () => {
     expect(d.action).toBe("workstream-stage");
     expect(d.command).toBe("devx gate prd ws0001");
     expect(d.detail).toContain("demo");
+  });
+
+  it("row 9 carries its workstream's gate-summary block (hfi102)", () => {
+    const s = emptySnapshot();
+    s.midPipeline = fullSnapshot().midPipeline;
+    s.midPipeline[0].gateSummary =
+      "gates: prd PASS · design FAIL · plan — · evals —\n  design FAIL → re-run: devx gate coverage ws0001";
+    const d = rowOf(s);
+    expect(d.row).toBe(9);
+    expect(d.gateSummary).toBe(s.midPipeline[0].gateSummary);
+  });
+
+  it("every non-row-9 decision has gateSummary null (hfi102)", () => {
+    // Row 8 (canonical order picks it over row 9 when both fire) and the
+    // empty-repo row 12 — neither is a workstream-stage row.
+    const both = fullSnapshot();
+    both.loop = emptySnapshot().loop;
+    both.prs = [];
+    both.unreconciled = [];
+    both.claims = [];
+    both.outcomeDue = [];
+    both.interviewBlocking = [];
+    both.debugReady = [];
+    const d8 = rowOf(both);
+    expect(d8.row).toBe(8);
+    expect(d8.gateSummary).toBeNull();
+    const d12 = rowOf(emptySnapshot());
+    expect(d12.row).toBe(12);
+    expect(d12.gateSummary).toBeNull();
   });
 
   it("row 10: PLAN.md ready item → start its PRD stage", () => {
@@ -1125,6 +1156,66 @@ describe("gatherRepoSnapshot — backlogs, drift, claims, gates", () => {
     }
   });
 
+  it("mid-pipeline workstream: verdicts + gate summary attached; FAIL points at the newest report (hfi102)", () => {
+    const repo = makeEngineRepo();
+    try {
+      repo.write(
+        "plan/plan-ws0009-2026-07-05T12:00-vsum.md",
+        [
+          "---",
+          "hash: ws0009",
+          "type: plan",
+          "status: in-progress",
+          "stage: design",
+          "gate_status:",
+          "  prd_validated: true",
+          "  design_verified: false",
+          "  plan_verified: false",
+          "  evals_red: false",
+          "gate_verdicts:",
+          "  prd: PASS",
+          "  design: FAIL",
+          "workstream: _devx/workstreams/vsum",
+          "---",
+          "body",
+          "",
+        ].join("\n"),
+      );
+      repo.write("_devx/workstreams/vsum/prd.md", "x");
+      repo.write("_devx/workstreams/vsum/expectations.md", "x");
+      repo.write("_devx/workstreams/vsum/design.md", "x");
+      repo.write(
+        "_devx/workstreams/vsum/decisions/2026-07-04-design-verify.md",
+        "old",
+      );
+      repo.write(
+        "_devx/workstreams/vsum/decisions/2026-07-05-design-verify.md",
+        "new",
+      );
+
+      const s = gather(repo);
+      expect(s.midPipeline).toHaveLength(1);
+      const ws = s.midPipeline[0];
+      expect(ws.verdicts).toEqual({
+        prd: "PASS",
+        design: "FAIL",
+        plan: null,
+        evals: null,
+      });
+      // FAIL renders distinctly from never-run (— on plan/evals), and the
+      // fix-path line names the NEWEST design report + the re-run command.
+      const lines = ws.gateSummary.split("\n");
+      expect(lines[0]).toBe("gates: prd PASS · design FAIL · plan — · evals —");
+      expect(lines[1]).toBe(
+        "  design FAIL → report: _devx/workstreams/vsum/decisions/2026-07-05-design-verify.md · re-run: devx gate coverage ws0009",
+      );
+      // The row-9 decision carries the same block.
+      expect(decideRepoNext(s).gateSummary).toBe(ws.gateSummary);
+    } finally {
+      repo.cleanup();
+    }
+  });
+
   it("workstream-gated dev item: evals_red true → row 8 executes it", () => {
     const repo = makeEngineRepo();
     try {
@@ -1733,6 +1824,84 @@ describe("devx next — repo-level CLI form", () => {
       };
       expect(j.row).toBe(9);
       expect(j.command).toBe("/devx prd uuu222");
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("row 9 renders the gate-summary under the decision (JSON + stderr); other rows emit null (hfi102)", () => {
+    const repo = makeEngineRepo();
+    try {
+      repo.write(
+        "plan/plan-www555-2026-07-05T12:00-sum.md",
+        [
+          "---",
+          "hash: www555",
+          "type: plan",
+          "status: in-progress",
+          "stage: design",
+          "gate_status:",
+          "  prd_validated: true",
+          "  design_verified: false",
+          "  plan_verified: false",
+          "  evals_red: false",
+          "gate_verdicts:",
+          "  prd: PASS",
+          "  design: FAIL",
+          "workstream: _devx/workstreams/sum",
+          "---",
+          "",
+        ].join("\n"),
+      );
+      repo.write("_devx/workstreams/sum/prd.md", "x");
+      repo.write("_devx/workstreams/sum/expectations.md", "x");
+      repo.write("_devx/workstreams/sum/design.md", "x");
+      repo.write(
+        "_devx/workstreams/sum/decisions/2026-07-05-design-verify.md",
+        "report",
+      );
+
+      const io = captureIo();
+      const code = runNext(["--no-gh"], {
+        ...io,
+        projectPath: repo.configPath,
+        now: () => NOW,
+      });
+      expect(code).toBe(0);
+      const j = JSON.parse(io.stdout().trim()) as {
+        row: number;
+        gate_summary: string;
+      };
+      expect(j.row).toBe(9);
+      expect(j.gate_summary).toBe(
+        [
+          "gates: prd PASS · design FAIL · plan — · evals —",
+          "  design FAIL → report: _devx/workstreams/sum/decisions/2026-07-05-design-verify.md · re-run: devx gate coverage www555",
+        ].join("\n"),
+      );
+      // stderr: the block sits indented under the human decision line.
+      expect(io.stderr()).toContain(
+        "\n  gates: prd PASS · design FAIL · plan — · evals —\n",
+      );
+
+      // Empty repo (row 12) → gate_summary null in the JSON envelope.
+      const empty = makeEngineRepo();
+      try {
+        const io12 = captureIo();
+        expect(
+          runNext(["--no-gh"], {
+            ...io12,
+            projectPath: empty.configPath,
+            now: () => NOW,
+          }),
+        ).toBe(0);
+        expect(
+          (JSON.parse(io12.stdout().trim()) as { gate_summary: unknown })
+            .gate_summary,
+        ).toBeNull();
+      } finally {
+        empty.cleanup();
+      }
     } finally {
       repo.cleanup();
     }

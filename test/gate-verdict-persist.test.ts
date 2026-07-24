@@ -4,8 +4,8 @@
 // --dry-run, and exit-2 error paths write nothing to the spec. FAIL runs are
 // verdict-only: gate_status booleans and stage stay untouched.
 //
-// Section still owed by a later hfi102 phase: `devx next` FAIL-vs-never-run
-// rendering (T2.5).
+// Plus T2.5: `devx next <hash>` renders FAIL distinctly from never-run,
+// with the FAIL fix path pointing at the report the same gate run wrote.
 //
 // Spec: dev/dev-hfi102-2026-07-24T10:41-gate-verdict-persistence.md
 // Eval: _devx/workstreams/harness-fold-in/evals/E-3_gate-verdict-persist.ts
@@ -17,6 +17,7 @@ import {
   runGateEvalsCli,
   runGatePrd,
 } from "../src/commands/gate.js";
+import { runNext } from "../src/commands/next.js";
 import { runRevise } from "../src/commands/revise.js";
 import { readEngineState } from "../src/lib/engine/frontmatter.js";
 import {
@@ -314,6 +315,16 @@ describe("devx revise — post-revise verdict clearing", () => {
     expect(s.stage).toBe("prd");
   });
 
+  it("post-revise, `devx next` renders the cleared gate as never-run again", () => {
+    // FAIL → revise → the summary must drop back to `—`, not keep FAIL.
+    seedSpec({});
+    expect(gatePrd().code).toBe(0);
+    repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
+    expect(gateCoverage(designTable({ "FR-1": "missing" })).code).toBe(1);
+    expect(revise("design.md").code).toBe(0);
+    expect(next().summary).toBe("gates: prd PASS · design — · plan — · evals —");
+  });
+
   it("replay-path stdout shape is unchanged by verdict clearing", () => {
     seedSpec({});
     expect(gatePrd().code).toBe(0);
@@ -328,5 +339,62 @@ describe("devx revise — post-revise verdict clearing", () => {
       "stage",
       "touched",
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// devx next — FAIL vs never-run rendering (T2.5)
+// ---------------------------------------------------------------------------
+
+/** Run `devx next abc123` and return its verdict map + summary block. */
+function next(): {
+  verdicts: Record<string, string | null>;
+  summary: string;
+} {
+  const io = captureIo();
+  expect(runNext(["abc123"], { ...io, projectPath: repo.configPath })).toBe(0);
+  const j = io.json() as {
+    gate_verdicts: Record<string, string | null>;
+    gate_summary: string;
+  };
+  return { verdicts: j.gate_verdicts, summary: j.gate_summary };
+}
+
+describe("devx next — FAIL vs never-run (T2.5)", () => {
+  it("never-run gates render as em-dash with all-null verdicts", () => {
+    seedSpec({});
+    const { verdicts, summary } = next();
+    expect(verdicts).toEqual({ prd: null, design: null, plan: null, evals: null });
+    expect(summary).toBe("gates: prd — · design — · plan — · evals —");
+  });
+
+  it("a gate FAIL renders FAIL — visibly distinct from never-run — with the report the run wrote", () => {
+    // Real lifecycle: prd PASSes, design coverage FAILs (which also writes
+    // decisions/2026-07-24-design-verify.md); never-run gates stay `—`.
+    seedSpec({});
+    expect(gatePrd().code).toBe(0);
+    repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
+    expect(gateCoverage(designTable({ "FR-1": "missing" })).code).toBe(1);
+
+    const { verdicts, summary } = next();
+    expect(verdicts).toEqual({
+      prd: "PASS",
+      design: "FAIL",
+      plan: null,
+      evals: null,
+    });
+    expect(summary).toBe(
+      [
+        "gates: prd PASS · design FAIL · plan — · evals —",
+        `  design FAIL → report: ${WS}/decisions/2026-07-24-design-verify.md · re-run: devx gate coverage abc123`,
+      ].join("\n"),
+    );
+  });
+
+  it("legacy flag-true without a verdict renders PASS (migration fallback)", () => {
+    seedSpec({ prd_validated: true, stage: "design" });
+    const { verdicts, summary } = next();
+    expect(verdicts.prd).toBe(null);
+    expect(summary).toBe("gates: prd PASS · design — · plan — · evals —");
   });
 });

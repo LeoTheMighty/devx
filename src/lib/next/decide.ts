@@ -46,6 +46,7 @@
 // Design: v2/05-dispatcher.md §2; v2/07-decisions.md D-8, D-12
 
 import type { SpecStatus, SpecType } from "../backlog/parse.js";
+import type { GateVerdicts } from "../engine/frontmatter.js";
 import type { NextDecision } from "../engine/next.js";
 
 // ---------------------------------------------------------------------------
@@ -163,6 +164,13 @@ export interface WorkstreamSignal {
   stage: string | null;
   /** The v1 workstream-stage decision (nextForWorkstream) — reused verbatim. */
   decision: NextDecision;
+  /** Raw per-gate verdict map from the plan spec's `gate_verdicts:`
+   *  frontmatter (hfi102) — machine consumers (dashboard/mobile). */
+  verdicts: GateVerdicts;
+  /** Pre-rendered gate-summary block (renderGateSummary): the `gates:` line
+   *  plus indented FAIL fix-path lines. Materialized by gather.ts (which
+   *  owns the fs seam for the decisions/ listing) so this table stays pure. */
+  gateSummary: string;
 }
 
 /** A closed workstream whose armed outcome came due (row 5.5, v2o101). */
@@ -229,6 +237,12 @@ export interface RepoNextDecision {
    * review-first signal (adversarial-review BH#6/EC#6).
    */
   overnightReport: string | null;
+  /**
+   * Gate-summary block for the row-9 workstream (hfi102): the `gates: prd
+   * PASS · design FAIL · …` line plus FAIL fix-path lines. Null on every
+   * other row — only workstream-stage decisions carry gate state.
+   */
+  gateSummary: string | null;
 }
 
 export interface DecideOpts {
@@ -243,7 +257,12 @@ export interface DecideOpts {
 
 type RowFn = (
   s: RepoSnapshot,
-) => Omit<RepoNextDecision, "drift" | "warnings" | "overnightReport"> | null;
+) =>
+  | (Omit<
+      RepoNextDecision,
+      "drift" | "warnings" | "overnightReport" | "gateSummary"
+    > & { gateSummary?: string })
+  | null;
 
 const row1: RowFn = (s) => {
   if (!s.loop.live) return null;
@@ -404,6 +423,7 @@ const row9: RowFn = (s) => {
     action: "workstream-stage",
     command: ws.decision.command,
     detail: `workstream '${ws.slug}' (${ws.hash}) is mid-pipeline at stage '${ws.stage ?? "?"}' — ${ws.decision.reason}`,
+    gateSummary: ws.gateSummary,
   };
 };
 
@@ -489,6 +509,7 @@ export function decideRepoNext(
         drift: snapshot.drift,
         warnings: snapshot.warnings,
         overnightReport: snapshot.loop.overnightReport,
+        gateSummary: hit.gateSummary ?? null,
       };
     }
   }
@@ -501,6 +522,7 @@ export function decideRepoNext(
     drift: snapshot.drift,
     warnings: snapshot.warnings,
     overnightReport: snapshot.loop.overnightReport,
+    gateSummary: null,
   };
 }
 

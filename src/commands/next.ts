@@ -38,6 +38,7 @@ import type { Command } from "commander";
 import { attachPhase } from "../lib/help.js";
 import { type EngineContext, loadEngineContext } from "../lib/engine/context.js";
 import { nextForWorkstream } from "../lib/engine/next.js";
+import { renderGateSummary } from "../lib/engine/render.js";
 import { formatDate } from "../lib/engine/verdict.js";
 import {
   type EngineFs,
@@ -182,9 +183,18 @@ function runRepoNext(
       drift: decision.drift,
       warnings: decision.warnings,
       overnight_report: decision.overnightReport,
+      gate_summary: decision.gateSummary,
     })}\n`,
   );
   err(`${renderHumanLine(decision)}\n`);
+  // Row 9 carries the workstream's gate-summary block (hfi102) — rendered
+  // indented under the decision line so FAIL is visible at the dispatcher
+  // surface, not just in the JSON.
+  if (decision.gateSummary !== null) {
+    for (const line of decision.gateSummary.split("\n")) {
+      err(`  ${line}\n`);
+    }
+  }
   return 0;
 }
 
@@ -236,11 +246,21 @@ function runWorkstreamNext(
     formatDate((opts.now ?? (() => new Date()))()),
   );
 
+  // hfi102: the decisions/ listing feeds the FAIL fix-path pointers.
+  const decisionsAbs = join(ws.workstreamAbs, "decisions");
+  const decisionNames = fs.exists(decisionsAbs) ? fs.readdir(decisionsAbs) : [];
+
   out(
     `${JSON.stringify({
       hash: ws.hash,
       stage: ws.state.stage,
       gate_status: ws.state.gateStatus,
+      gate_verdicts: ws.state.gateVerdicts,
+      gate_summary: renderGateSummary(ws.state, {
+        hash: ws.hash,
+        workstreamRel: ws.workstreamRel,
+        decisionNames,
+      }),
       row: decision.row,
       next: decision.command,
       reason: decision.reason,
