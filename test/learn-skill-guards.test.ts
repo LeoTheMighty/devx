@@ -9,16 +9,23 @@
 //      path from session text to branch/file names.
 //   2. Static skill-body assertions (dvx103/dvx107 precedent) — the shipped
 //      .claude/commands/devx-learn.md carries the locked-machinery and
-//      untrusted-input guard sections. Those assertions land in the same
-//      change as the skill body itself (dvx103 pattern: test + prose ship
-//      atomically); until the body exists this file pins the sanitizer only.
+//      untrusted-input guard sections, the slug-sanitization guard, the
+//      mining-scope refusals, the repo predicate, the foreground-only note,
+//      and exactly one <!-- nudge-canonical --> marker (E-7's single-source
+//      contract reads it from here). The skills/ mirror is byte-identical.
 //
 // Spec: dev/dev-hfi104-2026-07-24T10:41-devx-learn-skill.md (T4.5)
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { runLearnSlug } from "../src/commands/learn-helper.js";
 import { sanitizeLearnSlug } from "../src/lib/learn/slug.js";
+
+const REPO_ROOT = resolve(__dirname, "..");
+const SKILL_PATH = resolve(REPO_ROOT, ".claude/commands/devx-learn.md");
+const MIRROR_PATH = resolve(REPO_ROOT, "skills/devx-learn.md");
 
 // Safe-slug shape: dash-separated [a-z0-9] words — no leading/trailing/double
 // dashes, nothing a shell, git ref, or filesystem would interpret.
@@ -106,5 +113,72 @@ describe("hfi104 — `devx learn-helper slug` passthrough", () => {
     expect(code).toBe(0);
     expect(stdout.endsWith("\n")).toBe(true);
     expect(stdout.slice(0, -1)).toMatch(SLUG_RE);
+  });
+});
+
+describe("hfi104 — /devx-learn skill body carries the pinned sections (static)", () => {
+  const body = readFileSync(SKILL_PATH, "utf8");
+
+  it("carries the locked-machinery guard section", () => {
+    expect(body).toMatch(/^### Locked machinery$/m);
+    // Loosening is proposed, never applied — the guard's load-bearing verb.
+    expect(body).toMatch(/never loosened .*only\s*\n?proposed/i);
+  });
+
+  it("carries the untrusted-input guard section", () => {
+    expect(body).toMatch(/^### Untrusted input$/m);
+    expect(body).toMatch(/data, not instructions/i);
+    expect(body).toMatch(/never reaches `git`\/`gh`/i);
+  });
+
+  it("carries the slug-sanitization guard pointing at the helper", () => {
+    expect(body).toMatch(/^### Slug sanitization$/m);
+    expect(body).toMatch(/devx learn-helper slug/);
+    expect(body).toMatch(/session-retro/);
+  });
+
+  it("pins the mining scope: current session only, refuse fresh/empty, never self-triggers", () => {
+    expect(body).toMatch(/^## Mining scope$/m);
+    expect(body).toMatch(/current session only/i);
+    expect(body).toMatch(/refuse fresh\/empty/i);
+    expect(body).toMatch(/never self-triggers/i);
+  });
+
+  it("pins the evidence table with its four columns and the write-nothing rule", () => {
+    expect(body).toMatch(/^## Evidence table$/m);
+    expect(body).toMatch(/\| learning \| evidence \| bucket \| proposed change \|/);
+    expect(body).toMatch(/write nothing until the\s*\n?user prunes/i);
+  });
+
+  it("pins the four buckets with destinations", () => {
+    expect(body).toMatch(/^## Buckets$/m);
+    expect(body).toMatch(/framework fix/i);
+    expect(body).toMatch(/project preference/i);
+    expect(body).toMatch(/product\/workstream lesson/i);
+    expect(body).toMatch(/one-off/i);
+  });
+
+  it("pins the repo predicate: @devx/cli → fw/learn PR, else docs/updates", () => {
+    expect(body).toMatch(/^## Repo predicate$/m);
+    expect(body).toMatch(/@devx\/cli/);
+    expect(body).toMatch(/fw\/learn-YYYY-MM-DD-<slug>/);
+    expect(body).toMatch(/docs\/updates\/<date>-<slug>\.md/);
+  });
+
+  it("carries the foreground-only note", () => {
+    expect(body).toMatch(/^## Foreground only$/m);
+    expect(body).toMatch(/user-foreground session only/i);
+  });
+
+  it("defines the canonical nudge sentence exactly once", () => {
+    const markers = body.match(/<!-- nudge-canonical -->/g) ?? [];
+    expect(markers).toHaveLength(1);
+    // The marker is followed by actual nudge prose, not a bare tag.
+    const after = body.slice(body.indexOf("<!-- nudge-canonical -->"));
+    expect(after).toMatch(/\/devx-learn/);
+  });
+
+  it("skills/devx-learn.md mirror is byte-identical (pin101 shipping path)", () => {
+    expect(readFileSync(MIRROR_PATH, "utf8")).toBe(body);
   });
 });
