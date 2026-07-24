@@ -6,6 +6,7 @@
 //   _devx/workstreams/<slug>/
 //   ├── prd.md              ← from _devx/templates/engine/prd.md
 //   ├── expectations.md     ← from _devx/templates/engine/expectations.md
+//   ├── todo.md             ← from _devx/templates/engine/todo.md (hfi101)
 //   ├── decisions/          ← empty (dated verify/critique/revision reports)
 //   ├── checkpoints/        ← empty (per-phase verification reports)
 //   └── evals/              ← empty (RED-gate artifacts + RED-report.md)
@@ -108,6 +109,7 @@ export interface CreateWorkstreamResult {
     spec: boolean;
     prd: boolean;
     expectations: boolean;
+    todo: boolean;
     specFrontmatterExtended: boolean;
   };
   noop: boolean;
@@ -219,6 +221,7 @@ export function createWorkstream(
     spec: false,
     prd: false,
     expectations: false,
+    todo: false,
     specFrontmatterExtended: false,
   };
 
@@ -268,6 +271,7 @@ export function createWorkstream(
   for (const t of [
     { name: "prd.md", key: "prd" as const },
     { name: "expectations.md", key: "expectations" as const },
+    { name: "todo.md", key: "todo" as const },
   ]) {
     const dest = join(wsAbs, t.name);
     if (fs.exists(dest)) continue;
@@ -290,6 +294,7 @@ export function createWorkstream(
     !created.spec &&
     !created.prd &&
     !created.expectations &&
+    !created.todo &&
     !created.specFrontmatterExtended;
 
   return { hash, slug, specPath: specRel, workstreamDir: wsRel, created, noop };
