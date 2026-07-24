@@ -354,9 +354,8 @@ describe("devx gate coverage — CLI driver", () => {
     expect(readEngineState(repo.read(SPEC_REL)).gateStatus.design_verified).toBe(true);
   });
 
-  it("FAIL: exit 1, report written, frontmatter NOT flipped", () => {
+  it("FAIL: exit 1, report written, booleans NOT flipped, verdict recorded (hfi102)", () => {
     seed({});
-    const before = repo.read(SPEC_REL);
     const { code, io } = gateCoverage(designTable({ "FR-1": "missing" }));
     expect(code).toBe(1);
     expect((io.json() as { gate: string }).gate).toBe("FAIL");
@@ -364,7 +363,10 @@ describe("devx gate coverage — CLI driver", () => {
     const report = repo.read(`${WS}/decisions/2026-07-05-design-verify.md`);
     expect(parseVerdictBlock(report)!.block.gate).toBe("FAIL");
     expect(report).toContain("| FR-1 | ❌ |");
-    expect(repo.read(SPEC_REL)).toBe(before);
+    const state = readEngineState(repo.read(SPEC_REL));
+    expect(state.gateVerdicts.design).toBe("FAIL");
+    expect(state.gateStatus.design_verified).toBe(false);
+    expect(state.stage).toBe("design");
   });
 
   it("plan mode: keys rows off E-ids and enforces the P0 floor", () => {

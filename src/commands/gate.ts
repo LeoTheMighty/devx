@@ -7,7 +7,10 @@
 //   0 — gate passed (PASS, or CONCERNS: the gate advances with the concern
 //       recorded — D-9 semantics).
 //   1 — gate failed / refused (FAIL verdict, predecessor gate open, no
-//       open gate). Precise gap report in the JSON; frontmatter untouched.
+//       open gate). Precise gap report in the JSON. An *evaluated* FAIL
+//       records its verdict in the spec's `gate_verdicts:` map (hfi102) —
+//       gate_status booleans and stage stay untouched; refusals (missing
+//       inputs, open predecessor) write nothing.
 //   2 — error: unresolvable hash/workstream, malformed --table, missing
 //       config. Nothing written.
 //
@@ -20,6 +23,8 @@ import type { Command } from "commander";
 import { attachPhase } from "../lib/help.js";
 import { loadEngineContext } from "../lib/engine/context.js";
 import {
+  FLAG_TO_GATE_KEY,
+  type GateKey,
   type Stage,
   applyEnginePatch,
   stageIndex,
@@ -120,6 +125,29 @@ function advanceStage(current: Stage | null, target: Stage): Stage {
   return stageIndex(current) < stageIndex(target) ? target : current;
 }
 
+/** Record an evaluated FAIL in `gate_verdicts:` — verdict-only patch;
+ *  gate_status booleans and stage are untouched (hfi102). Returns false when
+ *  the frontmatter write fails, in which case the caller exits 2. */
+function writeFailVerdict(
+  ws: ResolvedWorkstream,
+  key: GateKey,
+  usage: string,
+  io: GateIo,
+): boolean {
+  try {
+    const updated = applyEnginePatch(ws.content, {
+      gateVerdicts: { [key]: "FAIL" },
+    });
+    io.fs.writeFile(ws.specAbs, updated);
+    return true;
+  } catch (e) {
+    io.err(
+      `${usage}: FAIL verdict computed but frontmatter write failed: ${e instanceof Error ? e.message : String(e)}\n`,
+    );
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // devx gate prd <hash>
 // ---------------------------------------------------------------------------
@@ -158,18 +186,20 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
   });
 
   if (result.verdict === "FAIL") {
+    if (!writeFailVerdict(ws, "prd", "devx gate prd", io)) return 2;
     io.out(
       `${JSON.stringify({ gate: "FAIL", hash: ws.hash, gaps: result.gaps })}\n`,
     );
     return 1;
   }
 
-  // PASS: flip prd_validated + stage: design in one frontmatter patch.
+  // PASS: flip prd_validated + stage: design + verdict in one patch.
   const newStage = advanceStage(ws.state.stage, "design");
   try {
     const updated = applyEnginePatch(ws.content, {
       gateStatus: { prd_validated: true },
       stage: newStage,
+      gateVerdicts: { prd: result.verdict },
     });
     io.fs.writeFile(ws.specAbs, updated);
   } catch (e) {
@@ -302,14 +332,15 @@ export function runGateCoverage(
   }
 
   let flipped: Record<string, unknown> | null = null;
+  const flag = mode === "design" ? ("design_verified" as const) : ("plan_verified" as const);
   if (computation.verdict !== "FAIL") {
-    const flag = mode === "design" ? "design_verified" : "plan_verified";
     const targetStage: Stage = mode === "design" ? "plan" : "red";
     const newStage = advanceStage(ws.state.stage, targetStage);
     try {
       const updated = applyEnginePatch(ws.content, {
         gateStatus: { [flag]: true },
         stage: newStage,
+        gateVerdicts: { [FLAG_TO_GATE_KEY[flag]]: computation.verdict },
       });
       io.fs.writeFile(ws.specAbs, updated);
       flipped = { [flag]: true, stage: newStage };
@@ -319,6 +350,8 @@ export function runGateCoverage(
       );
       return 2;
     }
+  } else if (!writeFailVerdict(ws, FLAG_TO_GATE_KEY[flag], "devx gate coverage", io)) {
+    return 2;
   }
 
   io.out(
@@ -431,6 +464,7 @@ export function runGateEvalsCli(
       const updated = applyEnginePatch(ws.content, {
         gateStatus: { evals_red: true },
         stage: newStage,
+        gateVerdicts: { evals: result.verdict },
       });
       io.fs.writeFile(ws.specAbs, updated);
       flipped = { evals_red: true, stage: newStage };
@@ -440,6 +474,8 @@ export function runGateEvalsCli(
       );
       return 2;
     }
+  } else if (!writeFailVerdict(ws, "evals", "devx gate evals", io)) {
+    return 2;
   }
 
   io.out(
