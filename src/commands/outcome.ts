@@ -17,8 +17,9 @@
 //       [--disposition <prose>]
 //     Scores every prd.md G- goal (bidirectional coverage required), writes
 //     `_devx/workstreams/<slug>/RESULTS.md` from the shipped template, and
-//     flips outcome.status. tune additionally clears evals_red + rolls the
-//     stage back to red (replay path in the JSON); restart stamps
+//     flips outcome.status. tune additionally clears evals_red + erases
+//     gate_verdicts.evals (hfi102 — no stale PASS survives the reopen) +
+//     rolls the stage back to red (replay path in the JSON); restart stamps
 //     successor/superseded_by on this spec and learns_from on the successor
 //     spec when one exists.
 //
@@ -427,8 +428,14 @@ function scoreResolved(
     if (tune !== null) {
       const gatePatch: Record<string, boolean> = {};
       for (const flag of tune.flagsCleared) gatePatch[flag] = false;
+      // Erase the reopened gate's verdict too (hfi102) — a stale
+      // `gate_verdicts.evals: PASS` must not render as passed while the
+      // reopen rolls the stage back to red.
+      const verdictPatch: Record<string, null> = {};
+      for (const key of tune.verdictsCleared) verdictPatch[key] = null;
       patched = applyEnginePatch(patched, {
         gateStatus: gatePatch,
+        gateVerdicts: verdictPatch,
         stage: tune.stage,
       });
     }

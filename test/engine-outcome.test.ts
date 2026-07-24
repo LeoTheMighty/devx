@@ -326,8 +326,23 @@ describe("computeTune — cascade-reopen keyed to E-ids", () => {
     expect(t.reopened).toEqual(["E-1", "E-2"]); // lowest E-id leads
     expect(t.reopenArtifacts).toEqual(["test/demo.test.mjs", "test/demo.test.mjs"]);
     expect(t.flagsCleared).toEqual(["evals_red"]);
+    expect(t.verdictsCleared).toEqual(["evals"]);
     expect(t.stage).toBe("red");
     expect(t.replay).toEqual(["devx gate evals abc123"]);
+  });
+
+  it("verdictsCleared is the full reopen set even when evals_red is already false", () => {
+    // flagsCleared is a delta (no flag to flip), but a stale
+    // gate_verdicts.evals must still be erased — same full-set-vs-delta
+    // semantics as revise's verdictsCleared (hfi102).
+    const early = readEngineStateFor("design", {
+      status: "pending",
+      measure_by: null,
+    });
+    early.gateStatus.evals_red = false;
+    const t = computeTune(early, "E-1", validExpectations(), "abc123");
+    expect(t.flagsCleared).toEqual([]);
+    expect(t.verdictsCleared).toEqual(["evals"]);
   });
 
   it("dedupes repeated E-ids in --reopen", () => {
@@ -368,7 +383,7 @@ function writeClosedWorkstream(
   repo: EngineRepo,
   hash: string,
   slug: string,
-  opts: { outcome?: string[] } = {},
+  opts: { outcome?: string[]; gateVerdicts?: string[] } = {},
 ): void {
   repo.write(
     `plan/plan-${hash}-2026-07-05T12:00-${slug}.md`,
@@ -384,6 +399,7 @@ function writeClosedWorkstream(
       "  design_verified: true",
       "  plan_verified: true",
       "  evals_red: true",
+      ...(opts.gateVerdicts ?? []),
       ...(opts.outcome ?? ["outcome:", "  status: null", "  measure_by: null"]),
       `workstream: _devx/workstreams/${slug}`,
       "---",
@@ -611,6 +627,49 @@ describe("devx outcome score — CLI", () => {
       expect(st.gateStatus.plan_verified).toBe(true);
       const results = repo.read("_devx/workstreams/demo/RESULTS.md");
       expect(results).toContain("reopened_expectations: [E-1, E-2]");
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("tune erases gate_verdicts.evals — no stale PASS survives the reopen (hfi102)", () => {
+    // Ship → outcome tune. evals_red flips false and the stage rolls back
+    // to red; the evals verdict must roll back to never-run with it, or
+    // `devx next` would render `evals PASS` on a reopened gate. Earlier
+    // gates' verdicts survive — the reopen is evals-scoped.
+    const repo = makeEngineRepo();
+    try {
+      writeClosedWorkstream(repo, "abc123", "demo", {
+        outcome: ["outcome:", "  status: pending", "  measure_by: 2026-08-02"],
+        gateVerdicts: [
+          "gate_verdicts:",
+          "  prd: PASS",
+          "  design: PASS",
+          "  plan: CONCERNS",
+          "  evals: PASS",
+        ],
+      });
+      const io = captureIo();
+      const code = runOutcomeScore(
+        "abc123",
+        {
+          ...KEEP_FLAGS,
+          verdict: "tune",
+          results: ["G-1=hit", "G-2=miss"],
+          reopen: "E-1",
+        },
+        cliOpts(repo, io),
+      );
+      expect(code).toBe(0);
+      const st = readEngineState(
+        repo.read("plan/plan-abc123-2026-07-05T12:00-demo.md"),
+      );
+      expect(st.gateVerdicts.evals).toBe(null);
+      expect(st.gateVerdicts.prd).toBe("PASS");
+      expect(st.gateVerdicts.design).toBe("PASS");
+      expect(st.gateVerdicts.plan).toBe("CONCERNS");
+      expect(st.gateStatus.evals_red).toBe(false);
+      expect(st.stage).toBe("red");
     } finally {
       repo.cleanup();
     }

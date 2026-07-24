@@ -1,8 +1,9 @@
 // Engine-aware spec-frontmatter read/write (v2e101).
 //
 // The v2 engine extends the v1 plan-spec frontmatter with nested state
-// (`stage:`, `gate_status:` — a 4-flag map, `outcome:` — a 2-field map;
-// see v2/02-engine.md §3). The existing frontmatter helpers in the repo
+// (`stage:`, `gate_status:` — a 4-flag map, `gate_verdicts:` — a 4-key
+// D-9 verdict map (hfi102), `outcome:` — a 2-field map; see
+// v2/02-engine.md §3). The existing frontmatter helpers in the repo
 // are all flat-scalar readers/splicers and can't round-trip nested maps:
 //
 //   - merge-gate.ts readFrontmatter        — 3 known scalars, regex read-only
@@ -23,7 +24,9 @@
 
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { parseDocument } from "yaml";
+import { isMap, parseDocument } from "yaml";
+
+import { VERDICTS, type Verdict } from "./verdict.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -56,6 +59,24 @@ export type GateFlag = (typeof GATE_FLAGS)[number];
 
 export type GateStatus = Record<GateFlag, boolean>;
 
+/** Gate-name keys for the `gate_verdicts:` sibling map (hfi102). Named after
+ *  the gates themselves (the resolved 2026-07-24 design decision), not the
+ *  boolean flags — `coverage` runs twice (design/plan mode), so the map keys
+ *  by evaluated surface. */
+export const GATE_KEYS = ["prd", "design", "plan", "evals"] as const;
+export type GateKey = (typeof GATE_KEYS)[number];
+
+/** Last evaluated D-9 verdict per gate; null ≡ never evaluated (or cleared
+ *  by `devx revise`). Absent map reads as all-null. */
+export type GateVerdicts = Record<GateKey, Verdict | null>;
+
+export const FLAG_TO_GATE_KEY: Record<GateFlag, GateKey> = {
+  prd_validated: "prd",
+  design_verified: "design",
+  plan_verified: "plan",
+  evals_red: "evals",
+};
+
 export interface Outcome {
   status: string | null;
   measure_by: string | null;
@@ -68,6 +89,7 @@ export interface EngineState {
   stage: Stage | null;
   enteredAt: string | null;
   gateStatus: GateStatus;
+  gateVerdicts: GateVerdicts;
   outcome: Outcome;
   /** Repo-relative workstream dir (`_devx/workstreams/<slug>`), if recorded. */
   workstream: string | null;
@@ -79,6 +101,8 @@ export interface EnginePatch {
   stage?: Stage;
   enteredAt?: string;
   gateStatus?: Partial<GateStatus>;
+  /** `null` clears a gate's verdict back to never-evaluated (revise path). */
+  gateVerdicts?: Partial<GateVerdicts>;
   outcome?: Partial<Outcome>;
   workstream?: string;
   /** Outcome-loop lineage fields (v2o101, v2/02-engine.md §4.10):
@@ -131,6 +155,10 @@ function emptyGateStatus(): GateStatus {
   };
 }
 
+function emptyGateVerdicts(): GateVerdicts {
+  return { prd: null, design: null, plan: null, evals: null };
+}
+
 /**
  * Read the engine-relevant state out of a spec. Defensive by construction:
  * missing keys yield defaults (gate flags false, stage null, outcome null),
@@ -145,6 +173,7 @@ export function readEngineState(content: string): EngineState {
     stage: null,
     enteredAt: null,
     gateStatus: emptyGateStatus(),
+    gateVerdicts: emptyGateVerdicts(),
     outcome: { status: null, measure_by: null },
     workstream: null,
     blockedBy: [],
@@ -181,6 +210,17 @@ export function readEngineState(content: string): EngineState {
     const gs = fm.gate_status as Record<string, unknown>;
     for (const flag of GATE_FLAGS) {
       state.gateStatus[flag] = gs[flag] === true;
+    }
+  }
+
+  if (fm.gate_verdicts && typeof fm.gate_verdicts === "object") {
+    const gv = fm.gate_verdicts as Record<string, unknown>;
+    for (const key of GATE_KEYS) {
+      const v = gv[key];
+      state.gateVerdicts[key] =
+        typeof v === "string" && (VERDICTS as readonly string[]).includes(v)
+          ? (v as Verdict)
+          : null;
     }
   }
 
@@ -237,6 +277,20 @@ export function applyEnginePatch(content: string, patch: EnginePatch): string {
     for (const flag of GATE_FLAGS) {
       const v = patch.gateStatus[flag];
       if (v !== undefined) doc.setIn(["gate_status", flag], v);
+    }
+  }
+  if (patch.gateVerdicts) {
+    // A hand-added bare `gate_verdicts:` (YAML null) or non-map value would
+    // make setIn throw and brick every gate/revise write until hand-fixed.
+    // The read side already treats those shapes as all-null, so replacing
+    // the degenerate node with a fresh map loses nothing.
+    const existing = doc.getIn(["gate_verdicts"], true);
+    if (existing !== undefined && !isMap(existing)) {
+      doc.deleteIn(["gate_verdicts"]);
+    }
+    for (const key of GATE_KEYS) {
+      const v = patch.gateVerdicts[key];
+      if (v !== undefined) doc.setIn(["gate_verdicts", key], v);
     }
   }
   if (patch.outcome) {

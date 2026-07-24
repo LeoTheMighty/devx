@@ -33,6 +33,7 @@ import {
 } from "../backlog/parse.js";
 import { readEngineState } from "../engine/frontmatter.js";
 import { type EngineConfig } from "../engine/config.js";
+import { renderGateSummary } from "../engine/render.js";
 import {
   type WorkstreamArtifacts,
   nextForWorkstream,
@@ -615,11 +616,34 @@ function gatherWorkstreamSignals(
     // "all gates passed → /devx executes its dev items" terminal row
     // (that is row 8's domain via DEV.md).
     if (decision.command !== null && decision.row !== 12) {
+      // hfi102: FAIL fix-path lines need the decisions/ listing (newest
+      // <date>-<mode>-verify.md); the renderer itself stays pure. An
+      // unreadable decisions/ (e.g. a file squatting on the name) degrades
+      // to re-run-only pointers with a warning — same posture as the
+      // per-spec read failures above, never a dispatcher crash.
+      const decisionsAbs = wsAbs !== null ? join(wsAbs, "decisions") : null;
+      let decisionNames: readonly string[] = [];
+      if (decisionsAbs !== null && fs.exists(decisionsAbs)) {
+        try {
+          decisionNames = fs.readdir(decisionsAbs);
+        } catch (e) {
+          warnings.push(`${wsRel}/decisions unreadable: ${errMessage(e)}`);
+        }
+      }
       midPipeline.push({
         hash,
         slug,
         stage: state.stage,
         decision,
+        verdicts: state.gateVerdicts,
+        gateSummary: renderGateSummary(state, {
+          hash,
+          workstreamRel: wsRel,
+          decisionNames,
+          evalsReportExists:
+            wsAbs !== null &&
+            fs.exists(join(wsAbs, "evals", "RED-report.md")),
+        }),
       });
     }
   }

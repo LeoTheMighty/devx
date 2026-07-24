@@ -38,6 +38,7 @@ import type { Command } from "commander";
 import { attachPhase } from "../lib/help.js";
 import { type EngineContext, loadEngineContext } from "../lib/engine/context.js";
 import { nextForWorkstream } from "../lib/engine/next.js";
+import { renderGateSummary } from "../lib/engine/render.js";
 import { formatDate } from "../lib/engine/verdict.js";
 import {
   type EngineFs,
@@ -182,9 +183,18 @@ function runRepoNext(
       drift: decision.drift,
       warnings: decision.warnings,
       overnight_report: decision.overnightReport,
+      gate_summary: decision.gateSummary,
     })}\n`,
   );
   err(`${renderHumanLine(decision)}\n`);
+  // Row 9 carries the workstream's gate-summary block (hfi102) — rendered
+  // indented under the decision line so FAIL is visible at the dispatcher
+  // surface, not just in the JSON.
+  if (decision.gateSummary !== null) {
+    for (const line of decision.gateSummary.split("\n")) {
+      err(`  ${line}\n`);
+    }
+  }
   return 0;
 }
 
@@ -236,11 +246,33 @@ function runWorkstreamNext(
     formatDate((opts.now ?? (() => new Date()))()),
   );
 
+  // hfi102: the decisions/ listing feeds the FAIL fix-path pointers. An
+  // unreadable decisions/ (e.g. a file squatting on the name) degrades to
+  // re-run-only pointers rather than crashing the dispatcher.
+  const decisionsAbs = join(ws.workstreamAbs, "decisions");
+  let decisionNames: readonly string[] = [];
+  if (fs.exists(decisionsAbs)) {
+    try {
+      decisionNames = fs.readdir(decisionsAbs);
+    } catch {
+      // degrade — the summary falls back to re-run-only fix paths
+    }
+  }
+
   out(
     `${JSON.stringify({
       hash: ws.hash,
       stage: ws.state.stage,
       gate_status: ws.state.gateStatus,
+      gate_verdicts: ws.state.gateVerdicts,
+      gate_summary: renderGateSummary(ws.state, {
+        hash: ws.hash,
+        workstreamRel: ws.workstreamRel,
+        decisionNames,
+        evalsReportExists: fs.exists(
+          join(ws.workstreamAbs, "evals", "RED-report.md"),
+        ),
+      }),
       row: decision.row,
       next: decision.command,
       reason: decision.reason,

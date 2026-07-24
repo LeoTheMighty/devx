@@ -7,9 +7,15 @@
 //   0 — gate passed (PASS, or CONCERNS: the gate advances with the concern
 //       recorded — D-9 semantics).
 //   1 — gate failed / refused (FAIL verdict, predecessor gate open, no
-//       open gate). Precise gap report in the JSON; frontmatter untouched.
+//       open gate). Precise gap report in the JSON. An *evaluated* FAIL
+//       records its verdict in the spec's `gate_verdicts:` map (hfi102) —
+//       gate_status booleans and stage stay untouched; refusals (missing
+//       inputs, open predecessor) write nothing.
 //   2 — error: unresolvable hash/workstream, malformed --table, missing
-//       config. Nothing written.
+//       config. Nothing written. One exception: an evaluated FAIL whose
+//       verdict write fails still prints its gap JSON (and keeps any report
+//       already on disk) before exiting 2 — the spec is never half-written,
+//       but the diagnostics are never swallowed either.
 //
 // Spec: dev/dev-v2e101-2026-07-05T13:01-engine-cli-primitives.md
 // Design: v2/02-engine.md §4.2, §4.4, §4.6
@@ -20,6 +26,8 @@ import type { Command } from "commander";
 import { attachPhase } from "../lib/help.js";
 import { loadEngineContext } from "../lib/engine/context.js";
 import {
+  FLAG_TO_GATE_KEY,
+  type GateKey,
   type Stage,
   applyEnginePatch,
   stageIndex,
@@ -120,6 +128,29 @@ function advanceStage(current: Stage | null, target: Stage): Stage {
   return stageIndex(current) < stageIndex(target) ? target : current;
 }
 
+/** Record an evaluated FAIL in `gate_verdicts:` — verdict-only patch;
+ *  gate_status booleans and stage are untouched (hfi102). Returns false when
+ *  the frontmatter write fails, in which case the caller exits 2. */
+function writeFailVerdict(
+  ws: ResolvedWorkstream,
+  key: GateKey,
+  usage: string,
+  io: GateIo,
+): boolean {
+  try {
+    const updated = applyEnginePatch(ws.content, {
+      gateVerdicts: { [key]: "FAIL" },
+    });
+    io.fs.writeFile(ws.specAbs, updated);
+    return true;
+  } catch (e) {
+    io.err(
+      `${usage}: FAIL verdict computed but frontmatter write failed: ${e instanceof Error ? e.message : String(e)}\n`,
+    );
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // devx gate prd <hash>
 // ---------------------------------------------------------------------------
@@ -158,18 +189,22 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
   });
 
   if (result.verdict === "FAIL") {
+    // Gap diagnostics print BEFORE the verdict write: a spec whose
+    // frontmatter can't be patched must not swallow the reason the gate
+    // failed (adversarial review — the write failure exits 2 after).
     io.out(
       `${JSON.stringify({ gate: "FAIL", hash: ws.hash, gaps: result.gaps })}\n`,
     );
-    return 1;
+    return writeFailVerdict(ws, "prd", "devx gate prd", io) ? 1 : 2;
   }
 
-  // PASS: flip prd_validated + stage: design in one frontmatter patch.
+  // PASS: flip prd_validated + stage: design + verdict in one patch.
   const newStage = advanceStage(ws.state.stage, "design");
   try {
     const updated = applyEnginePatch(ws.content, {
       gateStatus: { prd_validated: true },
       stage: newStage,
+      gateVerdicts: { prd: result.verdict },
     });
     io.fs.writeFile(ws.specAbs, updated);
   } catch (e) {
@@ -302,14 +337,15 @@ export function runGateCoverage(
   }
 
   let flipped: Record<string, unknown> | null = null;
+  const flag = mode === "design" ? ("design_verified" as const) : ("plan_verified" as const);
   if (computation.verdict !== "FAIL") {
-    const flag = mode === "design" ? "design_verified" : "plan_verified";
     const targetStage: Stage = mode === "design" ? "plan" : "red";
     const newStage = advanceStage(ws.state.stage, targetStage);
     try {
       const updated = applyEnginePatch(ws.content, {
         gateStatus: { [flag]: true },
         stage: newStage,
+        gateVerdicts: { [FLAG_TO_GATE_KEY[flag]]: computation.verdict },
       });
       io.fs.writeFile(ws.specAbs, updated);
       flipped = { [flag]: true, stage: newStage };
@@ -321,6 +357,9 @@ export function runGateCoverage(
     }
   }
 
+  // The result JSON (which names the just-written report) prints BEFORE the
+  // FAIL verdict write: a spec whose frontmatter can't be patched must not
+  // swallow the gap diagnostics or the report pointer (adversarial review).
   io.out(
     `${JSON.stringify({
       gate: computation.verdict,
@@ -331,6 +370,12 @@ export function runGateCoverage(
       flipped,
     })}\n`,
   );
+  if (
+    computation.verdict === "FAIL" &&
+    !writeFailVerdict(ws, FLAG_TO_GATE_KEY[flag], "devx gate coverage", io)
+  ) {
+    return 2;
+  }
   return computation.verdict === "FAIL" ? 1 : 0;
 }
 
@@ -431,6 +476,7 @@ export function runGateEvalsCli(
       const updated = applyEnginePatch(ws.content, {
         gateStatus: { evals_red: true },
         stage: newStage,
+        gateVerdicts: { evals: result.verdict },
       });
       io.fs.writeFile(ws.specAbs, updated);
       flipped = { evals_red: true, stage: newStage };
@@ -442,6 +488,8 @@ export function runGateEvalsCli(
     }
   }
 
+  // Same print-before-verdict-write ordering as gate coverage: the JSON
+  // names the RED report already on disk and must survive a failed patch.
   io.out(
     `${JSON.stringify({
       gate: result.verdict,
@@ -451,6 +499,12 @@ export function runGateEvalsCli(
       flipped,
     })}\n`,
   );
+  if (
+    result.verdict === "FAIL" &&
+    !writeFailVerdict(ws, "evals", "devx gate evals", io)
+  ) {
+    return 2;
+  }
   return result.verdict === "FAIL" ? 1 : 0;
 }
 

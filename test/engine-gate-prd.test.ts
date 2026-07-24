@@ -1,8 +1,9 @@
 // Adversarial tests for `devx gate prd` (v2e101 AC #3): seeded-defect
 // fixtures (missing threshold, dangling Covers ID, orphan G-, placeholder
 // furniture, too-few E-blocks, INTERVIEW blocker) must produce the exact
-// refusal; pass flips prd_validated + stage: design; fail writes NOTHING.
-// Exit 0 pass / 1 fail / 2 error.
+// refusal; pass flips prd_validated + stage: design; an evaluated fail
+// records only the gate_verdicts entry (hfi102) — booleans/stage untouched;
+// refusals write nothing. Exit 0 pass / 1 fail / 2 error.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -321,9 +322,8 @@ describe("devx gate prd — CLI driver", () => {
     expect(readEngineState(repo.read(SPEC_REL)).stage).toBe("plan");
   });
 
-  it("FAIL: exit 1, gap report on stdout, spec untouched", () => {
+  it("FAIL: exit 1, gap report on stdout, verdict-only write (hfi102)", () => {
     seedWorkstream();
-    const before = repo.read(SPEC_REL);
     repo.write(
       `${WS}/expectations.md`,
       validExpectations().replace("- **Threshold:** tour present on 100% of PRs\n", ""),
@@ -333,8 +333,11 @@ describe("devx gate prd — CLI driver", () => {
     const j = io.json() as { gate: string; gaps: Array<{ check: string }> };
     expect(j.gate).toBe("FAIL");
     expect(j.gaps.some((g) => g.check === "expectation-threshold-missing")).toBe(true);
-    // Writes NOTHING on fail.
-    expect(repo.read(SPEC_REL)).toBe(before);
+    // Evaluated FAIL records the verdict; booleans and stage stay put.
+    const state = readEngineState(repo.read(SPEC_REL));
+    expect(state.gateVerdicts.prd).toBe("FAIL");
+    expect(state.gateStatus.prd_validated).toBe(false);
+    expect(state.stage).toBe("prd");
   });
 
   it("FAIL on the raw template (all furniture) with per-section gaps", () => {

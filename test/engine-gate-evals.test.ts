@@ -357,15 +357,17 @@ describe("devx gate evals — CLI driver", () => {
     expect(state.stage).toBe("executing");
   });
 
-  it("non-RED P0 → exit 1, report records FAIL, frontmatter untouched", () => {
+  it("non-RED P0 → exit 1, report records FAIL, booleans untouched, verdict recorded (hfi102)", () => {
     seed();
-    const specBefore = repo.read(SPEC_REL);
     const { code, io } = gateEvals({}, 0);
     expect(code).toBe(1);
     expect((io.json() as { gate: string }).gate).toBe("FAIL");
     const report = repo.read(`${WS}/evals/RED-report.md`);
     expect(parseVerdictBlock(report)!.block.gate).toBe("FAIL");
-    expect(repo.read(SPEC_REL)).toBe(specBefore);
+    const state = readEngineState(repo.read(SPEC_REL));
+    expect(state.gateVerdicts.evals).toBe("FAIL");
+    expect(state.gateStatus.evals_red).toBe(false);
+    expect(state.stage).toBe("red");
   });
 
   it("refuses (exit 1) when Gate 3 has not passed, naming the open gate", () => {
