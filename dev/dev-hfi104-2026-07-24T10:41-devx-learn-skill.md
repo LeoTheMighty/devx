@@ -5,7 +5,7 @@ created: 2026-07-24T10:41:50-06:00
 title: /devx-learn skill + slug helper
 from: plan/plan-eac479-2026-07-24T09:57-harness-fold-in.md
 plan: _devx/workstreams/harness-fold-in
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-24T16-46-18-001-62080
 blocked_by: []
 branch: feat/dev-hfi104
@@ -81,3 +81,4 @@ source lands here, its references in the other skills land in hfi105).
   - Learning: Writing .claude/commands/devx-learn.md via the Write tool did NOT trigger the permission block that memory project_skill_perms_block_subagents warns about — in this overnight-loop context skill-file creation went through unattended
   - Learning: test/skills-sync.test.ts's EXPECTED_SKILLS list is a containment check (expect(...).toContain), not equality — new skill files need no test edit; the it.each over the canonical glob covers them automatically
   - Learning: devx-learn.md is outside the S-1 prose-budget canary: STAGE_SKILL_SECTIONS is an explicit (non-globbed) list holding only devx-plan.md, so the new ~4.7KB body cannot trip the 60KB gate or the 2x tripwire
+- 2026-07-24T18:36:26.631Z — merged via devx loop — PR https://github.com/LeoTheMighty/devx/pull/81
