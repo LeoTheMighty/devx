@@ -19,6 +19,9 @@ planned; this section outranks the paused mobile backlog below.
 
 ## Cross-cutting plans
 
+### Self-healing state reconciliation (from loop-2026-07-24 post-mortem)
+- [ ] `dev/dev-db36af-2026-07-25T08:55-devx-doctor-reconcile.md` — `devx doctor` — mechanical state reconciliation (stale locks, dead owners, mirror drift, bookkeeping-only abandonments), `--fix` for the mechanical class, wired into `devx next` drift rows + loop start. Status: ready. Blocked-by: dc7514 (shared abandon-path predicate; both touch loop driver). From: debug-dc7514.
+
 ### Epic — harness-fold-in (plan: eac479)
 - [x] `dev/dev-hfi101-2026-07-24T10:41-todo-core.md` — Todo core — template, parser, scaffold, gate isolation (E-1, E-2). Status: done. From: epic-harness-fold-in. PR: https://github.com/LeoTheMighty/devx/pull/80
 - [x] `dev/dev-hfi102-2026-07-24T10:41-gate-verdict-persistence.md` — Gate-verdict persistence + revise clearing + gate summary (E-3). Status: done. (Loop-implemented, abandoned on iteration budget, revived interactively.) PR: https://github.com/LeoTheMighty/devx/pull/83
