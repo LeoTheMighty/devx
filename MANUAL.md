@@ -92,6 +92,12 @@ declined. If/when this project upgrades to BETA or PROD, revisit.
   - Blocks: S-3 sign-off (v2/06-phases.md § V2.5 exit AC). The chaos test ships in-repo (`test/loop-chaos.test.ts`); this item is the human half.
   - Spec: `dev/dev-v2l101-2026-07-05T13:06-overnight-loop.md`.
 
+- [ ] **MV2.2 — Keep the lid open (or power + display settings) for overnight `devx loop` runs.**
+  - Why: `caffeinate -i` prevents idle sleep but NOT lid-close sleep; a suspended machine hangs every worker session mid-flight (the 2026-07-24 hfi103 incident — three "iterations" that mostly measured a sleeping laptop). The loop now detects suspend gaps and classes post-wake kills as environment failures instead of item failures (dc7514), but the night still produces nothing while the machine sleeps.
+  - How: leave the lid open with the display allowed to sleep (system sleep off while `caffeinate` runs), or dock the machine on AC power with "Prevent automatic sleeping when the display is off" enabled.
+  - Blocks: nothing structurally — this is throughput hygiene for real overnight runs.
+  - Spec: `debug/debug-dc7514-2026-07-25T08:55-loop-infra-failure-classification.md`.
+
 ## MV-pin103.1 — Stale/rewritten devx launchd units on this Mac
 
 During pin103's E-4 eval (2026-07-15 ~09:24), the pre-fix upgrade path ran the
