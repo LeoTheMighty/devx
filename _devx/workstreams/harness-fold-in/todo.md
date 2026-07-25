@@ -26,6 +26,6 @@
   - [x] Phase 2: gate-verdict persistence + revise clearing + gate summary → hfi102
   - [x] Phase 3: todo sync + focus/drift renderers + real devx status → hfi103
   - [x] Phase 4: /devx-learn skill + slug helper → hfi104
-  - [ ] Phase 5: lifecycle skill wiring + nudge single-sourcing → hfi105
+  - [x] Phase 5: lifecycle skill wiring + nudge single-sourcing → hfi105
 - [ ] Stage: Retro
 - [ ] Stage: Outcome

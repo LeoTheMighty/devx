@@ -5,7 +5,7 @@ created: 2026-07-24T10:41:50-06:00
 title: Lifecycle skill wiring + nudge single-sourcing
 from: plan/plan-eac479-2026-07-24T09:57-harness-fold-in.md
 plan: _devx/workstreams/harness-fold-in
-status: in-progress
+status: done
 owner: /devx-2026-07-25T1519-13231
 blocked_by: [hfi103, hfi104]
 branch: feat/dev-hfi105
@@ -65,3 +65,6 @@ source (hfi104).
 - 2026-07-25 — phase 2: spec ACs direct (v2 native); 6 ACs; workstream=harness-fold-in; red-artifacts=E-7_skill-todo-discipline.ts (re-ran RED: 8 failures, all feature-missing — right reasons).
 - 2026-07-25 — phase 3: T5.1–T5.5 done — todo steps in 4 devx-plan stages + devx.md Phase 2, RED pointer-line emission, nudge references (marker named, never reproduced), mirrors synced, test/skill-todo-discipline.test.ts (11 tests). E-7 eval GREEN; targeted suites 51/51.
 - 2026-07-25 — phase 4: 3-agent parallel adversarial review (Blind Hunter + Edge Case Hunter + Acceptance Auditor); 8 unique findings (3 MED, 5 LOW); ALL fixed in-place — most load-bearing: added the non-restatement pin (canonical-sentence paragraph asserted absent from both lifecycle bodies) + bounded the execute-arm slice at section end; re-review clean (E-7 GREEN, suite 12/12, trigger clause single-sourced 0/0/1).
+- 2026-07-25 — phase 7: PR opened https://github.com/LeoTheMighty/devx/pull/86 (body via devx pr-body, no unresolved placeholders).
+- 2026-07-25 — phase 7.5: review tour built + published (5 stops, 5 decisions, 2 grep-verified trails) — https://htmlpreview.github.io/?https://raw.githubusercontent.com/LeoTheMighty/devx/devx-tours/tours/hfi105/tour.html; PR body re-rendered with tour link.
+- 2026-07-25 — merged via PR #86 (squash → 9070cd3); remote CI devx-ci success (run 30176105776); worktree removed, branch deleted, lock released.
