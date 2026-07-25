@@ -37,7 +37,12 @@ from v1 (`docs/DESIGN.md`).
    LOCKDOWN pauses planning — ask first. Thoroughness gates the critique
    step (see Plan stage).
 7. **End every stage** by printing the output of `devx next <hash>` and
-   recommending `/clear` before the next stage on long sessions.
+   recommending `/clear` before the next stage on long sessions. At
+   wrap-up, if the session hit real friction, apply the friction-observed
+   nudge — the canonical sentence is defined exactly once, at the
+   `nudge-canonical` HTML-comment marker in
+   `.claude/commands/devx-learn.md`; read it there and act on it.
+   Reference it, never restate it.
 
 ## Arguments
 
@@ -60,6 +65,12 @@ from v1 (`docs/DESIGN.md`).
 Inputs: requirements seed, `LEARN.md`, existing backlogs, config. Artifacts:
 `_devx/workstreams/<slug>/prd.md` + `expectations.md` (templates:
 `_devx/templates/engine/`).
+
+Todo step: run `devx todo sync <hash>` (the workstream's plan-spec hash —
+the CLI rejects slugs), read the current-stage section of
+`_devx/workstreams/<slug>/todo.md`, expand this session's sub-items as
+free-nested lines, and check them as work lands. Derived `Stage:` /
+`Gate:` / `Phase <n>:` lines belong to sync — never hand-check them.
 
 1. Read `LEARN.md` cross-epic patterns + relevant sections first; budget for
    known traps ("a prior workstream found X").
@@ -89,6 +100,9 @@ Inputs: requirements seed, `LEARN.md`, existing backlogs, config. Artifacts:
 Inputs: prd.md + expectations.md. Artifact: `design.md`. **No phases, no
 tasks — design is the approach, not the sequence.**
 
+Todo step: `devx todo sync <hash>`, then expand + check this session's
+free-nested sub-items (contract in Stage: PRD).
+
 1. Open by asking the user's design questions: "You've got the PRD — what
    are you unsure about?" Work those first.
 2. Ground every architectural claim in real code: read the paths in
@@ -113,6 +127,9 @@ tasks — design is the approach, not the sequence.**
 ## Stage: Plan
 
 Inputs: design.md + expectations.md. Artifact: `plan.md`.
+
+Todo step: `devx todo sync <hash>`, then expand + check this session's
+free-nested sub-items (contract in Stage: PRD).
 
 1. Ask the user for their rough phase breakdown first; explore code to
    test it.
@@ -144,6 +161,9 @@ Inputs: design.md + expectations.md. Artifact: `plan.md`.
 Inputs: plan.md coverage table + expectations.md. Artifacts:
 `evals/*` + `evals/RED-report.md`, then emitted dev specs.
 
+Todo step: `devx todo sync <hash>`, then expand + check this session's
+free-nested sub-items (contract in Stage: PRD).
+
 1. For every expectation, author the runnable artifact **at the exact
    Verified-by path** agreed at the coverage gate (retargeting requires
    `devx revise`): a failing test at the named path, or an eval script
@@ -162,7 +182,9 @@ Inputs: plan.md coverage table + expectations.md. Artifacts:
    <hash>`, DEV.md entries appended in dependency order, retro story
    co-emitted via `devx plan-helper emit-retro-story`, the whole emission
    validated with `devx plan-helper validate-emit <epic-slug>` (abort on
-   error).
+   error). Then write one `  - [ ] Phase <n>: <title> → <dev-hash>` pointer
+   line per emitted spec under `Stage: Execute` in the workstream's
+   `todo.md` (subsequent `devx todo sync` runs true their checkboxes).
 4. Flip the PLAN.md checkbox `[x]`, commit, status log, print the final
    summary: workstream, gate verdicts, emitted specs list, and the
    Next-command block rendered from the canonical template in the
