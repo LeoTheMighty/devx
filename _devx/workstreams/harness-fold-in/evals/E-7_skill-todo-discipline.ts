@@ -78,6 +78,9 @@ if (existsSync(templatesDir)) {
   }
 }
 if (existsSync(planPath)) totalBytes += statSync(planPath).size;
+// 60KB is frozen here as the acceptance-time value-of-record; the permanent
+// suite (test/skill-todo-discipline.test.ts) reads engine.prose_budget_kb
+// from config, so a future budget change diverges the two deliberately.
 if (totalBytes > 60 * 1024) {
   failures.push(
     `S-1 gated set (engine templates + devx-plan.md) is ${(totalBytes / 1024).toFixed(1)}KB — breaches engine.prose_budget_kb (60KB)`,

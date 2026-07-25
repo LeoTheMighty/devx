@@ -151,7 +151,14 @@ Steps:
    Context, and locate the RED artifacts named in the Expectation-coverage
    table. `tests-first` phases MUST re-run their already-RED artifact and
    watch it fail NOW, before writing code — never re-author it to pass.
-3. Append the status-log line: `phase 2: spec ACs direct (v2 native); <N>
+3. Workstream todo (working memory; skip when workstream=none): run
+   `devx todo sync <plan-hash>` from the MAIN worktree, then expand this
+   session's sub-items as free-nested lines under the current phase pointer
+   in `_devx/workstreams/<slug>/todo.md` and check them as work lands —
+   always via absolute paths into the main worktree (workstream artifacts
+   live on `main`; never edit the worktree's copy). Derived `Stage:` /
+   `Gate:` / `Phase <n>:` lines belong to sync — never hand-check them.
+4. Append the status-log line: `phase 2: spec ACs direct (v2 native); <N>
    ACs; workstream=<slug|none>; red-artifacts=<list|none>`.
 
 ### Phase 3: Implement (native discipline)
@@ -459,6 +466,11 @@ After emitting the snippet, say one sentence summarizing why you stopped and sto
    - Any `test/*` or `debug/*` specs filed during this run.
    - Any `INTERVIEW.md` entries still awaiting user input.
    - Current trust-gradient count and N threshold.
+3. **Friction-observed nudge**: if this run hit real friction, apply the
+   nudge — the canonical sentence is defined exactly once, at the
+   `nudge-canonical` HTML-comment marker in
+   `.claude/commands/devx-learn.md`; read it there and act on it.
+   Reference it, never restate it.
 
 Do NOT promote `develop → main`. That's `/devx-manage`'s job, gated by the promotion rules in [`MODES.md`](../../docs/MODES.md).
 
