@@ -33,7 +33,6 @@ import * as pauseCommand from "../src/commands/pause.js";
 import * as restartCommand from "../src/commands/restart.js";
 import * as resumeCommand from "../src/commands/resume.js";
 import * as serveCommand from "../src/commands/serve.js";
-import * as statusCommand from "../src/commands/status.js";
 import * as tailCommand from "../src/commands/tail.js";
 import * as uiCommand from "../src/commands/ui.js";
 
@@ -58,7 +57,8 @@ const expected: ReadonlyArray<{ name: string; phase: number; epic: string; modul
   { name: "tail",    phase: 4,  epic: "epic-devx-ui-tui",          module: tailCommand },
   { name: "kill",    phase: 2,  epic: "epic-devx-concierge-skill", module: killCommand },
   { name: "restart", phase: 2,  epic: "epic-devx-concierge-skill", module: restartCommand },
-  { name: "status",  phase: 2,  epic: "epic-devx-concierge-skill", module: statusCommand },
+  // status left this table at hfi103 — replaced by the real workstream
+  // status renderer (src/commands/status.ts).
   { name: "pause",   phase: 2,  epic: "epic-devx-manage-minimal",  module: pauseCommand },
   { name: "resume",  phase: 2,  epic: "epic-devx-manage-minimal",  module: resumeCommand },
   { name: "ask",     phase: 2,  epic: "epic-devx-concierge-skill", module: askCommand },

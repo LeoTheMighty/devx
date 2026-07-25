@@ -33,14 +33,19 @@ import {
 } from "../backlog/parse.js";
 import { readEngineState } from "../engine/frontmatter.js";
 import { type EngineConfig } from "../engine/config.js";
-import { renderGateSummary } from "../engine/render.js";
+import { renderFocusLine, renderGateSummary } from "../engine/render.js";
+import { computeTodoDrift } from "../engine/todo.js";
+import { loadTodoDoc, todoGroundTruth } from "../engine/todo-truth.js";
 import {
   type WorkstreamArtifacts,
   nextForWorkstream,
 } from "../engine/next.js";
 import { isMeasureByDue } from "../engine/outcome.js";
 import { formatDate } from "../engine/verdict.js";
-import { findSpecForHashInFs } from "../engine/workstream.js";
+import {
+  findSpecForHashInFs,
+  planFilenameWorkstreamRel,
+} from "../engine/workstream.js";
 import {
   normalizeSessionToken,
   parseLockOwner,
@@ -63,6 +68,7 @@ import {
   type ReadyItemSignal,
   type RepoSnapshot,
   type WorkstreamSignal,
+  type WorkstreamTodoDrift,
 } from "./decide.js";
 
 // ---------------------------------------------------------------------------
@@ -348,8 +354,9 @@ export function gatherRepoSnapshot(opts: GatherOpts): RepoSnapshot {
   }
 
   // ── Mid-pipeline workstreams (row 9 — reuse the v1 stage rows) + due
-  //    outcomes (row 5.5, v2o101) — one plan/ scan feeds both. ────────────
-  const { midPipeline, outcomeDue } = gatherWorkstreamSignals(
+  //    outcomes (row 5.5, v2o101) + advisory todo drift (hfi103) — one
+  //    plan/ scan feeds all three. ─────────────────────────────────────────
+  const { midPipeline, outcomeDue, todoDrift } = gatherWorkstreamSignals(
     fs,
     repoRoot,
     engine,
@@ -375,6 +382,7 @@ export function gatherRepoSnapshot(opts: GatherOpts): RepoSnapshot {
     midPipeline,
     planReady,
     blocked,
+    todoDrift,
     drift,
     warnings,
   };
@@ -565,11 +573,18 @@ function gatherWorkstreamSignals(
   /** YYYY-MM-DD — the outcome measure_by due-date comparison anchor. */
   today: string,
   warnings: string[],
-): { midPipeline: WorkstreamSignal[]; outcomeDue: OutcomeDueSignal[] } {
+): {
+  midPipeline: WorkstreamSignal[];
+  outcomeDue: OutcomeDueSignal[];
+  todoDrift: WorkstreamTodoDrift[];
+} {
   const planDir = join(repoRoot, "plan");
   const midPipeline: WorkstreamSignal[] = [];
   const outcomeDue: OutcomeDueSignal[] = [];
-  if (!fs.exists(planDir)) return { midPipeline, outcomeDue };
+  const allTodoDrift: WorkstreamTodoDrift[] = [];
+  if (!fs.exists(planDir)) {
+    return { midPipeline, outcomeDue, todoDrift: allTodoDrift };
+  }
   for (const name of [...fs.readdir(planDir)].sort()) {
     if (!name.endsWith(".md")) continue;
     let content: string;
@@ -586,13 +601,14 @@ function gatherWorkstreamSignals(
     const hash = state.hash ?? hashFromFilename(name);
     if (hash === null) continue;
 
-    let wsRel = state.workstream;
-    if (wsRel === null) {
-      const m =
-        /^plan-[a-z0-9]{3,12}-\d{4}-\d{2}-\d{2}T\d{2}:\d{2}-(.+)\.md$/i.exec(name);
-      if (m) wsRel = `${engine.workstreamsRoot}/${m[1]}`;
-    }
-    const slug = wsRel !== null ? (wsRel.split("/").pop() ?? wsRel) : hash;
+    const wsRel =
+      state.workstream ?? planFilenameWorkstreamRel(name, engine.workstreamsRoot);
+    // filter(Boolean) guards a trailing-slash `workstream:` hand-edit —
+    // plain pop() returns "" there, which is falsy but not nullish.
+    const slug =
+      wsRel !== null
+        ? (wsRel.split("/").filter(Boolean).pop() ?? wsRel)
+        : hash;
 
     // Row 5.5: an armed outcome that came due. Gated on stage 'done' to
     // match what `devx outcome score` will actually accept — a pending
@@ -612,6 +628,40 @@ function gatherWorkstreamSignals(
     const wsAbs = wsRel !== null ? join(repoRoot, ...wsRel.split("/")) : null;
     const artifacts = artifactsFor(fs, wsAbs);
     const decision = nextForWorkstream(hash, state, artifacts, today);
+
+    // hfi103: focus line + advisory todo-drift rows from todo.md — computed
+    // for EVERY engine workstream, not just midPipeline ones, because
+    // executing-stage workstreams sit outside midPipeline (v1 row 12) and
+    // the execute phase is exactly where phase-pointer drift is most likely
+    // (adversarial-review BH#1). Absent file (FR-1 grandfathering) → focus
+    // null, drift empty — silence. An unreadable file degrades to the same
+    // silence with a warning; drift is advisory-only (CAP-2), so it must
+    // never take the dispatcher down. The load and the drift compute carry
+    // separate warnings so a dev/-scan failure isn't blamed on todo.md.
+    let focus: string | null = null;
+    if (wsAbs !== null) {
+      let loaded: ReturnType<typeof loadTodoDoc> = null;
+      try {
+        loaded = loadTodoDoc(fs, wsAbs);
+      } catch (e) {
+        warnings.push(`${wsRel}/todo.md unreadable: ${errMessage(e)}`);
+      }
+      if (loaded !== null) {
+        focus = renderFocusLine(loaded.doc, state.stage);
+        try {
+          for (const d of computeTodoDrift(
+            loaded.doc,
+            todoGroundTruth(fs, repoRoot, state, loaded.doc),
+          )) {
+            allTodoDrift.push({ ...d, hash, slug });
+          }
+        } catch (e) {
+          warnings.push(
+            `todo drift for ${wsRel} not computed (dev-spec scan failed): ${errMessage(e)}`,
+          );
+        }
+      }
+    }
     // Row-9 domain: a stage/gate command exists AND it isn't the v1
     // "all gates passed → /devx executes its dev items" terminal row
     // (that is row 8's domain via DEV.md).
@@ -644,10 +694,11 @@ function gatherWorkstreamSignals(
             wsAbs !== null &&
             fs.exists(join(wsAbs, "evals", "RED-report.md")),
         }),
+        focus,
       });
     }
   }
-  return { midPipeline, outcomeDue };
+  return { midPipeline, outcomeDue, todoDrift: allTodoDrift };
 }
 
 function artifactsFor(fs: NextFs, wsAbs: string | null): WorkstreamArtifacts {

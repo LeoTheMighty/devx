@@ -28,7 +28,9 @@ import {
   GATE_KEYS,
   type EngineState,
   type GateKey,
+  type Stage,
 } from "./frontmatter.js";
+import { type TodoDoc, currentFocus } from "./todo.js";
 
 /** Rendered when a gate has no verdict and no legacy flag-true fallback. */
 export const NEVER_RUN = "—";
@@ -145,4 +147,20 @@ export function renderGateSummary(
     );
   }
   return lines.join("\n");
+}
+
+/**
+ * The current-focus line for a workstream (hfi103): `focus: <text>` from
+ * the frontmatter-rooted focus walk (currentFocus, FR-5). Null — line
+ * omitted entirely, never rendered empty — when the caller has no todo.md
+ * (doc null: FR-1 grandfathered workstream), the stage doesn't map to a
+ * skeleton section (retired / stage null), or the section was hand-deleted.
+ */
+export function renderFocusLine(
+  doc: TodoDoc | null,
+  stage: Stage | null,
+): string | null {
+  if (doc === null || stage === null) return null;
+  const focus = currentFocus(doc, stage);
+  return focus !== null ? `focus: ${focus}` : null;
 }

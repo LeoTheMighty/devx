@@ -43,6 +43,7 @@ import * as reviseCommand from "./commands/revise.js";
 import * as serveCommand from "./commands/serve.js";
 import * as statusCommand from "./commands/status.js";
 import * as tailCommand from "./commands/tail.js";
+import * as todoCommand from "./commands/todo.js";
 import * as tourCommand from "./commands/tour.js";
 import * as uiCommand from "./commands/ui.js";
 import * as workstreamCommand from "./commands/workstream.js";
@@ -77,6 +78,7 @@ const commands: CommandModule[] = [
   serveCommand,
   statusCommand,
   tailCommand,
+  todoCommand,
   tourCommand,
   uiCommand,
   workstreamCommand,

@@ -123,15 +123,33 @@ const POINTER_RE = /\s+→\s+(\S+)\s*$/;
  * never throws; non-checkbox lines (the header comment, blanks, prose) are
  * skipped; a top-level checkbox outside the derived vocabulary is kept as a
  * free item AND reported in `unparsedTopLevel`.
+ *
+ * HTML-comment blocks are skipped wholesale (hfi103): a checkbox-shaped
+ * example inside the template's `<!-- … -->` header must never parse as a
+ * derived item — `trueDerivedLines` writes through these line numbers, and
+ * truing a line inside the contract comment would corrupt it.
  */
 export function parseTodo(content: string): TodoDoc {
   const items: TodoItem[] = [];
   const unparsedTopLevel: number[] = [];
   const stack: TodoItem[] = []; // ancestors, strictly increasing depth
+  let inComment = false;
 
   const lines = content.split("\n");
   for (let i = 0; i < lines.length; i++) {
-    const m = CHECKBOX_RE.exec(lines[i].replace(/\r$/, ""));
+    const raw = lines[i].replace(/\r$/, "");
+    if (inComment) {
+      if (raw.includes("-->")) inComment = false;
+      continue;
+    }
+    // Whole-line comment openers only — a checkbox line never starts with
+    // `<!--`, so real items can't be swallowed; a same-line `-->` means the
+    // comment never spans, so no block state either way.
+    if (raw.trimStart().startsWith("<!--") && !raw.includes("-->")) {
+      inComment = true;
+      continue;
+    }
+    const m = CHECKBOX_RE.exec(raw);
     if (!m) continue;
     const depth = Math.floor(m[1].length / 2);
     const checked = m[2] === "x";
