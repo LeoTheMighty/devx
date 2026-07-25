@@ -121,6 +121,64 @@ describe("iteration wall-clock ceiling (BH/EC hang immunity)", () => {
   }, 15_000);
 });
 
+describe("sleep-aware iteration ceiling (dc7514 — suspend time is excused)", () => {
+  it("machine-suspend time is excluded from the ceiling; the surviving session's result carries sleepGapMs", async () => {
+    // The wall clock jumps +2h mid-session (simulated lid-close suspend);
+    // the ceiling is far below 2h. The old single-setTimeout ceiling design
+    // measured that as elapsed time; the probe must excuse it and let the
+    // honest worker finish.
+    let offset = 0;
+    setTimeout(() => {
+      offset = 2 * 3_600_000;
+    }, 150);
+    const worker = makeClaudeWorker({
+      claudeBin: process.execPath,
+      spawnFn: (_bin, _args, opts) =>
+        spawn(
+          process.execPath,
+          ["-e", `setTimeout(() => { process.stdout.write(${JSON.stringify(REPORT)}); }, 600);`],
+          opts,
+        ),
+      iterationTimeoutMs: 2_000,
+      nowMs: () => Date.now() + offset,
+    });
+    const r = await worker("p", { cwd: process.cwd() });
+    expect(r.exitCode).toBe(0);
+    expect(r.sleepGapMs).toBeGreaterThan(3_000_000); // ~the 2h gap was detected
+  }, 15_000);
+
+  it("a post-wake kill fires on AWAKE time and the rejection carries the sleep gap for infra classification", async () => {
+    let offset = 0;
+    setTimeout(() => {
+      offset = 2 * 3_600_000;
+    }, 150);
+    const worker = makeClaudeWorker({
+      claudeBin: process.execPath,
+      spawnFn: (_bin, _args, opts) =>
+        spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], opts),
+      iterationTimeoutMs: 800,
+      nowMs: () => Date.now() + offset,
+    });
+    let caught: unknown;
+    try {
+      await worker("p", { cwd: process.cwd() });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(WorkerTimeoutError);
+    const err = caught as WorkerTimeoutError;
+    expect(err.sleepGapMs).toBeGreaterThan(3_000_000);
+    expect(err.message).toMatch(/awake-time iteration ceiling/);
+    expect(err.message).toMatch(/machine sleep detected and excluded/);
+  }, 15_000);
+
+  it("a session with no suspend reports sleepGapMs 0", async () => {
+    const worker = nodeWorker(`process.stdout.write(${JSON.stringify(REPORT)});`);
+    const r = await worker("p", { cwd: process.cwd() });
+    expect(r.sleepGapMs).toBe(0);
+  });
+});
+
 describe("final-report anchoring (LOW-12 — grace-kill arms only on a TRAILING report)", () => {
   it("a schema-valid report EARLY in the output followed by more content does not arm the grace-kill", async () => {
     // Report first, then more output, then a hang. If the early report

@@ -262,6 +262,51 @@ export function statusSnapshot(
   }
 }
 
+/** Subject prefix of the loop's own status-log record commits. The driver
+ *  BUILDS its record-commit messages from this constant and the predicate
+ *  below matches against it — one definition, next to the transactional
+ *  layer that commits them, so consumers (abandon hygiene, `devx doctor`)
+ *  can never drift from the writer (dc7514 wrap-don't-duplicate). */
+export const LOOP_BOOKKEEPING_COMMIT_PREFIX = "chore(loop): record iteration ";
+
+export const LOOP_BOOKKEEPING_COMMIT_RE = new RegExp(
+  `^${LOOP_BOOKKEEPING_COMMIT_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+);
+
+/**
+ * True when the worktree branch holds NO work beyond the loop's own
+ * bookkeeping: every commit since `baseRef` matches
+ * LOOP_BOOKKEEPING_COMMIT_RE (zero commits qualifies) AND the tree is
+ * clean. Such a worktree preserves nothing a human would want — the
+ * abandon/release paths discard it instead of parking the item behind a
+ * forensics chore (dc7514: hfi103's preserved worktree held only 3 record
+ * commits). Fails CONSERVATIVE: any git error reads as "real work" —
+ * never discard on uncertainty. Subjects are read as `%H<TAB>%s` so an
+ * empty-subject commit (which a bare `%s` listing renders as a blank,
+ * filterable line) still counts as real work.
+ */
+export function isBookkeepingOnlyWorktree(
+  exec: Exec,
+  cwd: string,
+  baseRef: string,
+): boolean {
+  try {
+    assertSafeRef("baseRef", baseRef);
+    if (hasUncommittedChanges(exec, cwd)) return false;
+    const out = git(exec, cwd, ["log", "--format=%H%x09%s", `${baseRef}..HEAD`]);
+    return out
+      .split("\n")
+      .filter((l) => l.trim() !== "")
+      .every((line) => {
+        const tab = line.indexOf("\t");
+        const subject = tab === -1 ? "" : line.slice(tab + 1);
+        return LOOP_BOOKKEEPING_COMMIT_RE.test(subject);
+      });
+  } catch {
+    return false;
+  }
+}
+
 export interface DiffStat {
   filesChanged: number;
   linesAdded: number;

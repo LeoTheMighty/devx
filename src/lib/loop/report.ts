@@ -27,7 +27,8 @@ import { reportPath, reportsCopyPath } from "./state.js";
 export type ItemOutcome =
   | "merged"
   | "handed-off" // PR opened / pushed, but not merged (CI red, gate said no, hold, …)
-  | "abandoned" // failure ladder or per-item budget — claim released, spec [-] blocked
+  | "abandoned" // failure ladder or per-item budget — claim released; left blocked (work preserved) or ready (nothing preserved)
+  | "released" // environment failure (infra-errors) — claim rolled back to ready; item not at fault (dc7514)
   | "blocked-on-human" // filed INTERVIEW/MANUAL mid-run
   | "in-progress-at-exit" // the loop stopped (budget/signal) mid-item
   | "claim-failed"; // couldn't claim (lock held / row raced away)
@@ -48,6 +49,12 @@ export interface ItemResult {
   outcome: ItemOutcome;
   iterationsGood: number;
   iterationsFailed: number;
+  /** Iterations lost to environment failures (infra-errors) — never charged
+   *  to the item (dc7514). */
+  iterationsInfra?: number;
+  /** Where the abandon/release left the backlog row: `blocked` (real work
+   *  preserved, human decides) or `ready` (nothing preserved — re-claimable). */
+  leftState?: "ready" | "blocked";
   tokens: TokenTotals;
   /** PR URL when one was opened. */
   prUrl?: string;
@@ -116,6 +123,7 @@ const OUTCOME_LABEL: Record<ItemOutcome, string> = {
   merged: "merged",
   "handed-off": "handed off (PR open, NOT merged)",
   abandoned: "abandoned",
+  released: "released (environment failure — item not at fault, left ready)",
   "blocked-on-human": "blocked on human",
   "in-progress-at-exit": "in progress at loop exit",
   "claim-failed": "claim failed (skipped)",
@@ -123,11 +131,23 @@ const OUTCOME_LABEL: Record<ItemOutcome, string> = {
 
 function itemSection(item: ItemResult): string {
   const lines: string[] = [];
-  lines.push(`### \`${item.hash}\` — ${item.title || item.specPath} → **${OUTCOME_LABEL[item.outcome]}**`);
+  const label =
+    item.outcome === "abandoned" && item.leftState === "ready"
+      ? "abandoned (nothing preserved — left ready)"
+      : item.outcome === "released" && item.leftState === undefined
+        ? // Ownership-lost release: the backlog was deliberately left
+          // untouched — the default label's "left ready" would misstate it.
+          "released (environment failure — claim ownership lost; backlog left untouched)"
+        : OUTCOME_LABEL[item.outcome];
+  lines.push(`### \`${item.hash}\` — ${item.title || item.specPath} → **${label}**`);
   lines.push("");
   lines.push(`- Spec: \`${item.specPath}\``);
+  const infraNote =
+    item.iterationsInfra !== undefined && item.iterationsInfra > 0
+      ? ` / ${item.iterationsInfra} infra (environment — not charged to the item)`
+      : "";
   lines.push(
-    `- Iterations: ${item.iterationsGood} good / ${item.iterationsFailed} failed · tokens ${fmtTokens(item.tokens)}`,
+    `- Iterations: ${item.iterationsGood} good / ${item.iterationsFailed} failed${infraNote} · tokens ${fmtTokens(item.tokens)}`,
   );
   if (item.prUrl) lines.push(`- PR: ${item.prUrl}`);
   if (item.outcome === "merged") {
@@ -171,11 +191,22 @@ function nextSteps(summary: RunSummary): string[] {
         );
         break;
       case "abandoned":
-        if (item.worktreePath) {
+        if (item.leftState === "ready") {
+          out.push(
+            `- \`${item.hash}\` failed repeatedly but preserved no work — left \`[ ]\` ready (it will be re-attempted; fix the underlying failure first${item.lastFailure ? `: ${item.lastFailure}` : ""}).`,
+          );
+        } else if (item.worktreePath) {
           out.push(
             `- \`git -C ${item.worktreePath} log --oneline\` — review \`${item.hash}\`'s preserved work; spec is \`[-]\` blocked, unblock via DEV.md + \`status: ready\` when addressed.`,
           );
         }
+        break;
+      case "released":
+        out.push(
+          item.leftState === "ready"
+            ? `- \`${item.hash}\` — environment failure (item not at fault, left ready): fix the environment (power/network/lid — see MANUAL.md) and rerun \`devx loop\`.`
+            : `- \`${item.hash}\` — environment failure, but claim ownership changed mid-run and the backlog was left untouched: verify the current owner (\`.devx-cache/locks/spec-${item.hash}.lock\`) before touching it.`,
+        );
         break;
       case "in-progress-at-exit":
         out.push(
@@ -196,6 +227,7 @@ export function renderMorningReport(summary: RunSummary): string {
     merged: 0,
     "handed-off": 0,
     abandoned: 0,
+    released: 0,
     "blocked-on-human": 0,
     "in-progress-at-exit": 0,
     "claim-failed": 0,
@@ -218,6 +250,8 @@ export function renderMorningReport(summary: RunSummary): string {
   }
   lines.push(
     `**Items:** ${summary.items.length} attempted · ${counts.merged} merged · ${counts["handed-off"]} handed off · ${counts.abandoned} abandoned · ${counts["blocked-on-human"]} blocked on human${
+      counts.released > 0 ? ` · ${counts.released} released (environment)` : ""
+    }${
       counts["in-progress-at-exit"] > 0 ? ` · ${counts["in-progress-at-exit"]} in progress at exit` : ""
     }`,
   );

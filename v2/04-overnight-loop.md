@@ -95,16 +95,24 @@ lives in `.devx-cache/loop/<run-id>/` (gitignored), mirroring gnhf's run dir.
 | Class | Response | Counts toward |
 |---|---|---|
 | Agent-reported failure (`success:false`) | rollback; log learnings; **continue immediately** (the loop is healthy — it tried and concluded it couldn't) | consecutive-failures |
-| Hard error (worker process crashed/threw) | rollback; **exponential backoff** 1 → 2 → 4 min | consecutive-failures + consecutive-errors |
+| Hard error (worker ran but produced an unusable result) | rollback; **exponential backoff** 1 → 2 → 4 min | consecutive-failures + consecutive-errors |
+| Infra error (report-less worker DEATH — timeout kill / spawn failure — with ~zero output or a machine-sleep gap; dc7514) | rollback; backoff; **never charged to the item** | consecutive-infra-errors only |
 | Permanent error (credits exhausted, auth dead) | rollback; **abort the whole loop now**, surface in report — never grind a dead API until dawn | immediate abort |
 | Commit failure | preserve work; next iteration = repair-only | consecutive-failures |
 | No-op iteration | treated as reported failure | consecutive-failures |
 
 - **3 consecutive failures on one item** ⇒ abandon the item: release the
-  claim, flip spec to `[-] blocked`, file the failure summary in the spec +
-  DEBUG.md if it smells like a bug, **preserve the worktree** (never delete
-  agent output on failure — print the path in the report), move to the next
-  backlog item.
+  claim, file the failure summary in the spec + DEBUG.md if it smells like a
+  bug, move to the next backlog item. When the worktree holds real committed
+  work: flip spec to `[-] blocked` (with the backlog row's `Status:` prose
+  reconciled) and **preserve the worktree** (print the path in the report).
+  When it holds only the loop's own bookkeeping commits: discard the worktree
+  + branch and flip the item back to `[ ] ready` — never park an item behind
+  a forensics chore that preserves nothing (dc7514).
+- **3 consecutive infra-errors** ⇒ abort the RUN as an environment failure
+  (sleep/network/spawn — the item is not at fault): roll the in-flight claim
+  back to `ready` (owner cleared) and say so in the report (dc7514 —
+  abandon-the-run, not abandon-the-item).
 - **3 consecutive abandoned items** ⇒ stop the whole loop (systemic problem —
   don't churn the entire backlog into blocked).
 - Config: `loop.max_iterations_per_item`, `loop.max_tokens_per_item`,
@@ -125,6 +133,11 @@ lives in `.devx-cache/loop/<run-id>/` (gitignored), mirroring gnhf's run dir.
   didn't exit gets its process tree killed after ~15s.
 - Sleep inhibition: adapt gnhf's `caffeinate` / `systemd-inhibit` re-exec into
   the supervisor entrypoint (sup40x scaffold already owns platform dispatch).
+  `caffeinate -i` does NOT block lid-close sleep — the iteration ceiling is
+  therefore **awake-time** based: a heartbeat probe detects suspend gaps
+  (wall-clock drift between firings) and excuses them; a post-wake kill is an
+  infra-error, not the item's fault (dc7514). Keep the lid open / power
+  attached for overnight runs (MANUAL.md).
 - Every iteration logs a git snapshot (head/branch/commit-count) to the JSONL
   lifecycle log — catches "the reset didn't land / wrong branch" bugs that
   otherwise look identical to agent failures. Error logs serialize full

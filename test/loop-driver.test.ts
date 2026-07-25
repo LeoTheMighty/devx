@@ -379,14 +379,19 @@ describe("runLoop scenarios", () => {
     expect(spec).not.toContain("phase 4: loop-shipped");
   });
 
-  it("3 consecutive reported failures abandon the item: [-] blocked, lock released, worktree PRESERVED", async () => {
+  it("3 consecutive reported failures after REAL work abandon the item: [-] blocked, lock released, worktree PRESERVED", async () => {
     fixture = makeFixture([{ hash: "bbb222", title: "Doomed thing" }]);
+    // One good committed iteration first — a worktree with real work is
+    // preserved on abandon (a bookkeeping-only one is discarded; dc7514
+    // hygiene has its own scenarios below).
     const { worker } = scriptedWorker([
+      { kind: "report", files: { "real.txt": "real\n" }, report: { summary: "step 1", key_changes_made: ["real.txt"] } },
       { kind: "report", files: { "junk.txt": "x" }, report: { success: false, summary: "try 1 failed", key_learnings: ["it is hard"] } },
       { kind: "report", report: { success: false, summary: "try 2 failed" } },
       { kind: "report", report: { success: false, summary: "try 3 failed" } },
     ]);
-    const r = await runLoop(baseOpts(fixture, { worker, tail: mergedTail().tail }));
+    const merged = { ...MERGED, loop: { ...MERGED.loop, max_iterations_per_item: 8 } };
+    const r = await runLoop(baseOpts(fixture, { merged, worker, tail: mergedTail().tail }));
 
     expect(r.exitCode).toBe(0); // one abandoned item is a stop, not an abort
     const item = r.summary!.items[0];
@@ -406,12 +411,13 @@ describe("runLoop scenarios", () => {
     // [FAIL] history committed.
     const wt = join(fixture.repoRoot, ".worktrees", "dev-bbb222");
     expect(existsSync(wt)).toBe(true);
+    expect(existsSync(join(wt, "real.txt"))).toBe(true);
     expect(existsSync(join(wt, "junk.txt"))).toBe(false);
     expect(g(wt, "status", "--porcelain")).toBe("");
     const wtSpec = readFileSync(join(wt, fixture.specRel({ hash: "bbb222" })), "utf8");
-    expect(wtSpec).toContain("[FAIL] loop iteration 1: try 1 failed");
+    expect(wtSpec).toContain("[FAIL] loop iteration 2: try 1 failed");
     expect(wtSpec).toContain("Learning: it is hard");
-    expect(wtSpec).toContain("[FAIL] loop iteration 3: try 3 failed");
+    expect(wtSpec).toContain("[FAIL] loop iteration 4: try 3 failed");
 
     // The abandon landed as a commit on main AND was pushed to origin
     // (LOW-11: no loop-owned main commit may be left unpushed silently).
@@ -423,10 +429,12 @@ describe("runLoop scenarios", () => {
     ).toContain("abandon bbb222");
   });
 
-  it("hard errors ride the backoff ladder; permanent errors abort the loop NOW", async () => {
+  it("worker-death errors ride the backoff ladder; permanent errors abort the loop NOW", async () => {
     fixture = makeFixture([{ hash: "ccc333" }, { hash: "ddd444" }]);
     const { worker } = scriptedWorker([
-      { kind: "throw", message: "TypeError: fetch failed" }, // hard → backoff[0]
+      // A thrown worker call is a report-less death → infra-error (dc7514);
+      // still rides backoff[0] before the next attempt.
+      { kind: "throw", message: "TypeError: fetch failed" },
       { kind: "throw", message: "credit balance is too low" }, // permanent → abort
     ]);
     const { sleep, slept } = instantSleep();
@@ -444,7 +452,7 @@ describe("runLoop scenarios", () => {
     expect(existsSync(join(fixture.repoRoot, ".worktrees", "dev-ccc333"))).toBe(true);
   });
 
-  it("no-op success (no files, no learnings) is a failure — three of them abandon", async () => {
+  it("no-op success (no files, no learnings) is a failure — three of them abandon (nothing preserved → left ready)", async () => {
     fixture = makeFixture([{ hash: "eee555" }]);
     const { worker } = scriptedWorker([
       { kind: "report", report: { success: true, summary: "totally did it", key_learnings: [] } },
@@ -453,11 +461,13 @@ describe("runLoop scenarios", () => {
     const item = r.summary!.items[0];
     expect(item.outcome).toBe("abandoned");
     expect(item.iterationsFailed).toBe(3);
-    const wtSpec = readFileSync(
-      join(fixture.repoRoot, ".worktrees", "dev-eee555", fixture.specRel({ hash: "eee555" })),
-      "utf8",
-    );
-    expect(wtSpec).toMatch(/\[FAIL\] loop iteration 1: no-op iteration/);
+    expect(item.lastFailure).toContain("no-op iteration");
+    // dc7514 hygiene: the worktree held only bookkeeping — discarded, item
+    // left ready with the failure on the main spec's status log.
+    expect(existsSync(join(fixture.repoRoot, ".worktrees", "dev-eee555"))).toBe(false);
+    const spec = readFileSync(join(fixture.repoRoot, fixture.specRel({ hash: "eee555" })), "utf8");
+    expect(spec).toContain("status: ready");
+    expect(spec).toMatch(/\[FAIL\] loop abandoned eee555/);
   });
 
   it("report retry protocol: garbage first output, valid JSON on the retry ask", async () => {
@@ -851,13 +861,15 @@ describe("runLoop review-fix scenarios", () => {
     );
     g(fixture.repoRoot, "config", "core.hooksPath", hooksDir);
 
-    // max_consecutive_failures 2 ⇒ the hard-erroring repair iteration is
-    // the 2nd failure and abandons — leaving the worktree (and its spec's
-    // uncommitted [ERROR] entry) for inspection.
+    // max_consecutive_failures 2 ⇒ the failing repair iteration is the 2nd
+    // failure and abandons — leaving the worktree (and its spec's
+    // uncommitted entry) for inspection. (A THROWN worker is an infra-error
+    // since dc7514 and never charges the item — a reported failure drives
+    // the same MED-2 salvage path.)
     const merged = { ...MERGED, loop: { ...MERGED.loop, max_consecutive_failures: 2 } };
     const { worker } = scriptedWorker([
       { kind: "report", files: { "doomed.txt": "will be discarded\n" }, report: { summary: "wrote doomed", key_changes_made: ["d"] } },
-      { kind: "throw", message: "TypeError: boom mid-repair" },
+      { kind: "report", report: { success: false, summary: "could not repair the commit" } },
     ]);
     const { sleep } = instantSleep();
     const r = await runLoop(baseOpts(fixture, { merged, worker, sleep, tail: mergedTail().tail }));
@@ -1024,7 +1036,7 @@ describe("runLoop review-fix scenarios", () => {
   it("a timed-out worker's estimated tokens still land in the budgets (MED-8)", async () => {
     fixture = makeFixture([{ hash: "tmo001" }]);
     const worker: WorkerRunFn = async () => {
-      throw new WorkerTimeoutError("worker session exceeded the 60min iteration ceiling and was killed", {
+      throw new WorkerTimeoutError("worker session exceeded the 60min awake-time iteration ceiling and was killed", {
         input: 500,
         output: 700,
         estimated: true,
@@ -1033,7 +1045,10 @@ describe("runLoop review-fix scenarios", () => {
     const { sleep } = instantSleep();
     const r = await runLoop(baseOpts(fixture, { worker, sleep, tail: mergedTail().tail }));
     const item = r.summary!.items[0];
-    expect(item.outcome).toBe("abandoned"); // 3 hard errors
+    // dc7514: ~zero-output timeouts are infra-errors — 3 of them abort the
+    // RUN and release the item (not charged), but the spend still counts.
+    expect(item.outcome).toBe("released");
+    expect(r.exitCode).toBe(2);
     // 3 iterations × (500 in + 700 out), all accounted.
     expect(item.tokens.input).toBe(1500);
     expect(item.tokens.output).toBe(2100);
@@ -1201,9 +1216,11 @@ describe("infra-error classification + abandon hygiene (dc7514)", () => {
     const { sleep } = instantSleep();
     const r = await runLoop(baseOpts(fixture, { worker, sleep, tail: mergedTail().tail }));
 
-    // Abandon-the-RUN, not abandon-the-item: environment failure aborts.
+    // Abandon-the-RUN, not abandon-the-item: environment failure aborts,
+    // and the next item was never attempted (churn stops at the abort).
     expect(r.exitCode).toBe(2);
     expect(r.summary?.abortReason).toMatch(/environment failure/i);
+    expect(r.summary!.items).toHaveLength(1);
     const item = r.summary!.items[0];
     expect(item.outcome).not.toBe("abandoned");
 
@@ -1229,6 +1246,28 @@ describe("infra-error classification + abandon hygiene (dc7514)", () => {
     expect(readFileSync(r.reportPath!, "utf8")).toMatch(
       /environment failure — item not at fault/,
     );
+  });
+
+  it("infra iterations never exhaust the item's iteration budget into an abandon (review MED)", async () => {
+    fixture = makeFixture([{ hash: "bud001" }]);
+    // Iteration budget of 2 with 3 report-less deaths: the old accounting
+    // would abandon on "iteration budget exhausted" after 2 — charging the
+    // item for environment losses. The infra streak must reach 3 and abort
+    // the run instead.
+    const merged = { ...MERGED, loop: { ...MERGED.loop, max_iterations_per_item: 2 } };
+    const worker: WorkerRunFn = async () => {
+      throw new WorkerTimeoutError("worker session exceeded the 60min awake-time iteration ceiling and was killed", {
+        input: 100,
+        output: 10,
+        estimated: true,
+      });
+    };
+    const { sleep } = instantSleep();
+    const r = await runLoop(baseOpts(fixture, { merged, worker, sleep, tail: mergedTail().tail }));
+    const item = r.summary!.items[0];
+    expect(item.outcome).toBe("released");
+    expect(item.detail).not.toMatch(/iteration budget exhausted/);
+    expect(r.summary?.abortReason).toMatch(/environment failure/i);
   });
 
   it("abandon after REAL failures with a bookkeeping-only worktree discards it and leaves the item ready (no forensics needed)", async () => {

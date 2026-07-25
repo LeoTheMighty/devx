@@ -149,6 +149,28 @@ export function setSpecStatus(specPath: string, status: string): boolean {
   return true;
 }
 
+/**
+ * Remove the spec's frontmatter `owner:` line (atomic). The release/abandon
+ * paths call this when the claim is rolled back — a dead loop session must
+ * not linger as the owner of a `ready` spec (dc7514 incident shape).
+ * Returns false when no owner line existed (already clear — fine).
+ */
+export function clearSpecOwner(specPath: string): boolean {
+  const content = readFileSync(specPath, "utf8");
+  const fmRe = /^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n)/;
+  const m = fmRe.exec(content);
+  if (!m) return false;
+  const [, head, body, tail] = m;
+  // Line-based removal (not a regex collapse) so neighbouring lines — and
+  // their CRLF endings — are untouched.
+  const lines = body.split("\n");
+  const idx = lines.findIndex((l) => /^owner:/.test(l));
+  if (idx === -1) return false;
+  lines.splice(idx, 1);
+  writeAtomic(specPath, head + lines.join("\n") + tail + content.slice(m[0].length));
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Backlog-row done flip (merge cleanup)
 // ---------------------------------------------------------------------------
@@ -180,6 +202,42 @@ export function markBacklogRowDone(
   // title etc.); a `$&` / `$'` / `` $` `` in it would be expanded by a
   // string replacement and duplicate the row inline (EC-MED-4).
   return content.replace(rowRe, () => `${m[1]}[x]${rest}`);
+}
+
+/**
+ * Set a backlog row's checkbox AND its `Status:` prose in one edit — the
+ * two must never diverge (dc7514: abandon left `[-]` + "Status:
+ * in-progress", and the human had to reconstruct which one to believe).
+ * `[x]` rows are never clobbered (already-merged; same posture as
+ * flipDevMdCheckbox). Pure. Returns null when no row for the hash exists,
+ * content-unchanged for `[x]` / already-in-state rows.
+ */
+export function setBacklogRowState(
+  content: string,
+  hash: string,
+  type: string,
+  checkbox: " " | "/" | "-",
+  statusText: "ready" | "in-progress" | "blocked",
+): string | null {
+  const rowRe = new RegExp(
+    String.raw`^(\s*-\s*)\[([ x/\-])\](\s*\x60${escapeRe(type)}/${escapeRe(type)}-${escapeRe(hash)}-[^\n]*)$`,
+    "m",
+  );
+  const m = rowRe.exec(content);
+  // null = no row for this hash — callers surface the miss instead of
+  // silently recreating the drift class this helper kills (EC-MED-9).
+  if (!m) return null;
+  if (m[2] === "x") return content; // merged rows are never clobbered
+  // Greedy prefix ⇒ the LAST `Status:` occurrence is rewritten — a title
+  // that happens to contain "Status: ready" must not shadow the row's real
+  // trailing status field (EC-MED-9).
+  const rest = m[3].replace(
+    /^([\s\S]*)Status: (?:ready|in-progress|blocked)(?=[.\s]|$)/,
+    (_full, pre: string) => `${pre}Status: ${statusText}`,
+  );
+  // Replacer FUNCTION for the same reason as markBacklogRowDone (EC-MED-4):
+  // row-derived text may contain `$&`-style patterns.
+  return content.replace(rowRe, () => `${m[1]}[${checkbox}]${rest}`);
 }
 
 function escapeRe(s: string): string {

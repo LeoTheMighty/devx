@@ -228,7 +228,11 @@ describe("chaos B — worker killed mid-iteration", () => {
 
     const item = r.summary!.items[0];
     expect(item.outcome).toBe("merged");
+    // dc7514: a dead worker that LEFT FILE CHANGES demonstrably ran — this
+    // death is charged to the item as a hard-error, not excused as infra
+    // (the infra excuse needs a clean tree or a sleep gap).
     expect(item.iterationsFailed).toBe(1);
+    expect(item.iterationsInfra).toBeUndefined();
     expect(item.iterationsGood).toBe(1);
 
     // The killed iteration's half-file was rolled back — it exists NOWHERE:
