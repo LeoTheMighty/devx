@@ -5,7 +5,8 @@ created: 2026-07-24T10:41:50-06:00
 title: Lifecycle skill wiring + nudge single-sourcing
 from: plan/plan-eac479-2026-07-24T09:57-harness-fold-in.md
 plan: _devx/workstreams/harness-fold-in
-status: ready
+status: in-progress
+owner: /devx-2026-07-25T1519-13231
 blocked_by: [hfi103, hfi104]
 branch: feat/dev-hfi105
 ---
@@ -60,3 +61,4 @@ source (hfi104).
 ## Status log
 
 - 2026-07-24 — emitted by /devx-plan RED stage (eac479, phase 5/5).
+- 2026-07-25T15:19:51-06:00 — claimed by /devx in session /devx-2026-07-25T1519-13231
