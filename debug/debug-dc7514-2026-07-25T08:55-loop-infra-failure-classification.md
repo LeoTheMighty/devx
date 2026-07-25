@@ -3,7 +3,8 @@ hash: dc7514
 type: debug
 created: 2026-07-25T08:55:00-06:00
 title: Loop counts infra hangs as item failures and abandons into wrong state — hung workers wrongly abandoned hfi103, wedging the backlog
-status: ready
+status: in-progress
+owner: /devx-2026-07-25T0902-6669
 branch: feat/debug-dc7514
 ---
 
@@ -94,3 +95,4 @@ Run `loop-2026-07-24T21-19-34-321-15697` (events.jsonl + report.md in
 - 2026-07-25T08:55 — filed from the loop-2026-07-24 post-mortem (hfi103
   wrongful abandonment; state hand-reset in main commit 5f83f3e). Part of
   the skill/loop fixups track.
+- 2026-07-25T09:02:37-06:00 — claimed by /devx in session /devx-2026-07-25T0902-6669
