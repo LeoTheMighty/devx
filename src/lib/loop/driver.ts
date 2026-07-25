@@ -48,7 +48,6 @@ import {
   acquireManagerLock,
   type LockHandle,
 } from "../manage/lock.js";
-import { flipDevMdCheckbox } from "../manage/loop.js";
 import {
   ClaimError,
   LockHeldError,
@@ -78,11 +77,13 @@ import {
 } from "./iteration.js";
 import {
   CommitFailedError,
+  LOOP_BOOKKEEPING_COMMIT_PREFIX,
   PushFailedError,
   commitAll,
   diffStat,
   getHead,
   hasUncommittedChanges,
+  isBookkeepingOnlyWorktree,
   pushCurrentBranch,
   realExec,
   resetHard,
@@ -112,8 +113,10 @@ import {
 } from "./state.js";
 import {
   appendStatusEntryToFile,
+  clearSpecOwner,
   hasPhase4StatusLine,
   markBacklogRowDone,
+  setBacklogRowState,
   setSpecStatus,
   type EntryPrefix,
 } from "./spec-io.js";
@@ -777,11 +780,24 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
   let itemState: LadderState = {
     consecutiveFailures: 0,
     consecutiveErrors: 0,
+    consecutiveInfraErrors: 0,
     consecutiveAbandonedItems: args.ladder.consecutiveAbandonedItems,
   };
   let iteration = 0;
   let good = 0;
   let failed = 0;
+  /** Iterations lost to environment failures — never charged to the item
+   *  (dc7514). */
+  let infra = 0;
+  /** Token spend lost to infra iterations — excluded from the PER-ITEM
+   *  budget (the item isn't charged for environment failures) but still in
+   *  itemTokens/totals for honest night accounting (MED-8). */
+  let infraTokens = 0;
+  /** Failure summaries + learnings accumulated across failed iterations —
+   *  folded into the main-spec abandon entry when the worktree (and its
+   *  per-iteration status log) is discarded, so the next attempt doesn't
+   *  start blind (review MED: discard must not erase the breadcrumbs). */
+  const failureNotes: string[] = [];
   let pendingRepair: string | null = null;
   let lastFailure: string | null = null;
   /** Loop-owned WARN lines that must reach the morning report (lock-release
@@ -823,6 +839,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     specPath: pick.path,
     iterationsGood: good,
     iterationsFailed: failed,
+    ...(infra > 0 ? { iterationsInfra: infra } : {}),
     tokens: itemTokens,
     // NB: same array reference on purpose — warnings pushed AFTER a
     // snapshot (e.g. during finalizeMerged) still reach the report.
@@ -854,18 +871,26 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     }
     if (!commit) return;
     try {
-      commitAll(exec, worktree, `chore(loop): record iteration ${iteration} for ${pick.hash}`);
+      // Subject built from the SAME constant isBookkeepingOnlyWorktree
+      // matches — rewording one side can't silently break the discard
+      // predicate (dc7514 wrap-don't-duplicate).
+      commitAll(exec, worktree, `${LOOP_BOOKKEEPING_COMMIT_PREFIX}${iteration} for ${pick.hash}`);
     } catch (e) {
       event("iteration:record-commit-failed", { error: serializeError(e) });
     }
   };
 
-  const appendMainEntry = (prefix: EntryPrefix, head: string): void => {
+  const appendMainEntry = (
+    prefix: EntryPrefix,
+    head: string,
+    learnings?: string[],
+  ): void => {
     try {
       appendStatusEntryToFile(mainSpecPath, {
         iso: now().toISOString(),
         prefix,
         head,
+        ...(learnings !== undefined && learnings.length > 0 ? { learnings } : {}),
       });
     } catch (e) {
       event("item:main-status-append-failed", { error: serializeError(e) });
@@ -984,6 +1009,92 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     }
   };
 
+  /** Bound accumulator for failure breadcrumbs (newest kept). 12 entries is
+   *  ample for the 8-iteration default budget while keeping the eventual
+   *  status-log entry readable. */
+  const pushFailureNote = (note: string, learnings?: string[]): void => {
+    failureNotes.push(note);
+    for (const l of learnings ?? []) failureNotes.push(`learning: ${l}`);
+    if (failureNotes.length > 12) failureNotes.splice(0, failureNotes.length - 12);
+  };
+
+  /** Set the backlog row's checkbox AND its `Status:` prose in one edit —
+   *  the dc7514 incident left `[-]` + "Status: in-progress" drift because
+   *  the old path flipped only the checkbox. */
+  const setBacklogRow = (
+    checkbox: " " | "/" | "-",
+    statusText: "ready" | "in-progress" | "blocked",
+  ): void => {
+    try {
+      const content = readFileSync(backlogPath, "utf8");
+      const next = setBacklogRowState(content, pick.hash, pick.type, checkbox, statusText);
+      if (next === null) {
+        // No row for this hash — the exact drift class this flip exists to
+        // kill must not recur silently (EC-MED-9).
+        event("item:backlog-row-missing", { hash: pick.hash, backlog: backlogRel(pick.type) });
+        itemWarnings.push(
+          `no ${backlogRel(pick.type)} row found for ${pick.hash} — backlog not flipped to [${checkbox}] ${statusText}; reconcile by hand`,
+        );
+        return;
+      }
+      if (next !== content) writeAtomic(backlogPath, next);
+    } catch (e) {
+      event("item:backlog-row-flip-failed", { error: serializeError(e) });
+    }
+  };
+
+  /** Discard a bookkeeping-only worktree + its local branch (the claim never
+   *  pushed the feature branch; iteration commits are local). Returns true
+   *  only when the worktree is actually gone — callers fall back to the
+   *  preserve path on failure. */
+  const discardWorktree = (): boolean => {
+    try {
+      const r = exec("git", ["worktree", "remove", "--force", worktree], {
+        cwd: repoRoot,
+        env: { GIT_TERMINAL_PROMPT: "0" },
+      });
+      if (r.exitCode !== 0) {
+        event("item:worktree-discard-failed", { stderr: r.stderr.trim() });
+        return false;
+      }
+    } catch (e) {
+      event("item:worktree-discard-failed", { error: serializeError(e) });
+      return false;
+    }
+    const b = exec("git", ["branch", "-D", args.claim.branch], {
+      cwd: repoRoot,
+      env: { GIT_TERMINAL_PROMPT: "0" },
+    });
+    if (b.exitCode !== 0 && !/not found/i.test(b.stderr)) {
+      // The worktree is already gone (can't fall back to preserving it) but
+      // a stale local branch makes the NEXT claim's `worktree add -b` fail —
+      // that must reach the morning report, not just the JSONL (EC-HIGH-3).
+      event("item:branch-delete-failed", { stderr: b.stderr.trim() });
+      itemWarnings.push(
+        `stale local branch ${args.claim.branch} could not be deleted — \`git branch -D ${args.claim.branch}\` by hand or the next claim of ${pick.hash} will fail`,
+      );
+    }
+    return true;
+  };
+
+  /** Roll the claim's main-worktree state back to ready: spec `status:
+   *  ready`, dead `owner:` cleared, backlog row `[ ]` + `Status: ready`. */
+  const rollClaimBackToReady = (): void => {
+    try {
+      if (!setSpecStatus(mainSpecPath, "ready")) {
+        event("item:ready-status-flip-noop", { spec: pick.path });
+      }
+    } catch (e) {
+      event("item:ready-status-flip-failed", { error: serializeError(e) });
+    }
+    try {
+      clearSpecOwner(mainSpecPath);
+    } catch (e) {
+      event("item:owner-clear-failed", { error: serializeError(e) });
+    }
+    setBacklogRow(" ", "ready");
+  };
+
   const abandonItem = (reason: string): RunItemResult => {
     event("item:abandon", { hash: pick.hash, reason, worktree });
     if (!ownsClaim()) {
@@ -1003,6 +1114,41 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         loopAbort: null,
       };
     }
+    // dc7514 abandon hygiene: when the worktree preserves NOTHING beyond the
+    // loop's own bookkeeping commits, parking the item as `[-]` blocked
+    // behind a forensics chore is pure drag — discard the worktree and flip
+    // the item back to ready (the failure stays recorded in the status log).
+    // Snapshot before the discard (BH-MED-6 posture: diffStat needs the
+    // worktree alive).
+    const snapshot = baseItem();
+    const bookkeepingOnly =
+      baseSha !== null && isBookkeepingOnlyWorktree(exec, worktree, baseSha);
+    if (bookkeepingOnly && discardWorktree()) {
+      // The discarded worktree held the per-iteration [FAIL]/learning
+      // entries — fold them into the main-spec entry so the next attempt
+      // doesn't start blind.
+      appendMainEntry(
+        "[FAIL]",
+        `loop abandoned ${pick.hash}: ${reason}; no real work was preserved — bookkeeping-only worktree discarded, item left ready`,
+        failureNotes,
+      );
+      rollClaimBackToReady();
+      releaseSpecLock();
+      commitOnMain(`chore(loop): abandon ${pick.hash} (${reason}; nothing preserved — left ready)`);
+      pushMain();
+      out(`loop: abandoned ${pick.hash} — ${reason}; nothing preserved, item left ready`);
+      return {
+        item: {
+          ...snapshot,
+          ...(itemWarnings.length > 0 ? { warnings: itemWarnings } : {}),
+          outcome: "abandoned",
+          leftState: "ready",
+          ...(lastFailure !== null ? { lastFailure } : {}),
+          detail: reason,
+        },
+        loopAbort: null,
+      };
+    }
     appendMainEntry(
       "[FAIL]",
       `loop abandoned ${pick.hash}: ${reason}; worktree preserved at ${relToRepo(worktree, repoRoot)}`,
@@ -1014,11 +1160,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     } catch (e) {
       event("item:abandon-status-flip-failed", { error: serializeError(e) });
     }
-    try {
-      flipDevMdCheckbox(backlogPath, pick.hash);
-    } catch (e) {
-      event("item:abandon-backlog-flip-failed", { error: serializeError(e) });
-    }
+    setBacklogRow("-", "blocked");
     releaseSpecLock();
     commitOnMain(`chore(loop): abandon ${pick.hash} (${reason})`);
     pushMain();
@@ -1027,8 +1169,83 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       item: {
         ...baseItem(),
         outcome: "abandoned",
+        leftState: "blocked",
         worktreePath: relToRepo(worktree, repoRoot),
         ...(lastFailure !== null ? { lastFailure } : {}),
+        detail: reason,
+      },
+      loopAbort: null,
+    };
+  };
+
+  /**
+   * dc7514 abandon-the-run: N consecutive infra-errors mean the ENVIRONMENT
+   * is broken, not the item — roll the claim back to ready (the next healthy
+   * run re-attempts it with a fresh failure budget) and let the caller abort
+   * the run. Only a fully-discarded bookkeeping-only worktree flips to
+   * ready; real preserved work keeps the claim intact (stopped-mid-item
+   * shape) because a ready row with a surviving worktree/branch wedges the
+   * next claim (EC-HIGH-2).
+   */
+  const releaseItemToReady = (reason: string): RunItemResult => {
+    event("item:released-environment", { hash: pick.hash, reason, worktree });
+    if (!ownsClaim()) {
+      event("item:release-ownership-lost", { hash: pick.hash });
+      out(`loop: claim for ${pick.hash} is no longer this run's — leaving backlog state untouched`);
+      return {
+        item: {
+          ...baseItem(),
+          outcome: "released",
+          worktreePath: relToRepo(worktree, repoRoot),
+          detail: `${reason}; claim ownership lost mid-run — spec/backlog left untouched`,
+        },
+        loopAbort: null,
+      };
+    }
+    const snapshot = baseItem();
+    const bookkeepingOnly =
+      baseSha !== null && isBookkeepingOnlyWorktree(exec, worktree, baseSha);
+    const discarded = bookkeepingOnly && discardWorktree();
+    if (!discarded) {
+      // Real preserved work (or a failed discard): flipping the row to
+      // ready while the worktree + branch survive would make the NEXT
+      // run's claim half-execute and wedge (`worktree add -b` fails on the
+      // existing path/branch — review EC-HIGH-2). Keep the claim intact
+      // instead: the honest, resumable stopped-mid-item shape.
+      appendMainEntry(
+        "",
+        `loop aborted mid-item (${reason}); worktree + claim preserved at ${relToRepo(worktree, repoRoot)}`,
+      );
+      commitOnMain(`chore(loop): ${pick.hash} in progress at loop exit (environment failure)`);
+      pushMain();
+      out(`loop: ${pick.hash} left in progress — ${reason}; worktree + claim preserved`);
+      return {
+        item: {
+          ...snapshot,
+          ...(itemWarnings.length > 0 ? { warnings: itemWarnings } : {}),
+          outcome: "in-progress-at-exit",
+          worktreePath: relToRepo(worktree, repoRoot),
+          detail: reason,
+        },
+        loopAbort: null,
+      };
+    }
+    appendMainEntry(
+      "",
+      `loop released ${pick.hash} back to ready: ${reason}; no real work was lost (bookkeeping-only worktree discarded)`,
+      failureNotes,
+    );
+    rollClaimBackToReady();
+    releaseSpecLock();
+    commitOnMain(`chore(loop): release ${pick.hash} back to ready (environment failure — item not at fault)`);
+    pushMain();
+    out(`loop: released ${pick.hash} back to ready — ${reason}`);
+    return {
+      item: {
+        ...snapshot,
+        ...(itemWarnings.length > 0 ? { warnings: itemWarnings } : {}),
+        outcome: "released",
+        leftState: "ready",
         detail: reason,
       },
       loopAbort: null,
@@ -1081,14 +1298,18 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     if (tokensTotal(args.totals) >= args.maxTotalTokens) {
       return exitInProgress("total token budget exhausted");
     }
-    if (iteration >= cfg.maxIterationsPerItem) {
+    // Budget rungs charge only ATTRIBUTABLE iterations/spend — infra
+    // iterations are environment losses and must not exhaust an innocent
+    // item's budgets into an abandon (dc7514; the pure-infra case is
+    // bounded by the 3-consecutive-infra run abort instead).
+    if (good + failed >= cfg.maxIterationsPerItem) {
       return abandonItem(
         `iteration budget exhausted (${cfg.maxIterationsPerItem} iterations without acs_met)`,
       );
     }
-    if (tokensTotal(itemTokens) >= cfg.maxTokensPerItem) {
+    if (tokensTotal(itemTokens) - infraTokens >= cfg.maxTokensPerItem) {
       return abandonItem(
-        `per-item token budget exhausted (${tokensTotal(itemTokens)}/${cfg.maxTokensPerItem})`,
+        `per-item token budget exhausted (${tokensTotal(itemTokens) - infraTokens}/${cfg.maxTokensPerItem})`,
       );
     }
     iteration++;
@@ -1126,11 +1347,26 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     let raw = "";
     let workerError: Error | null = null;
     let report: IterationReport | null = null;
+    /** The PRIMARY worker call rejected (timeout kill / spawn failure).
+     *  Deliberately narrow (review MED): a retry-session death (the primary
+     *  demonstrably RAN) and post-processing throws are hard-errors, never
+     *  infra. */
+    let workerDied = false;
+    let dieOutputTokens = 0;
+    let sleepGapMs = 0;
+    const tokensBeforeIteration = tokensTotal(itemTokens);
     try {
-      const r = await worker(prompt, { cwd: worktree, ...(signal !== undefined ? { signal } : {}) });
+      let r: Awaited<ReturnType<typeof worker>>;
+      try {
+        r = await worker(prompt, { cwd: worktree, ...(signal !== undefined ? { signal } : {}) });
+      } catch (e) {
+        workerDied = true;
+        throw e;
+      }
       raw = r.rawOutput;
       addTokens(itemTokens, r.tokens);
       addTokens(args.totals, r.tokens);
+      sleepGapMs += r.sleepGapMs ?? 0;
       if (r.graceKilled) event("iteration:grace-killed", { iteration });
       const parsed = extractReportJson(raw);
       const validated = parsed !== null ? validateIterationReport(parsed) : null;
@@ -1161,6 +1397,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         });
         addTokens(itemTokens, retry.tokens);
         addTokens(args.totals, retry.tokens);
+        sleepGapMs += retry.sleepGapMs ?? 0;
         const reparsed = extractReportJson(retry.rawOutput);
         const revalidated = reparsed !== null ? validateIterationReport(reparsed) : null;
         if (revalidated !== null && revalidated.ok) {
@@ -1194,6 +1431,13 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       if (e instanceof WorkerTimeoutError) {
         addTokens(itemTokens, e.tokens);
         addTokens(args.totals, e.tokens);
+        if (workerDied) {
+          // Only the PRIMARY session's death signals feed the infra
+          // classification — a retry timeout's gap/output must not excuse
+          // an iteration whose primary session demonstrably ran (EC-MED-6).
+          dieOutputTokens = e.tokens.output;
+          sleepGapMs += e.sleepGapMs;
+        }
       }
     }
     if (signal?.aborted && report === null) {
@@ -1220,6 +1464,9 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         ? { report: { success: report.success, key_learnings: report.key_learnings } }
         : {}),
       ...(workerError !== null ? { error: { message: errorChainText(workerError) } } : {}),
+      ...(workerDied
+        ? { infra: { workerDied: true, outputTokens: dieOutputTokens, sleepGapMs } }
+        : {}),
       filesChanged,
     });
 
@@ -1260,8 +1507,10 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       decision: decision.kind,
       consecutiveFailures: itemState.consecutiveFailures,
       consecutiveErrors: itemState.consecutiveErrors,
+      consecutiveInfraErrors: itemState.consecutiveInfraErrors,
       tokens: itemTokens,
       git: statusSnapshot(exec, worktree, baseSha ?? undefined),
+      ...(sleepGapMs > 0 ? { sleepGapMs } : {}),
       ...(workerError !== null ? { error: serializeError(workerError) } : {}),
     });
 
@@ -1285,6 +1534,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
             : report!.summary;
         lastFailure = summaryText;
         prior.push({ iteration, success: false, summary: summaryText });
+        pushFailureNote(`iteration ${iteration} [FAIL]: ${summaryText}`, report?.key_learnings);
         // rollbackIteration salvages commit-failure-preserved work with a
         // re-attempted commit before any reset (MED-2) and clears
         // pendingRepair on every path (BH-HIGH-1: a stale pendingRepair
@@ -1306,12 +1556,45 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         out(`loop: ${pick.hash} iteration ${iteration} [FAIL] — ${summaryText}`);
         break;
       }
+      case "infra-error": {
+        // NOT the item's fault (dc7514): the environment killed a session
+        // that never really ran. No `failed++`, no lastFailure — the item's
+        // failure budget is untouched; the run-level infra streak decides.
+        // The iteration's spend is likewise exempted from the per-item
+        // token budget (it stays in itemTokens/totals for honest night
+        // accounting).
+        infra++;
+        infraTokens += tokensTotal(itemTokens) - tokensBeforeIteration;
+        const msg =
+          workerError !== null ? errorChainText(workerError) : "worker died report-less";
+        prior.push({
+          iteration,
+          success: false,
+          summary: `(environment failure — not this item's fault) ${msg}`,
+        });
+        let note: string | null = null;
+        try {
+          note = rollbackIteration();
+        } catch (e) {
+          return abandonItem(`rollback failed after infra-error: ${errorChainText(e)}`);
+        }
+        recordIteration(
+          "[ERROR]",
+          `loop iteration ${iteration}: infra-error (environment failure, not charged to the item): ${msg}${note !== null ? ` (${note})` : ""}`,
+          [],
+          [],
+          true,
+        );
+        out(`loop: ${pick.hash} iteration ${iteration} [INFRA] — ${msg}`);
+        break;
+      }
       case "hard-error":
       case "permanent-error": {
         failed++;
         const msg = workerError !== null ? errorChainText(workerError) : "unknown hard error";
         lastFailure = msg;
         prior.push({ iteration, success: false, summary: msg });
+        pushFailureNote(`iteration ${iteration} [ERROR]: ${msg}`);
         // Same salvage-before-reset + pendingRepair discipline as above.
         let note: string | null = null;
         try {
@@ -1333,6 +1616,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         failed++;
         lastFailure = `git commit failed: ${firstLineOf(commitFailureDetail ?? "")}`;
         prior.push({ iteration, success: false, summary: lastFailure });
+        pushFailureNote(`iteration ${iteration} [ERROR]: ${lastFailure}`);
         pendingRepair = commitFailureDetail ?? "(no git output captured)";
         // The tree is deliberately PRESERVED (the one no-rollback path);
         // the entry is appended uncommitted and rides the repair commit.
@@ -1355,6 +1639,12 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       case "abort-loop": {
         const abandoned = exitInProgress(`loop aborted: ${decision.reason}`);
         return { item: abandoned.item, loopAbort: decision.reason };
+      }
+      case "abort-run-environment": {
+        // dc7514: the environment (not the item) is broken — roll the claim
+        // back to ready and abort the whole run.
+        const released = releaseItemToReady(decision.reason);
+        return { item: released.item, loopAbort: decision.reason };
       }
     }
   }

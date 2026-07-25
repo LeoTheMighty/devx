@@ -49,6 +49,9 @@ export interface WorkerRunResult {
   /** True when the grace-kill timer had to reap the process tree. */
   graceKilled: boolean;
   tokens: WorkerTokens;
+  /** Machine-suspend time detected during the session (heartbeat probe —
+   *  dc7514). Slept time never counts against the iteration ceiling. */
+  sleepGapMs?: number;
 }
 
 export type WorkerRunFn = (
@@ -67,10 +70,15 @@ export type WorkerRunFn = (
  */
 export class WorkerTimeoutError extends Error {
   readonly tokens: WorkerTokens;
-  constructor(message: string, tokens: WorkerTokens) {
+  /** Suspend time detected during the session (dc7514). Positive ⇒ the kill
+   *  fired against a machine that slept — the driver classes it
+   *  `infra-error`, never `hard-error`. */
+  readonly sleepGapMs: number;
+  constructor(message: string, tokens: WorkerTokens, sleepGapMs = 0) {
     super(message);
     this.name = "WorkerTimeoutError";
     this.tokens = tokens;
+    this.sleepGapMs = sleepGapMs;
   }
 }
 
@@ -91,7 +99,22 @@ export interface ClaudeWorkerOpts {
   spawnFn?: SpawnFn;
   /** Extra argv appended after `-p <prompt>` (e.g. a --model override). */
   extraArgs?: string[];
+  /** Wall-clock seam for the sleep-gap probe (tests simulate suspend by
+   *  jumping this clock). Defaults to Date.now. */
+  nowMs?: () => number;
 }
+
+/** Cadence of the sleep-gap heartbeat probe. Each firing compares wall-clock
+ *  elapsed against the scheduled interval: timers pause during machine
+ *  suspend, so a firing that arrives ≫ late by wall clock reveals slept time
+ *  (dc7514 — `caffeinate -i` does not block lid-close sleep, and the old
+ *  single setTimeout ceiling fired hours late, mostly measuring a sleeping
+ *  machine). Clamped down for short test ceilings. */
+export const SLEEP_PROBE_INTERVAL_MS = 30_000;
+
+/** A probe firing later than interval × this factor is treated as a suspend
+ *  gap (2× tolerates ordinary event-loop lag without false positives). */
+export const SLEEP_GAP_FACTOR = 2;
 
 /** Default per-session wall-clock ceiling. Generous — an honest iteration
  *  on a hard slice can run long — but bounded, so `--until` is honored
@@ -115,6 +138,14 @@ export function makeClaudeWorker(opts: ClaudeWorkerOpts = {}): WorkerRunFn {
   const iterationTimeoutMs = opts.iterationTimeoutMs ?? DEFAULT_ITERATION_TIMEOUT_MS;
   const spawnFn: SpawnFn = opts.spawnFn ?? (nodeSpawn as unknown as SpawnFn);
   const extraArgs = opts.extraArgs ?? [];
+  const nowMs = opts.nowMs ?? Date.now;
+  // Probe cadence: the standing 30s heartbeat, shrunk for short ceilings so
+  // a kill still lands within ~a quarter of the ceiling (test ceilings run
+  // in the hundreds of ms).
+  const probeMs = Math.max(
+    25,
+    Math.min(SLEEP_PROBE_INTERVAL_MS, Math.floor(iterationTimeoutMs / 4)),
+  );
 
   return (prompt, runOpts) =>
     new Promise<WorkerRunResult>((resolve, reject) => {
@@ -203,20 +234,42 @@ export function makeClaudeWorker(opts: ClaudeWorkerOpts = {}): WorkerRunFn {
       child.stdout?.on("data", capture);
       child.stderr?.on("data", capture);
 
-      // Hard per-session ceiling: a worker that hangs BEFORE producing any
-      // valid report has no other bound (the grace-kill arms only after a
-      // valid report). On timeout the tree is reaped and the run surfaces
-      // as an error to the driver (report-less exit) → hard-error ladder.
-      const timeoutTimer = setTimeout(() => {
-        timedOut = true;
-        killTree();
-      }, iterationTimeoutMs);
-      timeoutTimer.unref?.();
+      // Hard per-session ceiling on AWAKE time (dc7514): a worker that hangs
+      // BEFORE producing any valid report has no other bound (the grace-kill
+      // arms only after a valid report). The old single setTimeout stretched
+      // across machine suspend — Node timers pause while the lid is closed,
+      // so the kill fired hours late and each "iteration" mostly measured a
+      // sleeping machine. Instead, a heartbeat probe measures wall-clock
+      // drift between firings: a firing ≫ late reveals a suspend gap, which
+      // is EXCUSED from the ceiling. On timeout the tree is reaped and the
+      // rejection carries the gap so the driver can class a post-wake kill
+      // as infra-error, never hard-error.
+      const startMs = nowMs();
+      let lastProbeMs = startMs;
+      let sleepGapMs = 0;
+      const probeTimer = setInterval(() => {
+        // Once killed or settled there is nothing left to measure — without
+        // this guard the interval keeps re-firing killTree and inflating
+        // sleepGapMs during the exit-drain window (review LOW).
+        if (settled || timedOut) return;
+        const t = nowMs();
+        const sinceLast = t - lastProbeMs;
+        lastProbeMs = t;
+        if (sinceLast > probeMs * SLEEP_GAP_FACTOR) {
+          sleepGapMs += sinceLast - probeMs;
+        }
+        const awakeMs = t - startMs - sleepGapMs;
+        if (awakeMs >= iterationTimeoutMs) {
+          timedOut = true;
+          killTree();
+        }
+      }, probeMs);
+      probeTimer.unref?.();
 
       const cleanup = (): void => {
         if (graceTimer !== null) clearTimeout(graceTimer);
         if (drainTimer !== null) clearTimeout(drainTimer);
-        clearTimeout(timeoutTimer);
+        clearInterval(probeTimer);
         runOpts.signal?.removeEventListener("abort", onAbort);
       };
 
@@ -226,11 +279,17 @@ export function makeClaudeWorker(opts: ClaudeWorkerOpts = {}): WorkerRunFn {
         cleanup();
         if (timedOut) {
           // Carry the estimated spend on the rejection — the session
-          // consumed budget before the kill (review finding MED-8).
+          // consumed budget before the kill (review finding MED-8) — and
+          // the sleep gap for the driver's infra classification (dc7514).
+          const sleptNote =
+            sleepGapMs > 0
+              ? ` (${Math.round(sleepGapMs / 60000)}min of machine sleep detected and excluded)`
+              : "";
           reject(
             new WorkerTimeoutError(
-              `worker session exceeded the ${Math.round(iterationTimeoutMs / 60000)}min iteration ceiling and was killed`,
+              `worker session exceeded the ${Math.round(iterationTimeoutMs / 60000)}min awake-time iteration ceiling and was killed${sleptNote}`,
               estimateTokens(prompt, output),
+              sleepGapMs,
             ),
           );
           return;
@@ -240,6 +299,7 @@ export function makeClaudeWorker(opts: ClaudeWorkerOpts = {}): WorkerRunFn {
           exitCode,
           graceKilled,
           tokens: estimateTokens(prompt, output),
+          sleepGapMs,
         });
       };
 

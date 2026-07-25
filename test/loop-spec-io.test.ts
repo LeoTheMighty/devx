@@ -8,9 +8,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   appendStatusEntryToFile,
   appendToStatusLog,
+  clearSpecOwner,
   composeStatusEntry,
   hasPhase4StatusLine,
   markBacklogRowDone,
+  setBacklogRowState,
   setSpecStatus,
 } from "../src/lib/loop/spec-io.js";
 
@@ -116,6 +118,67 @@ describe("file wrappers", () => {
     const p = join(dir, "bare.md");
     writeFileSync(p, "# no frontmatter\n", "utf8");
     expect(setSpecStatus(p, "blocked")).toBe(false);
+  });
+
+  it("clearSpecOwner removes the owner line and nothing else (dc7514 — dead sessions must not linger)", () => {
+    const p = join(dir, "owned.md");
+    const owned = SPEC.replace(
+      "status: in-progress",
+      "status: in-progress\nowner: /devx-loop-2026-07-24T21-19",
+    );
+    writeFileSync(p, owned, "utf8");
+    expect(clearSpecOwner(p)).toBe(true);
+    const content = readFileSync(p, "utf8");
+    expect(content).not.toMatch(/^owner:/m);
+    expect(content).toContain("status: in-progress");
+    expect(content).toContain("## Status log");
+    // Idempotent: already clear → false, file untouched.
+    expect(clearSpecOwner(p)).toBe(false);
+    expect(readFileSync(p, "utf8")).toBe(content);
+  });
+
+  it("clearSpecOwner is a no-op on specs without frontmatter", () => {
+    const p = join(dir, "nofm.md");
+    writeFileSync(p, "# no frontmatter\nowner: fake\n", "utf8");
+    expect(clearSpecOwner(p)).toBe(false);
+  });
+});
+
+describe("setBacklogRowState (dc7514 — checkbox + Status prose flip together, never drift)", () => {
+  const DEV = [
+    "# DEV",
+    "",
+    "- [/] `dev/dev-abc123-2026-07-05T13:00-thing.md` — The thing. Status: in-progress.",
+    "- [ ] `dev/dev-def456-2026-07-05T13:01-other.md` — Other. Status: ready.",
+    "",
+  ].join("\n");
+
+  it("flips [/] → [ ] with Status: ready (the release/abandon-to-ready shape)", () => {
+    const next = setBacklogRowState(DEV, "abc123", "dev", " ", "ready");
+    expect(next).toContain(
+      "- [ ] `dev/dev-abc123-2026-07-05T13:00-thing.md` — The thing. Status: ready.",
+    );
+    expect(next).toContain("- [ ] `dev/dev-def456");
+  });
+
+  it("flips [/] → [-] with Status: blocked — no more checkbox↔prose drift", () => {
+    const next = setBacklogRowState(DEV, "abc123", "dev", "-", "blocked");
+    expect(next).toContain("- [-] `dev/dev-abc123");
+    expect(next).toMatch(/dev-abc123[^\n]*Status: blocked\./);
+    expect(next).not.toMatch(/dev-abc123[^\n]*Status: in-progress/);
+  });
+
+  it("never clobbers an [x] merged row; a missing row returns null (surfaced, not silent)", () => {
+    const done = "- [x] `dev/dev-abc123-2026-07-05T13:00-thing.md` — The thing. Status: done.\n";
+    expect(setBacklogRowState(done, "abc123", "dev", " ", "ready")).toBe(done);
+    expect(setBacklogRowState(DEV, "zzz999", "dev", " ", "ready")).toBeNull();
+  });
+
+  it("rewrites the LAST Status occurrence — a title containing 'Status: ready' can't shadow the real field", () => {
+    const tricky =
+      "- [/] `dev/dev-abc123-2026-07-05T13:00-thing.md` — Fix the Status: ready parser. Status: in-progress.\n";
+    const next = setBacklogRowState(tricky, "abc123", "dev", "-", "blocked");
+    expect(next).toContain("Fix the Status: ready parser. Status: blocked.");
   });
 });
 

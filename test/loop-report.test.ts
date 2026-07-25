@@ -150,6 +150,85 @@ describe("renderMorningReport (v2/04 §5)", () => {
     expect(exact).toContain("**Tokens:** 10 in / 5 out");
     expect(exact).toContain("_No items were attempted._");
   });
+
+  it("released items say environment failure — item not at fault, left ready (dc7514 AC6)", () => {
+    const released = renderMorningReport(
+      summary({
+        abortReason:
+          "environment failure: 3 consecutive report-less worker deaths (timeout/spawn, ~zero output) — the item is not at fault; aborting the run",
+        stopReason: null,
+        items: [
+          {
+            hash: "hng001",
+            type: "dev",
+            title: "innocent item",
+            specPath: "dev/dev-hng001-2026-07-24T21:00-innocent.md",
+            outcome: "released",
+            leftState: "ready",
+            iterationsGood: 0,
+            iterationsFailed: 0,
+            iterationsInfra: 3,
+            tokens: { input: 1_500, output: 96, estimated: true },
+            detail: "environment failure: 3 consecutive report-less worker deaths",
+          },
+        ],
+      }),
+    );
+    expect(released).toContain("released (environment failure — item not at fault, left ready)");
+    expect(released).toContain("3 infra (environment — not charged to the item)");
+    expect(released).toContain("1 released (environment)");
+    // Next steps route to the environment, not the item.
+    expect(released).toMatch(/fix the environment/);
+  });
+
+  it("ownership-lost releases say the backlog was left untouched — never 'left ready' (review MED)", () => {
+    const body = renderMorningReport(
+      summary({
+        items: [
+          {
+            hash: "own001",
+            type: "dev",
+            title: "stolen claim",
+            specPath: "dev/dev-own001-2026-07-24T21:00-stolen.md",
+            outcome: "released",
+            // no leftState — the rollback was deliberately skipped
+            iterationsGood: 0,
+            iterationsFailed: 0,
+            tokens: { input: 100, output: 10, estimated: true },
+            detail: "environment failure; claim ownership lost mid-run — spec/backlog left untouched",
+          },
+        ],
+      }),
+    );
+    expect(body).toContain("claim ownership lost; backlog left untouched");
+    expect(body).not.toContain("released (environment failure — item not at fault, left ready)");
+    expect(body).toContain("verify the current owner");
+  });
+
+  it("abandoned-to-ready items (bookkeeping-only worktree discarded) render distinctly (dc7514 AC4)", () => {
+    const body = renderMorningReport(
+      summary({
+        items: [
+          {
+            hash: "hyg001",
+            type: "dev",
+            title: "failed clean",
+            specPath: "dev/dev-hyg001-2026-07-24T21:00-clean.md",
+            outcome: "abandoned",
+            leftState: "ready",
+            iterationsGood: 0,
+            iterationsFailed: 3,
+            tokens: { input: 1_000, output: 500, estimated: true },
+            lastFailure: "tests never passed",
+            detail: "3 consecutive failures on this item",
+          },
+        ],
+      }),
+    );
+    expect(body).toContain("abandoned (nothing preserved — left ready)");
+    expect(body).not.toContain("Preserved worktree:");
+    expect(body).toMatch(/left `\[ \]` ready/);
+  });
 });
 
 describe("writeMorningReport", () => {

@@ -22,10 +22,11 @@ import {
 
 const CFG = { maxConsecutiveFailures: 3, backoffMs: [60_000, 120_000, 240_000] };
 
-function state(failures: number, errors: number, abandoned = 0): LadderState {
+function state(failures: number, errors: number, abandoned = 0, infra = 0): LadderState {
   return {
     consecutiveFailures: failures,
     consecutiveErrors: errors,
+    consecutiveInfraErrors: infra,
     consecutiveAbandonedItems: abandoned,
   };
 }
@@ -105,6 +106,76 @@ describe("classifyIteration", () => {
     expect(classifyIteration({ filesChanged: true })).toBe("hard-error");
   });
 
+  it("infra-error: worker DIED report-less with near-zero output (dc7514 — the hfi103 hang shape)", () => {
+    expect(
+      classifyIteration({
+        error: { message: "worker session exceeded the 60min awake-time iteration ceiling and was killed" },
+        infra: { workerDied: true, outputTokens: 32, sleepGapMs: 0 },
+        filesChanged: false,
+      }),
+    ).toBe("infra-error");
+    // Spawn failure: nothing captured at all.
+    expect(
+      classifyIteration({
+        error: { message: "spawn claude ENOENT" },
+        infra: { workerDied: true, outputTokens: 0, sleepGapMs: 0 },
+        filesChanged: false,
+      }),
+    ).toBe("infra-error");
+  });
+
+  it("infra-error: a post-wake timeout kill is excused even with substantial output (dc7514 AC5)", () => {
+    expect(
+      classifyIteration({
+        error: { message: "killed after ceiling" },
+        infra: { workerDied: true, outputTokens: 50_000, sleepGapMs: 3_600_000 },
+        filesChanged: false,
+      }),
+    ).toBe("infra-error");
+  });
+
+  it("a real timeout — worker died AFTER substantial awake output — stays hard-error", () => {
+    expect(
+      classifyIteration({
+        error: { message: "killed after ceiling" },
+        infra: { workerDied: true, outputTokens: 250_000, sleepGapMs: 0 },
+        filesChanged: false,
+      }),
+    ).toBe("hard-error");
+  });
+
+  it("a dead worker that LEFT FILE CHANGES demonstrably ran — hard-error even with near-zero stdout (EC-HIGH-1)", () => {
+    // `claude -p` prints only the final response, so a killed session's
+    // stdout is near-empty regardless of how much work happened — tracked
+    // file changes are the production discriminator.
+    expect(
+      classifyIteration({
+        error: { message: "killed after ceiling" },
+        infra: { workerDied: true, outputTokens: 32, sleepGapMs: 0 },
+        filesChanged: true,
+      }),
+    ).toBe("hard-error");
+  });
+
+  it("an unusable report (worker ran to exit) is NEVER infra — no infra signal is passed", () => {
+    expect(
+      classifyIteration({
+        error: { message: "worker report unparseable after retry" },
+        filesChanged: false,
+      }),
+    ).toBe("hard-error");
+  });
+
+  it("permanent-error wins precedence over infra-error", () => {
+    expect(
+      classifyIteration({
+        error: { message: "credit balance is too low" },
+        infra: { workerDied: true, outputTokens: 0, sleepGapMs: 0 },
+        filesChanged: false,
+      }),
+    ).toBe("permanent-error");
+  });
+
   it("marker list is non-trivial and case-insensitive", () => {
     expect(PERMANENT_ERROR_MARKERS.length).toBeGreaterThanOrEqual(5);
     expect(isPermanentErrorMessage("CREDIT BALANCE IS TOO LOW")).toBe(true);
@@ -164,6 +235,18 @@ describe("nextLadderState", () => {
   it("a completed item resets the abandoned streak", () => {
     expect(afterItemCompleted(state(1, 1, 2))).toEqual(state(0, 0, 0));
   });
+
+  it("infra-error bumps ONLY the infra streak — the item's failure budget is untouched (dc7514)", () => {
+    expect(nextLadderState(state(2, 1, 1, 0), "infra-error")).toEqual(state(2, 1, 1, 1));
+    expect(nextLadderState(state(0, 0, 0, 2), "infra-error")).toEqual(state(0, 0, 0, 3));
+  });
+
+  it("any class where the worker demonstrably RAN resets the infra streak", () => {
+    expect(nextLadderState(state(0, 0, 0, 2), "success").consecutiveInfraErrors).toBe(0);
+    expect(nextLadderState(state(0, 0, 0, 2), "reported-failure").consecutiveInfraErrors).toBe(0);
+    expect(nextLadderState(state(0, 0, 0, 2), "hard-error").consecutiveInfraErrors).toBe(0);
+    expect(nextLadderState(state(0, 0, 0, 2), "commit-failure").consecutiveInfraErrors).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -176,6 +259,7 @@ describe("ladderDecision — truth table", () => {
     "reported-failure",
     "no-op",
     "hard-error",
+    "infra-error",
     "permanent-error",
     "commit-failure",
   ];
@@ -247,12 +331,40 @@ describe("ladderDecision — truth table", () => {
     expect(d).toEqual({ kind: "backoff", ms: 60_000, index: 0 });
   });
 
+  it("infra-error backs off below the cap, indexed by the infra streak (dc7514)", () => {
+    expect(ladderDecision("infra-error", state(0, 0, 0, 1), CFG)).toEqual({
+      kind: "backoff",
+      ms: 60_000,
+      index: 0,
+    });
+    expect(ladderDecision("infra-error", state(0, 0, 0, 2), CFG)).toEqual({
+      kind: "backoff",
+      ms: 120_000,
+      index: 1,
+    });
+  });
+
+  it("3 consecutive infra-errors abort the RUN as environment failure — never abandon-item (dc7514)", () => {
+    const d = ladderDecision("infra-error", state(0, 0, 0, 3), CFG);
+    expect(d.kind).toBe("abort-run-environment");
+    if (d.kind === "abort-run-environment") expect(d.reason).toMatch(/environment failure/);
+    // Even with the failure counter maxed by earlier REAL failures, an infra
+    // iteration below the infra cap still backs off — it never charges the
+    // item (the abandon-item rung is unreachable from this class).
+    expect(ladderDecision("infra-error", state(3, 0, 0, 1), CFG).kind).toBe("backoff");
+  });
+
   it("every class yields exactly one decision kind (exhaustiveness)", () => {
     for (const cls of CLASSES) {
-      const d = ladderDecision(cls, state(1, 1), CFG);
-      expect(["continue", "backoff", "repair-iteration", "abandon-item", "abort-loop"]).toContain(
-        d.kind,
-      );
+      const d = ladderDecision(cls, state(1, 1, 0, 1), CFG);
+      expect([
+        "continue",
+        "backoff",
+        "repair-iteration",
+        "abandon-item",
+        "abort-loop",
+        "abort-run-environment",
+      ]).toContain(d.kind);
     }
   });
 });
