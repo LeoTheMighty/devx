@@ -67,7 +67,25 @@ export const realEngineFs: EngineFs = {
 /** Kebab-case, ≤50 chars — the spec-filename slug convention (CLAUDE.md). */
 export const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-const TEMPLATES_DIR = join("_devx", "templates", "engine");
+/**
+ * Derive the repo-relative workstream dir from a plan-spec FILENAME
+ * (shape: `plan-<hash>-<YYYY-MM-DDTHH:MM>-<slug>.md`), or null when the
+ * name doesn't match. Single-sourced (hfi103) — resolveWorkstream, the
+ * next gatherer, and `devx status` all fall back through this when the
+ * spec has no `workstream:` frontmatter.
+ */
+export function planFilenameWorkstreamRel(
+  name: string,
+  workstreamsRoot: string,
+): string | null {
+  const m = /^plan-[a-z0-9]{3,12}-\d{4}-\d{2}-\d{2}T\d{2}:\d{2}-(.+)\.md$/i.exec(name);
+  return m ? `${workstreamsRoot}/${m[1]}` : null;
+}
+
+/** Repo-relative engine-template dir. Exported for `devx todo sync`
+ *  (hfi103), which instantiates todo.md from the same shipped template
+ *  the scaffold uses. */
+export const TEMPLATES_DIR = join("_devx", "templates", "engine");
 const PLAN_DIR = "plan";
 
 /** Refusal (exit 1): valid request, engine says no. Message is the report. */
@@ -115,7 +133,10 @@ export interface CreateWorkstreamResult {
   noop: boolean;
 }
 
-function titleFromSlug(slug: string): string {
+/** Slug → display title (`harness-fold-in` → `Harness Fold In`). Exported
+ *  for `devx todo sync` (hfi103), which substitutes the same template
+ *  placeholder the scaffold does — single-sourced so they can't drift. */
+export function titleFromSlug(slug: string): string {
   return slug
     .split("-")
     .map((w) => (w.length > 0 ? w[0].toUpperCase() + w.slice(1) : w))
@@ -386,12 +407,12 @@ export function resolveWorkstream(
 
   let workstreamRel = state.workstream;
   if (workstreamRel === null) {
-    // Fallback: derive the slug from the filename tail. Filename shape:
-    // plan-<hash>-<YYYY-MM-DDTHH:MM>-<slug>.md (CLAUDE.md convention).
-    const m = /^plan-[a-z0-9]{3,12}-\d{4}-\d{2}-\d{2}T\d{2}:\d{2}-(.+)\.md$/i.exec(
+    // Fallback: derive the slug from the filename tail (shared helper —
+    // the gatherer and `devx status` use the same derivation).
+    workstreamRel = planFilenameWorkstreamRel(
       basename(specAbs),
+      engine.workstreamsRoot,
     );
-    if (m) workstreamRel = `${engine.workstreamsRoot}/${m[1]}`;
   }
   if (workstreamRel === null) {
     throw new WorkstreamError(

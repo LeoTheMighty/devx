@@ -48,6 +48,7 @@
 import type { SpecStatus, SpecType } from "../backlog/parse.js";
 import type { GateVerdicts } from "../engine/frontmatter.js";
 import type { NextDecision } from "../engine/next.js";
+import type { TodoDrift } from "../engine/todo.js";
 
 // ---------------------------------------------------------------------------
 // Snapshot types (gather.ts materializes these; tests build them directly)
@@ -171,6 +172,22 @@ export interface WorkstreamSignal {
    *  plus indented FAIL fix-path lines. Materialized by gather.ts (which
    *  owns the fs seam for the decisions/ listing) so this table stays pure. */
   gateSummary: string;
+  /** Pre-rendered `focus: <text>` line from the todo focus walk
+   *  (renderFocusLine, hfi103). Null — omitted, never empty — when todo.md
+   *  is absent (FR-1 grandfathering) or no section maps to the stage. */
+  focus: string | null;
+}
+
+/** One advisory todo↔ground-truth contradiction (computeTodoDrift,
+ *  hfi103), stamped with the workstream it belongs to. Snapshot-level —
+ *  NOT per-signal — because executing-stage workstreams never enter
+ *  midPipeline (their stage row is the v1 terminal row 12), yet the
+ *  execute phase is exactly where phase-pointer drift is most likely
+ *  (adversarial-review BH#1). Reported, never blocking, never mutating
+ *  (CAP-2) — same posture as the backlog DriftEntry rows. */
+export interface WorkstreamTodoDrift extends TodoDrift {
+  hash: string;
+  slug: string;
 }
 
 /** A closed workstream whose armed outcome came due (row 5.5, v2o101). */
@@ -218,6 +235,9 @@ export interface RepoSnapshot {
   planReady: PlanItemSignal[];
   /** Blocked rows across DEV/DEBUG/PLAN (for row 11's report). */
   blocked: BlockedItemSignal[];
+  /** Advisory todo-drift rows across every scanned engine workstream
+   *  (hfi103) — including executing-stage ones outside midPipeline. */
+  todoDrift: WorkstreamTodoDrift[];
   drift: DriftEntry[];
   /** Degradations the gatherer hit (gh unavailable, unreadable spec, …). */
   warnings: string[];
@@ -243,6 +263,20 @@ export interface RepoNextDecision {
    * other row — only workstream-stage decisions carry gate state.
    */
   gateSummary: string | null;
+  /**
+   * `focus: <text>` line for the row-9 workstream (hfi103). Null on every
+   * other row, and on row 9 when todo.md is absent (grandfathered) or no
+   * skeleton section maps to the stage — the line is omitted, never empty.
+   */
+  focus: string | null;
+  /**
+   * Advisory todo-drift rows across ALL scanned engine workstreams
+   * (hfi103) — surfaced on EVERY decision, like `drift`, because the
+   * workstream a drift belongs to may not be the one the fired row is
+   * about (an executing workstream never fires row 9 at all). Never
+   * blocking, never mutating (CAP-2).
+   */
+  todoDrift: WorkstreamTodoDrift[];
 }
 
 export interface DecideOpts {
@@ -260,8 +294,8 @@ type RowFn = (
 ) =>
   | (Omit<
       RepoNextDecision,
-      "drift" | "warnings" | "overnightReport" | "gateSummary"
-    > & { gateSummary?: string })
+      "drift" | "warnings" | "overnightReport" | "gateSummary" | "focus" | "todoDrift"
+    > & { gateSummary?: string; focus?: string | null })
   | null;
 
 const row1: RowFn = (s) => {
@@ -424,6 +458,7 @@ const row9: RowFn = (s) => {
     command: ws.decision.command,
     detail: `workstream '${ws.slug}' (${ws.hash}) is mid-pipeline at stage '${ws.stage ?? "?"}' — ${ws.decision.reason}`,
     gateSummary: ws.gateSummary,
+    focus: ws.focus,
   };
 };
 
@@ -510,6 +545,8 @@ export function decideRepoNext(
         warnings: snapshot.warnings,
         overnightReport: snapshot.loop.overnightReport,
         gateSummary: hit.gateSummary ?? null,
+        focus: hit.focus ?? null,
+        todoDrift: snapshot.todoDrift,
       };
     }
   }
@@ -523,6 +560,8 @@ export function decideRepoNext(
     warnings: snapshot.warnings,
     overnightReport: snapshot.loop.overnightReport,
     gateSummary: null,
+    focus: null,
+    todoDrift: snapshot.todoDrift,
   };
 }
 

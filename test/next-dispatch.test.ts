@@ -55,6 +55,7 @@ function emptySnapshot(): RepoSnapshot {
     midPipeline: [],
     planReady: [],
     blocked: [],
+    todoDrift: [],
     drift: [],
     warnings: [],
   };
@@ -137,6 +138,7 @@ function fullSnapshot(): RepoSnapshot {
       },
       verdicts: { prd: null, design: null, plan: null, evals: null },
       gateSummary: "gates: prd — · design — · plan — · evals —",
+      focus: "focus: interview the user",
     },
   ];
   s.planReady = [

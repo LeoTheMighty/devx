@@ -71,6 +71,7 @@ const expectedOrder = [
   "next",
   "pr-body",
   "revise",
+  "todo",
   "workstream",
   "ask",
   "kill",
@@ -94,7 +95,8 @@ const stubAnnotations: ReadonlyArray<{
   { name: "pause", phase: 2, epic: "epic-devx-manage-minimal" },
   { name: "restart", phase: 2, epic: "epic-devx-concierge-skill" },
   { name: "resume", phase: 2, epic: "epic-devx-manage-minimal" },
-  { name: "status", phase: 2, epic: "epic-devx-concierge-skill" },
+  // status left the stub list at hfi103 — it's the real workstream status
+  // renderer now (still phase 2 for help ordering).
   { name: "serve", phase: 4, epic: "epic-devx-serve-web" },
   { name: "tail", phase: 4, epic: "epic-devx-ui-tui" },
   { name: "ui", phase: 4, epic: "epic-devx-ui-tui" },
@@ -217,6 +219,8 @@ describe("cli303 — devx --help command listing", () => {
         revise [options] <hash>      Apply the v2 cascade-reset table for a touched
                                      workstream artifact (prd/expectations → 4 flags;
                                      design → 3; plan → 2) and print the replay path.
+        todo                         Per-workstream todo.md working memory
+                                     (harness-fold-in). Subcommand-driven.
         tour                         Static HTML review tour for a spec's PR
                                      (v2t101). gather → (agent narrates) → build →
                                      publish; prune for retention. See
@@ -232,7 +236,10 @@ describe("cli303 — devx --help command listing", () => {
         pause                        (coming in Phase 2 — epic-devx-manage-minimal)
         restart                      (coming in Phase 2 — epic-devx-concierge-skill)
         resume                       (coming in Phase 2 — epic-devx-manage-minimal)
-        status                       (coming in Phase 2 — epic-devx-concierge-skill)
+        status                       Per-workstream status: stage, gate summary
+                                     (verdicts + FAIL fix paths), and the current
+                                     todo focus for every active workstream.
+                                     Read-only.
         serve                        (coming in Phase 4 — epic-devx-serve-web)
         tail                         (coming in Phase 4 — epic-devx-ui-tui)
         ui                           (coming in Phase 4 — epic-devx-ui-tui)

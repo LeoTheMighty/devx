@@ -38,7 +38,9 @@ import type { Command } from "commander";
 import { attachPhase } from "../lib/help.js";
 import { type EngineContext, loadEngineContext } from "../lib/engine/context.js";
 import { nextForWorkstream } from "../lib/engine/next.js";
-import { renderGateSummary } from "../lib/engine/render.js";
+import { renderFocusLine, renderGateSummary } from "../lib/engine/render.js";
+import { type TodoDrift, computeTodoDrift } from "../lib/engine/todo.js";
+import { loadTodoDoc, todoGroundTruth } from "../lib/engine/todo-truth.js";
 import { formatDate } from "../lib/engine/verdict.js";
 import {
   type EngineFs,
@@ -184,16 +186,28 @@ function runRepoNext(
       warnings: decision.warnings,
       overnight_report: decision.overnightReport,
       gate_summary: decision.gateSummary,
+      focus: decision.focus,
+      todo_drift: decision.todoDrift,
     })}\n`,
   );
   err(`${renderHumanLine(decision)}\n`);
-  // Row 9 carries the workstream's gate-summary block (hfi102) — rendered
-  // indented under the decision line so FAIL is visible at the dispatcher
-  // surface, not just in the JSON.
+  // Row 9 carries the workstream's gate-summary block (hfi102) plus the
+  // focus line (hfi103) — rendered indented under the decision line so
+  // they're visible at the dispatcher surface, not just in the JSON.
+  // Focus is omitted (not empty) when todo.md is absent. Advisory
+  // todo-drift rows render on EVERY decision (they may belong to a
+  // workstream the fired row isn't about — e.g. an executing-stage one);
+  // drift never changes the exit code (CAP-2).
   if (decision.gateSummary !== null) {
     for (const line of decision.gateSummary.split("\n")) {
       err(`  ${line}\n`);
     }
+  }
+  if (decision.focus !== null) {
+    err(`  ${decision.focus}\n`);
+  }
+  for (const d of decision.todoDrift) {
+    err(`  todo-drift (${d.class}) ${d.slug}: ${d.message}\n`);
   }
   return 0;
 }
@@ -259,6 +273,28 @@ function runWorkstreamNext(
     }
   }
 
+  // hfi103: focus line + advisory todo-drift rows, same degradation posture
+  // as the repo-level gatherer — absent todo.md (FR-1 grandfathering) or an
+  // unreadable one reads as silence (focus null, drift empty), never a
+  // crash and never an exit-code change. Load is the only throw surface
+  // (drift's dev-spec probes fail-closed internally), so focus and drift
+  // are always set together — no partial state.
+  let focus: string | null = null;
+  let todoDrift: TodoDrift[] = [];
+  let loaded: ReturnType<typeof loadTodoDoc> = null;
+  try {
+    loaded = loadTodoDoc(fs, ws.workstreamAbs);
+  } catch {
+    // unreadable todo.md — degrade to silence (advisory-only surface)
+  }
+  if (loaded !== null) {
+    focus = renderFocusLine(loaded.doc, ws.state.stage);
+    todoDrift = computeTodoDrift(
+      loaded.doc,
+      todoGroundTruth(fs, ctx.repoRoot, ws.state, loaded.doc),
+    );
+  }
+
   out(
     `${JSON.stringify({
       hash: ws.hash,
@@ -273,6 +309,8 @@ function runWorkstreamNext(
           join(ws.workstreamAbs, "evals", "RED-report.md"),
         ),
       }),
+      focus,
+      todo_drift: todoDrift,
       row: decision.row,
       next: decision.command,
       reason: decision.reason,
