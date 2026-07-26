@@ -3,8 +3,8 @@ hash: eac479
 type: plan
 created: 2026-07-24T09:57:56-06:00
 title: Harness Fold In
-status: in-progress
-stage: executing
+status: done
+stage: done
 entered_at: prd
 gate_status:
   prd_validated: true
@@ -12,8 +12,8 @@ gate_status:
   plan_verified: true
   evals_red: true
 outcome:
-  status: null
-  measure_by: null
+  status: pending
+  measure_by: 2026-08-21
 workstream: _devx/workstreams/harness-fold-in
 ---
 
@@ -28,3 +28,4 @@ Workstream 'Harness Fold In' — PRD stage next. Artifacts live in `_devx/workst
 - 2026-07-24T12:40 — Design stage: `devx gate coverage eac479 --table` (design mode) → PASS (`design_verified` flipped, `stage: plan`). Artifacts: `_devx/workstreams/harness-fold-in/design.md` + `decisions/2026-07-24-design-verify.md` (22/22 covered after one fix round: FR-5 renderFocusLine + devx-next wiring, FR-8 self-trigger clause + bucket destinations). 3 deferred decisions resolved with the user: `gate_verdicts:` uses gate-name keys (prd/design/plan/evals); consumer-repo learn proposals → `docs/updates/<date>-<slug>.md` (shared with locked-machinery guard); `devx status` gets a minimal real implementation (stage + gates + focus). Design-added primitives: `devx todo sync <hash>`, `devx learn-helper slug`.
 - 2026-07-24T14:05 — Plan stage: `devx gate coverage eac479 --table` (plan mode) → PASS on first run (`plan_verified` flipped, `stage: red`). Artifacts: `_devx/workstreams/harness-fold-in/plan.md` (5 phases, user-approved cut: todo core / gate verdicts / todo sync + renderers + status / devx-learn / skill wiring; P2 parallel-safe with P1, P4 parallel-safe with P1–P3) + `checkpoints/plan-coverage-table.json` + `decisions/2026-07-24-plan-verify.md` (7/7 E-ids covered, 0 extras; all 7 eval artifacts are `test/*.test.ts` tests-first paths). Critique step skipped — sizing call: touched surface is the `cli` project only, 1 stack layer < `engine.critique.min_surfaces: 2` at thoroughness send-it.
 - 2026-07-24 — RED stage: retargeted all 7 eval artifacts `test/*.test.ts` → `evals/E-*.ts` via `devx revise eac479 --touched plan.md` (failing vitest suites in the default glob would deadlock CI-green merges across all 5 phase PRs; workstream-evals runner is the codified v2x101 precedent — see `decisions/2026-07-24-red-artifact-retarget.md`); replay `devx gate coverage eac479 --table` (plan mode) → PASS (`plan_verified` re-flipped). `devx gate evals eac479` → PASS on first run, 7/7 right-reason RED (`evals_red` flipped, `stage: executing`). Artifacts: `evals/E-1_todo-scaffold.ts` … `E-7_skill-todo-discipline.ts` + `evals/RED-report.md`. Emitted: dev specs hfi101–hfi105 (one per phase, dependency order) + hfiret retro co-emitted via `devx plan-helper emit-retro-story`; `DEV.md § Cross-cutting plans § Epic — harness-fold-in`; `devx plan-helper validate-emit harness-fold-in` ok; PLAN.md row flipped `[x]`.
+- 2026-07-26T16:05 — Workstream closed by hfiret retro: all 5 phases merged (PRs #80 hfi101, #83 hfi102, #85 hfi103, #81 hfi104, #86 hfi105), `stage: done`; outcome armed via `devx outcome arm eac479 --measure-by 2026-08-21` (G-3's own deadline). Retro artifact: `_devx/workstreams/harness-fold-in/RETRO-2026-07-26.md`; findings in `LEARN.md § epic-harness-fold-in` (E1–E10, incl. one Cross-epic promotion).
