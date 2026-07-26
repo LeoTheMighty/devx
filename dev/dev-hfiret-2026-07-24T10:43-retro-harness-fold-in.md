@@ -5,7 +5,7 @@ created: 2026-07-24T10:43:41-06:00
 title: Retro + LEARN.md updates (interim retro discipline)
 from: plan/plan-eac479-2026-07-24T09:57-harness-fold-in.md
 plan: plan/plan-eac479-2026-07-24T09:57-harness-fold-in.md
-status: in-progress
+status: done
 owner: /devx-2026-07-26T1542-71183
 blocked_by: [hfi101, hfi102, hfi103, hfi104, hfi105]
 branch: feat/dev-hfiret
@@ -39,3 +39,4 @@ Run the native retro stage (`/devx retro` — the `## Stage: Retro` section of `
 - 2026-07-26T16:35-06:00 — phase 5: local CI — cli project: npm test (build + typecheck + vitest 120 files / 2316 passed, 531s) green; corrected the retro's test-count claim to the verified 2,316 (+~185 from ~2,131 baseline); live-repo-reading suites (status-log discipline + prose budget + skills-sync, 28 tests) re-run green over the final file state; workstream-evals project: markdown-only change (RETRO doc) — eval scripts unaffected, not re-run. Lint is the cli301 placeholder; coverage not configured (YOLO informational).
 - 2026-07-26T16:40-06:00 — phase 7: pushed feat/dev-hfiret (e87bbab); PR #87 open (https://github.com/LeoTheMighty/devx/pull/87), body via devx pr-body, no unresolved placeholders.
 - 2026-07-26T16:50-06:00 — phase 7.5: review tour built + published (5 stops, 5 decisions, 1 grep-verified trail: armed outcome → devx next row 5.5) — https://htmlpreview.github.io/?https://raw.githubusercontent.com/LeoTheMighty/devx/devx-tours/tours/hfiret/tour.html; PR body re-rendered with tour link.
+- 2026-07-26T17:00-06:00 — merged via PR #87 (squash → 3b20151); remote CI devx-ci success (run 30222216126); worktree removed, branch deleted, lock released.
