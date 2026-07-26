@@ -28,7 +28,7 @@ planned; this section outranks the paused mobile backlog below.
 - [x] `dev/dev-hfi103-2026-07-24T10:41-todo-sync-renderers-status.md` — Todo sync + focus/drift renderers + real devx status (E-4, E-5). Status: done. (Loop-abandoned 2026-07-25 on 3 hung worker iterations — no work produced; state reset.) Blocked-by: hfi101, hfi102 (both done). PR: https://github.com/LeoTheMighty/devx/pull/85 (merged bf94928)
 - [x] `dev/dev-hfi104-2026-07-24T10:41-devx-learn-skill.md` — /devx-learn skill + slug helper (E-6). Status: done. Parallel-safe with hfi101/hfi102/hfi103 (no shared files). PR: https://github.com/LeoTheMighty/devx/pull/81
 - [x] `dev/dev-hfi105-2026-07-24T10:41-lifecycle-skill-wiring.md` — Lifecycle skill wiring + nudge single-sourcing (E-7). Status: done. Blocked-by: hfi103, hfi104. PR: https://github.com/LeoTheMighty/devx/pull/86 (merged 9070cd3)
-- [ ] `dev/dev-hfiret-2026-07-24T10:43-retro-harness-fold-in.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: hfi101, hfi102, hfi103, hfi104, hfi105.
+- [/] `dev/dev-hfiret-2026-07-24T10:43-retro-harness-fold-in.md` — Retro + LEARN.md updates (interim retro discipline). Status: in-progress. Blocked-by: hfi101, hfi102, hfi103, hfi104, hfi105.
 
 ## Phase 0 — Foundation (plan: plan-a01000)
 

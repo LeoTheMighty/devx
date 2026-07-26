@@ -5,7 +5,8 @@ created: 2026-07-24T10:43:41-06:00
 title: Retro + LEARN.md updates (interim retro discipline)
 from: plan/plan-eac479-2026-07-24T09:57-harness-fold-in.md
 plan: plan/plan-eac479-2026-07-24T09:57-harness-fold-in.md
-status: ready
+status: in-progress
+owner: /devx-2026-07-26T1542-71183
 blocked_by: [hfi101, hfi102, hfi103, hfi104, hfi105]
 branch: feat/dev-hfiret
 ---
@@ -31,3 +32,4 @@ Run the native retro stage (`/devx retro` — the `## Stage: Retro` section of `
 ## Status log
 
 - 2026-07-24T10:43:41-06:00 — created by /devx-plan
+- 2026-07-26T15:42:25-06:00 — claimed by /devx in session /devx-2026-07-26T1542-71183
