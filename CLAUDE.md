@@ -430,3 +430,20 @@ Open human items: INTERVIEW.md Q#9 (full-surface prose budget, 64.2KB vs
 60KB target) + MANUAL.md MV2.1 (S-3 supervised first night of
 `devx loop`). Next work per `devx next`: the mobile companion backlog
 (a10001 Flutter scaffold onward), unchanged and migration-safe.
+
+## Status: workstream harness-fold-in (executed 2026-07-24 → 25, retroed 2026-07-26)
+
+First epic the overnight loop helped implement: hfi101 + hfi104 shipped
+end-to-end by `devx loop` (PRs #80, #81); hfi102 loop-implemented to
+~done, abandoned at iteration budget, revived interactively (#83);
+hfi103 loop-wedged by infra misclassification, shipped interactively
+(#85); hfi105 interactive (#86). ~2,131 → 2,316 tests. Delivers
+per-workstream `todo.md` working memory (`devx todo sync`), gate-verdict
+persistence + `devx next`/`devx status` gate summaries + focus/drift
+rendering, and the `/devx-learn` skill. The epic's own runs forced two
+structural loop fixes (PR #82 merge-tail `phase 4:` line + iteration
+contract; PR #84 infra-error classification + sleep-aware ceiling) and
+one Cross-epic promotion: "attended-era contracts break on first
+unattended contact" (`LEARN.md § Cross-epic patterns`). Retro:
+`_devx/workstreams/harness-fold-in/RETRO-2026-07-26.md`; outcome armed
+to 2026-08-21 (G-3: ≥1 `/devx-learn`-originated improvement merged).
