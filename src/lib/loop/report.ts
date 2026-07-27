@@ -34,8 +34,14 @@ export type ItemOutcome =
   | "claim-failed"; // couldn't claim (lock held / row raced away)
 
 export interface TokenTotals {
+  /** Uncached input tokens (authoritative CLI usage, debug-494590). */
   input: number;
   output: number;
+  /** Cache-creation input tokens — counted by the budget rails. */
+  cacheCreation: number;
+  /** Cache-read input tokens — rendered for visibility but excluded from
+   *  the budget counter (see driver tokensTotal). */
+  cacheRead: number;
   /** True when any contributing number was estimated rather than reported —
    *  rendered with a `~` prefix (v2/04 §5). */
   estimated: boolean;
@@ -100,7 +106,12 @@ export interface RunSummary {
 
 function fmtTokens(t: TokenTotals): string {
   const p = t.estimated ? "~" : "";
-  return `${p}${t.input.toLocaleString("en-US")} in / ${p}${t.output.toLocaleString("en-US")} out`;
+  const n = (v: number): string => v.toLocaleString("en-US");
+  const cache =
+    t.cacheCreation > 0 || t.cacheRead > 0
+      ? ` (cache ${p}${n(t.cacheCreation)} write / ${p}${n(t.cacheRead)} read)`
+      : "";
+  return `${p}${n(t.input)} in / ${p}${n(t.output)} out${cache}`;
 }
 
 function fmtDuration(startIso: string, endIso: string): string {

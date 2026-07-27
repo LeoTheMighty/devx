@@ -436,6 +436,13 @@ loop:
 
 Consumed by `devx loop` (v2l101); see `v2/04-overnight-loop.md` §3.
 
+Token budgets count **new tokens processed** — uncached input + output +
+cache-creation, from the worker session's authoritative stream-json usage
+(debug-494590). Cache reads are recorded and rendered in the morning report
+but excluded from the budget counter (they re-bill the same context every
+turn). Sessions that emit no usage events fall back to a chars/4 estimate,
+flagged with `~` in the report.
+
 ---
 
 ## What `/devx-init` actually asks

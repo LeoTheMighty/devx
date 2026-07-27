@@ -62,8 +62,9 @@ export interface InfraSignal {
   /** The worker call itself rejected (timeout kill / spawn failure) — as
    *  opposed to a session that ran to exit but produced an unusable report. */
   workerDied: boolean;
-  /** Estimated output tokens produced before the death (0 for spawn
-   *  failures — nothing was ever captured). */
+  /** Output tokens produced before the death — real per-message usage when
+   *  the stream emitted any (debug-494590), else a chars/4 estimate; 0 for
+   *  spawn failures where nothing was ever captured. */
   outputTokens: number;
   /** Machine-suspend time detected during the session (worker.ts heartbeat
    *  probe). Any positive value excuses a timeout kill: the ceiling fired
@@ -164,14 +165,15 @@ export function firstPermanentErrorMatchInTail(
  * failure) that either spanned a machine suspend or produced near-zero
  * output AND left no file changes is an environment failure, not
  * attributable to the item — it must not burn the item's failure budget.
- * The filesChanged guard is load-bearing (review EC-HIGH-1): a killed
- * `claude -p` session has near-empty stdout even after an hour of real
- * work (print mode emits only the final response), so the token floor
- * alone cannot distinguish hung-at-startup from worked-then-hung — but a
- * session that demonstrably ran leaves tracked changes in the tree, and
- * THAT death is charged to the item as a hard-error. Permanent-error
- * still wins precedence (both abort the run; credits/auth is the more
- * actionable diagnosis).
+ * The filesChanged guard is load-bearing (review EC-HIGH-1, updated by
+ * debug-494590): with stream-json accounting the kill path carries REAL
+ * per-message output tokens, so a worked-then-hung session usually
+ * exceeds the floor on tokens alone and is correctly charged as a
+ * hard-error; the guard remains for kills that land before any usage
+ * event (hung-at-startup and worked-then-hung both read near-zero there,
+ * but only the latter leaves tracked changes in the tree). Permanent-
+ * error still wins precedence (both abort the run; credits/auth is the
+ * more actionable diagnosis).
  */
 export function classifyIteration(input: ClassifyInput): IterationClass {
   if (input.error) {

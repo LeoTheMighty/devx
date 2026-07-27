@@ -37,7 +37,7 @@ function summary(overrides: Partial<RunSummary> = {}): RunSummary {
         outcome: "merged",
         iterationsGood: 4,
         iterationsFailed: 1,
-        tokens: { input: 120_000, output: 40_000, estimated: true },
+        tokens: { input: 120_000, output: 40_000, cacheCreation: 0, cacheRead: 0, estimated: true },
         prUrl: "https://github.com/x/y/pull/70",
         diff: { filesChanged: 6, linesAdded: 210, linesDeleted: 12 },
         warnings: ["main is ahead of origin — push failed after a loop-owned commit: mock"],
@@ -50,7 +50,7 @@ function summary(overrides: Partial<RunSummary> = {}): RunSummary {
         outcome: "abandoned",
         iterationsGood: 0,
         iterationsFailed: 3,
-        tokens: { input: 50_000, output: 9_000, estimated: true },
+        tokens: { input: 50_000, output: 9_000, cacheCreation: 0, cacheRead: 0, estimated: true },
         worktreePath: ".worktrees/debug-bbb222",
         lastFailure: "test still flakes under --repeat 50",
         detail: "3 consecutive failures on this item",
@@ -63,13 +63,13 @@ function summary(overrides: Partial<RunSummary> = {}): RunSummary {
         outcome: "handed-off",
         iterationsGood: 2,
         iterationsFailed: 0,
-        tokens: { input: 30_000, output: 8_000, estimated: true },
+        tokens: { input: 30_000, output: 8_000, cacheCreation: 0, cacheRead: 0, estimated: true },
         prUrl: "https://github.com/x/y/pull/71",
         detail: "remote CI concluded 'failure' — not merging",
         lastFailure: "ci red on devx-ci.yml",
       },
     ],
-    totals: { input: 200_000, output: 57_000, estimated: true },
+    totals: { input: 200_000, output: 57_000, cacheCreation: 0, cacheRead: 0, estimated: true },
     ...overrides,
   };
 }
@@ -145,10 +145,20 @@ describe("renderMorningReport (v2/04 §5)", () => {
 
   it("non-estimated tokens render without the ~ prefix", () => {
     const exact = renderMorningReport(
-      summary({ totals: { input: 10, output: 5, estimated: false }, items: [] }),
+      summary({ totals: { input: 10, output: 5, cacheCreation: 0, cacheRead: 0, estimated: false }, items: [] }),
     );
     expect(exact).toContain("**Tokens:** 10 in / 5 out");
     expect(exact).toContain("_No items were attempted._");
+  });
+
+  it("cache figures render as a breakdown when present (debug-494590)", () => {
+    const exact = renderMorningReport(
+      summary({
+        totals: { input: 96_000, output: 168, cacheCreation: 2_400_000, cacheRead: 6_800_000, estimated: false },
+        items: [],
+      }),
+    );
+    expect(exact).toContain("**Tokens:** 96,000 in / 168 out (cache 2,400,000 write / 6,800,000 read)");
   });
 
   it("released items say environment failure — item not at fault, left ready (dc7514 AC6)", () => {
@@ -168,7 +178,7 @@ describe("renderMorningReport (v2/04 §5)", () => {
             iterationsGood: 0,
             iterationsFailed: 0,
             iterationsInfra: 3,
-            tokens: { input: 1_500, output: 96, estimated: true },
+            tokens: { input: 1_500, output: 96, cacheCreation: 0, cacheRead: 0, estimated: true },
             detail: "environment failure: 3 consecutive report-less worker deaths",
           },
         ],
@@ -194,7 +204,7 @@ describe("renderMorningReport (v2/04 §5)", () => {
             // no leftState — the rollback was deliberately skipped
             iterationsGood: 0,
             iterationsFailed: 0,
-            tokens: { input: 100, output: 10, estimated: true },
+            tokens: { input: 100, output: 10, cacheCreation: 0, cacheRead: 0, estimated: true },
             detail: "environment failure; claim ownership lost mid-run — spec/backlog left untouched",
           },
         ],
@@ -218,7 +228,7 @@ describe("renderMorningReport (v2/04 §5)", () => {
             leftState: "ready",
             iterationsGood: 0,
             iterationsFailed: 3,
-            tokens: { input: 1_000, output: 500, estimated: true },
+            tokens: { input: 1_000, output: 500, cacheCreation: 0, cacheRead: 0, estimated: true },
             lastFailure: "tests never passed",
             detail: "3 consecutive failures on this item",
           },
