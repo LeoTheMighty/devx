@@ -4,8 +4,8 @@ type: debug
 created: 2026-07-26T15:57:00-06:00
 title: Loop token accounting implausibly low — budget rails cannot trip
 from: dev/dev-hfiret-2026-07-24T10:43-retro-harness-fold-in.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-07-26T2011-86138
 branch: feat/debug-494590
 ---
 
@@ -44,3 +44,4 @@ unattended safety rails that don't measure aren't rails.
 ## Status log
 
 - 2026-07-26T15:57:00-06:00 — filed by hfiret retro (E9, med/code).
+- 2026-07-26T20:11:57-06:00 — claimed by /devx in session /devx-2026-07-26T2011-86138
