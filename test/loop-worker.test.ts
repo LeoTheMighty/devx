@@ -374,14 +374,18 @@ describe("sleep-aware iteration ceiling (dc7514 — suspend time is excused)", (
       spawnFn: (_bin, _args, opts) =>
         spawn(
           process.execPath,
-          ["-e", `setTimeout(() => { process.stdout.write(${JSON.stringify(REPORT)}); }, 600);`],
+          // The write delay MUST exceed probeMs (= ceiling/4 = 2s) so the
+          // child is still alive when the first heartbeat probe fires —
+          // otherwise the probe never observes the jumped clock and
+          // sleepGapMs is 0 (CI failed exactly so when a fast runner exited
+          // the child before a 1250ms first probe). The generous ceiling
+          // covers the converse flake: under full-suite load, startup +
+          // sub-2× probe lag accumulated past a 2s ceiling and killed the
+          // honest child (the MED-8 500ms→5s class).
+          ["-e", `setTimeout(() => { process.stdout.write(${JSON.stringify(REPORT)}); }, 3_000);`],
           opts,
         ),
-      // 5s, not 2s: under full-suite parallel load, child startup + probe
-      // lag below the 2× excuse threshold accumulated past a 2s ceiling
-      // and killed the honest child (same flake class as the MED-8 test's
-      // 500ms→5s bump above).
-      iterationTimeoutMs: 5_000,
+      iterationTimeoutMs: 8_000,
       nowMs: () => Date.now() + offset,
     });
     const r = await worker("p", { cwd: process.cwd() });
