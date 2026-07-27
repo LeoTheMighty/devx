@@ -13,11 +13,18 @@
 // spawned detached (their own process group) exactly so `kill(-pid)` can
 // reap stray grandchildren (dev servers the model forgot to stop).
 //
-// Token accounting (O-6, v2/07-decisions.md): the worker spawn path doesn't
-// expose authoritative usage yet, so tokens are ESTIMATED from transcript
-// length (chars/4) and flagged `estimated: true` — the morning report
-// renders them with a `~` prefix. When the harness exposes usage events,
-// this is the one seam to update.
+// Token accounting (O-6, v2/07-decisions.md — upgraded by debug-494590):
+// workers are spawned with `--output-format stream-json --verbose`, and the
+// stream's `result` event carries the session's AUTHORITATIVE cumulative
+// usage (input / output / cache-creation / cache-read). The old chars/4
+// estimate read only the final text emission — three orders of magnitude
+// under real consumption (a trivial one-turn probe processes ~24k real
+// input tokens), which meant the loop's token budgets could never trip.
+// Per-message usage events (deduped by message id — the CLI repeats one
+// call's usage across its content-block events) provide a real floor for
+// sessions killed before the result event; chars/4 remains only as the
+// last-resort fallback when no stream events were captured at all, still
+// flagged `estimated: true` (rendered with a `~` prefix).
 //
 // Spec: dev/dev-v2l101-2026-07-05T13:06-overnight-loop.md
 
@@ -36,13 +43,24 @@ const DEFAULT_CLAUDE_BIN = "claude";
 const MAX_CAPTURE_BYTES = 8 * 1024 * 1024;
 
 export interface WorkerTokens {
+  /** Uncached input tokens (authoritative) or chars/4 of the prompt (estimated). */
   input: number;
+  /** Output tokens (authoritative) or chars/4 of the captured text (estimated). */
   output: number;
+  /** Cache-creation input tokens. 0 on the chars/4 fallback path. */
+  cacheCreation: number;
+  /** Cache-read input tokens. 0 on the chars/4 fallback path. */
+  cacheRead: number;
+  /** True when any figure is NOT authoritative CLI-reported usage: either
+   *  the chars/4 fallback, or real per-message usage truncated by a kill
+   *  (the in-flight call is unreported). Rendered with a `~` prefix. */
   estimated: boolean;
 }
 
 export interface WorkerRunResult {
-  /** Full captured stdout+stderr text (bounded). */
+  /** Reconstructed session text (bounded): assistant text blocks + stderr +
+   *  any non-stream-event output. NOT the raw JSONL — report extraction and
+   *  permanent-error scanning run on this. */
   rawOutput: string;
   /** Child exit code; null when signal-terminated / grace-killed. */
   exitCode: number | null;
@@ -151,7 +169,10 @@ export function makeClaudeWorker(opts: ClaudeWorkerOpts = {}): WorkerRunFn {
     new Promise<WorkerRunResult>((resolve, reject) => {
       let child: ChildProcess;
       try {
-        child = spawnFn(claudeBin, ["-p", prompt, ...extraArgs], {
+        // stream-json is the token-accounting seam (debug-494590): the
+        // result event carries authoritative cumulative usage. --verbose is
+        // required by the CLI for stream-json in print mode.
+        child = spawnFn(claudeBin, ["-p", prompt, "--output-format", "stream-json", "--verbose", ...extraArgs], {
           cwd: runOpts.cwd,
           // Own process group so the grace-kill can reap the whole tree.
           detached: true,
@@ -162,7 +183,7 @@ export function makeClaudeWorker(opts: ClaudeWorkerOpts = {}): WorkerRunFn {
         return;
       }
 
-      let output = "";
+      let transcript = "";
       let truncated = false;
       let graceKilled = false;
       let timedOut = false;
@@ -170,14 +191,178 @@ export function makeClaudeWorker(opts: ClaudeWorkerOpts = {}): WorkerRunFn {
       let drainTimer: NodeJS.Timeout | null = null;
       let settled = false;
 
-      const capture = (chunk: Buffer | string): void => {
-        if (truncated) return;
-        output += chunk.toString();
-        if (output.length > MAX_CAPTURE_BYTES) {
-          output = output.slice(0, MAX_CAPTURE_BYTES);
+      // ── Stream-json accounting state (debug-494590) ──────────────────────
+      /** Partial stdout line awaiting its newline. */
+      let stdoutBuf = "";
+      /** Authoritative cumulative usage from the result event, when seen. */
+      let finalUsage: StreamUsage | null = null;
+      /** Per-message usage, keyed by message id — the CLI emits one event
+       *  per content block, each repeating the SAME call's usage; summing
+       *  naively double-counts. Kill-path floor when no result event. */
+      const perMessageUsage = new Map<string, StreamUsage>();
+      /** The result event ends the session definitively — grace-kill arms. */
+      let resultSeen = false;
+      /** True once any recognized stream event parsed. In stream mode the
+       *  trailing-report predicate must NOT arm the grace-kill (review MED):
+       *  intermediate assistant text now streams in as it completes, so a
+       *  text block ENDING with an echoed schema-valid report (a pasted test
+       *  fixture — this repo is full of them) followed by a ≥15s tool-only
+       *  phase would read as "reported but won't exit" and SIGKILL an honest
+       *  session; only the result event is definitive here. */
+      let streamEventSeen = false;
+
+      const appendTranscript = (s: string): void => {
+        if (truncated || s === "") return;
+        transcript += s;
+        if (transcript.length > MAX_CAPTURE_BYTES) {
+          transcript = transcript.slice(0, MAX_CAPTURE_BYTES);
           truncated = true;
         }
+      };
+
+      /** Route one complete stdout line: stream events are mined for text +
+       *  usage; anything unrecognized (plain-text CLI fallback, error spew)
+       *  passes through to the transcript verbatim. */
+      const handleLine = (line: string): void => {
+        const trimmed = line.trim();
+        if (trimmed === "") return;
+        let ev: unknown = null;
+        if (trimmed.startsWith("{")) {
+          try {
+            ev = JSON.parse(trimmed);
+          } catch {
+            ev = null;
+          }
+        }
+        if (ev === null || typeof ev !== "object" || Array.isArray(ev)) {
+          appendTranscript(line + "\n");
+          return;
+        }
+        const e = ev as Record<string, unknown>;
+        switch (e.type) {
+          case "assistant": {
+            streamEventSeen = true;
+            const msg = e.message;
+            if (msg && typeof msg === "object") {
+              const m = msg as Record<string, unknown>;
+              const content = Array.isArray(m.content) ? m.content : [];
+              for (const block of content) {
+                if (
+                  block &&
+                  typeof block === "object" &&
+                  (block as Record<string, unknown>).type === "text" &&
+                  typeof (block as Record<string, unknown>).text === "string"
+                ) {
+                  appendTranscript(`${(block as Record<string, unknown>).text as string}\n`);
+                }
+              }
+              const u = usageFrom(m.usage);
+              if (u !== null) {
+                // Id-less fallback keys by the usage VALUES (review LOW): a
+                // per-event counter key would re-count the same call's
+                // repeated usage — the exact double-count the map prevents.
+                const id =
+                  typeof m.id === "string"
+                    ? m.id
+                    : `anon:${u.input}/${u.output}/${u.cacheCreation}/${u.cacheRead}`;
+                perMessageUsage.set(id, u);
+              }
+            }
+            break;
+          }
+          case "result": {
+            streamEventSeen = true;
+            const u = usageFrom(e.usage);
+            if (u !== null) finalUsage = u;
+            // An error result's text is load-bearing (permanent-error
+            // markers); a success result's text duplicates the final
+            // assistant message already in the transcript.
+            if (e.is_error === true) {
+              if (typeof e.result === "string") appendTranscript(`${e.result}\n`);
+              else appendTranscript(`error result (subtype: ${String(e.subtype ?? "unknown")})\n`);
+            }
+            resultSeen = true;
+            break;
+          }
+          // Known non-content stream events: swallowed (tool results and
+          // init/system noise must not pollute report extraction or the
+          // permanent-error tail scan).
+          case "system":
+          case "user":
+          case "stream_event":
+          case "rate_limit_event":
+            streamEventSeen = true;
+            break;
+          default:
+            // A JSON object that is NOT a recognized stream event — e.g. the
+            // bare report object printed by a plain-text CLI. Pass through.
+            appendTranscript(line + "\n");
+        }
+      };
+
+      /** The transcript as report extraction would see it if the pending
+       *  partial line flushed as text — keeps grace-kill arming live for
+       *  trailing content that never got its newline (plain-text fallback). */
+      const effectiveTranscript = (): string =>
+        stdoutBuf === "" ? transcript : transcript + stdoutBuf;
+
+      const captureStdout = (chunk: Buffer | string): void => {
+        stdoutBuf += chunk.toString();
+        let nl: number;
+        // eslint-disable-next-line no-cond-assign
+        while ((nl = stdoutBuf.indexOf("\n")) !== -1) {
+          const line = stdoutBuf.slice(0, nl);
+          stdoutBuf = stdoutBuf.slice(nl + 1);
+          handleLine(line);
+        }
+        // A pathological unterminated line must not grow unbounded. Known
+        // cost (review LOW, accepted): a single JSONL event >8MB loses its
+        // usage (the tail fragment can't parse) — bounded-by-design; the
+        // per-message floor / chars/4 fallback still account the session.
+        if (stdoutBuf.length > MAX_CAPTURE_BYTES) {
+          appendTranscript(stdoutBuf);
+          stdoutBuf = "";
+        }
         maybeArmGraceKill();
+      };
+
+      const captureStderr = (chunk: Buffer | string): void => {
+        appendTranscript(chunk.toString());
+        maybeArmGraceKill();
+      };
+
+      /** Flush the pending partial stdout line (settle-time). */
+      const flushStdoutBuf = (): void => {
+        if (stdoutBuf === "") return;
+        handleLine(stdoutBuf);
+        stdoutBuf = "";
+      };
+
+      /** Best available accounting at this moment: result-event usage
+       *  (authoritative) → per-message floor (real but kill-truncated) →
+       *  chars/4 estimate (no stream events at all). */
+      const currentTokens = (): WorkerTokens => {
+        const floor = (): WorkerTokens | null => {
+          if (perMessageUsage.size === 0) return null;
+          const sum: WorkerTokens = { input: 0, output: 0, cacheCreation: 0, cacheRead: 0, estimated: true };
+          for (const u of perMessageUsage.values()) {
+            sum.input += u.input;
+            sum.output += u.output;
+            sum.cacheCreation += u.cacheCreation;
+            sum.cacheRead += u.cacheRead;
+          }
+          return sum;
+        };
+        if (finalUsage !== null) {
+          // A degenerate all-zero result usage must not override a real
+          // per-message floor (review MED): "authoritative zero" would
+          // silently resurrect the never-trips budget class this fix closes.
+          const zero =
+            finalUsage.input + finalUsage.output + finalUsage.cacheCreation + finalUsage.cacheRead === 0;
+          const f = zero ? floor() : null;
+          return f ?? { ...finalUsage, estimated: false };
+        }
+        return floor() ?? estimateTokens(prompt, effectiveTranscript());
       };
 
       const killTree = (): void => {
@@ -207,12 +392,19 @@ export function makeClaudeWorker(opts: ClaudeWorkerOpts = {}): WorkerRunFn {
       // arrived after arming un-finalizes the report, so the timer disarms
       // (a later trailing report re-arms via capture; the iteration ceiling
       // still bounds a session that never finalizes).
+      // In stream mode the result event is the ONLY arming signal (it is
+      // emitted exactly once, after all content) — the trailing-report
+      // predicate is unsafe there because intermediate assistant text
+      // streams in as it completes (see streamEventSeen). On the plain-text
+      // fallback path the trailing-report predicate still governs.
+      const armed = (): boolean =>
+        resultSeen || (!streamEventSeen && hasFinalReport(effectiveTranscript()));
       const maybeArmGraceKill = (): void => {
         if (graceTimer !== null || settled) return;
-        if (!hasFinalReport(output)) return;
+        if (!armed()) return;
         graceTimer = setTimeout(() => {
           if (settled) return;
-          if (!hasFinalReport(output)) {
+          if (!armed()) {
             // The report is no longer the trailing content — still working.
             graceTimer = null;
             return;
@@ -231,8 +423,13 @@ export function makeClaudeWorker(opts: ClaudeWorkerOpts = {}): WorkerRunFn {
         else runOpts.signal.addEventListener("abort", onAbort, { once: true });
       }
 
-      child.stdout?.on("data", capture);
-      child.stderr?.on("data", capture);
+      // utf8 decoding at the stream layer: a pipe chunk split mid-multibyte
+      // character (em-dashes are 3 bytes) must not inject U+FFFD into the
+      // reconstructed text (review LOW).
+      child.stdout?.setEncoding("utf8");
+      child.stderr?.setEncoding("utf8");
+      child.stdout?.on("data", captureStdout);
+      child.stderr?.on("data", captureStderr);
 
       // Hard per-session ceiling on AWAKE time (dc7514): a worker that hangs
       // BEFORE producing any valid report has no other bound (the grace-kill
@@ -250,8 +447,12 @@ export function makeClaudeWorker(opts: ClaudeWorkerOpts = {}): WorkerRunFn {
       const probeTimer = setInterval(() => {
         // Once killed or settled there is nothing left to measure — without
         // this guard the interval keeps re-firing killTree and inflating
-        // sleepGapMs during the exit-drain window (review LOW).
-        if (settled || timedOut) return;
+        // sleepGapMs during the exit-drain window (review LOW). resultSeen /
+        // graceKilled likewise end the measurement: a session that already
+        // finished its report must not be reclassified as a timeout by a
+        // probe firing inside the grace/drain window at the ceiling
+        // boundary (review LOW — the completed-with-report variant).
+        if (settled || timedOut || graceKilled || resultSeen) return;
         const t = nowMs();
         const sinceLast = t - lastProbeMs;
         lastProbeMs = t;
@@ -277,8 +478,9 @@ export function makeClaudeWorker(opts: ClaudeWorkerOpts = {}): WorkerRunFn {
         if (settled) return;
         settled = true;
         cleanup();
+        flushStdoutBuf();
         if (timedOut) {
-          // Carry the estimated spend on the rejection — the session
+          // Carry the accounted spend on the rejection — the session
           // consumed budget before the kill (review finding MED-8) — and
           // the sleep gap for the driver's infra classification (dc7514).
           const sleptNote =
@@ -288,17 +490,17 @@ export function makeClaudeWorker(opts: ClaudeWorkerOpts = {}): WorkerRunFn {
           reject(
             new WorkerTimeoutError(
               `worker session exceeded the ${Math.round(iterationTimeoutMs / 60000)}min awake-time iteration ceiling and was killed${sleptNote}`,
-              estimateTokens(prompt, output),
+              currentTokens(),
               sleepGapMs,
             ),
           );
           return;
         }
         resolve({
-          rawOutput: output,
+          rawOutput: transcript,
           exitCode,
           graceKilled,
-          tokens: estimateTokens(prompt, output),
+          tokens: currentTokens(),
           sleepGapMs,
         });
       };
@@ -322,11 +524,51 @@ export function makeClaudeWorker(opts: ClaudeWorkerOpts = {}): WorkerRunFn {
     });
 }
 
-/** chars/4 heuristic, flagged estimated (O-6). */
+/** Usage figures mined from one stream-json event's `usage` object. */
+interface StreamUsage {
+  input: number;
+  output: number;
+  cacheCreation: number;
+  cacheRead: number;
+}
+
+function nonNegNum(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0;
+}
+
+/** Parse a stream event's `usage` payload; null when absent/malformed —
+ *  including when NONE of the recognized keys carries a finite number
+ *  (review MED: an empty/renamed-key `usage` coerced to all-zeros would
+ *  become "authoritative zero" and silently re-disable the budget rails,
+ *  the exact failure class debug-494590 closes). */
+function usageFrom(u: unknown): StreamUsage | null {
+  if (!u || typeof u !== "object" || Array.isArray(u)) return null;
+  const o = u as Record<string, unknown>;
+  const keys = [
+    "input_tokens",
+    "output_tokens",
+    "cache_creation_input_tokens",
+    "cache_read_input_tokens",
+  ] as const;
+  if (!keys.some((k) => typeof o[k] === "number" && Number.isFinite(o[k] as number))) {
+    return null;
+  }
+  return {
+    input: nonNegNum(o.input_tokens),
+    output: nonNegNum(o.output_tokens),
+    cacheCreation: nonNegNum(o.cache_creation_input_tokens),
+    cacheRead: nonNegNum(o.cache_read_input_tokens),
+  };
+}
+
+/** chars/4 heuristic, flagged estimated (O-6) — last-resort fallback when
+ *  the session produced no stream-json usage events at all. */
 export function estimateTokens(prompt: string, output: string): WorkerTokens {
   return {
     input: Math.ceil(prompt.length / 4),
     output: Math.ceil(output.length / 4),
+    cacheCreation: 0,
+    cacheRead: 0,
     estimated: true,
   };
 }

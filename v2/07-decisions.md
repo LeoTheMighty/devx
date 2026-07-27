@@ -102,3 +102,11 @@ file; supersessions are appended, never rewritten.
   → morning report renders estimated totals with a `~` prefix). Harness
   usage events remain the upgrade path if/when the spawn path exposes them;
   the flag keeps the two sources distinguishable without a migration.*
+  *Upgraded (2026-07-26, debug-494590): workers spawn with `--output-format
+  stream-json --verbose`; the result event's cumulative `usage` is the
+  authoritative source (chars/4 under-counted by ~3 orders of magnitude —
+  the budget rails could never trip). Budgets count new tokens processed
+  (input + output + cache-creation); cache reads are recorded + rendered
+  but excluded from the counter (INTERVIEW Q#12 tracks the unit question).
+  chars/4 survives only as the flagged-estimated fallback for sessions
+  that emitted no usage events.*

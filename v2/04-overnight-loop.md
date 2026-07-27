@@ -96,7 +96,7 @@ lives in `.devx-cache/loop/<run-id>/` (gitignored), mirroring gnhf's run dir.
 |---|---|---|
 | Agent-reported failure (`success:false`) | rollback; log learnings; **continue immediately** (the loop is healthy — it tried and concluded it couldn't) | consecutive-failures |
 | Hard error (worker ran but produced an unusable result) | rollback; **exponential backoff** 1 → 2 → 4 min | consecutive-failures + consecutive-errors |
-| Infra error (report-less worker DEATH — timeout kill / spawn failure — with ~zero output or a machine-sleep gap; dc7514) | rollback; backoff; **never charged to the item** | consecutive-infra-errors only |
+| Infra error (report-less worker DEATH — timeout kill / spawn failure — with near-zero real output tokens (stream-json usage, debug-494590) and no file changes, or a machine-sleep gap; dc7514) | rollback; backoff; **never charged to the item** | consecutive-infra-errors only |
 | Permanent error (credits exhausted, auth dead) | rollback; **abort the whole loop now**, surface in report — never grind a dead API until dawn | immediate abort |
 | Commit failure | preserve work; next iteration = repair-only | consecutive-failures |
 | No-op iteration | treated as reported failure | consecutive-failures |
@@ -151,7 +151,10 @@ Contents (gnhf's exit-summary card, devx-flavored):
 
 - Items: attempted / merged (PR links) / abandoned (spec + preserved worktree
   path + last failure) / blocked-on-human (INTERVIEW/MANUAL refs).
-- Iterations good/failed per item; tokens in/out (`~` when estimated);
+- Iterations good/failed per item; tokens in/out plus a cache write/read
+  breakdown when present (`~` when estimated — authoritative figures come
+  from the worker's stream-json result event per debug-494590; budgets
+  count new tokens processed: input + output + cache-creation);
   wall-clock; abort reason if any.
 - Per-merged-item: tour link, diff stat, test delta.
 - **Next steps**: exact reproduce/review commands.

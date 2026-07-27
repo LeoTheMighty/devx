@@ -107,7 +107,7 @@ describe("chaos A — orchestrator killed mid-iteration", () => {
           '```json\n{"success":true,"summary":"step 1","key_changes_made":["progress"],"key_learnings":[],"acs_met":false}\n```',
         exitCode: 0,
         graceKilled: false,
-        tokens: { input: 10, output: 5, estimated: true },
+        tokens: { input: 10, output: 5, cacheCreation: 0, cacheRead: 0, estimated: true },
       };
     };
     const r1 = await runLoop({
@@ -212,7 +212,7 @@ describe("chaos B — worker killed mid-iteration", () => {
           '```json\n{"success":true,"summary":"finished cleanly","key_changes_made":["whole.txt"],"key_learnings":[],"acs_met":true}\n```',
         exitCode: 0,
         graceKilled: false,
-        tokens: { input: 10, output: 5, estimated: true },
+        tokens: { input: 10, output: 5, cacheCreation: 0, cacheRead: 0, estimated: true },
       };
     };
     const tail: TailFn = async () => ({ outcome: "merged", prUrl: "https://pr/1", prNumber: 1 });

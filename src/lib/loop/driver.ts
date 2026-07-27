@@ -235,17 +235,25 @@ export function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 function emptyTokens(): TokenTotals {
-  return { input: 0, output: 0, estimated: false };
+  return { input: 0, output: 0, cacheCreation: 0, cacheRead: 0, estimated: false };
 }
 
 function addTokens(into: TokenTotals, t: WorkerTokens): void {
   into.input += t.input;
   into.output += t.output;
+  into.cacheCreation += t.cacheCreation;
+  into.cacheRead += t.cacheRead;
   if (t.estimated) into.estimated = true;
 }
 
+/** The budget counter (debug-494590): NEW tokens processed — uncached input
+ *  + output + cache-creation. Cache READS are excluded: they re-bill the
+ *  same context on every turn (a trivial one-turn session reads ~17k), so
+ *  counting them makes the number turn-count-dominated and would trip the
+ *  2M/item default mid-first-iteration on every honest item. They are still
+ *  accounted and rendered in the morning report. */
 function tokensTotal(t: TokenTotals): number {
-  return t.input + t.output;
+  return t.input + t.output + t.cacheCreation;
 }
 
 // ---------------------------------------------------------------------------

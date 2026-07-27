@@ -159,7 +159,7 @@ function scriptedWorker(steps: Step[]): { worker: WorkerRunFn; prompts: string[]
       rawOutput: raw,
       exitCode: 0,
       graceKilled: false,
-      tokens: { input: 100, output: 50, estimated: true },
+      tokens: { input: 100, output: 50, cacheCreation: 0, cacheRead: 0, estimated: true },
     };
   };
   return { worker, prompts };
@@ -742,6 +742,74 @@ describe("runLoop review-fix scenarios", () => {
     expect(item.detail).toMatch(/per-item token budget exhausted/);
   });
 
+  it("real-scale authoritative figures trip the per-item budget; cache reads are excluded from the counter (debug-494590 AC 4)", async () => {
+    fixture = makeFixture([{ hash: "tok494" }]);
+    // Authoritative per-iteration usage at honest overnight scale: 24k
+    // uncached in + 600k cache-write + 42 out = 624,042 counted tokens
+    // (the 1.7M cache READS are rendered but not counted — else the
+    // default 2M/item would trip mid-first-iteration on every item).
+    // 2M/item ⇒ iteration 4 still runs (3 × 624,042 < 2M) and the trip
+    // lands at the pre-check for iteration 5 (4 × 624,042 = 2,496,168).
+    const merged = {
+      ...MERGED,
+      loop: { ...MERGED.loop, max_iterations_per_item: 8, max_tokens_per_item: 2_000_000, max_total_tokens: 100_000_000 },
+    };
+    let calls = 0;
+    const worker: WorkerRunFn = async (_prompt, opts) => {
+      calls++;
+      writeFileSync(join(opts.cwd, `w${calls}.txt`), "w", "utf8");
+      return {
+        rawOutput: `did work\n\n\`\`\`json\n${JSON.stringify({ success: true, summary: "s", key_changes_made: ["w"], key_learnings: [], acs_met: false })}\n\`\`\`\n`,
+        exitCode: 0,
+        graceKilled: false,
+        tokens: { input: 24_000, output: 42, cacheCreation: 600_000, cacheRead: 1_700_000, estimated: false },
+      };
+    };
+    const r = await runLoop(baseOpts(fixture, { merged, worker, tail: mergedTail().tail }));
+    const item = r.summary!.items[0];
+    expect(item.outcome).toBe("abandoned");
+    expect(item.detail).toMatch(/per-item token budget exhausted/);
+    // Cache reads NOT counted: counting them (2,324,042/iteration) would
+    // have tripped after iteration 1; the old in+out-only counter
+    // (24,042/iteration) would never have tripped inside the 8-iteration
+    // cap. calls=4 is the signature of the corrected counter.
+    expect(calls).toBe(4);
+    // Authoritative accounting rides through untouched — no `~` estimate flag,
+    // cache figures preserved for the morning report.
+    expect(item.tokens.estimated).toBe(false);
+    expect(item.tokens.input).toBe(96_000);
+    expect(item.tokens.cacheCreation).toBe(2_400_000);
+    expect(item.tokens.cacheRead).toBe(6_800_000);
+  });
+
+  it("cache-creation counts toward the TOTAL budget too (debug-494590 AC 4, total rail)", async () => {
+    fixture = makeFixture([{ hash: "tok495" }]);
+    // Same 624,042 counted tokens/iteration; per-item rail parked out of the
+    // way. Total 1.5M ⇒ iteration 3 runs (2 × 624,042 < 1.5M) and the
+    // pre-check for iteration 4 trips (3 × 624,042 = 1,872,126). Were
+    // cacheCreation NOT counted, 24,042/iteration could never reach 1.5M
+    // inside the 8-iteration cap.
+    const merged = {
+      ...MERGED,
+      loop: { ...MERGED.loop, max_iterations_per_item: 8, max_tokens_per_item: 100_000_000, max_total_tokens: 1_500_000 },
+    };
+    let calls = 0;
+    const worker: WorkerRunFn = async (_prompt, opts) => {
+      calls++;
+      writeFileSync(join(opts.cwd, `w${calls}.txt`), "w", "utf8");
+      return {
+        rawOutput: `did work\n\n\`\`\`json\n${JSON.stringify({ success: true, summary: "s", key_changes_made: ["w"], key_learnings: [], acs_met: false })}\n\`\`\`\n`,
+        exitCode: 0,
+        graceKilled: false,
+        tokens: { input: 24_000, output: 42, cacheCreation: 600_000, cacheRead: 1_700_000, estimated: false },
+      };
+    };
+    const r = await runLoop(baseOpts(fixture, { merged, worker, tail: mergedTail().tail }));
+    expect(calls).toBe(3);
+    expect(r.summary!.items[0].outcome).toBe("in-progress-at-exit");
+    expect(r.summary!.items[0].detail).toMatch(/total token budget exhausted/);
+  });
+
   it("--max-tokens (total) stops mid-item as in-progress-at-exit + clamps downward only (AA-F4)", async () => {
     fixture = makeFixture([{ hash: "tok002" }]);
     const { worker } = scriptedWorker([
@@ -1039,6 +1107,8 @@ describe("runLoop review-fix scenarios", () => {
       throw new WorkerTimeoutError("worker session exceeded the 60min awake-time iteration ceiling and was killed", {
         input: 500,
         output: 700,
+        cacheCreation: 0,
+        cacheRead: 0,
         estimated: true,
       });
     };
@@ -1068,7 +1138,7 @@ describe("runLoop review-fix scenarios", () => {
         rawOutput: "some progress but no report",
         exitCode: 0,
         graceKilled: false,
-        tokens: { input: 10, output: 10, estimated: true },
+        tokens: { input: 10, output: 10, cacheCreation: 0, cacheRead: 0, estimated: true },
       };
     };
     const r = await runLoop(
@@ -1210,7 +1280,7 @@ describe("infra-error classification + abandon hygiene (dc7514)", () => {
     const worker: WorkerRunFn = async () => {
       throw new WorkerTimeoutError(
         "worker session exceeded the 60min iteration ceiling and was killed",
-        { input: 500, output: 32, estimated: true },
+        { input: 500, output: 32, cacheCreation: 0, cacheRead: 0, estimated: true },
       );
     };
     const { sleep } = instantSleep();
@@ -1259,6 +1329,8 @@ describe("infra-error classification + abandon hygiene (dc7514)", () => {
       throw new WorkerTimeoutError("worker session exceeded the 60min awake-time iteration ceiling and was killed", {
         input: 100,
         output: 10,
+        cacheCreation: 0,
+        cacheRead: 0,
         estimated: true,
       });
     };
