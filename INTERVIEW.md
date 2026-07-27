@@ -236,6 +236,30 @@ loop can read.
     proven a real overnight night on a personal repo.
   → Answer:
 
+- [ ] **Q#12 — Loop budget unit: which tokens should the rails count?** (from /devx session 2026-07-26, debug-494590)
+  - Context: debug-494590 fixed the loop's token meter — workers now report
+    authoritative cumulative usage (uncached input / output / cache-write /
+    cache-read) from the CLI's stream-json result event, replacing chars/4
+    of the final emission (which under-counted by ~3 orders of magnitude, so
+    the 2M/item + 10M/run rails could never trip). The fix counts
+    input + output + cache-creation ("new tokens processed") against the
+    budgets and excludes cache READS (a trivial one-turn session reads ~17k
+    cached tokens; counting re-reads of the same context every turn would
+    trip 2M/item mid-first-iteration on every honest item). Cache reads are
+    still recorded and rendered in the morning report.
+  - Question: Is "new tokens processed" the right budget unit, and are the
+    2M/item + 10M/run defaults still the intended scale for it?
+  - Blocks: nothing — the corrected meter + counter shipped; this tunes it.
+  - Options: (a) keep new-tokens counter + current defaults, adjust after
+    the next real overnight run's report shows corrected figures, (b) count
+    ALL tokens incl. cache reads and raise defaults ~10×, (c) switch the
+    rails to cost-based budgets (the result event also reports
+    total_cost_usd) and deprecate token units.
+  - Agent recommendation: (a) — one real night of corrected data beats
+    guessing; (c) is the better long-term unit but is a config-schema
+    change, not a debug fix.
+  → Answer:
+
 ---
 
 ## Phase 0 / cli301 prerequisites
