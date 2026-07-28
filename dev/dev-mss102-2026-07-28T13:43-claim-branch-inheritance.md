@@ -3,13 +3,13 @@ hash: mss102
 type: dev
 created: 2026-07-28T13:43:00-06:00
 title: "Claim branch inheritance"
-status: ready
+status: in-progress
 from: plan/plan-e0a67e-2026-07-28T12:15-mid-story-split.md
 plan: _devx/workstreams/mid-story-split
 phase: 2
 blocked_by: [mss101]
 branch: feat/dev-mss102
-owner: null
+owner: /devx-2026-07-28T1453-1244
 ---
 ## Goal
 
@@ -54,6 +54,7 @@ this with zero gather edits.
 
 - 2026-07-28T13:43 — emitted by /devx-plan (RED gate passed; workstream
   mid-story-split, plan phase 2).
+- 2026-07-28T14:53:06-06:00 — claimed by /devx in session /devx-2026-07-28T1453-1244
 
 ## Links
 
