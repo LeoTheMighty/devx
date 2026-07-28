@@ -3,13 +3,13 @@ hash: mss101
 type: dev
 created: 2026-07-28T13:43:00-06:00
 title: "Split primitive (lib + CLI)"
-status: ready
+status: in-progress
 from: plan/plan-e0a67e-2026-07-28T12:15-mid-story-split.md
 plan: _devx/workstreams/mid-story-split
 phase: 1
 blocked_by: []
 branch: feat/dev-mss101
-owner: null
+owner: /devx-2026-07-28T1352-33223
 ---
 ## Goal
 
@@ -74,6 +74,7 @@ settled-blocker allowlists `src/lib/next/gather.ts:254-260`,
 
 - 2026-07-28T13:43 — emitted by /devx-plan (RED gate passed; workstream
   mid-story-split, plan phase 1).
+- 2026-07-28T13:52:42-06:00 — claimed by /devx in session /devx-2026-07-28T1352-33223
 
 ## Links
 
