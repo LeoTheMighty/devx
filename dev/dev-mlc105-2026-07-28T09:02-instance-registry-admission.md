@@ -3,12 +3,12 @@ hash: mlc105
 type: dev
 created: 2026-07-28T09:02:00-06:00
 title: "Loop instance registry + capacity admission + aggregation"
-status: ready
+status: in-progress
 from: plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md
 plan: _devx/workstreams/multi-loop-concurrency
 blocked_by: [mlc104]
 branch: feat/dev-mlc105
-owner: null
+owner: /devx-2026-07-28T1507-6737
 ---
 ## Goal
 
@@ -50,6 +50,7 @@ Design §Architecture 5. Freshness reuses `isFresh` windows
 
 - 2026-07-28T09:02 — emitted by /devx-plan (RED gate passed; workstream
   multi-loop-concurrency, plan phase 5).
+- 2026-07-28T15:07:06-06:00 — claimed by /devx in session /devx-2026-07-28T1507-6737
 
 ## Links
 
