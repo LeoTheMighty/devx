@@ -39,7 +39,7 @@
     - [x] T3.3 claim/driver/gather integration: claim swaps acquire; ownsClaim/release migrate; pick-time live-held masking; 2h live-PID WARN (next drift + run event)
     - [x] T3.4 E-3 eval GREEN; test/spec-lock.test.ts; full suite
     - [x] full suite green (2427) + 3-agent review (16 findings incl. 1 HIGH row-gated reap, all fixed) + PR #94 merged f5fa72f
-  - [ ] Phase 4: Claim contention + lock-aware picking + overlap harness → mlc104
+  - [x] Phase 4: Claim contention + lock-aware picking + overlap harness → mlc104
   - [ ] Phase 5: Instance registry + capacity admission + aggregation → mlc105
   - [ ] Phase 6: Scope model + flags + degenerate-case sweep → mlc106
 - [ ] Stage: Retro
