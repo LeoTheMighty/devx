@@ -260,3 +260,77 @@ describe("writeMorningReport", () => {
     expect(reportsCopyPath(cacheDir, s.runId).endsWith(".md")).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The `split` outcome (mss103)
+// ---------------------------------------------------------------------------
+
+describe("renderMorningReport — split outcome (mss103)", () => {
+  const splitItem = (over: Partial<RunSummary["items"][number]> = {}) => ({
+    hash: "spl111",
+    type: "dev",
+    title: "big thing",
+    specPath: "dev/dev-spl111-2026-07-05T13:00-big.md",
+    outcome: "split" as const,
+    leftState: "ready" as const,
+    iterationsGood: 3,
+    iterationsFailed: 0,
+    tokens: { input: 10, output: 5, cacheCreation: 0, cacheRead: 0, estimated: false },
+    followUpSpecPath: "dev/dev-fol222-2026-07-06T02:00-continue-big-thing.md",
+    detail: "iteration budget exhausted (8 iterations without acs_met)",
+    ...over,
+  });
+
+  it("labels the outcome, renders the follow-up path, and counts it in the header", () => {
+    const body = renderMorningReport(summary({ items: [splitItem()] }));
+    expect(body).toContain(
+      "**split (budget exhausted with real progress — follow-up spec filed)**",
+    );
+    expect(body).toContain("- Follow-up: `dev/dev-fol222-2026-07-06T02:00-continue-big-thing.md`");
+    expect(body).toContain("· 1 split");
+  });
+
+  it("next steps name the claimable follow-up hash as a /devx command", () => {
+    const body = renderMorningReport(summary({ items: [splitItem()] }));
+    expect(body).toContain("split → follow-up ready: `/devx fol222`");
+    expect(body).toContain("the parent is superseded");
+  });
+
+  it("falls back to a literal <hash> placeholder when the follow-up path is unparseable", () => {
+    const body = renderMorningReport(
+      summary({ items: [splitItem({ followUpSpecPath: "not-a-spec-path" })] }),
+    );
+    expect(body).toContain("`/devx <hash>`");
+    expect(body).toContain("- Follow-up: `not-a-spec-path`");
+  });
+
+  it("omits the split count from the header when no item split (no zero-noise)", () => {
+    expect(renderMorningReport(summary())).not.toContain("split");
+  });
+
+  it("a merged item whose split FAILED reads as reduced-scope + blocked, not a clean merge (AA-7)", () => {
+    const body = renderMorningReport(
+      summary({
+        items: [
+          {
+            hash: "red111",
+            type: "dev",
+            title: "reduced thing",
+            specPath: "dev/dev-red111-2026-07-05T13:00-reduced.md",
+            outcome: "merged",
+            leftState: "blocked",
+            iterationsGood: 2,
+            iterationsFailed: 0,
+            tokens: { input: 10, output: 5, cacheCreation: 0, cacheRead: 0, estimated: false },
+            prUrl: "https://github.com/x/y/pull/72",
+          },
+        ],
+      }),
+    );
+    expect(body).toContain("**merged at reduced scope — split FAILED, spec left blocked**");
+    expect(body).toContain("merged at REDUCED SCOPE but its split failed");
+    expect(body).toContain("devx split red111");
+    // The clean-merge next step must NOT also fire for this item.
+    expect(body).not.toContain("verify the merge claim for `red111`");
+  });
+});

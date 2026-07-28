@@ -724,6 +724,13 @@ export interface PerformSplitOpts {
   shape?: SplitShape;
   /** Parent spec type (default "dev"). The follow-up always inherits it. */
   type?: string;
+  /** Parent WIP branch override for the branch-handoff shape — for callers
+   *  that know the claim's branch authoritatively (the loop driver, whose
+   *  claim derived it; loop-claimed specs may lack `branch:` frontmatter
+   *  because claimSpec never writes one). Defaults to the parent spec's
+   *  `branch:` frontmatter. Ignored by merge-first (which derives a fresh
+   *  branch for the follow-up's own hash). */
+  branch?: string;
   /** Test seam — partial fs override (real fs for unspecified keys). */
   fs?: Partial<ClaimFs>;
   /** Test seam — defaults to wall-clock. */
@@ -845,7 +852,11 @@ export function performSplit(
     if (shape === "merge-first") {
       followUpBranch = deriveBranch(opts.config, type, followUpHash);
     } else {
-      const parentBranch = parseFrontmatterBranch(parentContent);
+      const override = opts.branch?.trim();
+      const parentBranch =
+        override !== undefined && override !== ""
+          ? override
+          : parseFrontmatterBranch(parentContent);
       if (parentBranch === null) {
         throw new SplitError(
           "compose",

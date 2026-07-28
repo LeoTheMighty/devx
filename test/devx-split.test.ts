@@ -742,3 +742,56 @@ describe("E-1: split primitive round-trip (mss101)", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// branch-handoff branch override (mss103) — the loop driver's seam.
+// ---------------------------------------------------------------------------
+
+describe("performSplit — branch-handoff `branch` override (mss103)", () => {
+  it("an explicit branch wins over the parent's `branch:` frontmatter", () => {
+    const files = makeFiles();
+    const fs = makeFakeFs(files);
+    const result = performSplit(
+      "abc123",
+      splitOpts({ files, fs }, { shape: "branch-handoff", branch: "feat/dev-from-the-claim" }),
+    );
+    const followUp = files.get(`${REPO}/${result.followUpSpecPath}`)!;
+    expect(followUp).toContain("branch: feat/dev-from-the-claim");
+    expect(followUp).not.toContain("branch: feat/dev-abc123");
+  });
+
+  it("a blank/whitespace override falls back to the parent's frontmatter branch", () => {
+    for (const branch of ["", "   "]) {
+      const files = makeFiles();
+      const fs = makeFakeFs(files);
+      const result = performSplit(
+        "abc123",
+        splitOpts({ files, fs }, { shape: "branch-handoff", branch }),
+      );
+      expect(files.get(`${REPO}/${result.followUpSpecPath}`)!).toContain(
+        "branch: feat/dev-abc123",
+      );
+    }
+  });
+
+  it("the override is ignored by merge-first, which always derives from the follow-up's own hash", () => {
+    const files = makeFiles();
+    const fs = makeFakeFs(files);
+    const result = performSplit(
+      "abc123",
+      splitOpts({ files, fs }, { shape: "merge-first", branch: "feat/dev-should-be-ignored" }),
+    );
+    const followUp = files.get(`${REPO}/${result.followUpSpecPath}`)!;
+    expect(followUp).not.toContain("should-be-ignored");
+    expect(followUp).toContain(`branch: feat/dev-${result.followUpHash}`);
+  });
+
+  it("with no override and no parent `branch:` frontmatter, branch-handoff still refuses", () => {
+    const files = makeFiles();
+    files.set(PARENT_ABS, PARENT_SPEC.replace("branch: feat/dev-abc123\n", ""));
+    const fs = makeFakeFs(files);
+    expect(() =>
+      performSplit("abc123", splitOpts({ files, fs }, { shape: "branch-handoff" })),
+    ).toThrow(/branch-handoff needs the recorded WIP branch/);
+  });
+});
