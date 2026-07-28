@@ -281,18 +281,26 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
    Phase 7 explicitly reads `.github/pull_request_template.md` (or falls back to the built-in canonical template baked into the CLI when the on-disk file is absent — older repos that predate prt101 or haven't run `/devx-init` upgrade since) by invoking the **`devx pr-body`** CLI (prt102). Never re-implement the substitution in the skill body — the CLI is the single source of truth. It substitutes the active mode + spec path + AC checklist (line-anchored to the canonical positions per locked decision #4 in `epic-pr-template.md` — placeholders inside code blocks must NOT substitute). Optional flags fill the free-text sections; omitted ones leave the placeholder visible AND emit `unresolved-placeholder: <name>` to stderr per locked decision #5.
 
    ```
-   mkdir -p .devx-cache   # fresh worktrees don't have it (gitignored; claim doesn't create it) — the stderr redirect below fails the whole command without it
+   # Scratch is SESSION-NAMESPACED (mlc105, race R11): with N loops plus
+   # interactive sessions sharing one repo, a fixed `.devx-cache/pr-body.stderr`
+   # is a file two runs write and read at the same time. The key must be STABLE
+   # across shell invocations (a later step re-derives it to read the file back),
+   # so it is DEVX_SESSION when the harness exports it, else the branch name —
+   # one branch is one item is one worker. Gitignored; reaped after 7 days by the
+   # next `devx loop` start.
+   SCRATCH=".devx-cache/scratch/${DEVX_SESSION:-$(git branch --show-current)}"
+   mkdir -p "$SCRATCH"   # fresh worktrees have no .devx-cache (gitignored; claim doesn't create it) — the stderr redirect below fails the whole command without it
    BODY=$(devx pr-body --spec dev/dev-<hash>-<ts>-<slug>.md \
      --summary "<1–3 bullets on what changed>" \
      --test-plan "<bulleted list of what local CI gates covered + any manual steps>" \
      --notes "<surprises, deviations, follow-ups>" \
-     2> .devx-cache/pr-body.stderr)
+     2> "$SCRATCH/pr-body.stderr")
    gh pr create --base $BASE --head <branch-name> --title "<commit subject>" --body "$BODY"
    ```
 
    - The first non-empty line of the rendered body is the `**Spec:**` line — load-bearing for the mobile companion app's PR card and for reviewers scanning github.com (epic-pr-template.md AC).
    - The `**Mode:**` line carries the active mode (`YOLO` / `BETA` / `PROD` / `LOCKDOWN`), uppercased — reviewers see at a glance which gate auto-merge is applying.
-   - **Unresolved placeholders.** If `.devx-cache/pr-body.stderr` is non-empty after the CLI returns, append a status-log line per name to the spec file: `phase 7: pr body had unresolved placeholder <name>` (locked decision #5 — never silently render an empty section). The PR opens regardless; the audit trail is grep-able post-merge.
+   - **Unresolved placeholders.** If `$SCRATCH/pr-body.stderr` is non-empty after the CLI returns, append a status-log line per name to the spec file: `phase 7: pr body had unresolved placeholder <name>` (locked decision #5 — never silently render an empty section). The PR opens regardless; the audit trail is grep-able post-merge.
    - **Fallback.** When `.github/pull_request_template.md` is absent (older repo predating prt101 or `/devx-init` upgrade not yet run), the CLI falls back to the built-in canonical template — never blocks PR open on a missing file.
 3. Append a status-log line with the PR URL.
 4. **Remote CI: detect, then wait if it exists, otherwise proceed immediately.** The full state machine — workflow detect, `gh run list` probe, headSha verification, in-progress polling — lives in the **`devx devx-helper await-remote-ci`** CLI (dvx105). Skill body never re-implements the dispatch.

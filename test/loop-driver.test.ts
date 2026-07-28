@@ -9,6 +9,7 @@ import { execFileSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -19,7 +20,12 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { defaultSleep, parseUntil, pickNextItem, runLoop } from "../src/lib/loop/driver.js";
-import { readEvents, readLoopState } from "../src/lib/loop/state.js";
+import { readEvents } from "../src/lib/loop/state.js";
+import {
+  instancesDir,
+  listInstances,
+  readInstance,
+} from "../src/lib/loop/instances.js";
 import { WorkerTimeoutError, type WorkerRunFn } from "../src/lib/loop/worker.js";
 import { type HandOffKind, type TailFn } from "../src/lib/loop/tail.js";
 
@@ -190,6 +196,18 @@ afterEach(() => {
   fixture = null;
 });
 
+/** mlc105 retarget: the loop's run state moved from the singleton
+ *  `loop/state.json` to per-run `loop/instances/<run-id>.json`. These two
+ *  helpers express the SAME invariants the old readLoopState assertions
+ *  did — "this run ended in status X" and "nothing was written at all". */
+function instanceStatus(cacheDir: string, runId: string): string | null {
+  return readInstance(cacheDir, runId)?.status ?? null;
+}
+
+function noInstancesWritten(cacheDir: string): boolean {
+  return !existsSync(instancesDir(cacheDir)) || listInstances(cacheDir).length === 0;
+}
+
 function baseOpts(fx: Fixture, extra: Partial<Parameters<typeof runLoop>[0]> = {}) {
   return {
     repoRoot: fx.repoRoot,
@@ -251,7 +269,7 @@ describe("runLoop scenarios", () => {
     expect(r.exitCode).toBe(3);
     expect(r.refusedReason).toMatch(/LOCKDOWN/);
     expect(existsSync(join(fixture.cacheDir, "locks", "manager.lock"))).toBe(false);
-    expect(readLoopState(fixture.cacheDir)).toBeNull();
+    expect(noInstancesWritten(fixture.cacheDir)).toBe(true);
     expect(readFileSync(join(fixture.repoRoot, "DEV.md"), "utf8")).toContain("- [ ] `dev/dev-aaa111");
   });
 
@@ -269,7 +287,7 @@ describe("runLoop scenarios", () => {
     expect(r.plan?.mode).toBe("YOLO");
     expect(r.plan?.budgets.maxItems).toBe(10);
     expect(lines.join("\n")).toContain("would claim, in order:");
-    expect(readLoopState(fixture.cacheDir)).toBeNull();
+    expect(noInstancesWritten(fixture.cacheDir)).toBe(true);
     expect(existsSync(join(fixture.cacheDir, "locks", "manager.lock"))).toBe(false);
     expect(readFileSync(join(fixture.repoRoot, "DEV.md"), "utf8")).toContain("- [ ] `dev/dev-aaa111");
   });
@@ -285,7 +303,7 @@ describe("runLoop scenarios", () => {
       const r = await runLoop(baseOpts(fixture, { flags }));
       expect(r.exitCode).toBe(4);
     }
-    expect(readLoopState(fixture.cacheDir)).toBeNull();
+    expect(noInstancesWritten(fixture.cacheDir)).toBe(true);
   });
 
   it("happy path: success + acs_met → push → tail(merged) → full reconcile", async () => {
@@ -340,10 +358,14 @@ describe("runLoop scenarios", () => {
     expect(existsSync(join(fixture.repoRoot, ".worktrees", "dev-aaa111"))).toBe(false);
     expect(existsSync(join(fixture.cacheDir, "locks", "manager.lock"))).toBe(false);
 
-    // Report written to both locations; state.json stopped.
+    // Report written to both locations; the run's instance is stopped and
+    // its per-run lock is gone (the capacity slot is free immediately).
     expect(r.reportPath).not.toBeNull();
     expect(readFileSync(r.reportPath!, "utf8")).toContain("1 merged");
-    expect(readLoopState(fixture.cacheDir)?.status).toBe("stopped");
+    expect(instanceStatus(fixture.cacheDir, r.summary!.runId)).toBe("stopped");
+    expect(
+      existsSync(join(fixture.cacheDir, "locks", `loop-${r.summary!.runId}.lock`)),
+    ).toBe(false);
 
     // JSONL log has the lifecycle spine.
     const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
@@ -445,7 +467,7 @@ describe("runLoop scenarios", () => {
     expect(slept).toContain(1); // backoff_ms[0] from MERGED.loop
     // Only the first item was touched; the loop never claimed ddd444.
     expect(r.summary?.items.map((i) => i.hash)).toEqual(["ccc333"]);
-    expect(readLoopState(fixture.cacheDir)?.status).toBe("aborted");
+    expect(instanceStatus(fixture.cacheDir, r.summary!.runId)).toBe("aborted");
     // Report still written (ALWAYS-on-exit).
     expect(readFileSync(r.reportPath!, "utf8")).toContain("ABORTED");
     // The item's claim + worktree are preserved for the morning.
@@ -617,17 +639,59 @@ describe("runLoop scenarios", () => {
     expect(readFileSync(r.reportPath!, "utf8")).toContain("NOT merged");
   });
 
-  it("lock held → exit 1 (a manager/loop is already running)", async () => {
+  // mlc105 inverted this test. It used to assert that a held `manager.lock`
+  // refused the loop — the singleton posture race R6 is about. The loop no
+  // longer takes that lock at all (it is the manage DAEMON's singleton now),
+  // so the invariant worth pinning is the OPPOSITE one, plus the admission
+  // gate that replaced it.
+  it("a held manager.lock does NOT refuse a loop any more (mlc105)", async () => {
     fixture = makeFixture([{ hash: "mmm333" }]);
     const { acquireManagerLock } = await import("../src/lib/manage/lock.js");
     const held = acquireManagerLock(fixture.cacheDir);
     try {
-      const r = await runLoop(baseOpts(fixture));
-      expect(r.exitCode).toBe(1);
-      expect(r.refusedReason).toMatch(/manager lock already held/);
+      // --only debug ⇒ nothing to pick, so the run reaches its stop reason
+      // without spawning a worker; all we're proving is that it STARTED.
+      const r = await runLoop(baseOpts(fixture, { flags: { only: "debug" } }));
+      expect(r.exitCode).toBe(0);
+      expect(r.summary?.stopReason).toMatch(/no eligible backlog items/);
+      expect(instanceStatus(fixture.cacheDir, r.summary!.runId)).toBe("stopped");
     } finally {
       held.release();
     }
+  });
+
+  it("admission refuses past capacity.max_concurrent → exit 1 naming knob, count, run-ids", async () => {
+    fixture = makeFixture([{ hash: "mmm444" }]);
+    // One live peer + a cap of 1 ⇒ this run must not start. The peer's pid
+    // is ours, so it classifies live without any probe stubbing.
+    mkdirSync(instancesDir(fixture.cacheDir), { recursive: true });
+    writeFileSync(
+      join(instancesDir(fixture.cacheDir), "loop-peer.json"),
+      JSON.stringify({
+        schema: 1,
+        run_id: "loop-peer",
+        pid: process.pid,
+        pid_started_at: null,
+        started_at: new Date().toISOString(),
+        scope: null,
+        status: "running",
+        current_item: null,
+        iteration: 0,
+        ts: new Date().toISOString(),
+      }),
+      "utf8",
+    );
+    const r = await runLoop(
+      baseOpts(fixture, { merged: { ...MERGED, capacity: { max_concurrent: 1 } } }),
+    );
+    expect(r.exitCode).toBe(1);
+    expect(r.refusedReason).toMatch(/capacity\.max_concurrent is 1/);
+    expect(r.refusedReason).toMatch(/loop-peer/);
+    // Refused ⇒ nothing of ours was registered and the item is untouched.
+    expect(listInstances(fixture.cacheDir).map((i) => i.run_id)).toEqual(["loop-peer"]);
+    expect(readFileSync(join(fixture.repoRoot, "DEV.md"), "utf8")).toContain(
+      "- [ ] `dev/dev-mmm444",
+    );
   });
 
   it("abort signal stops cleanly: report written, lock released, state stopped", async () => {
@@ -648,7 +712,7 @@ describe("runLoop scenarios", () => {
     expect(r.exitCode).toBe(0);
     expect(r.summary?.stopReason).toMatch(/signal/);
     expect(r.reportPath).not.toBeNull();
-    expect(readLoopState(fixture.cacheDir)?.status).toBe("stopped");
+    expect(instanceStatus(fixture.cacheDir, r.summary!.runId)).toBe("stopped");
     expect(existsSync(join(fixture.cacheDir, "locks", "manager.lock"))).toBe(false);
   });
 });
