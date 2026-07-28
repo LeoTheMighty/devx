@@ -17,7 +17,7 @@ Each maps to a phase in [`ROADMAP.md`](./docs/ROADMAP.md). Pick one off the top 
 ## v2 — Native engine migration (2026-07-05)
 
 - [x] `v2/` — BMAD → native engine, review tours, universal dispatcher, overnight loop. Status: done (closed 2026-07-05, PRs #59–#68 in one day; retro: `_devx/retros/v2-migration-2026-07-05.md`; outcome scored: v2x101 keep 3/3). Source of truth: `v2/06-phases.md`; decisions: `v2/07-decisions.md`.
-- [-] `plan/plan-d01000-2026-04-26T19:30-parallelism.md` — Phase 3 — Parallelism & coordination (locks, intents, capacity, permissions). Status: deferred. Blocked-by: c4f1a2. Note 2026-07-14: capacity-management slice re-homed to c8e2d4 (vision-gap Track 2).
+- [-] `plan/plan-d01000-2026-04-26T19:30-parallelism.md` — Phase 3 — Parallelism & coordination (locks, intents, capacity, permissions). Status: deferred. Blocked-by: c4f1a2. Note 2026-07-14: capacity-management slice re-homed to c8e2d4 (vision-gap Track 2). Note 2026-07-28: locks/coordination slice re-homed to 20eb6f (multi-loop concurrency).
 - [-] `plan/plan-e01000-2026-04-26T19:30-observability-surfaces.md` — Phase 4 — Observability surfaces (TUI, web dashboard, mobile relay). Status: deferred. Blocked-by: c4f1a2. Parallel-with: f01000. Note 2026-07-14: interim notification slice re-homed to e5a9c0 (vision-gap Track 3).
 - [-] `plan/plan-f01000-2026-04-26T19:30-test-debug-learn.md` — Phase 5 — Test, debug, retro, learn. Status: deferred. Blocked-by: c4f1a2.
 - [-] `plan/plan-a02000-2026-04-26T19:30-focus-group.md` — Phase 6 — Focus group (persistent persona panel). Status: deferred. Blocked-by: f01000.
@@ -36,6 +36,14 @@ Ship order = list order; mobile backlog (below) pauses until f1d6b2 ships.
 - [/] `plan/plan-c8e2d4-2026-07-14T10:41-usage-window-governor.md` — Track 2 — Usage-window governor (`devx loop` pauses on subscription limit, resumes on reset; re-homes d01000's capacity slice + OPEN_QUESTIONS §3). Status: ready. Blocked-by: —.
 - [ ] `plan/plan-e5a9c0-2026-07-14T10:42-blocker-push-interim.md` — Track 3 — Interim blocker push (GitHub blockers-issue @mention; retired by mobile relay). Status: ready. Blocked-by: —.
 - [-] `plan/plan-f1d6b2-2026-07-14T10:43-fleet-layer.md` — Track 4 — Fleet layer (`~/.devx/projects.yaml`, `devx fleet loop`, aggregated report, `/devx-fleet`; supersedes ROADMAP:16 scope per INTERVIEW Q#10). Status: blocked. Blocked-by: b3f7a1, c8e2d4.
+
+## Multi-loop concurrency (2026-07-28)
+
+Owner-requested 2026-07-28: N concurrent scoped `devx loop`s on one repo,
+error-proof even under overlapping scopes. Full race inventory (R1–R12) +
+seeded two-layer design live in the plan spec.
+
+- [ ] `plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md` — Multi-loop concurrency: repo-global root/locking, backlog mutation lock, claim-contention handling, spec-lock lifecycle, loop instance registry + capacity admission, epic/workstream/`--items`/`--focus` scoping. Status: ready. Blocked-by: —. Related: db36af (doctor), lpf101 (preflight), c8e2d4 (usage governor), f1d6b2 (fleet — orthogonal, composes on top).
 
 ## Cross-cutting plans
 

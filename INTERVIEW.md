@@ -260,6 +260,28 @@ loop can read.
     change, not a debug fix.
   → Answer:
 
+- [ ] **Q#13 — Multi-loop concurrency v1 knobs (workstream 20eb6f).** (from /devx-plan session 2026-07-28)
+  - Context: plan-20eb6f makes N concurrent scoped `devx loop`s safe on one
+    repo (race inventory R1–R12 in the plan spec). Three tuning decisions
+    are user-owned; the PRD proceeds on the recommendations below and none
+    of them block the pipeline — answers retune config/flags before the
+    first real multi-loop night.
+  - Question (13a): Loop admission cap — honor the long-declared
+    `capacity.max_concurrent: 5` as the default, or start lower while trust
+    builds? Options: (a) 5, (b) 2, (c) 3.
+  - Question (13b): What should `--epic` accept? Options: (a) the DEV.md
+    heading slug, (b) the plan hash, (c) both, normalized to the same
+    partition.
+  - Question (13c): Cross-loop shared token budget (today budgets are
+    per-process, so N loops spend N× the configured totals). Options:
+    (a) explicit follow-up workstream, out of v1; (b) fold a shared-budget
+    file into the instance registry story now.
+  - Blocks: nothing — recommendations are applied as defaults.
+  - Agent recommendation: 13a (a) — the knob was declared at 5 and is
+    admission-checked, not a free-for-all; 13b (c) — both, normalized;
+    13c (a) — follow-up; per-process budgets are safe, just uncoordinated.
+  → Answer:
+
 ---
 
 ## Phase 0 / cli301 prerequisites
