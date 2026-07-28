@@ -53,6 +53,7 @@ import {
   type DeriveBranchConfig,
   deriveBranch,
 } from "../plan/derive-branch.js";
+import { REV_PARSE_ARGS, interpretRevParse } from "../repo-root.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -451,6 +452,34 @@ export async function claimSpec(
   }
   const backlogName = BACKLOG_BY_TYPE[type];
   const isoTimestamp = formatIsoLocal(now);
+
+  // Canonical-root assertion (mlc101, defense in depth for R1): a claim
+  // driven with a linked worktree as repoRoot would flip DEV.md and take
+  // locks in a forked `.devx-cache` universe. Probe via the exec seam so
+  // fake-exec tests decide their own answer; anything indeterminate
+  // (non-zero exit, unexpected shape — e.g. a non-git fixture path) skips
+  // the check rather than blocking legitimate claims.
+  const rev = exec("git", [...REV_PARSE_ARGS], { cwd: opts.repoRoot });
+  if (rev.exitCode === 0) {
+    const revLines = rev.stdout
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l !== "");
+    if (revLines.length === 3) {
+      const rootInfo = interpretRevParse(
+        revLines[0],
+        revLines[1],
+        revLines[2],
+        opts.repoRoot,
+      );
+      if (rootInfo.isLinkedWorktree) {
+        throw new ClaimError(
+          "validate",
+          `repoRoot ${opts.repoRoot} is a linked worktree — claims must run against the canonical main checkout at ${rootInfo.root}`,
+        );
+      }
+    }
+  }
 
   const branch = deriveBranch(opts.config, type, hash);
   // Push target vs worktree base — the two are the same on single-branch

@@ -586,7 +586,10 @@ describe("claimSpec — lock semantics", () => {
     const { fs, state, baseOpts } = makeFixture();
     let claim2Result: Error | null = null;
     const exec1 = (cmd: string, args: string[]): ExecResult => {
-      if (cmd === "git" && args[0] === "rev-parse") {
+      // Trigger on `rev-parse HEAD` specifically — the mlc101 canonical-
+      // root probe (`rev-parse --git-common-dir`) runs pre-lock and must
+      // not launch the interloper before claim #1 holds the lock.
+      if (cmd === "git" && args[0] === "rev-parse" && args[1] === "HEAD") {
         // Simulate "claim #2 starts mid-flight" by attempting it right
         // after push completes but before worktree-add. The lock is
         // already held by claim #1 at this point, so #2 must reject
@@ -1069,5 +1072,81 @@ describe("claimSpec — debug type (v2d101)", () => {
     await expect(
       claimSpec("zzz999", { ...baseOpts, fs, exec, type: "debug" }),
     ).rejects.toThrow(/debug\/debug-zzz999-\*\.md/);
+  });
+});
+
+describe("claimSpec — canonical-root assertion (mlc101 AC 4)", () => {
+  function revParseExec(gitDir: string, commonDir: string, toplevel: string) {
+    const calls: ExecCall[] = [];
+    const exec = (
+      cmd: string,
+      args: string[],
+    ): ExecResult => {
+      calls.push({ cmd, args });
+      if (cmd === "git" && args[0] === "rev-parse" && args[1] === "--git-dir") {
+        return {
+          stdout: `${gitDir}\n${commonDir}\n${toplevel}\n`,
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+      if (cmd === "git" && args[0] === "rev-parse" && args[1] === "HEAD") {
+        return { stdout: "abc123def456\n", stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "", exitCode: 0 };
+    };
+    return { exec, calls };
+  }
+
+  it("rejects a repoRoot that is a linked worktree, naming the main root, before taking the lock", async () => {
+    const { fs, state, baseOpts } = makeFixture();
+    // git dir is /main/.git/worktrees/x while the common dir is /main/.git
+    // — the passed /repo is a linked worktree of /main.
+    const { exec } = revParseExec("/main/.git/worktrees/x", "/main/.git", REPO);
+    await expect(
+      claimSpec("dvx101", { ...baseOpts, fs, exec }),
+    ).rejects.toMatchObject({ name: "ClaimError", stage: "validate" });
+    await expect(
+      claimSpec("dvx101", { ...baseOpts, fs, exec }),
+    ).rejects.toThrow(/\/main/);
+    // Assertion fired pre-lock: no lock sentinel was created.
+    expect(
+      state.files.has(`${REPO}/.devx-cache/locks/spec-dvx101.lock`),
+    ).toBe(false);
+  });
+
+  it("proceeds when the probe confirms repoRoot IS the main checkout", async () => {
+    const { fs, baseOpts } = makeFixture();
+    const { exec } = revParseExec(`${REPO}/.git`, `${REPO}/.git`, REPO);
+    const result = await claimSpec("dvx101", { ...baseOpts, fs, exec });
+    expect(result.branch).toBe("feat/dev-dvx101");
+  });
+
+  it("proceeds for a submodule main checkout (git dir == common dir under .git/modules)", async () => {
+    const { fs, baseOpts } = makeFixture();
+    const { exec } = revParseExec(
+      "/super/.git/modules/repo",
+      "/super/.git/modules/repo",
+      REPO,
+    );
+    const result = await claimSpec("dvx101", { ...baseOpts, fs, exec });
+    expect(result.branch).toBe("feat/dev-dvx101");
+  });
+
+  it("skips the check when the probe is indeterminate (non-git fixture root)", async () => {
+    const { fs, baseOpts } = makeFixture();
+    const calls: ExecCall[] = [];
+    const exec = (cmd: string, args: string[]): ExecResult => {
+      calls.push({ cmd, args });
+      if (cmd === "git" && args[0] === "rev-parse" && args[1] === "--git-dir") {
+        return { stdout: "", stderr: "fatal: not a git repository", exitCode: 128 };
+      }
+      if (cmd === "git" && args[0] === "rev-parse" && args[1] === "HEAD") {
+        return { stdout: "abc123def456\n", stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "", exitCode: 0 };
+    };
+    const result = await claimSpec("dvx101", { ...baseOpts, fs, exec });
+    expect(result.claimSha).toBe("abc123def456");
   });
 });

@@ -17,7 +17,8 @@
 // loop-breaker so an outer wrapper can pre-claim the job.
 //
 // Exit codes: 0 stopped clean · 1 lock held · 2 aborted (permanent error /
-// 3 abandoned items) · 3 mode-refused (LOCKDOWN, D-6) · 4 bad flags.
+// 3 abandoned items) · 3 mode-refused (LOCKDOWN, D-6) · 4 bad flags or
+// worktree-launch refusal (mlc101 — R1).
 //
 // Spec: dev/dev-v2l101-2026-07-05T13:06-overnight-loop.md
 // Design: v2/04-overnight-loop.md
@@ -29,6 +30,11 @@ import { findProjectConfig } from "../lib/config-io.js";
 import { attachPhase } from "../lib/help.js";
 import { runLoop, type LoopFlags } from "../lib/loop/driver.js";
 import { startSleepInhibit } from "../lib/loop/sleep-inhibit.js";
+import {
+  resolveRepoRoot,
+  tryRealpath,
+  type RepoRootInfo,
+} from "../lib/repo-root.js";
 
 interface LoopCliOpts {
   until?: string;
@@ -36,6 +42,7 @@ interface LoopCliOpts {
   maxTokens?: string;
   only?: string;
   dryRun?: boolean;
+  allowWorktreeRoot?: boolean;
 }
 
 export function parseIntFlag(v: string | undefined): number | undefined {
@@ -54,8 +61,44 @@ export async function runLoopCommand(
   deps: { runLoop?: typeof runLoop } = {},
 ): Promise<number> {
   const runLoopFn = deps.runLoop ?? runLoop;
+
+  // Canonical root (mlc101): a loop launched from inside a linked worktree
+  // would fork the whole `.devx-cache` universe from every peer (R1) —
+  // refuse and name the main checkout. Non-git cwd falls back to the
+  // legacy config-walk resolution (RepoRootError → null).
+  let rootInfo: RepoRootInfo | null;
+  try {
+    rootInfo = resolveRepoRoot();
+  } catch {
+    rootInfo = null;
+  }
+  if (rootInfo?.isLinkedWorktree && opts.allowWorktreeRoot !== true) {
+    process.stderr.write(
+      `devx loop: refusing to start from a linked worktree.\n` +
+        `Run from the main checkout: ${rootInfo.root}\n` +
+        `(--allow-worktree-root overrides — test-only.)\n`,
+    );
+    return 4;
+  }
+  // Root resolution, in precedence order (adversarial-review MED — the
+  // canonical root must not override a legitimately nested project):
+  //   - non-git cwd → legacy config-walk resolution;
+  //   - allowed linked worktree → the worktree is deliberately its own
+  //     universe (test fixtures rely on this);
+  //   - devx.config.yaml below the git toplevel (nested project) → the
+  //     config dir owns DEV.md/.devx-cache; canonicalization only exists
+  //     to kill worktree forks, which the refusal above already did;
+  //   - otherwise → the canonical main root.
   const configPath = findProjectConfig();
-  const repoRoot = configPath !== null ? dirname(configPath) : process.cwd();
+  const configDir = configPath !== null ? dirname(configPath) : null;
+  let repoRoot: string;
+  if (rootInfo === null || rootInfo.isLinkedWorktree) {
+    repoRoot = configDir ?? process.cwd();
+  } else if (configDir !== null && tryRealpath(configDir) !== rootInfo.root) {
+    repoRoot = configDir;
+  } else {
+    repoRoot = rootInfo.root;
+  }
 
   const flags: LoopFlags = {
     ...(opts.until !== undefined ? { until: opts.until } : {}),
@@ -107,6 +150,11 @@ export function register(program: Command): void {
     .option("--max-tokens <n>", "Cap total tokens this run (min with loop.max_total_tokens)")
     .option("--only <type>", "Restrict picks to one spec type (dev | debug)")
     .option("--dry-run", "Print the plan (items, budgets, mode) without claiming or spawning", false)
+    .option(
+      "--allow-worktree-root",
+      "Skip the linked-worktree launch refusal (test-only; forks the .devx-cache universe)",
+      false,
+    )
     .action(async (opts: LoopCliOpts) => {
       const code = await runLoopCommand(opts);
       if (code !== 0) process.exit(code);

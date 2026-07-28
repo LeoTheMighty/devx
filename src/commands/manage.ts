@@ -16,10 +16,17 @@
 
 import type { Command } from "commander";
 
-import { loadMerged } from "../lib/config-io.js";
+import { dirname, join } from "node:path";
+
+import { findProjectConfig, loadMerged } from "../lib/config-io.js";
 import { attachPhase } from "../lib/help.js";
 import { runManagerLoop, runManagerOnce } from "../lib/manage/loop.js";
 import { ManagerLockHeldError, acquireManagerLock } from "../lib/manage/lock.js";
+import {
+  resolveRepoRoot,
+  tryRealpath,
+  type RepoRootInfo,
+} from "../lib/repo-root.js";
 
 const DEFAULT_TICK_INTERVAL_S = 60;
 const DEFAULT_DEV_MODEL = "claude-sonnet-4-6";
@@ -91,13 +98,54 @@ function readBackoffSeconds(): number[] {
 
 interface ManageOpts {
   once?: boolean;
+  allowWorktreeRoot?: boolean;
 }
 
 export async function runManageCommand(opts: ManageOpts): Promise<number> {
+  // Canonical root (mlc101): the manager's lock and state must live in the
+  // MAIN checkout's `.devx-cache` — a manage started inside a linked
+  // worktree would take a private lock in a forked universe (R1) and the
+  // cwd-relative ".devx-cache" default made that silent. Refuse, or pass
+  // the canonical cacheDir down. Non-git cwd keeps the legacy default.
+  let rootInfo: RepoRootInfo | null;
+  try {
+    rootInfo = resolveRepoRoot();
+  } catch {
+    rootInfo = null;
+  }
+  if (rootInfo?.isLinkedWorktree && opts.allowWorktreeRoot !== true) {
+    console.error(
+      `devx manage: refusing to start from a linked worktree. ` +
+        `Run from the main checkout: ${rootInfo.root} ` +
+        `(--allow-worktree-root overrides — test-only.)`,
+    );
+    return 1;
+  }
+  // One universe for the lock AND the tick (adversarial-review HIGH: the
+  // first cut passed the canonical cacheDir only to acquireManagerLock,
+  // so from a main-checkout subdir the lock guarded universe A while
+  // manager state/heartbeat/DEV.md reads used cwd-relative universe B).
+  // Same precedence as loop.ts: legacy for non-git / allowed-worktree
+  // starts, config dir for nested projects, canonical root otherwise.
+  let stateRoot: string | null;
+  if (rootInfo === null || rootInfo.isLinkedWorktree) {
+    stateRoot = null;
+  } else {
+    const configPath = findProjectConfig();
+    const configDir = configPath !== null ? dirname(configPath) : null;
+    stateRoot =
+      configDir !== null && tryRealpath(configDir) !== rootInfo.root
+        ? configDir
+        : rootInfo.root;
+  }
+  const cacheDir =
+    stateRoot !== null ? join(stateRoot, ".devx-cache") : ".devx-cache";
+  const stateCwd = stateRoot ?? process.cwd();
+
   if (opts.once) {
     let handle;
     try {
-      handle = acquireManagerLock();
+      handle = acquireManagerLock(cacheDir);
     } catch (err) {
       if (err instanceof ManagerLockHeldError) {
         // console.error flushes synchronously on process.exit (Node
@@ -110,6 +158,8 @@ export async function runManageCommand(opts: ManageOpts): Promise<number> {
     }
     try {
       await runManagerOnce({
+        cacheDir,
+        cwd: stateCwd,
         model: readDevModel(),
         maxRestarts: readMaxRestarts(),
         backoffSeconds: readBackoffSeconds(),
@@ -123,7 +173,7 @@ export async function runManageCommand(opts: ManageOpts): Promise<number> {
   // Default: loop until SIGTERM/SIGINT.
   let handle;
   try {
-    handle = acquireManagerLock();
+    handle = acquireManagerLock(cacheDir);
   } catch (err) {
     if (err instanceof ManagerLockHeldError) {
       console.error(err.message);
@@ -140,6 +190,8 @@ export async function runManageCommand(opts: ManageOpts): Promise<number> {
   process.on("SIGINT", onSignal);
   try {
     await runManagerLoop({
+      cacheDir,
+      cwd: stateCwd,
       tickIntervalS: readTickIntervalS(),
       signal: ac.signal,
       model: readDevModel(),
@@ -161,6 +213,11 @@ export function register(program: Command): void {
       "Run the /devx-manage scheduler loop (Phase 1 minimal: hard cap N=1; reconcile + spawn wired)",
     )
     .option("--once", "Run a single tick and exit", false)
+    .option(
+      "--allow-worktree-root",
+      "Skip the linked-worktree launch refusal (test-only; forks the .devx-cache universe)",
+      false,
+    )
     .action(async (opts: ManageOpts) => {
       const code = await runManageCommand(opts);
       if (code !== 0) process.exit(code);

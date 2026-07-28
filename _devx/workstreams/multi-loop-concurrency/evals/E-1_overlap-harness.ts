@@ -21,7 +21,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { cliPath, mkRepoFixture, tsxBin } from "./_fixture.js";
+import { cliPath, mkRepoFixture, nodeBin, tsxArgs } from "./_fixture.js";
 
 const failures: string[] = [];
 
@@ -44,7 +44,7 @@ interface RunResult {
 
 function runLoopProcess(): Promise<RunResult> {
   return new Promise((resolve) => {
-    const child = spawn(tsxBin, [cliPath, "loop", "--max-items", "1"], {
+    const child = spawn(nodeBin, [...tsxArgs, cliPath, "loop", "--max-items", "1"], {
       cwd: fx.root,
       env: {
         ...process.env,
