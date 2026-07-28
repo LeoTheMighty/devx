@@ -8,10 +8,21 @@
 // Surface:
 //
 //   probeRemoteCi(branch, opts)
-//     Single-probe — runs `gh run list --branch <branch> --limit 1` once
+//     Single-probe — runs `gh run list --branch <branch> --limit <N>` once
 //     and returns one of five states (no-workflow / empty / sha-mismatch /
 //     in-progress / completed). The CLI `--once` mode and the
 //     skill-body's ScheduleWakeup-driven outer loop both consume this.
+//
+//     arci1: the probe folds EVERY run at the branch's headSha, not just
+//     the newest one. A repo with two workflows on the same PR (this repo
+//     runs `CI & Deploy` and `devx-ci`) used to report the newest run's
+//     conclusion as the whole verdict, so a green `CI & Deploy` masked a
+//     red `devx-ci` and Phase 7 concluded "CI green, proceed to merge"
+//     while `devx merge-gate` — which aggregates every check — correctly
+//     said `merge:false`. Fold order (failure-safe, AC #4): any run still
+//     running wins → `in-progress`; otherwise any non-success conclusion
+//     wins → `completed` with that conclusion + that run's workflowName;
+//     all-success → `completed`/`success`.
 //
 //   awaitRemoteCi(branch, opts)
 //     Multi-probe driver — composes probeRemoteCi with a `sleep` seam.
@@ -46,6 +57,20 @@ import { join } from "node:path";
 // Public types
 // ---------------------------------------------------------------------------
 
+/**
+ * One workflow run at the probed commit. Carried on `in-progress` and
+ * `completed` states so a consumer can name every workflow without a second
+ * `gh` call (arci1 AC #2) — the Phase 7 status-log line is written straight
+ * from this array.
+ */
+export interface RunSummary {
+  runId: number;
+  workflowName: string;
+  status: string;
+  conclusion: string | null;
+  url: string;
+}
+
 export type ProbeState =
   | { state: "no-workflow" }
   | { state: "empty" }
@@ -56,6 +81,8 @@ export type ProbeState =
       status: string;
       url: string;
       workflowName: string;
+      /** Every run at `headSha`, newest-first (gh's order). */
+      runs: RunSummary[];
     }
   | {
       state: "completed";
@@ -63,6 +90,8 @@ export type ProbeState =
       runId: number;
       url: string;
       workflowName: string;
+      /** Every run at `headSha`, newest-first (gh's order). */
+      runs: RunSummary[];
     };
 
 export type AwaitState =
@@ -74,6 +103,8 @@ export type AwaitState =
       runId: number;
       url: string;
       workflowName: string;
+      /** Every run at `headSha`, newest-first (gh's order). */
+      runs: RunSummary[];
     };
 
 export interface AwaitRemoteCiFs {
@@ -107,6 +138,15 @@ export interface AwaitRemoteCiOpts {
    * `git rev-parse HEAD` in `repoRoot`. Lets tests skip the git invocation.
    */
   headSha?: string;
+  /**
+   * How many runs `gh run list` returns per probe. Must cover every
+   * workflow that fires on one commit, with headroom for pushes that
+   * landed after the pinned sha (their runs sort ahead of ours). Default
+   * 30 — a repo would need 30 runs newer than the probed commit on the
+   * same branch before the fold loses sight of it, and at that point the
+   * probe degrades to `sha-mismatch`, which is the safe direction.
+   */
+  runLimit?: number;
   /**
    * Multi-probe driver only: ms to sleep when `gh run list` returned
    * nothing on the first probe (the empty-but-workflows-exist case).
@@ -153,6 +193,7 @@ const realSleep = (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
+const DEFAULT_RUN_LIMIT = 30;
 const DEFAULT_EMPTY_RETRY_MS = 60_000;
 const DEFAULT_POLL_MS = 120_000;
 // Effectively "wait forever" — production runs poll until the gh API says
@@ -337,6 +378,67 @@ function coerceGhRun(raw: unknown, idx: number): GhRun {
   return { databaseId, status, conclusion, url, headSha, workflowName };
 }
 
+/**
+ * Fold every run at one commit into a single verdict (arci1).
+ *
+ * `runs` must be non-empty and must already be filtered to the probed
+ * commit — the caller owns sha matching so the sha-mismatch state keeps
+ * its own diagnostic shape.
+ *
+ * Precedence, most-dominant first:
+ *
+ *   1. **Any run not `completed` → `in-progress`.** A still-running sibling
+ *      means the aggregate verdict isn't knowable yet, so the wait
+ *      continues (AC #4). This holds even when another run has already
+ *      failed: resolving early would report a partial view, and the extra
+ *      poll costs one 120s wake-up against the risk of a wrong terminal
+ *      state. The representative run is the first non-completed one.
+ *   2. **Any completed run whose conclusion isn't `success` → that
+ *      conclusion**, with that run as the representative. The skill body's
+ *      Phase 7 dispatch treats `conclusion != "success"` as red, so
+ *      `skipped` / `neutral` / `action_required` fold the same way a single
+ *      run with that conclusion always has. Failure-safe: a null conclusion
+ *      on a completed run folds to `""`, which is also not `success`.
+ *   3. **All success → `success`**, represented by the newest run.
+ *
+ * The representative fields (`runId`, `url`, `workflowName`) exist so the
+ * existing single-workflow consumers keep working unchanged; `runs` carries
+ * the full picture.
+ */
+export function foldRunsAtSha(
+  runs: RunSummary[],
+): Extract<ProbeState, { state: "in-progress" | "completed" }> {
+  if (runs.length === 0) {
+    throw new Error("foldRunsAtSha: runs must be non-empty");
+  }
+  // GitHub Actions terminal status is the literal string "completed".
+  // Anything else (queued, in_progress, waiting, requested, pending) is
+  // transient. We don't enumerate the transient set — the spec is "not
+  // completed yet" and treating unknown statuses as transient is the
+  // failure-safe direction (we'll just keep polling).
+  const pending = runs.find((r) => r.status !== "completed");
+  if (pending) {
+    return {
+      state: "in-progress",
+      runId: pending.runId,
+      status: pending.status,
+      url: pending.url,
+      workflowName: pending.workflowName,
+      runs,
+    };
+  }
+  const failing = runs.find((r) => r.conclusion !== "success");
+  const decider = failing ?? runs[0];
+  return {
+    state: "completed",
+    conclusion: decider.conclusion ?? "",
+    runId: decider.runId,
+    url: decider.url,
+    workflowName: decider.workflowName,
+    runs,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Single-probe
 // ---------------------------------------------------------------------------
@@ -374,6 +476,13 @@ export async function probeRemoteCi(
     );
   }
 
+  const runLimit = opts.runLimit ?? DEFAULT_RUN_LIMIT;
+  if (!Number.isInteger(runLimit) || runLimit < 1) {
+    throw new Error(
+      `probeRemoteCi: opts.runLimit must be a positive integer (got ${runLimit})`,
+    );
+  }
+
   const fs: AwaitRemoteCiFs = { ...realFs, ...(opts.fs ?? {}) };
   const exec = opts.exec ?? realExec;
 
@@ -382,7 +491,10 @@ export async function probeRemoteCi(
     return { state: "no-workflow" };
   }
 
-  // Step 2: gh run list.
+  // Step 2: gh run list. `--limit` is deliberately > 1 (arci1): a commit
+  // with two workflows produces two runs, and folding both is the whole
+  // point. gh returns them newest-first across the branch, so the list can
+  // also contain runs for older commits — step 3 filters by headSha.
   const ghResult = exec(
     "gh",
     [
@@ -391,7 +503,7 @@ export async function probeRemoteCi(
       "--branch",
       branch,
       "--limit",
-      "1",
+      String(runLimit),
       "--json",
       "databaseId,status,conclusion,url,headSha,workflowName",
     ],
@@ -407,7 +519,6 @@ export async function probeRemoteCi(
   if (runs.length === 0) {
     return { state: "empty" };
   }
-  const run = runs[0];
 
   // Step 3: headSha verification.
   // Use `git rev-parse <branch>` (not `HEAD`) so the result is independent
@@ -439,36 +550,28 @@ export async function probeRemoteCi(
     }
     headSha = trimmed;
   }
-  if (run.headSha !== headSha) {
+  // Keep only the runs for the commit we're waiting on. `sha-mismatch`
+  // still reports the newest run's sha — that's the diagnostic the skill
+  // body cites in its INTERVIEW entry.
+  const atSha = runs.filter((r) => r.headSha === headSha);
+  if (atSha.length === 0) {
     return {
       state: "sha-mismatch",
-      runHeadSha: run.headSha,
+      runHeadSha: runs[0].headSha,
       headSha,
     };
   }
 
-  // Step 4: completed vs in-progress.
-  // GitHub Actions terminal status is the literal string "completed".
-  // Anything else (queued, in_progress, waiting, requested, pending) is
-  // transient. We don't enumerate the transient set — the spec is "not
-  // completed yet" and treating unknown statuses as transient is the
-  // failure-safe direction (we'll just keep polling).
-  if (run.status === "completed") {
-    return {
-      state: "completed",
-      conclusion: run.conclusion ?? "",
-      runId: run.databaseId,
-      url: run.url,
-      workflowName: run.workflowName,
-    };
-  }
-  return {
-    state: "in-progress",
-    runId: run.databaseId,
-    status: run.status,
-    url: run.url,
-    workflowName: run.workflowName,
-  };
+  // Step 4: fold every run at the commit into one state.
+  return foldRunsAtSha(
+    atSha.map((r) => ({
+      runId: r.databaseId,
+      workflowName: r.workflowName,
+      status: r.status,
+      conclusion: r.conclusion,
+      url: r.url,
+    })),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -591,6 +694,7 @@ export async function awaitRemoteCi(
       runId: probe.runId,
       url: probe.url,
       workflowName: probe.workflowName,
+      runs: probe.runs,
     };
   }
   if (probe.state === "empty") {
@@ -615,6 +719,7 @@ export async function awaitRemoteCi(
         runId: probe.runId,
         url: probe.url,
         workflowName: probe.workflowName,
+        runs: probe.runs,
       };
     }
     // fall through to in-progress polling
@@ -653,5 +758,6 @@ export async function awaitRemoteCi(
     runId: probe.runId,
     url: probe.url,
     workflowName: probe.workflowName,
+    runs: probe.runs,
   };
 }

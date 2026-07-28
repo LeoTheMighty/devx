@@ -11,9 +11,13 @@
 //                      extractAcChecklist
 //   - CI probe       → src/lib/devx/await-remote-ci.ts hasWorkflowFiles +
 //                      parseGhRunList (the tail lists ALL runs for the head
-//                      SHA — limit 20 — and requires EVERY one green; the
-//                      single-run probeRemoteCi shape lets a green workflow
-//                      shadow a red/running sibling, review finding MED-5)
+//                      SHA — limit 20 — and requires EVERY one green,
+//                      review finding MED-5). arci1 gave probeRemoteCi the
+//                      same all-runs-at-headSha fold (foldRunsAtSha), so the
+//                      two agree now; this loop keeps its own copy only
+//                      because it also owns the poll deadline + hand-off
+//                      shapes. Folding it onto foldRunsAtSha is a live
+//                      dedup candidate.
 //   - hold check     → src/lib/devx/hold-check.ts checkHold (D-5)
 //   - merge decision → src/lib/merge-gate.ts mergeGateFor
 //   - backlog flips  → src/lib/manage/loop.ts replaceFrontmatterStatus /

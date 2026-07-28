@@ -134,7 +134,7 @@ afterEach(() => {
 
 describe("runAwaitRemoteCi (CLI passthrough)", () => {
   const branch = "feat/dev-dvx105";
-  const ghKey = `gh run list --branch ${branch} --limit 1 --json databaseId,status,conclusion,url,headSha,workflowName`;
+  const ghKey = `gh run list --branch ${branch} --limit 30 --json databaseId,status,conclusion,url,headSha,workflowName`;
 
   it("usage: emits 64 + stderr when no branch", async () => {
     const io = captureIo();
@@ -374,5 +374,82 @@ describe("runAwaitRemoteCi (CLI passthrough)", () => {
       error: "probe-failed",
       stage: "gh-parse",
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// arci1 — the emitted JSON must name the red workflow (AC #2)
+// ---------------------------------------------------------------------------
+
+describe("runAwaitRemoteCi — sibling workflows (arci1)", () => {
+  const branch = "feat/dev-rsh101";
+  const ghKey = `gh run list --branch ${branch} --limit 30 --json databaseId,status,conclusion,url,headSha,workflowName`;
+
+  /** The commit-408aeaf payload from the spec: green listed first, red second. */
+  const greenAndRed = JSON.stringify([
+    {
+      databaseId: 30296754787,
+      status: "completed",
+      conclusion: "success",
+      url: "https://github.com/owner/repo/actions/runs/30296754787",
+      headSha: HEAD_SHA,
+      workflowName: "CI & Deploy",
+    },
+    {
+      databaseId: 30296754128,
+      status: "completed",
+      conclusion: "failure",
+      url: "https://github.com/owner/repo/actions/runs/30296754128",
+      headSha: HEAD_SHA,
+      workflowName: "devx-ci",
+    },
+  ]);
+
+  it("--once: stdout reports the failure and names devx-ci without a second gh call", async () => {
+    const fix = makeRepoFixture();
+    const io = captureIo();
+    const code = await runAwaitRemoteCi([branch, "--once"], {
+      out: io.push.out,
+      err: io.push.err,
+      repoRoot: fix.dir,
+      awaitOpts: {
+        fs: fixtureFs(true, fix.dir),
+        exec: fakeExec({ [ghKey]: okExit(greenAndRed) }),
+        sleep: async () => {},
+        headSha: HEAD_SHA,
+      },
+    });
+    expect(code).toBe(0);
+    const parsed = JSON.parse(io.out);
+    expect(parsed).toMatchObject({
+      state: "completed",
+      conclusion: "failure",
+      runId: 30296754128,
+      workflowName: "devx-ci",
+    });
+    expect(parsed.runs).toHaveLength(2);
+  });
+
+  it("multi-probe: the terminal AwaitState JSON carries both workflows", async () => {
+    const fix = makeRepoFixture();
+    const io = captureIo();
+    const code = await runAwaitRemoteCi([branch], {
+      out: io.push.out,
+      err: io.push.err,
+      repoRoot: fix.dir,
+      awaitOpts: {
+        fs: fixtureFs(true, fix.dir),
+        exec: fakeExec({ [ghKey]: okExit(greenAndRed) }),
+        sleep: async () => {},
+        headSha: HEAD_SHA,
+      },
+    });
+    expect(code).toBe(0);
+    const parsed = JSON.parse(io.out);
+    expect(parsed.conclusion).toBe("failure");
+    expect(parsed.runs.map((r: { workflowName: string }) => r.workflowName)).toEqual([
+      "CI & Deploy",
+      "devx-ci",
+    ]);
   });
 });

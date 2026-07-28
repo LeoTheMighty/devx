@@ -295,13 +295,15 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
    devx devx-helper await-remote-ci <branch-name> --once
    ```
 
-   Stdout is a single JSON ProbeState. Branch on `state`:
+   Stdout is a single JSON ProbeState. **The probe aggregates every workflow run at the branch tip's commit** (arci1) — a repo that runs two workflows on one PR gets one verdict folded from both, not the newest run's verdict. Branch on `state`:
 
    - **`{"state":"no-workflow"}`** → there is no remote CI to wait for. Local CI from Phase 5 IS the gate. Append `phase 7: no remote CI workflow detected — local gates are authoritative` to the spec status log and proceed to Phase 8 immediately. Do NOT block on phantom CI; do NOT defer to a human.
    - **`{"state":"empty"}`** (workflows present but `gh run list` returned nothing) → wait one `ScheduleWakeup` 120s retry (call this CLI again on wake-up); if the second probe is still `empty`, file an `INTERVIEW.md` entry asking the user to confirm the workflow's `on:` filters cover `<branch-name>`, mark the PR `awaiting-approval`, append `phase 7: workflow-no-run after retry — INTERVIEW filed` to the spec status log, and stop. Do NOT auto-merge — silent CI is a config bug, not a green light.
-   - **`{"state":"sha-mismatch","runHeadSha":...,"headSha":...}`** → the run we found is for a different commit (rare; usually means an unpushed local change shifted HEAD after PR-open). File an `INTERVIEW.md` entry citing both shas, mark the PR `awaiting-approval`, append `phase 7: sha-mismatch (run=<runHeadSha> vs HEAD=<headSha>) — INTERVIEW filed` to the spec status log, and stop.
-   - **`{"state":"in-progress",...}`** → schedule a `ScheduleWakeup` 120s, then re-invoke this CLI on wake-up. Loop until terminal.
-   - **`{"state":"completed","conclusion":...,"runId":...}`** → evaluate `conclusion` per step 5.
+   - **`{"state":"sha-mismatch","runHeadSha":...,"headSha":...}`** → *no* run at the branch tip's commit (rare; usually means an unpushed local change shifted HEAD after PR-open). `runHeadSha` is the newest run's commit. File an `INTERVIEW.md` entry citing both shas, mark the PR `awaiting-approval`, append `phase 7: sha-mismatch (run=<runHeadSha> vs HEAD=<headSha>) — INTERVIEW filed` to the spec status log, and stop.
+   - **`{"state":"in-progress",...,"runs":[...]}`** → at least one workflow at the commit is still running. This wins over any already-terminal sibling — including a red one — so the state never resolves off a partial view. Schedule a `ScheduleWakeup` 120s, then re-invoke this CLI on wake-up. Loop until terminal.
+   - **`{"state":"completed","conclusion":...,"runId":...,"workflowName":...,"runs":[...]}`** → every workflow at the commit is terminal. `conclusion` is `"success"` only if **all** of them concluded `success`; otherwise it is the first non-success conclusion and `runId`/`workflowName` identify *that* workflow. Evaluate `conclusion` per step 5.
+
+   `runs` (present on `in-progress` and `completed`) lists every run at the commit as `{runId, workflowName, status, conclusion, url}`. Write the Phase 7 status-log line from it — `phase 7: CI <conclusion> — <workflowName> (run <runId>)` — so a red sibling is named without a second `gh` call.
 
    Exit code 2 with `{"error":"probe-failed","stage":...}` → operator-actionable failure. Stage is one of `"gh-run-list"` (gh exited non-zero — auth / network / rate limit), `"gh-parse"` (malformed gh JSON or run with invalid fields — databaseId, conclusion, headSha), `"git-rev-parse"` (the local branch ref couldn't resolve to a 40-char hex sha), or `"unknown"` (catch-all for argument validation / unhandled internal failures). Append `phase 7: probe-failed (<stage>)` to the spec status log, surface the stderr, run `gh auth status` if stage is `gh-run-list`, and stop. Never auto-merge on exit 2 — uncertainty defaults to safe.
 

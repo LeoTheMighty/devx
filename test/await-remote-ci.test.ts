@@ -12,6 +12,7 @@ import {
   type ExecResult,
   GhProbeError,
   awaitRemoteCi,
+  foldRunsAtSha,
   hasWorkflowFiles,
   parseGhRunList,
   probeRemoteCi,
@@ -120,6 +121,34 @@ function makeRun(
       workflowName: overrides.workflowName ?? "devx-ci",
     },
   ]);
+}
+
+interface RawRun {
+  databaseId?: number;
+  status?: string;
+  conclusion?: string | null;
+  url?: string;
+  headSha?: string;
+  workflowName?: string;
+}
+
+/**
+ * Multi-run `gh run list` payload (arci1). gh returns runs newest-first
+ * across the whole branch, so a fixture may legitimately mix shas.
+ */
+function makeRuns(runs: RawRun[]): string {
+  return JSON.stringify(
+    runs.map((r, i) => ({
+      databaseId: r.databaseId ?? 1000 + i,
+      status: r.status ?? "completed",
+      conclusion: r.conclusion === undefined ? "success" : r.conclusion,
+      url:
+        r.url ??
+        `https://github.com/owner/repo/actions/runs/${r.databaseId ?? 1000 + i}`,
+      headSha: r.headSha ?? HEAD_SHA,
+      workflowName: r.workflowName ?? `wf-${i}`,
+    })),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -371,7 +400,7 @@ describe("probeRemoteCi", () => {
         dirs: { ".github/workflows": ["devx-ci.yml"] },
       }),
       exec: fakeExec({
-        [`gh run list --branch ${branch} --limit 1 --json databaseId,status,conclusion,url,headSha,workflowName`]:
+        [`gh run list --branch ${branch} --limit 30 --json databaseId,status,conclusion,url,headSha,workflowName`]:
           okExit("[]"),
       }),
       headSha: HEAD_SHA,
@@ -388,7 +417,7 @@ describe("probeRemoteCi", () => {
         dirs: { ".github/workflows": ["devx-ci.yml"] },
       }),
       exec: fakeExec({
-        [`gh run list --branch ${branch} --limit 1 --json databaseId,status,conclusion,url,headSha,workflowName`]:
+        [`gh run list --branch ${branch} --limit 30 --json databaseId,status,conclusion,url,headSha,workflowName`]:
           okExit(makeRun({ headSha: otherSha })),
       }),
       headSha: HEAD_SHA,
@@ -408,7 +437,7 @@ describe("probeRemoteCi", () => {
         dirs: { ".github/workflows": ["devx-ci.yml"] },
       }),
       exec: fakeExec({
-        [`gh run list --branch ${branch} --limit 1 --json databaseId,status,conclusion,url,headSha,workflowName`]:
+        [`gh run list --branch ${branch} --limit 30 --json databaseId,status,conclusion,url,headSha,workflowName`]:
           okExit(makeRun({ status: "in_progress" })),
       }),
       headSha: HEAD_SHA,
@@ -431,7 +460,7 @@ describe("probeRemoteCi", () => {
           dirs: { ".github/workflows": ["devx-ci.yml"] },
         }),
         exec: fakeExec({
-          [`gh run list --branch ${branch} --limit 1 --json databaseId,status,conclusion,url,headSha,workflowName`]:
+          [`gh run list --branch ${branch} --limit 30 --json databaseId,status,conclusion,url,headSha,workflowName`]:
             okExit(makeRun({ status })),
         }),
         headSha: HEAD_SHA,
@@ -448,7 +477,7 @@ describe("probeRemoteCi", () => {
         dirs: { ".github/workflows": ["devx-ci.yml"] },
       }),
       exec: fakeExec({
-        [`gh run list --branch ${branch} --limit 1 --json databaseId,status,conclusion,url,headSha,workflowName`]:
+        [`gh run list --branch ${branch} --limit 30 --json databaseId,status,conclusion,url,headSha,workflowName`]:
           okExit(makeRun({ status: "completed", conclusion: "success" })),
       }),
       headSha: HEAD_SHA,
@@ -476,7 +505,7 @@ describe("probeRemoteCi", () => {
           dirs: { ".github/workflows": ["devx-ci.yml"] },
         }),
         exec: fakeExec({
-          [`gh run list --branch ${branch} --limit 1 --json databaseId,status,conclusion,url,headSha,workflowName`]:
+          [`gh run list --branch ${branch} --limit 30 --json databaseId,status,conclusion,url,headSha,workflowName`]:
             okExit(makeRun({ status: "completed", conclusion })),
         }),
         headSha: HEAD_SHA,
@@ -494,7 +523,7 @@ describe("probeRemoteCi", () => {
           dirs: { ".github/workflows": ["devx-ci.yml"] },
         }),
         exec: fakeExec({
-          [`gh run list --branch ${branch} --limit 1 --json databaseId,status,conclusion,url,headSha,workflowName`]:
+          [`gh run list --branch ${branch} --limit 30 --json databaseId,status,conclusion,url,headSha,workflowName`]:
             failExit("gh: not authenticated", 4),
         }),
         headSha: HEAD_SHA,
@@ -511,7 +540,7 @@ describe("probeRemoteCi", () => {
           dirs: { ".github/workflows": ["devx-ci.yml"] },
         }),
         exec: fakeExec({
-          [`gh run list --branch ${branch} --limit 1 --json databaseId,status,conclusion,url,headSha,workflowName`]:
+          [`gh run list --branch ${branch} --limit 30 --json databaseId,status,conclusion,url,headSha,workflowName`]:
             okExit(makeRun()),
           [`git rev-parse ${branch}`]: failExit("fatal: not a git repository", 128),
         }),
@@ -529,7 +558,7 @@ describe("probeRemoteCi", () => {
       }),
       exec: fakeExec(
         {
-          [`gh run list --branch ${branch} --limit 1 --json databaseId,status,conclusion,url,headSha,workflowName`]:
+          [`gh run list --branch ${branch} --limit 30 --json databaseId,status,conclusion,url,headSha,workflowName`]:
             okExit(makeRun({ status: "completed", conclusion: "success" })),
           [`git rev-parse ${branch}`]: okExit(`${HEAD_SHA}\n`),
         },
@@ -564,13 +593,304 @@ describe("probeRemoteCi", () => {
 });
 
 // ---------------------------------------------------------------------------
+// foldRunsAtSha — sibling-workflow aggregation (arci1)
+// ---------------------------------------------------------------------------
+
+describe("foldRunsAtSha", () => {
+  const run = (o: Partial<import("../src/lib/devx/await-remote-ci.js").RunSummary>) => ({
+    runId: o.runId ?? 1,
+    workflowName: o.workflowName ?? "wf",
+    status: o.status ?? "completed",
+    conclusion: o.conclusion === undefined ? "success" : o.conclusion,
+    url: o.url ?? "https://example/1",
+  });
+
+  it("throws on an empty run set", () => {
+    expect(() => foldRunsAtSha([])).toThrow(/non-empty/);
+  });
+
+  it("arci1 AC #1/#2: one green + one red folds to the red conclusion and names it", () => {
+    const result = foldRunsAtSha([
+      run({ runId: 30296754787, workflowName: "CI & Deploy", conclusion: "success" }),
+      run({
+        runId: 30296754128,
+        workflowName: "devx-ci",
+        conclusion: "failure",
+        url: "https://github.com/owner/repo/actions/runs/30296754128",
+      }),
+    ]);
+    expect(result).toMatchObject({
+      state: "completed",
+      conclusion: "failure",
+      runId: 30296754128,
+      workflowName: "devx-ci",
+      url: "https://github.com/owner/repo/actions/runs/30296754128",
+    });
+    expect(result.runs).toHaveLength(2);
+  });
+
+  it("order-independent: the red run wins even when it is listed first", () => {
+    const result = foldRunsAtSha([
+      run({ runId: 2, workflowName: "devx-ci", conclusion: "failure" }),
+      run({ runId: 1, workflowName: "CI & Deploy", conclusion: "success" }),
+    ]);
+    expect(result).toMatchObject({ conclusion: "failure", workflowName: "devx-ci" });
+  });
+
+  it("all-success folds to success, represented by the newest run", () => {
+    const result = foldRunsAtSha([
+      run({ runId: 2, workflowName: "devx-ci", conclusion: "success" }),
+      run({ runId: 1, workflowName: "CI & Deploy", conclusion: "success" }),
+    ]);
+    expect(result).toMatchObject({
+      state: "completed",
+      conclusion: "success",
+      runId: 2,
+    });
+  });
+
+  it("arci1 AC #4: a still-running sibling keeps the state in-progress (green sibling)", () => {
+    const result = foldRunsAtSha([
+      run({ runId: 2, workflowName: "CI & Deploy", conclusion: "success" }),
+      run({ runId: 1, workflowName: "devx-ci", status: "in_progress", conclusion: null }),
+    ]);
+    expect(result).toMatchObject({
+      state: "in-progress",
+      runId: 1,
+      status: "in_progress",
+      workflowName: "devx-ci",
+    });
+  });
+
+  it("arci1 AC #4: in-progress dominates even a already-failed sibling", () => {
+    // Resolving to `failure` here would be defensible, but the AC is
+    // explicit that a partial view never resolves — one extra 120s poll is
+    // cheaper than a terminal state computed from half the workflows.
+    const result = foldRunsAtSha([
+      run({ runId: 2, workflowName: "devx-ci", conclusion: "failure" }),
+      run({ runId: 1, workflowName: "CI & Deploy", status: "queued", conclusion: null }),
+    ]);
+    expect(result.state).toBe("in-progress");
+  });
+
+  it("a completed run with a null conclusion folds to non-success", () => {
+    const result = foldRunsAtSha([
+      run({ runId: 2, workflowName: "CI & Deploy", conclusion: "success" }),
+      run({ runId: 1, workflowName: "devx-ci", conclusion: null }),
+    ]);
+    expect(result).toMatchObject({
+      state: "completed",
+      conclusion: "",
+      workflowName: "devx-ci",
+    });
+  });
+
+  it("non-failure non-success conclusions (skipped/neutral) also block success", () => {
+    for (const conclusion of ["skipped", "neutral", "action_required", "cancelled", "timed_out"]) {
+      const result = foldRunsAtSha([
+        run({ runId: 2, workflowName: "CI & Deploy", conclusion: "success" }),
+        run({ runId: 1, workflowName: "devx-ci", conclusion }),
+      ]);
+      expect(result).toMatchObject({ conclusion, workflowName: "devx-ci" });
+    }
+  });
+
+  it("single-run sets keep their pre-arci1 shape", () => {
+    expect(
+      foldRunsAtSha([run({ runId: 7, workflowName: "ci", conclusion: "success" })]),
+    ).toMatchObject({ state: "completed", conclusion: "success", runId: 7 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// probeRemoteCi — sibling-workflow cases (arci1)
+// ---------------------------------------------------------------------------
+
+describe("probeRemoteCi — sibling workflows (arci1)", () => {
+  const root = "/repo";
+  const branch = "feat/dev-rsh101";
+  const workflowFs = () =>
+    fakeFs(root, {
+      exists: new Set([".github/workflows"]),
+      dirs: { ".github/workflows": ["ci.yml", "devx-ci.yml"] },
+    });
+  const ghKey = (limit = 30) =>
+    `gh run list --branch ${branch} --limit ${limit} --json databaseId,status,conclusion,url,headSha,workflowName`;
+
+  it("AC #3: one green + one red workflow at the same headSha reports the red one", async () => {
+    // The exact commit-408aeaf shape from the spec: `CI & Deploy` passed,
+    // `devx-ci` failed, and the newest-run-only probe reported success.
+    const result = await probeRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec({
+        [ghKey()]: okExit(
+          makeRuns([
+            {
+              databaseId: 30296754787,
+              workflowName: "CI & Deploy",
+              conclusion: "success",
+            },
+            {
+              databaseId: 30296754128,
+              workflowName: "devx-ci",
+              conclusion: "failure",
+            },
+          ]),
+        ),
+      }),
+      headSha: HEAD_SHA,
+    });
+    expect(result).toMatchObject({
+      state: "completed",
+      conclusion: "failure",
+      runId: 30296754128,
+      workflowName: "devx-ci",
+    });
+  });
+
+  it("AC #2: the probe JSON carries every workflow at the sha", async () => {
+    const result = await probeRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec({
+        [ghKey()]: okExit(
+          makeRuns([
+            { databaseId: 2, workflowName: "CI & Deploy", conclusion: "success" },
+            { databaseId: 1, workflowName: "devx-ci", conclusion: "failure" },
+          ]),
+        ),
+      }),
+      headSha: HEAD_SHA,
+    });
+    if (result.state !== "completed") throw new Error("expected completed");
+    expect(result.runs.map((r) => [r.workflowName, r.conclusion])).toEqual([
+      ["CI & Deploy", "success"],
+      ["devx-ci", "failure"],
+    ]);
+  });
+
+  it("AC #4: a completed sibling does not resolve while another is running", async () => {
+    const result = await probeRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec({
+        [ghKey()]: okExit(
+          makeRuns([
+            { databaseId: 2, workflowName: "CI & Deploy", conclusion: "success" },
+            {
+              databaseId: 1,
+              workflowName: "devx-ci",
+              status: "in_progress",
+              conclusion: null,
+            },
+          ]),
+        ),
+      }),
+      headSha: HEAD_SHA,
+    });
+    expect(result).toMatchObject({
+      state: "in-progress",
+      runId: 1,
+      workflowName: "devx-ci",
+    });
+  });
+
+  it("ignores runs from earlier commits on the same branch", async () => {
+    const olderSha = "0".repeat(40);
+    const result = await probeRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec({
+        [ghKey()]: okExit(
+          makeRuns([
+            { databaseId: 4, workflowName: "CI & Deploy", conclusion: "success" },
+            { databaseId: 3, workflowName: "devx-ci", conclusion: "success" },
+            {
+              databaseId: 2,
+              workflowName: "devx-ci",
+              conclusion: "failure",
+              headSha: olderSha,
+            },
+          ]),
+        ),
+      }),
+      headSha: HEAD_SHA,
+    });
+    if (result.state !== "completed") throw new Error("expected completed");
+    // The older commit's red run must not poison this commit's verdict.
+    expect(result.conclusion).toBe("success");
+    expect(result.runs).toHaveLength(2);
+  });
+
+  it("returns sha-mismatch (citing the newest run) when no run matches", async () => {
+    const otherSha = "1".repeat(40);
+    const result = await probeRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec({
+        [ghKey()]: okExit(
+          makeRuns([
+            { databaseId: 2, headSha: otherSha, conclusion: "success" },
+            { databaseId: 1, headSha: "2".repeat(40), conclusion: "failure" },
+          ]),
+        ),
+      }),
+      headSha: HEAD_SHA,
+    });
+    expect(result).toMatchObject({
+      state: "sha-mismatch",
+      runHeadSha: otherSha,
+      headSha: HEAD_SHA,
+    });
+  });
+
+  it("requests more than one run so siblings are visible at all", async () => {
+    const recorded: ExecCall[] = [];
+    await probeRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec(
+        { [ghKey()]: okExit(makeRuns([{ conclusion: "success" }])) },
+        recorded,
+      ),
+      headSha: HEAD_SHA,
+    });
+    const gh = recorded.find((c) => c.cmd === "gh");
+    const limit = Number(gh?.args[gh.args.indexOf("--limit") + 1]);
+    expect(limit).toBeGreaterThan(1);
+  });
+
+  it("honours an explicit runLimit and rejects a non-positive one", async () => {
+    const result = await probeRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec({ [ghKey(5)]: okExit(makeRuns([{ conclusion: "success" }])) }),
+      headSha: HEAD_SHA,
+      runLimit: 5,
+    });
+    expect(result.state).toBe("completed");
+    for (const bad of [0, -1, 2.5]) {
+      await expect(
+        probeRemoteCi(branch, {
+          repoRoot: root,
+          fs: workflowFs(),
+          headSha: HEAD_SHA,
+          runLimit: bad,
+        }),
+      ).rejects.toThrow(/runLimit must be a positive integer/);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // awaitRemoteCi — multi-probe driver (3 terminal states from AC #1)
 // ---------------------------------------------------------------------------
 
 describe("awaitRemoteCi", () => {
   const root = "/repo";
   const branch = "feat/dev-dvx105";
-  const ghKey = `gh run list --branch ${branch} --limit 1 --json databaseId,status,conclusion,url,headSha,workflowName`;
+  const ghKey = `gh run list --branch ${branch} --limit 30 --json databaseId,status,conclusion,url,headSha,workflowName`;
   const noopSleep = async () => {};
 
   it("AC #1 state 1: returns no-workflow when .github/workflows is missing", async () => {
@@ -1058,5 +1378,93 @@ describe("awaitRemoteCi", () => {
         headSha: HEAD_SHA,
       }),
     ).rejects.toThrow(GhProbeError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// awaitRemoteCi — sibling-workflow aggregation end-to-end (arci1)
+// ---------------------------------------------------------------------------
+
+describe("awaitRemoteCi — sibling workflows (arci1)", () => {
+  const root = "/repo";
+  const branch = "feat/dev-rsh101";
+  const ghKey = `gh run list --branch ${branch} --limit 30 --json databaseId,status,conclusion,url,headSha,workflowName`;
+  const noopSleep = async () => {};
+  const workflowFs = () =>
+    fakeFs(root, {
+      exists: new Set([".github/workflows"]),
+      dirs: { ".github/workflows": ["ci.yml", "devx-ci.yml"] },
+    });
+
+  const green = {
+    databaseId: 30296754787,
+    workflowName: "CI & Deploy",
+    conclusion: "success",
+  };
+  const red = {
+    databaseId: 30296754128,
+    workflowName: "devx-ci",
+    conclusion: "failure",
+  };
+  const running = {
+    databaseId: 30296754128,
+    workflowName: "devx-ci",
+    status: "in_progress",
+    conclusion: null,
+  };
+
+  it("keeps polling past a green sibling and terminates on the red one", async () => {
+    // Probe 1: `CI & Deploy` green, `devx-ci` still running → keep waiting
+    // (a newest-run-only probe would have terminated `success` here).
+    // Probe 2: both terminal → report the failure by name.
+    const result = await awaitRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec({
+        [ghKey]: [
+          okExit(makeRuns([green, running])),
+          okExit(makeRuns([green, red])),
+        ],
+      }),
+      sleep: noopSleep,
+      headSha: HEAD_SHA,
+      maxPolls: 5,
+    });
+    expect(result).toMatchObject({
+      state: "completed",
+      conclusion: "failure",
+      runId: 30296754128,
+      workflowName: "devx-ci",
+    });
+  });
+
+  it("terminal AwaitState carries the full run list for the status-log line", async () => {
+    const result = await awaitRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec({ [ghKey]: okExit(makeRuns([green, red])) }),
+      sleep: noopSleep,
+      headSha: HEAD_SHA,
+    });
+    if (result.state !== "completed") throw new Error("expected completed");
+    expect(result.runs.map((r) => r.workflowName)).toEqual([
+      "CI & Deploy",
+      "devx-ci",
+    ]);
+  });
+
+  it("all-green across both workflows still reports success", async () => {
+    const result = await awaitRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec({
+        [ghKey]: okExit(
+          makeRuns([green, { ...red, conclusion: "success" }]),
+        ),
+      }),
+      sleep: noopSleep,
+      headSha: HEAD_SHA,
+    });
+    expect(result).toMatchObject({ state: "completed", conclusion: "success" });
   });
 });
