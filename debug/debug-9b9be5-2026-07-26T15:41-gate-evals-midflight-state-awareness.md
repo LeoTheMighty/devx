@@ -4,7 +4,7 @@ type: debug
 created: 2026-07-26T15:41:23-06:00
 title: devx gate evals lacks mid-flight state-awareness after revise cascade
 from: DEBUG.md intake (rooted-light session 2026-07-25)
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-28T15-08-44-989-68192
 branch: feat/debug-9b9be5
 ---
@@ -66,6 +66,8 @@ operator can record a D-9 WAIVED verdict via the CLI instead of hand-editing
   - Change: Added 8 regression tests covering the waiver path (31 → 39 in the touched test file), including the AC 1 repro shape: green P0 with no done dev spec still FAILs, green P0 with a `status: done` dev spec defers.
   - Learning: Root cause of the original bug: parsePlanCoverageTable discarded the 'Verified in phase' column, leaving the gate blind to merge state — any future coverage-table consumer must preserve that column.
   - Learning: The full `npm test` pipeline (schema smoke + config + build + typecheck + full vitest) takes ~10+ minutes and includes a build step that also rules out the stale-dist false-red; touched-file vitest + typecheck are the fast in-iteration signals, with the full suite left to the CI gate.
+- 2026-07-28T15:39:27.971Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-07-28T15:39:27.971Z — merged via devx loop — PR https://github.com/LeoTheMighty/devx/pull/89
 
 ## Links
 
