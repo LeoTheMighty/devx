@@ -35,7 +35,7 @@
 // Spec: dev/dev-v2l101-2026-07-05T13:06-overnight-loop.md
 // Design: v2/04-overnight-loop.md (all sections)
 
-import { readFileSync, unlinkSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { writeAtomic } from "../supervisor-internal.js";
@@ -56,9 +56,11 @@ import {
   type ClaimSpecResult,
 } from "../devx/claim.js";
 import {
-  normalizeSessionToken,
-  parseLockOwner,
-} from "../devx/verify-claim.js";
+  SPEC_LOCK_LIVE_WARN_MS,
+  classifySpecLock,
+  releaseSpecLockGuarded,
+  specLockOwnedBy,
+} from "../devx/spec-lock.js";
 import { type DeriveBranchConfig } from "../plan/derive-branch.js";
 
 import {
@@ -330,6 +332,43 @@ export function pickNextItem(
     ) {
       return { ...row, status: "blocked" as const };
     }
+    // mlc103 pick-time masking (R8): a READY row whose spec lock classifies
+    // live-held (or unverifiable — empty/unknown-pid/unreadable, the
+    // conservative-held kinds) is a peer's in-flight claim whose backlog
+    // flip we haven't observed yet; masking it here avoids burning a claim
+    // attempt on a guaranteed LockHeldError. Dead/recycled/unparseable
+    // locks stay pickable — the claim-time reap handles them. Live-PID
+    // locks older than 2h WARN (never auto-reaped; devx doctor owns
+    // repair).
+    if (row.status === "ready") {
+      const cls = classifySpecLock(
+        join(repoRoot, ".devx-cache", "locks", `spec-${row.hash}.lock`),
+        { now: opts.now },
+      );
+      if (
+        cls.kind === "live" ||
+        cls.kind === "empty" ||
+        cls.kind === "unknown-pid" ||
+        cls.kind === "unreadable"
+      ) {
+        if (cls.kind === "live") {
+          if (cls.ageMs !== null && cls.ageMs > SPEC_LOCK_LIVE_WARN_MS) {
+            opts.warn?.(
+              `spec lock for ${row.hash} live-held by pid ${cls.body.pid} for ${Math.floor(cls.ageMs / 3_600_000)}h (>2h) — never auto-reaped; verify the holder is progressing (devx doctor)`,
+            );
+          }
+        } else {
+          // Non-live conservative-held kinds are NEVER transient (a
+          // crashed peer's 0-byte lock, a hand-mangled body) — without
+          // this WARN the row silently vanishes from every pick forever
+          // (review BH-F3/EC-2: no drift row covers ready-with-lock).
+          opts.warn?.(
+            `ready item ${row.hash} is masked by a spec lock that classifies '${cls.kind}' — it will never be picked; inspect/remove .devx-cache/locks/spec-${row.hash}.lock`,
+          );
+        }
+        return { ...row, status: "blocked" as const };
+      }
+    }
     return row;
   });
   const recon = reconcile(
@@ -421,7 +460,13 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
     const excluded = new Set<string>();
     const items: DryRunPlan["items"] = [];
     while (items.length < maxItems) {
-      const pick = pickNextItem(repoRoot, { ...(flags.only !== undefined ? { only: flags.only } : {}), excluded, model, now });
+      const pick = pickNextItem(repoRoot, {
+        ...(flags.only !== undefined ? { only: flags.only } : {}),
+        excluded,
+        model,
+        now,
+        warn: (msg) => out(`loop: WARN — ${msg}`),
+      });
       if (!pick) break;
       items.push({ hash: pick.hash, type: pick.type, title: pick.title, path: pick.path });
       excluded.add(pick.hash);
@@ -893,15 +938,10 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
    * the check defends against a human (or another agent) legitimately
    * stealing the claim mid-run after manually clearing our lock.
    */
-  const ownsClaim = (): boolean => {
-    try {
-      const owner = parseLockOwner(readFileSync(lockPath, "utf8"));
-      if (owner === null) return false;
-      return normalizeSessionToken(owner) === normalizeSessionToken(args.sessionId);
-    } catch {
-      return false; // lock gone = claim no longer ours
-    }
-  };
+  const ownsClaim = (): boolean =>
+    // mlc103: spec-lock module owns owner extraction (JSON v1 + legacy);
+    // lock gone / unreadable / unattributable = claim no longer ours.
+    specLockOwnedBy(lockPath, args.sessionId);
 
   const baseItem = (): Omit<ItemResult, "outcome"> => ({
     hash: pick.hash,
@@ -1001,7 +1041,28 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
 
   const releaseSpecLock = (): void => {
     try {
-      backlogLock("release-spec-lock", () => unlinkSync(lockPath));
+      // mlc103 guarded release: re-read the body and unlink only on session
+      // match, inside the backlog lock (closes R7's TOCTOU — after a human
+      // cleared our lock and a peer re-claimed, the old unconditional
+      // unlink deleted the PEER's lock).
+      const res = backlogLock("release-spec-lock", () =>
+        releaseSpecLockGuarded(lockPath, args.sessionId),
+      );
+      if (res.released || res.reason === "missing") return;
+      if (res.reason === "not-owner") {
+        event("item:lock-release-skipped", { lockPath, owner: res.owner });
+        itemWarnings.push(
+          `spec lock for ${pick.hash} is now owned by '${res.owner ?? "unknown"}' (not this run) — release skipped; a peer re-claimed after our lock was cleared`,
+        );
+        out(`loop: WARN — spec lock for ${pick.hash} owned by another session; release skipped`);
+        return;
+      }
+      // "unreadable" — body unreadable/unattributable; left in place.
+      event("item:lock-release-failed", { lockPath, error: { reason: res.reason } });
+      itemWarnings.push(
+        `spec lock body for ${pick.hash} is unreadable — release skipped; inspect ${relToRepo(lockPath, repoRoot)} by hand or the next claim will refuse`,
+      );
+      out(`loop: WARN — failed to release spec lock ${lockPath}`);
     } catch (e) {
       // ENOENT = already gone (fine). Anything else (EACCES, EPERM, …)
       // means the lock file is STILL on disk and every future claim of

@@ -32,6 +32,7 @@
 import { join } from "node:path";
 
 import { type ClaimFs, findSpecForHash, realFs } from "./claim.js";
+import { specLockOwner } from "./spec-lock.js";
 
 const HASH_RE = /^[a-z0-9]{3,12}$/i;
 
@@ -130,18 +131,15 @@ export function normalizeSessionToken(raw: string): string {
 }
 
 /**
- * Extract the recorded owner token from a lock-file body. claimSpec writes
- * `${sessionId}\npid=...\nclaimed_at=...` — the owner is the first
- * non-empty line. Returns null when no such line exists (empty/whitespace
- * file — a partial write claimSpec's openExclusive normally forecloses,
- * but a hand-touched lock can still present it).
+ * Extract the recorded owner token from a lock-file body. mlc103 bodies are
+ * JSON v1 (`session` field); legacy bodies are
+ * `${sessionId}\npid=...\nclaimed_at=...` with the owner on the first
+ * non-empty line. Delegates to spec-lock's parser (single source of truth
+ * for both formats). Returns null when the body is empty, unparseable, or
+ * carries no attributable owner.
  */
 export function parseLockOwner(lockBody: string): string | null {
-  for (const line of lockBody.split("\n")) {
-    const t = line.trim();
-    if (t !== "") return t;
-  }
-  return null;
+  return specLockOwner(lockBody);
 }
 
 export interface SpecClaimFields {

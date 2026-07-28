@@ -219,10 +219,20 @@ Six components, composing outside-in:
    `src/lib/locks/classify.ts`). Lock body becomes JSON
    `{schema: 1, pid, pid_started_at, session, claimed_at}`. Acquisition:
    O_EXCL; on EEXIST, classify the holder — dead PID / recycled PID
-   (start-time vs claimed_at with the 2s grace) ⇒ reap + retry once;
-   live ⇒ held. Legacy bodies (`<token>\npid=<n>\nclaimed_at=<ts>`) are
-   parsed for their `pid=` line and classified identically — today's
-   stale `spec-494590.lock` is reaped on first contact (G-3). The
+   (live probe vs the RECORDED `pid_started_at`, 2s grace; `claimed_at`
+   fallback only for v1 bodies whose write-time probe failed) ⇒ reap +
+   retry once; live ⇒ held. Reap is additionally gated on the backlog
+   row being claimable (`[ ]`): interactive claims record the
+   short-lived `devx devx-helper claim` process's pid, so pid death is
+   NOT claim death — an in-progress row's lock is never reaped no
+   matter how it classifies (mlc103 execution note, review BH-F1).
+   Legacy bodies (`<token>\npid=<n>\nclaimed_at=<ts>`) are parsed for
+   their `pid=` line and classified on PID liveness ALONE — no
+   recycling cross-check, since their `claimed_at` provenance is
+   untrusted and E-3(b) pins a live legacy holder as held (mlc103
+   execution note; supersedes this doc's earlier "classified
+   identically" sketch) — today's stale `spec-494590.lock` (dead pid)
+   is still reaped on first contact (G-3). The
    reap+acquire pair and every release run inside `withBacklogLock`;
    release re-reads the body and unlinks only on session match (closes
    R7's TOCTOU and the delete-a-peer's-lock path). Live-PID locks older
