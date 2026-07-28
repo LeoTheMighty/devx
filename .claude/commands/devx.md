@@ -121,13 +121,13 @@ Repeat per item, respecting `stop_after`:
    ```
    if ! CLAIM_JSON=$(devx devx-helper claim "$HASH"); then
      case $? in
-       1) echo "lock held — another /devx is on this hash"; exit 1 ;;
+       1) echo "retryable contention — see the JSON 'error' field"; exit 1 ;;
        2) echo "rollback — see stderr"; exit 1 ;;
        *) echo "usage error"; exit 1 ;;
      esac
    fi
    ```
-   On exit 0, parse `branch` + `lockPath` + `claimSha` from `$CLAIM_JSON` and proceed. On exit 2, the helper has already reverted the working tree (or, if the failure was post-push, surfaced the error and released the lock — operator manually retries `git worktree add` per the message).
+   On exit 0, parse `branch` + `lockPath` + `claimSha` from `$CLAIM_JSON` and proceed. Exit 1 is retryable contention, nothing mutated — the JSON's `error` field says which kind: `"lock held"` (another /devx is on this hash — pick a different item), `"backlog lock held"` (a peer is mid-mutation — retry shortly), or `"claim-contended"` (mlc104: a peer won the claim-push race and the bounded rebase-retries still lost; the rollback already ran — re-run `devx next` and pick again). On exit 2, the helper has already reverted the working tree (or, if the failure was post-push, surfaced the error and released the lock — operator manually retries `git worktree add` per the message).
 
    **Why the helper instead of inlining git commands?** The locked decision is "claim commit pushed to `origin/main` BEFORE any subsequent `gh pr create`" (closes `feedback_devx_push_claim_before_pr.md`). Inlining the order in the skill body has been the regression vector across all 25 Phase 0 stories; the CLI wrapper makes the order non-skippable. Same pattern as `devx merge-gate` (mrg102) and `devx plan-helper derive-branch` (pln101).
 

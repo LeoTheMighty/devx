@@ -50,6 +50,7 @@ import {
   type LockHandle,
 } from "../manage/lock.js";
 import {
+  ClaimContendedError,
   ClaimError,
   LockHeldError,
   claimSpec,
@@ -518,8 +519,14 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
         // BH-MED-4: claimSpec's own git calls (add/commit/push/worktree)
         // don't inject GIT_TERMINAL_PROMPT — wrap the seam so the claim's
         // push can never hang on a credential TTY prompt overnight.
+        // LC_ALL=C (mlc104 EC-1): isRejectedPush matches git's English
+        // rejection strings; a localized git would misroute every real
+        // race into the systemic-failure budget.
         exec: (cmd, args, o) =>
-          exec(cmd, args, { ...(o ?? {}), env: { GIT_TERMINAL_PROMPT: "0" } }),
+          exec(cmd, args, {
+            ...(o ?? {}),
+            env: { GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
+          }),
         type,
       }));
 
@@ -561,7 +568,8 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
   let abortReason: string | null = null;
   let stopReason: string | null = null;
   const excluded = new Set<string>();
-  const isAttempted = (r: ItemResult): boolean => r.outcome !== "claim-failed";
+  const isAttempted = (r: ItemResult): boolean =>
+    r.outcome !== "claim-failed" && r.outcome !== "claim-contended";
   // Review finding MED-7: without a bound, a SYSTEMIC claim failure (locks
   // dir unwritable, origin push refused, git broken) walks the entire
   // backlog doing a full commit+rollback cycle per row. Three in a row is
@@ -610,6 +618,35 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
       try {
         claim = await claimFn(pick.hash, pick.type);
       } catch (e) {
+        if (e instanceof ClaimContendedError) {
+          // mlc104 (design §Architecture 3): a peer won the push race and
+          // the bounded rebase-retries still lost — healthy contention, not
+          // a broken claim. The hash is already masked for this run (the
+          // `excluded.add` above); pick the next item. Deliberately does
+          // NOT touch consecutiveClaimFailures — that budget is reserved
+          // for genuinely broken claims (locks dir unwritable, origin
+          // refusing every push), and contention under N live loops is the
+          // system working as designed (races R2/R5).
+          event("item:claim-contended", {
+            hash: pick.hash,
+            error: serializeError(e),
+          });
+          out(
+            `loop: claim contended for ${pick.hash} — a peer won the push race; picking next (${firstLineOf(e.message)})`,
+          );
+          items.push({
+            hash: pick.hash,
+            type: pick.type,
+            title: pick.title,
+            specPath: pick.path,
+            outcome: "claim-contended",
+            iterationsGood: 0,
+            iterationsFailed: 0,
+            tokens: emptyTokens(),
+            detail: firstLineOf(e.message),
+          });
+          continue;
+        }
         const detail =
           e instanceof LockHeldError
             ? `spec lock already held (${e.lockPath})`
@@ -1916,12 +1953,33 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     // a peer loop's claim commit on the same checkout (races R3/R4). The
     // inner helpers' own locks are re-entrant no-ops under this hold.
     backlogLockBestEffort("finalize-merged", () => {
-      const pull = exec("git", ["pull", "--ff-only"], {
+      let pull = exec("git", ["pull", "--ff-only"], {
         cwd: repoRoot,
         env: { GIT_TERMINAL_PROMPT: "0" },
       });
       if (pull.exitCode !== 0) {
-        event("item:pull-ff-failed", { stderr: pull.stderr.trim() });
+        // mlc104 (AC 3): one fetch+retry under the same lock hold before
+        // giving up — a transient fetch failure (network blip, a peer's
+        // push landing mid-fetch) shouldn't strand the reconcile when the
+        // second attempt would fast-forward cleanly. Still-failing keeps
+        // the pre-mlc104 event; dispatcher row 4 reconciles the drift.
+        const fetch = exec("git", ["fetch", "origin"], {
+          cwd: repoRoot,
+          env: { GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
+        });
+        if (fetch.exitCode !== 0) {
+          event("item:pull-ff-retry-fetch-failed", { stderr: fetch.stderr.trim() });
+        }
+        // Deliberately still attempted after a failed fetch (review AA-7):
+        // `git pull` runs its own fetch, so the explicit fetch above is
+        // belt-and-suspenders, not a precondition.
+        pull = exec("git", ["pull", "--ff-only"], {
+          cwd: repoRoot,
+          env: { GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
+        });
+        if (pull.exitCode !== 0) {
+          event("item:pull-ff-failed", { stderr: pull.stderr.trim() });
+        }
       }
       try {
         // BH-LOW-9 / EC-MED-5: a `false` return means the frontmatter had no
