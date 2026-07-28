@@ -4,8 +4,8 @@ type: debug
 created: 2026-07-26T15:41:23-06:00
 title: devx gate evals lacks mid-flight state-awareness after revise cascade
 from: DEBUG.md intake (rooted-light session 2026-07-25)
-status: ready
-owner: null
+status: in-progress
+owner: /devx-loop-2026-07-28T15-08-44-989-68192
 branch: feat/debug-9b9be5
 ---
 
@@ -50,6 +50,7 @@ operator can record a D-9 WAIVED verdict via the CLI instead of hand-editing
 ## Status log
 
 - 2026-07-26T15:41:23-06:00 — spec filed from DEBUG.md intake row (rooted-light session 2026-07-25); repro documented from the original session's gate replay output.
+- 2026-07-28T09:08:44-06:00 — claimed by /devx in session /devx-loop-2026-07-28T15-08-44-989-68192
 
 ## Links
 
