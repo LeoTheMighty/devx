@@ -32,7 +32,7 @@
   - [x] User settled phase cut: 4 phases (primitive / claim inheritance / loop integration / retirement sweep), 1 → {2,3} → 4
   - [x] Write plan.md (coverage table, phase checklist, per-phase files/context/verification/tasks)
   - [x] Critique step skipped (send-it; single backend stack layer < min_surfaces 2)
-  - [ ] Coverage-judge subagent → table JSON → `devx gate coverage`
+  - [x] Coverage-judge subagent → table JSON → `devx gate coverage` (5✅/0⚠️/0❌ → PASS)
 - [x] Gate: coverage(plan)
 - [ ] Stage: RED
 - [ ] Gate: evals
