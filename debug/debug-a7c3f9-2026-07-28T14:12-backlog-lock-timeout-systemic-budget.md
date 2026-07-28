@@ -3,10 +3,10 @@ hash: a7c3f9
 type: debug
 created: 2026-07-28T14:12:00-06:00
 title: "Backlog-lock timeouts count toward the systemic claim-failure budget"
-status: ready
+status: in-progress
 from: dev/dev-mlc104-2026-07-28T09:02-claim-contention-harness.md
 branch: null
-owner: null
+owner: /devx-loop-2026-07-28T22-28-16-396-77092
 ---
 ## Goal
 
@@ -44,6 +44,7 @@ reduce peer pressure on the lock).
 
 - 2026-07-28T14:12 — filed by mlc104 Phase 4 review (EC-8); out of
   mlc104's scope (changes mlc102 timeout semantics).
+- 2026-07-28T16:28:16-06:00 — claimed by /devx in session /devx-loop-2026-07-28T22-28-16-396-77092
 
 ## Links
 
