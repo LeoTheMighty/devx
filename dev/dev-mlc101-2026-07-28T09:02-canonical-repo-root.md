@@ -3,12 +3,12 @@ hash: mlc101
 type: dev
 created: 2026-07-28T09:02:00-06:00
 title: "Canonical repo root + worktree refusal"
-status: ready
+status: in-progress
 from: plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md
 plan: _devx/workstreams/multi-loop-concurrency
 blocked_by: []
 branch: feat/dev-mlc101
-owner: null
+owner: /devx-2026-07-28T0929-23201
 ---
 ## Goal
 
@@ -42,6 +42,7 @@ the canonical root check wraps it.
 
 - 2026-07-28T09:02 — emitted by /devx-plan (RED gate passed; workstream
   multi-loop-concurrency, plan phase 1).
+- 2026-07-28T09:29:57-06:00 — claimed by /devx in session /devx-2026-07-28T0929-23201
 
 ## Links
 
