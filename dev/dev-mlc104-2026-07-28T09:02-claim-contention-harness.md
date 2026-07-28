@@ -3,12 +3,12 @@ hash: mlc104
 type: dev
 created: 2026-07-28T09:02:00-06:00
 title: "Claim contention + overlap harness"
-status: ready
+status: in-progress
 from: plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md
 plan: _devx/workstreams/multi-loop-concurrency
 blocked_by: [mlc103]
 branch: feat/dev-mlc104
-owner: null
+owner: /devx-2026-07-28T1322-68036
 ---
 ## Goal
 
@@ -44,6 +44,7 @@ green requires mlc105; the harness and contention clauses go green here.
 
 - 2026-07-28T09:02 — emitted by /devx-plan (RED gate passed; workstream
   multi-loop-concurrency, plan phase 4).
+- 2026-07-28T13:22:39-06:00 — claimed by /devx in session /devx-2026-07-28T1322-68036
 
 ## Links
 
