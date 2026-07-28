@@ -113,6 +113,11 @@ Design §Architecture 5. Freshness reuses `isFresh` windows
   One silver lining: the killed run left `status:"running"` under a dead
   pid, and the registry classified it dead — the crash-orphan path
   validated for free on the live repo.
+- 2026-07-28T17:12 — phase 5 local CI green (`npm test`: 128 files / 2504
+  tests, exit 0); tour built + published to devx-tours; PR #98 opened,
+  remote CI `devx-ci` success (run 30406527633), check-hold clean,
+  `devx merge-gate mlc105` -> {"merge":true}; merged via PR #98
+  (squash -> a19eb6d).
 
 ## Links
 
