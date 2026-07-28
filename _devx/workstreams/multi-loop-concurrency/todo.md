@@ -19,8 +19,14 @@
 - [x] Gate: coverage(design)
 - [x] Stage: Plan
 - [x] Gate: coverage(plan)
-- [ ] Stage: RED
-- [ ] Gate: evals
+- [x] Stage: RED
+- [x] Gate: evals
 - [ ] Stage: Execute
+  - [ ] Phase 1: Canonical repo root + worktree refusal → mlc101
+  - [ ] Phase 2: Backlog mutation lock + atomic-writer conversion → mlc102
+  - [ ] Phase 3: Spec-lock lifecycle (classify, reap, guarded release) → mlc103
+  - [ ] Phase 4: Claim contention + lock-aware picking + overlap harness → mlc104
+  - [ ] Phase 5: Instance registry + capacity admission + aggregation → mlc105
+  - [ ] Phase 6: Scope model + flags + degenerate-case sweep → mlc106
 - [ ] Stage: Retro
 - [ ] Stage: Outcome

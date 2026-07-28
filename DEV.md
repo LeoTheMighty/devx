@@ -31,6 +31,20 @@ planned; this section outranks the paused mobile backlog below.
 - [x] `dev/dev-hfi105-2026-07-24T10:41-lifecycle-skill-wiring.md` — Lifecycle skill wiring + nudge single-sourcing (E-7). Status: done. Blocked-by: hfi103, hfi104. PR: https://github.com/LeoTheMighty/devx/pull/86 (merged 9070cd3)
 - [x] `dev/dev-hfiret-2026-07-24T10:43-retro-harness-fold-in.md` — Retro + LEARN.md updates (interim retro discipline). Status: done. Blocked-by: hfi101, hfi102, hfi103, hfi104, hfi105 (all done). PR: https://github.com/LeoTheMighty/devx/pull/87 (merged 3b20151)
 
+### Epic — multi-loop-concurrency (plan: 20eb6f)
+
+Owner-requested 2026-07-28: N concurrent scoped `devx loop`s on one repo,
+overlap-safe by construction (race inventory R1–R12 in the plan spec).
+Serial chain — every story touches claim.ts/driver.ts.
+
+- [ ] `dev/dev-mlc101-2026-07-28T09:02-canonical-repo-root.md` — Canonical repo root + worktree refusal (kills R1). Status: ready. From: epic-multi-loop-concurrency.
+- [ ] `dev/dev-mlc102-2026-07-28T09:02-backlog-mutation-lock.md` — Backlog mutation lock + atomic-writer conversion (kills R3/R4/R10). Status: ready. Blocked-by: mlc101.
+- [ ] `dev/dev-mlc103-2026-07-28T09:02-spec-lock-lifecycle.md` — Spec-lock lifecycle: classify, reap, guarded release + pick-time masking (kills R7/R8/R12; G-3). Status: ready. Blocked-by: mlc102.
+- [ ] `dev/dev-mlc104-2026-07-28T09:02-claim-contention-harness.md` — Claim contention + overlap harness (kills R2/R5; G-1). Status: ready. Blocked-by: mlc103.
+- [ ] `dev/dev-mlc105-2026-07-28T09:02-instance-registry-admission.md` — Loop instance registry + capacity admission + next/status aggregation + scratch namespacing (kills R6/R11). Status: ready. Blocked-by: mlc104.
+- [ ] `dev/dev-mlc106-2026-07-28T09:02-scope-model-flags.md` — Scope model: epic-aware rows + --epic/--workstream/--items/--exclude/--focus + E-8 sweep. Status: ready. Blocked-by: mlc105.
+- [ ] `dev/dev-mlcret-2026-07-28T09:04-retro-multi-loop-concurrency.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: mlc101, mlc102, mlc103, mlc104, mlc105, mlc106.
+
 ## Phase 0 — Foundation (plan: plan-a01000)
 
 ### Epic 1 — BMAD audit

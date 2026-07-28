@@ -11,13 +11,13 @@ project_shape: empty-dream
 thoroughness: send-it
 stack_layers: [ backend ]
 blocked_by: []
-stage: red
+stage: executing
 entered_at: prd
 gate_status:
   prd_validated: true
   design_verified: true
   plan_verified: true
-  evals_red: false
+  evals_red: true
 outcome:
   status: null
   measure_by: null
@@ -26,6 +26,7 @@ gate_verdicts:
   prd: PASS
   design: PASS
   plan: CONCERNS
+  evals: PASS
 ---
 
 ## Goal
@@ -289,6 +290,20 @@ scoped loops, one night, real backlog.
   CONCERNS (plan mode; sole reason = E-7 partial-by-design) →
   plan_verified, stage: red. Report:
   `_devx/workstreams/multi-loop-concurrency/decisions/2026-07-28-plan-verify.md`.
+- 2026-07-28T09:10 — RED stage (/devx-plan): 6 runnable evals authored
+  (E-1..E-6 + shared _fixture.ts; E-7/E-8 deferred .md checklists —
+  human/tests-after, legal for P2/P1). Each eval hand-run before the gate:
+  all RED for the right reason (missing feature — singleton refusal,
+  no repo-root module, LockHeldError on dead owner, no rebase-retry, no
+  instances aggregation, no epic fields/flags), zero wiring failures;
+  E-3's live-owner conservative clause and E-6's parse probe verified
+  against today's behavior. `devx gate evals 20eb6f --dry-run` resolved
+  6 planned + 2 deferred; real run PASS (all six right-reason) →
+  evals_red, stage: executing. Report: `evals/RED-report.md`. Emitted:
+  dev specs mlc101–mlc106 (serial chain, branches via derive-branch) +
+  mlcret (emit-retro-story) + DEV.md § Epic — multi-loop-concurrency;
+  `validate-emit multi-loop-concurrency` ok; todo.md Phase pointer lines
+  written; PLAN.md checkbox flipped [x].
 
 ## Links
 

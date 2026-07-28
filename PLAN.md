@@ -43,7 +43,7 @@ Owner-requested 2026-07-28: N concurrent scoped `devx loop`s on one repo,
 error-proof even under overlapping scopes. Full race inventory (R1–R12) +
 seeded two-layer design live in the plan spec.
 
-- [ ] `plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md` — Multi-loop concurrency: repo-global root/locking, backlog mutation lock, claim-contention handling, spec-lock lifecycle, loop instance registry + capacity admission, epic/workstream/`--items`/`--focus` scoping. Status: ready. Blocked-by: —. Related: db36af (doctor), lpf101 (preflight), c8e2d4 (usage governor), f1d6b2 (fleet — orthogonal, composes on top).
+- [x] `plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md` — Multi-loop concurrency: repo-global root/locking, backlog mutation lock, claim-contention handling, spec-lock lifecycle, loop instance registry + capacity admission, epic/workstream/`--items`/`--focus` scoping. Status: planned (all 4 gates passed 2026-07-28; 6 dev specs mlc101–mlc106 + mlcret emitted to DEV.md § Cross-cutting plans; stage: executing). Blocked-by: —. Related: db36af (doctor), lpf101 (preflight), c8e2d4 (usage governor), f1d6b2 (fleet — orthogonal, composes on top).
 
 ## Cross-cutting plans
 
