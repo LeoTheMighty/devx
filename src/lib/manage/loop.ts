@@ -29,10 +29,12 @@
 // under `opts.cacheDir` (default: `.devx-cache`). Tests pass an empty
 // tmpdir as cwd to avoid reading the real project's backlog files.
 
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { parseBacklogSnapshot } from "../backlog/parse.js";
+import { BacklogLockTimeoutError, withBacklogLock } from "../backlog/mutate.js";
+import { writeAtomic } from "../supervisor-internal.js";
 import {
   type DesiredBlocking,
   enforceHardCap,
@@ -179,10 +181,15 @@ export async function runManagerOnce(opts: RunManagerOnceOpts = {}): Promise<Tic
   for (const block of recon.desiredBlocking) {
     try {
       applyBlocking(cacheDir, cwd, snapshot.dev, block, tickClock);
-    } catch {
+    } catch (e) {
       // best-effort — a partial application leaves the next tick to
       // re-emit the desiredBlocking (idempotent: status is already
-      // blocked or path lookup fails, both no-ops).
+      // blocked or path lookup fails, both no-ops). Named on stderr
+      // (mlc102 review EC-F3): a backlog-lock timeout retrying silently
+      // every tick forever was invisible before.
+      process.stderr.write(
+        `manage: WARN — applyBlocking for ${block.spec_hash} failed this tick (will retry): ${e instanceof Error ? e.message : String(e)}\n`,
+      );
     }
   }
 
@@ -438,16 +445,44 @@ function applyBlocking(
   const row = devRows.find((r) => r.hash === block.spec_hash);
   if (!row) return; // spec not in DEV.md — nothing to do (defensive)
 
-  const specPath = resolveSpecPath(cwd, row.path);
-  if (specPath) {
-    blockSpecFile(specPath, block, nowFn);
+  // mlc102: the spec flip + DEV.md flip + INTERVIEW append are one
+  // cross-process critical section — an unlocked peer (loop / interactive
+  // /devx) writing DEV.md between our read and our write would be
+  // silently reverted (R3), and a reader could see the blocked spec
+  // before its DEV.md row flips (R4).
+  //
+  // Degrade posture (review EC-F3, mirrors the loop driver): when the lock
+  // can't even be CREATED (locks dir EACCES/EROFS), run the writers
+  // unlocked with a stderr WARN — these writes never depended on
+  // `.devx-cache` being writable pre-mlc102, and skipping them silently
+  // every tick forever would starve the blocking flow. A contention
+  // TIMEOUT propagates to the caller's per-block catch (next tick
+  // re-emits desiredBlocking — idempotent).
+  const applyWriters = (): void => {
+    const specPath = resolveSpecPath(cwd, row.path);
+    if (specPath) {
+      blockSpecFile(specPath, block, nowFn);
+    }
+
+    const devMdPath = join(cwd, "DEV.md");
+    flipDevMdCheckbox(devMdPath, block.spec_hash);
+
+    const interviewPath = join(cwd, "INTERVIEW.md");
+    appendInterviewRow(interviewPath, block, row.path, nowFn);
+  };
+  let entered = false;
+  try {
+    withBacklogLock(cacheDir, `manage-blocking-${block.spec_hash}`, () => {
+      entered = true;
+      applyWriters();
+    });
+  } catch (e) {
+    if (entered || e instanceof BacklogLockTimeoutError) throw e;
+    process.stderr.write(
+      `manage: WARN — backlog lock unavailable (${e instanceof Error ? e.message : String(e)}); applying blocking for ${block.spec_hash} unlocked\n`,
+    );
+    applyWriters();
   }
-
-  const devMdPath = join(cwd, "DEV.md");
-  flipDevMdCheckbox(devMdPath, block.spec_hash);
-
-  const interviewPath = join(cwd, "INTERVIEW.md");
-  appendInterviewRow(interviewPath, block, row.path, nowFn);
 
   // Clear the crashes record last so retries on partial-failure see
   // desiredBlocking again on the next tick.
@@ -533,7 +568,8 @@ function blockSpecFile(
     next = `${trimmed}- ${stamp} — ${summary}\n`;
   }
   if (next === content) return;
-  writeFileSync(specPath, next, "utf8");
+  // mlc102: tmp+rename — a kill mid-write must never tear the spec.
+  writeAtomic(specPath, next);
 }
 
 /**
@@ -595,7 +631,8 @@ export function flipDevMdCheckbox(devMdPath: string, hash: string): void {
   );
   const next = content.replace(re, (_full, lead, _box, tail) => `${lead}[-]${tail}`);
   if (next === content) return;
-  writeFileSync(devMdPath, next, "utf8");
+  // mlc102: tmp+rename — a kill mid-write must never tear the backlog.
+  writeAtomic(devMdPath, next);
 }
 
 function appendInterviewRow(
@@ -637,11 +674,12 @@ function appendInterviewRow(
     `  - Options: (a) ack + investigate, (b) abandon (mark spec \`deleted\`).\n` +
     `  - Agent recommendation: (a) — exit-${lastCode} repeated ${block.crash_count}× is unlikely to be transient; rerun under \`devx manage --once\` after fix.\n`;
   // Normalize trailing whitespace so the new entry sits exactly one blank
-  // line below prior content. writeFileSync (not appendFileSync) keeps the
-  // separator deterministic regardless of the file's prior trailing state.
+  // line below prior content. A full rewrite (not appendFileSync) keeps the
+  // separator deterministic regardless of the file's prior trailing state;
+  // writeAtomic (mlc102) keeps a kill mid-write from tearing the file.
   const trimmed = cur.replace(/\s*$/, "");
   const sep = trimmed.length > 0 ? "\n\n" : "";
-  writeFileSync(interviewPath, trimmed + sep + entry, "utf8");
+  writeAtomic(interviewPath, trimmed + sep + entry);
 }
 
 /**

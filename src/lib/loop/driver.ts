@@ -39,6 +39,7 @@ import { readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 
 import { writeAtomic } from "../supervisor-internal.js";
+import { BacklogLockTimeoutError, withBacklogLock } from "../backlog/mutate.js";
 
 import { loadMerged } from "../config-io.js";
 import { parseBacklogSnapshot, parseDevMd, type DevRow } from "../backlog/parse.js";
@@ -823,6 +824,68 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
   const baseSha = safeHead(exec, worktree);
 
   /**
+   * mlc102: every main-checkout mutation below (spec status-log writes,
+   * backlog flips, commits, pushes, spec-lock release) runs inside the
+   * cross-process backlog lock so N loops + interactive /devx can't
+   * interleave read-modify-writes (races R3/R4). Re-entrant, so composite
+   * sequences (finalizeMerged, the abandon/release paths) hold it ONCE
+   * across their whole read→write→commit block while the leaf helpers
+   * stay individually guarded for their other call sites. Same repoRoot
+   * anchor as the spec lock above — claimSpec hardcodes the same universe.
+   * Worktree-cwd writes (recordIteration) stay lock-free by design:
+   * worktrees are per-item by construction.
+   *
+   * Failure posture (fail-soft, like every other driver step): when the
+   * lock can't even be CREATED (locks dir unwritable — EACCES/EROFS, an
+   * environment failure), run fn unlocked and event the degradation —
+   * wedging the night's bookkeeping on a broken locks dir loses more than
+   * the lock protects (peers can't take the lock in that environment
+   * either). A TIMEOUT (live contending holder) propagates: proceeding
+   * unlocked under real contention is exactly the lost-update race this
+   * lock exists to kill, and every caller already tolerates a thrown
+   * mutation via its event + WARN path.
+   */
+  const backlogLock = <T>(label: string, fn: () => T): T => {
+    let entered = false;
+    try {
+      return withBacklogLock(join(repoRoot, ".devx-cache"), label, () => {
+        entered = true;
+        return fn();
+      });
+    } catch (e) {
+      // fn's own errors (entered) and contention timeouts keep throwing.
+      if (entered || e instanceof BacklogLockTimeoutError) throw e;
+      event("item:backlog-lock-degraded", { label, error: serializeError(e) });
+      return fn();
+    }
+  };
+
+  /**
+   * Composite-section flavor (review BH-HIGH-1 / EC-F1): the leaf helpers
+   * each catch their own lock timeout, but the composite holds
+   * (finalize-merged, the abandon/release/exit blocks) used to let a
+   * BacklogLockTimeoutError escape runItem — one 30s contention event
+   * (a peer's claim push holding the lock) aborted the ENTIRE run as
+   * "unexpected driver error", stranding a merged-but-unreconciled item
+   * with its spec lock still held. A timed-out composite instead SKIPS its
+   * bookkeeping (never runs it unlocked — that's the R3 race itself),
+   * events, and WARNs the morning report; dispatcher row 4 reconciles the
+   * drift. Non-timeout errors keep the pre-mlc102 behavior.
+   */
+  const backlogLockBestEffort = (label: string, fn: () => void): void => {
+    try {
+      backlogLock(label, fn);
+    } catch (e) {
+      if (!(e instanceof BacklogLockTimeoutError)) throw e;
+      event("item:backlog-lock-timeout", { label, error: serializeError(e) });
+      itemWarnings.push(
+        `backlog lock timed out during ${label} for ${pick.hash} — bookkeeping skipped (spec/backlog/lock state may be stale; devx next drift + dispatcher row 4 reconcile it): ${firstLineOf(e.message)}`,
+      );
+      out(`loop: WARN — backlog lock timeout during ${label} for ${pick.hash}; bookkeeping skipped`);
+    }
+  };
+
+  /**
    * roc101 posture (AA-F1): before the item-end mutations of main-worktree
    * state (abandon flips, done flips, lock release), verify the spec lock
    * still records THIS run's session. Workers are prompt-framed `claude -p`
@@ -894,12 +957,14 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     learnings?: string[],
   ): void => {
     try {
-      appendStatusEntryToFile(mainSpecPath, {
-        iso: now().toISOString(),
-        prefix,
-        head,
-        ...(learnings !== undefined && learnings.length > 0 ? { learnings } : {}),
-      });
+      backlogLock("append-main-entry", () =>
+        appendStatusEntryToFile(mainSpecPath, {
+          iso: now().toISOString(),
+          prefix,
+          head,
+          ...(learnings !== undefined && learnings.length > 0 ? { learnings } : {}),
+        }),
+      );
     } catch (e) {
       event("item:main-status-append-failed", { error: serializeError(e) });
     }
@@ -912,7 +977,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       // staged in the main worktree overnight into a loop-authored commit
       // (and, on the merged path, pushing it). With the trailing pathspec,
       // only the loop's two files are committed regardless of index state.
-      const r = exec(
+      const r = backlogLock("commit-on-main", () => exec(
         "git",
         [
           "-c",
@@ -927,7 +992,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
           backlogRel(pick.type),
         ],
         { cwd: repoRoot, env: { GIT_TERMINAL_PROMPT: "0" } },
-      );
+      ));
       if (r.exitCode !== 0) throw new Error(r.stderr.trim() || r.stdout.trim());
     } catch (e) {
       event("item:main-commit-failed", { error: serializeError(e) });
@@ -936,7 +1001,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
 
   const releaseSpecLock = (): void => {
     try {
-      unlinkSync(lockPath);
+      backlogLock("release-spec-lock", () => unlinkSync(lockPath));
     } catch (e) {
       // ENOENT = already gone (fine). Anything else (EACCES, EPERM, …)
       // means the lock file is STILL on disk and every future claim of
@@ -960,10 +1025,24 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
    * origin" WARN so the human knows to push.
    */
   const pushMain = (): void => {
-    const push = exec("git", ["push"], {
-      cwd: repoRoot,
-      env: { GIT_TERMINAL_PROMPT: "0" },
-    });
+    let push: ReturnType<Exec>;
+    try {
+      push = backlogLock("push-main", () =>
+        exec("git", ["push"], {
+          cwd: repoRoot,
+          env: { GIT_TERMINAL_PROMPT: "0" },
+        }),
+      );
+    } catch (e) {
+      // Same tolerance as the sibling leaf helpers (BH-HIGH-1): a lock
+      // timeout must not escape the item — the commit is local and the
+      // report's WARN tells the human main is ahead of origin.
+      event("item:main-push-failed", { error: serializeError(e) });
+      itemWarnings.push(
+        `main is ahead of origin — push skipped (backlog lock unavailable): ${firstLineOf(e instanceof Error ? e.message : String(e))}`,
+      );
+      return;
+    }
     if (push.exitCode !== 0) {
       event("item:main-push-failed", { stderr: push.stderr.trim() });
       itemWarnings.push(
@@ -1034,18 +1113,23 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     statusText: "ready" | "in-progress" | "blocked",
   ): void => {
     try {
-      const content = readFileSync(backlogPath, "utf8");
-      const next = setBacklogRowState(content, pick.hash, pick.type, checkbox, statusText);
-      if (next === null) {
-        // No row for this hash — the exact drift class this flip exists to
-        // kill must not recur silently (EC-MED-9).
-        event("item:backlog-row-missing", { hash: pick.hash, backlog: backlogRel(pick.type) });
-        itemWarnings.push(
-          `no ${backlogRel(pick.type)} row found for ${pick.hash} — backlog not flipped to [${checkbox}] ${statusText}; reconcile by hand`,
-        );
-        return;
-      }
-      if (next !== content) writeAtomic(backlogPath, next);
+      // mlc102: the read AND the write sit inside one lock hold — locking
+      // only the write would still let a peer's flip land between our read
+      // and our writeAtomic (the R3 lost-update anatomy).
+      backlogLock("set-backlog-row", () => {
+        const content = readFileSync(backlogPath, "utf8");
+        const next = setBacklogRowState(content, pick.hash, pick.type, checkbox, statusText);
+        if (next === null) {
+          // No row for this hash — the exact drift class this flip exists to
+          // kill must not recur silently (EC-MED-9).
+          event("item:backlog-row-missing", { hash: pick.hash, backlog: backlogRel(pick.type) });
+          itemWarnings.push(
+            `no ${backlogRel(pick.type)} row found for ${pick.hash} — backlog not flipped to [${checkbox}] ${statusText}; reconcile by hand`,
+          );
+          return;
+        }
+        if (next !== content) writeAtomic(backlogPath, next);
+      });
     } catch (e) {
       event("item:backlog-row-flip-failed", { error: serializeError(e) });
     }
@@ -1087,21 +1171,22 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
 
   /** Roll the claim's main-worktree state back to ready: spec `status:
    *  ready`, dead `owner:` cleared, backlog row `[ ]` + `Status: ready`. */
-  const rollClaimBackToReady = (): void => {
-    try {
-      if (!setSpecStatus(mainSpecPath, "ready")) {
-        event("item:ready-status-flip-noop", { spec: pick.path });
+  const rollClaimBackToReady = (): void =>
+    backlogLock("roll-claim-back-to-ready", () => {
+      try {
+        if (!setSpecStatus(mainSpecPath, "ready")) {
+          event("item:ready-status-flip-noop", { spec: pick.path });
+        }
+      } catch (e) {
+        event("item:ready-status-flip-failed", { error: serializeError(e) });
       }
-    } catch (e) {
-      event("item:ready-status-flip-failed", { error: serializeError(e) });
-    }
-    try {
-      clearSpecOwner(mainSpecPath);
-    } catch (e) {
-      event("item:owner-clear-failed", { error: serializeError(e) });
-    }
-    setBacklogRow(" ", "ready");
-  };
+      try {
+        clearSpecOwner(mainSpecPath);
+      } catch (e) {
+        event("item:owner-clear-failed", { error: serializeError(e) });
+      }
+      setBacklogRow(" ", "ready");
+    });
 
   const abandonItem = (reason: string): RunItemResult => {
     event("item:abandon", { hash: pick.hash, reason, worktree });
@@ -1135,15 +1220,17 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       // The discarded worktree held the per-iteration [FAIL]/learning
       // entries — fold them into the main-spec entry so the next attempt
       // doesn't start blind.
-      appendMainEntry(
-        "[FAIL]",
-        `loop abandoned ${pick.hash}: ${reason}; no real work was preserved — bookkeeping-only worktree discarded, item left ready`,
-        failureNotes,
-      );
-      rollClaimBackToReady();
-      releaseSpecLock();
-      commitOnMain(`chore(loop): abandon ${pick.hash} (${reason}; nothing preserved — left ready)`);
-      pushMain();
+      backlogLockBestEffort("abandon-discarded", () => {
+        appendMainEntry(
+          "[FAIL]",
+          `loop abandoned ${pick.hash}: ${reason}; no real work was preserved — bookkeeping-only worktree discarded, item left ready`,
+          failureNotes,
+        );
+        rollClaimBackToReady();
+        releaseSpecLock();
+        commitOnMain(`chore(loop): abandon ${pick.hash} (${reason}; nothing preserved — left ready)`);
+        pushMain();
+      });
       out(`loop: abandoned ${pick.hash} — ${reason}; nothing preserved, item left ready`);
       return {
         item: {
@@ -1157,21 +1244,23 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         loopAbort: null,
       };
     }
-    appendMainEntry(
-      "[FAIL]",
-      `loop abandoned ${pick.hash}: ${reason}; worktree preserved at ${relToRepo(worktree, repoRoot)}`,
-    );
-    try {
-      if (!setSpecStatus(mainSpecPath, "blocked")) {
-        event("item:abandon-status-flip-noop", { spec: pick.path });
+    backlogLockBestEffort("abandon-preserved", () => {
+      appendMainEntry(
+        "[FAIL]",
+        `loop abandoned ${pick.hash}: ${reason}; worktree preserved at ${relToRepo(worktree, repoRoot)}`,
+      );
+      try {
+        if (!setSpecStatus(mainSpecPath, "blocked")) {
+          event("item:abandon-status-flip-noop", { spec: pick.path });
+        }
+      } catch (e) {
+        event("item:abandon-status-flip-failed", { error: serializeError(e) });
       }
-    } catch (e) {
-      event("item:abandon-status-flip-failed", { error: serializeError(e) });
-    }
-    setBacklogRow("-", "blocked");
-    releaseSpecLock();
-    commitOnMain(`chore(loop): abandon ${pick.hash} (${reason})`);
-    pushMain();
+      setBacklogRow("-", "blocked");
+      releaseSpecLock();
+      commitOnMain(`chore(loop): abandon ${pick.hash} (${reason})`);
+      pushMain();
+    });
     out(`loop: abandoned ${pick.hash} — ${reason}; worktree preserved at ${worktree}`);
     return {
       item: {
@@ -1220,12 +1309,14 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       // run's claim half-execute and wedge (`worktree add -b` fails on the
       // existing path/branch — review EC-HIGH-2). Keep the claim intact
       // instead: the honest, resumable stopped-mid-item shape.
-      appendMainEntry(
-        "",
-        `loop aborted mid-item (${reason}); worktree + claim preserved at ${relToRepo(worktree, repoRoot)}`,
-      );
-      commitOnMain(`chore(loop): ${pick.hash} in progress at loop exit (environment failure)`);
-      pushMain();
+      backlogLockBestEffort("release-preserved", () => {
+        appendMainEntry(
+          "",
+          `loop aborted mid-item (${reason}); worktree + claim preserved at ${relToRepo(worktree, repoRoot)}`,
+        );
+        commitOnMain(`chore(loop): ${pick.hash} in progress at loop exit (environment failure)`);
+        pushMain();
+      });
       out(`loop: ${pick.hash} left in progress — ${reason}; worktree + claim preserved`);
       return {
         item: {
@@ -1238,15 +1329,17 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         loopAbort: null,
       };
     }
-    appendMainEntry(
-      "",
-      `loop released ${pick.hash} back to ready: ${reason}; no real work was lost (bookkeeping-only worktree discarded)`,
-      failureNotes,
-    );
-    rollClaimBackToReady();
-    releaseSpecLock();
-    commitOnMain(`chore(loop): release ${pick.hash} back to ready (environment failure — item not at fault)`);
-    pushMain();
+    backlogLockBestEffort("release-to-ready", () => {
+      appendMainEntry(
+        "",
+        `loop released ${pick.hash} back to ready: ${reason}; no real work was lost (bookkeeping-only worktree discarded)`,
+        failureNotes,
+      );
+      rollClaimBackToReady();
+      releaseSpecLock();
+      commitOnMain(`chore(loop): release ${pick.hash} back to ready (environment failure — item not at fault)`);
+      pushMain();
+    });
     out(`loop: released ${pick.hash} back to ready — ${reason}`);
     return {
       item: {
@@ -1279,12 +1372,14 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         loopAbort: null,
       };
     }
-    appendMainEntry("", `loop stopped mid-item (${why}); worktree + claim preserved`);
-    // Commit + push the appended entry: an uncommitted main-worktree edit
-    // left overnight is exactly the kind of surprise dirt the loop must
-    // not leave behind (review finding LOW-11).
-    commitOnMain(`chore(loop): ${pick.hash} in progress at loop exit (${why})`);
-    pushMain();
+    backlogLockBestEffort("exit-in-progress", () => {
+      appendMainEntry("", `loop stopped mid-item (${why}); worktree + claim preserved`);
+      // Commit + push the appended entry: an uncommitted main-worktree edit
+      // left overnight is exactly the kind of surprise dirt the loop must
+      // not leave behind (review finding LOW-11).
+      commitOnMain(`chore(loop): ${pick.hash} in progress at loop exit (${why})`);
+      pushMain();
+    });
     return {
       item: {
         ...baseItem(),
@@ -1755,51 +1850,57 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     } catch (e) {
       event("item:worktree-remove-failed", { error: serializeError(e) });
     }
-    const pull = exec("git", ["pull", "--ff-only"], {
-      cwd: repoRoot,
-      env: { GIT_TERMINAL_PROMPT: "0" },
+    // mlc102: one lock hold across the whole reconcile — the ff-pull, the
+    // spec/backlog flips, the commit and the push must not interleave with
+    // a peer loop's claim commit on the same checkout (races R3/R4). The
+    // inner helpers' own locks are re-entrant no-ops under this hold.
+    backlogLockBestEffort("finalize-merged", () => {
+      const pull = exec("git", ["pull", "--ff-only"], {
+        cwd: repoRoot,
+        env: { GIT_TERMINAL_PROMPT: "0" },
+      });
+      if (pull.exitCode !== 0) {
+        event("item:pull-ff-failed", { stderr: pull.stderr.trim() });
+      }
+      try {
+        // BH-LOW-9 / EC-MED-5: a `false` return means the frontmatter had no
+        // flippable status line — surface it (the checkbox is about to flip
+        // while the source-of-truth field silently stays in-progress).
+        if (!setSpecStatus(mainSpecPath, "done")) {
+          event("item:done-status-flip-noop", { spec: pick.path });
+        }
+      } catch (e) {
+        event("item:done-status-flip-failed", { error: serializeError(e) });
+      }
+      // dvx103 (cf65aa): the interactive /devx skill writes the mandatory
+      // `phase 4:` status-log line itself, but in the loop the orchestrator
+      // owns the Status log and workers may not touch it — so the merge tail
+      // appends the line when it's missing, or every loop-shipped spec reds
+      // test/devx-status-log-discipline.test.ts on the next branch cut.
+      try {
+        if (!hasPhase4StatusLine(readFileSync(mainSpecPath, "utf8"))) {
+          appendMainEntry(
+            "",
+            "phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103",
+          );
+        }
+      } catch (e) {
+        event("item:phase4-append-failed", { error: serializeError(e) });
+      }
+      appendMainEntry("", `merged via devx loop — PR ${prUrl}`);
+      try {
+        const content = readFileSync(backlogPath, "utf8");
+        const next = markBacklogRowDone(content, pick.hash, pick.type, prUrl);
+        // EC-LOW-13: tmp+rename like every other loop write — a kill -9
+        // mid-write must never tear the backlog.
+        if (next !== content) writeAtomic(backlogPath, next);
+      } catch (e) {
+        event("item:backlog-done-flip-failed", { error: serializeError(e) });
+      }
+      releaseSpecLock();
+      commitOnMain(`chore: mark ${pick.hash} done after loop merge (${prUrl})`);
+      pushMain();
     });
-    if (pull.exitCode !== 0) {
-      event("item:pull-ff-failed", { stderr: pull.stderr.trim() });
-    }
-    try {
-      // BH-LOW-9 / EC-MED-5: a `false` return means the frontmatter had no
-      // flippable status line — surface it (the checkbox is about to flip
-      // while the source-of-truth field silently stays in-progress).
-      if (!setSpecStatus(mainSpecPath, "done")) {
-        event("item:done-status-flip-noop", { spec: pick.path });
-      }
-    } catch (e) {
-      event("item:done-status-flip-failed", { error: serializeError(e) });
-    }
-    // dvx103 (cf65aa): the interactive /devx skill writes the mandatory
-    // `phase 4:` status-log line itself, but in the loop the orchestrator
-    // owns the Status log and workers may not touch it — so the merge tail
-    // appends the line when it's missing, or every loop-shipped spec reds
-    // test/devx-status-log-discipline.test.ts on the next branch cut.
-    try {
-      if (!hasPhase4StatusLine(readFileSync(mainSpecPath, "utf8"))) {
-        appendMainEntry(
-          "",
-          "phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103",
-        );
-      }
-    } catch (e) {
-      event("item:phase4-append-failed", { error: serializeError(e) });
-    }
-    appendMainEntry("", `merged via devx loop — PR ${prUrl}`);
-    try {
-      const content = readFileSync(backlogPath, "utf8");
-      const next = markBacklogRowDone(content, pick.hash, pick.type, prUrl);
-      // EC-LOW-13: tmp+rename like every other loop write — a kill -9
-      // mid-write must never tear the backlog.
-      if (next !== content) writeAtomic(backlogPath, next);
-    } catch (e) {
-      event("item:backlog-done-flip-failed", { error: serializeError(e) });
-    }
-    releaseSpecLock();
-    commitOnMain(`chore: mark ${pick.hash} done after loop merge (${prUrl})`);
-    pushMain();
     out(`loop: ${pick.hash} merged + reconciled (${prUrl})`);
   }
 

@@ -58,6 +58,7 @@ import {
   realEngineFs,
   resolveWorkstream,
 } from "../lib/engine/workstream.js";
+import { withBacklogLock } from "../lib/backlog/mutate.js";
 
 export interface RunGateOpts {
   out?: (s: string) => void;
@@ -130,10 +131,28 @@ function advanceStage(current: Stage | null, target: Stage): Stage {
   return stageIndex(current) < stageIndex(target) ? target : current;
 }
 
+/** mlc102: spec-frontmatter patches are backlog/spec mutations — the write
+ *  runs under the cross-process backlog lock so a gate run can't interleave
+ *  with a concurrent loop's or /devx's write to the same spec (R10). The
+ *  patch content is still composed from the resolve-time read; serializing
+ *  the read too is mlc103+ territory — the lock here closes the torn/lost
+ *  WRITE, which is what the race inventory names. */
+function writeSpecPatchLocked(
+  repoRoot: string,
+  io: GateIo,
+  specAbs: string,
+  contents: string,
+): void {
+  withBacklogLock(join(repoRoot, ".devx-cache"), "gate-spec-patch", () =>
+    io.fs.writeFile(specAbs, contents),
+  );
+}
+
 /** Record an evaluated FAIL in `gate_verdicts:` — verdict-only patch;
  *  gate_status booleans and stage are untouched (hfi102). Returns false when
  *  the frontmatter write fails, in which case the caller exits 2. */
 function writeFailVerdict(
+  repoRoot: string,
   ws: ResolvedWorkstream,
   key: GateKey,
   usage: string,
@@ -143,7 +162,7 @@ function writeFailVerdict(
     const updated = applyEnginePatch(ws.content, {
       gateVerdicts: { [key]: "FAIL" },
     });
-    io.fs.writeFile(ws.specAbs, updated);
+    writeSpecPatchLocked(repoRoot, io, ws.specAbs, updated);
     return true;
   } catch (e) {
     io.err(
@@ -197,7 +216,7 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
     io.out(
       `${JSON.stringify({ gate: "FAIL", hash: ws.hash, gaps: result.gaps })}\n`,
     );
-    return writeFailVerdict(ws, "prd", "devx gate prd", io) ? 1 : 2;
+    return writeFailVerdict(r.repoRoot, ws, "prd", "devx gate prd", io) ? 1 : 2;
   }
 
   // PASS: flip prd_validated + stage: design + verdict in one patch.
@@ -208,7 +227,7 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
       stage: newStage,
       gateVerdicts: { prd: result.verdict },
     });
-    io.fs.writeFile(ws.specAbs, updated);
+    writeSpecPatchLocked(r.repoRoot, io, ws.specAbs, updated);
   } catch (e) {
     io.err(
       `devx gate prd: PASS computed but frontmatter write failed: ${e instanceof Error ? e.message : String(e)}\n`,
@@ -349,7 +368,7 @@ export function runGateCoverage(
         stage: newStage,
         gateVerdicts: { [FLAG_TO_GATE_KEY[flag]]: computation.verdict },
       });
-      io.fs.writeFile(ws.specAbs, updated);
+      writeSpecPatchLocked(r.repoRoot, io, ws.specAbs, updated);
       flipped = { [flag]: true, stage: newStage };
     } catch (e) {
       io.err(
@@ -374,7 +393,7 @@ export function runGateCoverage(
   );
   if (
     computation.verdict === "FAIL" &&
-    !writeFailVerdict(ws, FLAG_TO_GATE_KEY[flag], "devx gate coverage", io)
+    !writeFailVerdict(r.repoRoot, ws, FLAG_TO_GATE_KEY[flag], "devx gate coverage", io)
   ) {
     return 2;
   }
@@ -545,7 +564,7 @@ export function runGateEvalsCli(
         stage: newStage,
         gateVerdicts: { evals: result.verdict },
       });
-      io.fs.writeFile(ws.specAbs, updated);
+      writeSpecPatchLocked(r.repoRoot, io, ws.specAbs, updated);
       flipped = { evals_red: true, stage: newStage };
     } catch (e) {
       io.err(
@@ -569,7 +588,7 @@ export function runGateEvalsCli(
   );
   if (
     result.verdict === "FAIL" &&
-    !writeFailVerdict(ws, "evals", "devx gate evals", io)
+    !writeFailVerdict(r.repoRoot, ws, "evals", "devx gate evals", io)
   ) {
     return 2;
   }
