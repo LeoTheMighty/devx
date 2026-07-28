@@ -260,6 +260,36 @@ three `.devx-cache/loop/` morning reports, verified per claim.*
 
 ---
 
+## multi-loop-concurrency — candidates (learn 2026-07-28, for mlcret)
+
+*Added by a `/devx-learn` run over the mlc101 session (PR #91), user-pruned.
+Candidates only — mlcret promotes, merges, or strikes these against the full
+epic's evidence; do not treat as promoted rows.*
+
+- [C1] [high] [code] **Git worktree classification must use `git-dir !=
+  git-common-dir`; any path-shape heuristic (`basename == ".git"`)
+  misclassifies submodule and separate-git-dir MAIN checkouts.** mlc101's
+  first-cut discriminator would have false-refused `devx loop`/`devx manage`
+  and hard-blocked claims (no override) in those layouts; caught by the
+  3-agent review (Blind Hunter, verified against real git), fixed pre-merge
+  in PR #91. — applied (PR #91); pending mlcret promotion review.
+- [C2] [high] [code] **Canonicalizing a value half-way is worse than
+  consistently wrong — grep every consumer of the old default and convert
+  them in the same change.** mlc101's first cut passed the canonical
+  cacheDir to `acquireManagerLock` but not the tick, creating a NEW
+  lock-guards-A/state-writes-B split that didn't exist when everything was
+  uniformly cwd-relative. Two reviewers flagged it independently; fixed
+  pre-merge (cacheDir + cwd plumb, defaults removed from
+  `managerLockPath`/`acquireManagerLock`). — applied (PR #91); pending
+  mlcret promotion review.
+- [C3] [med] [docs] **3-agent threshold rule reaffirmed on mlc101** (~570
+  changed lines, marker-bearing): 10 unique findings incl. the 2 HIGHs above
+  that single-pass self-review had already accepted. Concordance evidence
+  for the existing Cross-epic "3-agent parallel adversarial review" row. —
+  recorded; mlcret appends to the Cross-epic row's evidence list.
+
+---
+
 ## Cross-epic patterns
 
 Findings that recur across multiple epics get promoted up to this section once they hit ≥3 concordant retros (the Phase 5 `epic-learn-agent` threshold; we mirror it manually here). These are higher-confidence and warrant skill / template / `CLAUDE.md` edits rather than memory.

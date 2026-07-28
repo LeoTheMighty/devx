@@ -151,6 +151,13 @@ Steps:
    Context, and locate the RED artifacts named in the Expectation-coverage
    table. `tests-first` phases MUST re-run their already-RED artifact and
    watch it fail NOW, before writing code — never re-author it to pass.
+   **Confirm it fails for the STATED reason**: read the failure output and
+   check it names the missing feature, not harness breakage — a spawn
+   error, empty output, or missing dependency is an infra failure, not a
+   valid RED (the assertion it claims to make never ran). Fix the eval
+   infra first, then re-confirm the honest RED. (mlc101: E-2's refusal
+   assertion "failed" with empty output because the fixture's tsx path
+   didn't exist in linked worktrees — the CLI under test never spawned.)
 3. Workstream todo (working memory; skip when workstream=none): run
    `devx todo sync <plan-hash>` from the MAIN worktree, then expand this
    session's sub-items as free-nested lines under the current phase pointer
@@ -274,6 +281,7 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
    Phase 7 explicitly reads `.github/pull_request_template.md` (or falls back to the built-in canonical template baked into the CLI when the on-disk file is absent — older repos that predate prt101 or haven't run `/devx-init` upgrade since) by invoking the **`devx pr-body`** CLI (prt102). Never re-implement the substitution in the skill body — the CLI is the single source of truth. It substitutes the active mode + spec path + AC checklist (line-anchored to the canonical positions per locked decision #4 in `epic-pr-template.md` — placeholders inside code blocks must NOT substitute). Optional flags fill the free-text sections; omitted ones leave the placeholder visible AND emit `unresolved-placeholder: <name>` to stderr per locked decision #5.
 
    ```
+   mkdir -p .devx-cache   # fresh worktrees don't have it (gitignored; claim doesn't create it) — the stderr redirect below fails the whole command without it
    BODY=$(devx pr-body --spec dev/dev-<hash>-<ts>-<slug>.md \
      --summary "<1–3 bullets on what changed>" \
      --test-plan "<bulleted list of what local CI gates covered + any manual steps>" \
