@@ -123,6 +123,7 @@ function runPure(opts: {
   expectations?: string;
   plan?: string | null;
   existing?: string[];
+  waived?: ReadonlySet<string>;
   dryRun?: boolean;
 }) {
   const { exec, calls } = fakeExec(opts.exitCode ?? 1);
@@ -139,6 +140,7 @@ function runPure(opts: {
     runners: [{ name: "cli", path: ".", test: "npm test --" }],
     exec,
     exists: (p) => existing.has(p),
+    waived: opts.waived,
     dryRun: opts.dryRun,
   });
   return { result, calls };
@@ -339,6 +341,56 @@ describe("runGateEvals — shipped-green deferral (debug-9b9be5)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Operator waiver — D-9 WAIVED without hand-editing RED-report.md
+// (debug-9b9be5)
+// ---------------------------------------------------------------------------
+
+describe("runGateEvals — operator waiver (debug-9b9be5)", () => {
+  it("a waived P0 is never run, never a gap; the verdict becomes WAIVED", () => {
+    const { result, calls } = runPure({
+      exitCode: 0, // would FAIL as not-red if it ran
+      waived: new Set(["E-1"]),
+    });
+    expect(calls).toHaveLength(0);
+    const d = result.deferred.find((r) => r.eId === "E-1")!;
+    expect(d.redVerdict).toBe("not-run (deferred: waived)");
+    expect(d.gap).toBeNull();
+    expect(d.blocking).toBe(false);
+    expect(result.verdict).toBe("WAIVED");
+  });
+
+  it("a waiver never masks other blockers — an unwaived green P0 still FAILs", () => {
+    const { result } = runPure({
+      exitCode: 0,
+      waived: new Set(["E-3"]), // E-1 (P0) still runs and exits 0
+    });
+    expect(result.verdict).toBe("FAIL");
+    const run = result.runs.find((r) => r.eId === "E-1")!;
+    expect(run.gap).toContain("exited 0");
+  });
+
+  it("renderRedReport writes a D-9-valid WAIVED verdict block", () => {
+    const { result } = runPure({ exitCode: 0, waived: new Set(["E-1"]) });
+    const report = renderRedReport({
+      workstreamRel: "_devx/workstreams/demo",
+      date: "2026-07-28",
+      result,
+      waiver: { approver: "leo", reason: "shipped green in rooted-light" },
+    });
+    const parsed = parseVerdictBlock(report)!;
+    expect(parsed.issues).toEqual([]);
+    expect(parsed.block.gate).toBe("WAIVED");
+    expect(parsed.block.waiver).toEqual({
+      active: true,
+      approver: "leo",
+      reason: "shipped green in rooted-light",
+    });
+    expect(parsed.block.statusReason).toContain("E-1 waived by leo");
+    expect(report).toContain("E-1: not-run (deferred: waived)");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // CLI driver layer
 // ---------------------------------------------------------------------------
 
@@ -380,7 +432,15 @@ function seed(flags: { plan_verified?: boolean; prd_validated?: boolean } = {}):
   repo.write("test/perf.test.mjs", 'process.exit(1);\n');
 }
 
-function gateEvals(flags: { dryRun?: boolean } = {}, exitCode = 1) {
+function gateEvals(
+  flags: {
+    dryRun?: boolean;
+    waive?: string[];
+    reason?: string;
+    approver?: string;
+  } = {},
+  exitCode = 1,
+) {
   const io = captureIo();
   const calls: ExecCall[] = [];
   const code = runGateEvalsCli(["abc123"], flags, {
@@ -514,6 +574,72 @@ describe("devx gate evals — CLI driver", () => {
     const { code, io } = gateEvals({}, 0);
     expect(code).toBe(1);
     expect((io.json() as { gate: string }).gate).toBe("FAIL");
+  });
+
+  // debug-9b9be5 AC: `--waive <E-n> --reason <reason>` writes a valid D-9
+  // WAIVED verdict into the RED report — no hand-edit route required.
+  it("--waive writes a WAIVED report, flips evals_red, records the verdict", () => {
+    seed();
+    const { code, io, calls } = gateEvals(
+      { waive: ["e-1"], reason: "shipped green post-revise", approver: "leo" },
+      0, // green suite — would FAIL without the waiver
+    );
+    expect(code).toBe(0);
+    const j = io.json() as { gate: string; waived: string[] };
+    expect(j.gate).toBe("WAIVED");
+    expect(j.waived).toEqual(["E-1"]); // lowercase input normalized
+    expect(calls).toHaveLength(0); // waived P0 never ran; E-2/E-3 defer by type
+
+    const report = repo.read(`${WS}/evals/RED-report.md`);
+    const parsed = parseVerdictBlock(report)!;
+    expect(parsed.issues).toEqual([]);
+    expect(parsed.block.gate).toBe("WAIVED");
+    expect(parsed.block.waiver).toEqual({
+      active: true,
+      approver: "leo",
+      reason: "shipped green post-revise",
+    });
+    expect(report).toContain("E-1: not-run (deferred: waived)");
+
+    const state = readEngineState(repo.read(SPEC_REL));
+    expect(state.gateStatus.evals_red).toBe(true);
+    expect(state.stage).toBe("executing");
+    expect(state.gateVerdicts.evals).toBe("WAIVED");
+  });
+
+  it("--waive without --reason → exit 2, nothing evaluated or written", () => {
+    seed();
+    const { code, io, calls } = gateEvals({ waive: ["E-1"], approver: "leo" });
+    expect(code).toBe(2);
+    expect(io.stderr()).toContain("--reason");
+    expect(calls).toHaveLength(0);
+    expect(repo.exists(`${WS}/evals/RED-report.md`)).toBe(false);
+  });
+
+  it("--waive without a resolvable approver → exit 2 naming D-9", () => {
+    seed();
+    const { code, io } = gateEvals({ waive: ["E-1"], reason: "because" });
+    expect(code).toBe(2);
+    expect(io.stderr()).toContain("approver");
+  });
+
+  it("--waive of an unknown E-id → exit 2, no report (typo must not waive nothing)", () => {
+    seed();
+    const { code, io } = gateEvals({
+      waive: ["E-9"],
+      reason: "because",
+      approver: "leo",
+    });
+    expect(code).toBe(2);
+    expect(io.stderr()).toContain("no such expectation");
+    expect(repo.exists(`${WS}/evals/RED-report.md`)).toBe(false);
+  });
+
+  it("--reason without --waive → exit 2", () => {
+    seed();
+    const { code, io } = gateEvals({ reason: "dangling" });
+    expect(code).toBe(2);
+    expect(io.stderr()).toContain("--waive");
   });
 
   it("unknown hash → exit 2", () => {

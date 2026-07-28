@@ -32,6 +32,7 @@ import {
   applyEnginePatch,
   stageIndex,
 } from "../lib/engine/frontmatter.js";
+import { parseExpectations } from "../lib/engine/expectations.js";
 import { evaluateGatePrd } from "../lib/engine/gate-prd.js";
 import {
   computeCoverageVerdict,
@@ -386,13 +387,52 @@ export function runGateCoverage(
 
 export function runGateEvalsCli(
   args: string[],
-  flags: { dryRun?: boolean },
+  flags: {
+    dryRun?: boolean;
+    waive?: string[];
+    reason?: string;
+    approver?: string;
+  },
   opts: RunGateOpts = {},
 ): number {
   const io = ioFrom(opts);
   if (args.length !== 1) {
-    io.err("usage: devx gate evals <hash> [--dry-run]\n");
+    io.err(
+      "usage: devx gate evals <hash> [--dry-run] [--waive <E-n> --reason <text> [--approver <name>]]\n",
+    );
     return 2;
+  }
+  // D-9 waiver flags: --waive is repeatable / comma-separable; a waiver
+  // without a recorded reason or a named approver is exactly the hand-edit
+  // gap this path exists to close, so both are hard requirements.
+  const waive = (flags.waive ?? [])
+    .flatMap((v) => v.split(","))
+    .map((v) => v.trim().toUpperCase())
+    .filter((v) => v !== "");
+  if (waive.length === 0 && (flags.reason !== undefined || flags.approver !== undefined)) {
+    io.err("devx gate evals: --reason/--approver only apply with --waive <E-n>\n");
+    return 2;
+  }
+  if (waive.length > 0) {
+    const malformed = waive.filter((v) => !/^E-\d+$/.test(v));
+    if (malformed.length > 0) {
+      io.err(
+        `devx gate evals: --waive expects E-<n> ids, got: ${malformed.join(", ")}\n`,
+      );
+      return 2;
+    }
+    if (!flags.reason || flags.reason.trim() === "") {
+      io.err(
+        "devx gate evals: --waive requires --reason <text> (D-9: a WAIVED verdict records why)\n",
+      );
+      return 2;
+    }
+    if (!flags.approver || flags.approver.trim() === "") {
+      io.err(
+        "devx gate evals: waiver needs a named approver (D-9) — pass --approver <name>\n",
+      );
+      return 2;
+    }
   }
   const r = resolveOrFail(args[0], "devx gate evals", opts, io);
   if (!r.ok) return r.code;
@@ -423,16 +463,33 @@ export function runGateEvalsCli(
     return 2;
   }
   const planAbs = join(ws.workstreamAbs, "plan.md");
+  const expectations = io.fs.readFile(expAbs);
+
+  // A typo'd --waive must not silently waive nothing and then demand RED
+  // from the eval the operator meant — refuse before evaluating anything.
+  if (waive.length > 0) {
+    const known = new Set(
+      parseExpectations(expectations).map((b) => b.id.toUpperCase()),
+    );
+    const unknown = waive.filter((id) => !known.has(id));
+    if (unknown.length > 0) {
+      io.err(
+        `devx gate evals: cannot waive ${unknown.join(", ")} — no such expectation in ${ws.workstreamRel}/expectations.md\n`,
+      );
+      return 2;
+    }
+  }
 
   const result = runGateEvals({
     repoRoot: r.repoRoot,
     workstreamAbs: ws.workstreamAbs,
-    expectations: io.fs.readFile(expAbs),
+    expectations,
     plan: io.fs.exists(planAbs) ? io.fs.readFile(planAbs) : null,
     runners: projectRunnersFrom(r.merged),
     exec: opts.exec ?? realShellExec,
     exists: (p) => io.fs.exists(p),
     donePhases: donePhasesFor(io.fs, r.repoRoot, ws.workstreamRel),
+    waived: new Set(waive),
     dryRun: flags.dryRun === true,
   });
 
@@ -462,7 +519,15 @@ export function runGateEvalsCli(
     io.fs.mkdirRecursive(join(ws.workstreamAbs, "evals"));
     io.fs.writeFile(
       join(ws.workstreamAbs, "evals", "RED-report.md"),
-      renderRedReport({ workstreamRel: ws.workstreamRel, date, result }),
+      renderRedReport({
+        workstreamRel: ws.workstreamRel,
+        date,
+        result,
+        waiver:
+          waive.length > 0
+            ? { approver: flags.approver!, reason: flags.reason! }
+            : undefined,
+      }),
     );
   } catch (e) {
     io.err(
@@ -499,6 +564,7 @@ export function runGateEvalsCli(
       report: reportRel,
       reasons: result.reasons,
       flipped,
+      ...(waive.length > 0 ? { waived: waive } : {}),
     })}\n`,
   );
   if (
@@ -551,10 +617,35 @@ export function register(program: Command): void {
     )
     .argument("<hash>", "workstream (plan spec) hash")
     .option("--dry-run", "resolve artifacts + commands, run nothing, write nothing")
-    .action((hash: string, cmdOpts: { dryRun?: boolean }) => {
-      const code = runGateEvalsCli([hash], { dryRun: cmdOpts.dryRun });
-      if (code !== 0) process.exit(code);
-    });
+    .option(
+      "--waive <e-id>",
+      "record a D-9 WAIVED verdict for this expectation instead of demanding RED (repeatable)",
+      (v: string, prev: string[]) => [...prev, v],
+      [] as string[],
+    )
+    .option("--reason <text>", "waiver reason (required with --waive)")
+    .option("--approver <name>", "waiver approver (default: $USER)")
+    .action(
+      (
+        hash: string,
+        cmdOpts: {
+          dryRun?: boolean;
+          waive: string[];
+          reason?: string;
+          approver?: string;
+        },
+      ) => {
+        const code = runGateEvalsCli([hash], {
+          dryRun: cmdOpts.dryRun,
+          waive: cmdOpts.waive,
+          reason: cmdOpts.reason,
+          approver:
+            cmdOpts.approver ??
+            (cmdOpts.waive.length > 0 ? process.env.USER : undefined),
+        });
+        if (code !== 0) process.exit(code);
+      },
+    );
 
   attachPhase(sub, 1);
 }

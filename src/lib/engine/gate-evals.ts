@@ -256,6 +256,7 @@ export type RedVerdict =
   | "not-run (deferred: human)"
   | "not-run (deferred: none)"
   | "not-run (deferred: shipped-green)"
+  | "not-run (deferred: waived)"
   | "not-run (eval-spec)"
   | "not-run (no runner)";
 
@@ -290,12 +291,16 @@ export interface GateEvalsInputs {
    *  (debug-9b9be5). Absent → no deferral (grandfathered specs without
    *  `phase:` frontmatter keep today's strict behavior). */
   donePhases?: ReadonlySet<number>;
+  /** Uppercased E-ids the operator waived via `--waive` (D-9). Waived
+   *  evals are never run and never a gap; ≥1 applied waiver makes a
+   *  non-FAIL verdict WAIVED (debug-9b9be5). */
+  waived?: ReadonlySet<string>;
   /** Dry-run: resolve everything, run nothing. */
   dryRun?: boolean;
 }
 
 export interface GateEvalsResult {
-  verdict: Extract<Verdict, "PASS" | "CONCERNS" | "FAIL">;
+  verdict: Verdict;
   runs: EvalRun[];
   deferred: EvalRun[];
   reasons: string[];
@@ -362,11 +367,20 @@ export function runGateEvals(inputs: GateEvalsInputs): GateEvalsResult {
 
   const anyBlocking = [...runs, ...deferred].some((r) => r.blocking);
   const anyGap = [...runs, ...deferred].some((r) => r.gap !== null);
+  // ≥1 applied waiver turns a would-be PASS/CONCERNS into WAIVED — the
+  // report must record that the gate cleared by operator override, not on
+  // its own merits (D-9). A blocking gap the waiver didn't cover still
+  // FAILs; the waiver never masks other blockers.
+  const anyWaived = deferred.some(
+    (r) => r.redVerdict === "not-run (deferred: waived)",
+  );
   const verdict: GateEvalsResult["verdict"] = anyBlocking
     ? "FAIL"
-    : anyGap
-      ? "CONCERNS"
-      : "PASS";
+    : anyWaived
+      ? "WAIVED"
+      : anyGap
+        ? "CONCERNS"
+        : "PASS";
 
   return { verdict, runs, deferred, reasons };
 }
@@ -394,6 +408,15 @@ function evaluateExpectation(
     gap: null,
     blocking: false,
   };
+
+  // Operator waiver (debug-9b9be5): explicit `--waive E-n` intent outranks
+  // every mechanical rule — the eval is never run, never a gap, at any
+  // priority. The gate-level verdict becomes WAIVED (see runGateEvals);
+  // the CLI supplies the D-9 approver + reason for the verdict block.
+  if (inputs.waived?.has(block.id.toUpperCase())) {
+    base.redVerdict = "not-run (deferred: waived)";
+    return base;
+  }
 
   // Shipped-green (debug-9b9be5): the eval's phase already merged (its dev
   // spec is `status: done`), so its artifact is green by definition — a
@@ -501,13 +524,21 @@ export function renderRedReport(args: {
   workstreamRel: string;
   date: string;
   result: GateEvalsResult;
+  /** D-9 waiver detail; required when result.verdict is WAIVED (the
+   *  verdict-block writer refuses an approver-less WAIVED). */
+  waiver?: { approver: string; reason: string };
 }): string {
   const { result } = args;
+  const waivedIds = result.deferred
+    .filter((r) => r.redVerdict === "not-run (deferred: waived)")
+    .map((r) => r.eId);
   const statusReason =
     result.verdict === "PASS"
       ? `Every runnable expectation observed RED for the right reason (${result.runs.length} run(s), ${result.deferred.length} deferred).`
-      : result.reasons.slice(0, 2).join(" ") +
-        (result.reasons.length > 2 ? ` (+${result.reasons.length - 2} more)` : "");
+      : result.verdict === "WAIVED"
+        ? `${waivedIds.join(", ")} waived by ${args.waiver?.approver ?? "(unknown)"}: ${args.waiver?.reason ?? "(no reason)"} — remaining expectations clear (${result.runs.length} run(s), ${result.deferred.length} deferred).`
+        : result.reasons.slice(0, 2).join(" ") +
+          (result.reasons.length > 2 ? ` (+${result.reasons.length - 2} more)` : "");
 
   const lines: string[] = [];
   lines.push(
@@ -516,7 +547,14 @@ export function renderRedReport(args: {
       statusReason,
       reviewer: "devx gate evals",
       updated: args.date,
-      waiver: INACTIVE_WAIVER,
+      waiver:
+        result.verdict === "WAIVED" && args.waiver
+          ? {
+              active: true,
+              approver: args.waiver.approver,
+              reason: args.waiver.reason,
+            }
+          : INACTIVE_WAIVER,
     }),
   );
   lines.push(`# RED report — ${args.workstreamRel} — ${args.date}`);
