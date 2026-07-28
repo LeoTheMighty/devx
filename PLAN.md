@@ -45,6 +45,18 @@ seeded two-layer design live in the plan spec.
 
 - [x] `plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md` — Multi-loop concurrency: repo-global root/locking, backlog mutation lock, claim-contention handling, spec-lock lifecycle, loop instance registry + capacity admission, epic/workstream/`--items`/`--focus` scoping. Status: planned (all 4 gates passed 2026-07-28; 6 dev specs mlc101–mlc106 + mlcret emitted to DEV.md § Cross-cutting plans; stage: executing). Blocked-by: —. Related: db36af (doctor), lpf101 (preflight), c8e2d4 (usage governor), f1d6b2 (fleet — orthogonal, composes on top).
 
+## Mid-story split (2026-07-28)
+
+Owner-requested 2026-07-28: replace the conversation-only Handoff Snippet
+(devx.md Phase 9, dvx107) with split-the-story — remaining work files as a
+follow-up dev spec (fresh hash, `from:` parent, `Blocked-by:` wiring) via a
+CLI primitive shared by interactive `/devx` and the `devx loop` driver
+(worker-requested + budget rail), so any fresh session claims the remainder
+cold. Merge-first preferred, branch-handoff fallback. Kills the hfi102
+abandoned-while-done class.
+
+- [/] `plan/plan-e0a67e-2026-07-28T12:15-mid-story-split.md` — Mid-story split: split primitive + carried-forward context contract, loop split paths + `split` outcome, Handoff Snippet retirement + skills/docs sweep, state-hygiene invariants. Status: in-planning (PRD gate passed 2026-07-28; stage: design). Blocked-by: —. Related: mlc103 (spec-lock lifecycle), db36af (doctor), lpf101 (preflight).
+
 ## Cross-cutting plans
 
 Independent of phase sequencing — pick up once their named blockers clear.
