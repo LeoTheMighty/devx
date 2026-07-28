@@ -74,7 +74,7 @@ export interface DriftEntry {
   hash: string;
   /** Backlog file the row lives in ("DEV.md" | "DEBUG.md" | "PLAN.md"). */
   backlog: string;
-  kind: "status-mismatch" | "in-progress-without-lock";
+  kind: "status-mismatch" | "in-progress-without-lock" | "stale-live-lock";
   /** Status the backlog row carries (checkbox/Status: text). */
   backlogStatus?: SpecStatus;
   /** Status the spec frontmatter carries. */

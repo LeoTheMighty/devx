@@ -59,6 +59,11 @@ import {
   withBacklogLock,
 } from "../backlog/mutate.js";
 import { REV_PARSE_ARGS, interpretRevParse } from "../repo-root.js";
+import {
+  SpecLockHeldError,
+  acquireSpecLock,
+  composeSpecLockBody,
+} from "./spec-lock.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -591,19 +596,54 @@ export async function claimSpec(
         `mkdir ${dirname(lockPath)} failed: ${errMessage(e)}`,
       );
     }
-    const lockBody = `${opts.sessionId}\npid=${process.pid}\nclaimed_at=${isoTimestamp}\n`;
+    // mlc103: JSON v1 body with liveness metadata; on EEXIST the acquire
+    // classifies the holder (shared mgr106 posture) and reaps dead/
+    // recycled/unparseable owners with one retry — all inside this backlog
+    // lock hold, so the classify→unlink→reopen sequence can't race a peer
+    // (R8/R12). Live holders (and every can't-determine case) stay held.
+    //
+    // allowReap = row readiness (review BH-F1): interactive claims are
+    // written by the short-lived `devx devx-helper claim` process, so a
+    // HEALTHY interactive claim's recorded pid is dead within seconds —
+    // pid liveness is not claim liveness. A reapable-classified lock is
+    // only reaped when the backlog row is actually claimable (`[ ]`); a
+    // duplicate claim against an in-progress row refuses exactly like
+    // pre-mlc103, while dead debris on a genuinely ready row (crashed
+    // session whose row was reset — the G-3 spec-494590 shape) reaps on
+    // first contact. Residual (documented): an operator who resets an
+    // in-progress row to ready while its interactive session still works
+    // re-opens the item to a second claim — backlog-state surgery has
+    // always meant that.
+    const lockBody = composeSpecLockBody({
+      session: opts.sessionId,
+      claimedAt: isoTimestamp,
+    });
     try {
-      fs.openExclusive(lockPath, lockBody);
+      acquireSpecLock(lockPath, lockBody, {
+        fs,
+        warn: (msg) => process.stderr.write(`devx claim: ${msg}\n`),
+        allowReap: () => {
+          try {
+            flipDevMdRow(fs.readFile(devMdAbs), hash, type);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+      });
     } catch (e) {
-      // EEXIST is the spec-defined "lock already held" path → exit 1.
+      // Held (live or unverifiable holder) is the spec-defined exit-1 path.
       // Anything else (EACCES, ENOSPC, …) is a system-level failure → exit 2.
-      if (isEexist(e)) {
+      if (e instanceof SpecLockHeldError) {
         throw new LockHeldError(lockPath);
       }
       throw new ClaimError("lock", `openExclusive failed: ${errMessage(e)}`);
     }
 
     // From here on, releaseLock() must run on every error path.
+    // Unguarded on purpose: this rollback runs in the SAME backlog-lock
+    // hold that just created the lock, so no peer can have re-claimed —
+    // the guarded release's ownership re-check would be a tautology here.
     const releaseLock = () => fs.unlink(lockPath);
 
     // ---- Step 2 + 3: compose updated DEV.md + spec ----
@@ -880,12 +920,6 @@ export async function claimSpec(
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
-function isEexist(e: unknown): boolean {
-  if (!e || typeof e !== "object") return false;
-  const code = (e as { code?: string }).code;
-  return code === "EEXIST";
-}
 
 function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);

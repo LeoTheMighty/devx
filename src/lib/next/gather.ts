@@ -50,6 +50,10 @@ import {
   normalizeSessionToken,
   parseLockOwner,
 } from "../devx/verify-claim.js";
+import {
+  SPEC_LOCK_LIVE_WARN_MS,
+  classifySpecLock,
+} from "../devx/spec-lock.js";
 import { heartbeatPath } from "../manage/state.js";
 import { parseFrontmatterValue } from "../plan/validate-emit.js";
 import { type Exec, realExec } from "../tour/exec.js";
@@ -107,6 +111,13 @@ export interface GatherOpts {
    *  init e2e and offline runs use this; a gh failure degrades the same
    *  way with a warning. */
   skipGh?: boolean;
+  /** Test seams for spec-lock liveness classification (mlc103) — without
+   *  them a fixture lock file hits the real process table (`process.kill`
+   *  + `ps`), making classification host-dependent. */
+  lockProbes?: {
+    pidAlive?: (pid: number) => boolean;
+    pidStartedAt?: (pid: number) => Date | null;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -222,7 +233,42 @@ export function gatherRepoSnapshot(opts: GatherOpts): RepoSnapshot {
             `'${row.hash}' is in-progress with a lock held by another session (lock owner '${claim.lockOwner}') — leave it alone, or verify staleness before intervening`,
           );
         }
+        // Own claims are exempt (review EC-4a): a 3-hour interactive
+        // session running `devx next` mid-work should not be told to
+        // investigate itself — the WARN targets wedged PEER holders.
+        if (claim.ownership !== "no-lock" && claim.ownership !== "owned") {
+          pushStaleLiveLockDrift(fs, repoRoot, backlog, row.hash, now, drift, opts.lockProbes);
+        }
         claims.push(claim);
+      }
+      // READY row with a lock that classifies conservative-held (mlc103,
+      // review BH-F3): a crashed claim's 0-byte or mangled lock on a
+      // still-ready row makes the item invisible to every loop pick, and
+      // no drift kind covers it ("in-progress-without-lock" needs an
+      // in-progress row, "stale-live-lock" needs a live pid). Surface it
+      // as a warning so the operator gets a pointer at the lock file.
+      // Live locks on ready rows are skipped — that's a peer's claim
+      // transaction mid-flight (lock taken, backlog flip not yet
+      // observable), transient by construction.
+      if (effectiveStatus === "ready" && backlog !== "PLAN.md") {
+        const lockPath = join(repoRoot, ".devx-cache", "locks", `spec-${row.hash}.lock`);
+        if (fs.exists(lockPath)) {
+          const cls = classifySpecLock(lockPath, {
+            readFile: (p) => fs.readFile(p),
+            now: () => now,
+            ...(opts.lockProbes?.pidAlive !== undefined
+              ? { pidAlive: opts.lockProbes.pidAlive }
+              : {}),
+            ...(opts.lockProbes?.pidStartedAt !== undefined
+              ? { pidStartedAt: opts.lockProbes.pidStartedAt }
+              : {}),
+          });
+          if (cls.kind === "empty" || cls.kind === "unknown-pid" || cls.kind === "unreadable") {
+            warnings.push(
+              `'${row.hash}' is ready but masked by a spec lock that classifies '${cls.kind}' — loop picks will skip it forever; inspect/remove .devx-cache/locks/spec-${row.hash}.lock`,
+            );
+          }
+        }
       }
       resolved.push({
         row,
@@ -451,6 +497,39 @@ function claimSignalFor(
     ownership: owned ? "owned" : "other-session",
     lockOwner,
   };
+}
+
+/**
+ * mlc103 (design §Architecture 4): a live-PID spec lock older than 2h is a
+ * wedged-but-alive owner — surfaced as drift (never auto-reaped; `devx
+ * doctor` owns repair). Dead/recycled holders are NOT flagged here: the
+ * next claim of the hash reaps them automatically, so drift noise would
+ * outlive its usefulness.
+ */
+function pushStaleLiveLockDrift(
+  fs: NextFs,
+  repoRoot: string,
+  backlog: string,
+  hash: string,
+  now: Date,
+  drift: DriftEntry[],
+  probes?: GatherOpts["lockProbes"],
+): void {
+  const lockPath = join(repoRoot, ".devx-cache", "locks", `spec-${hash}.lock`);
+  const cls = classifySpecLock(lockPath, {
+    readFile: (p) => fs.readFile(p),
+    now: () => now,
+    ...(probes?.pidAlive !== undefined ? { pidAlive: probes.pidAlive } : {}),
+    ...(probes?.pidStartedAt !== undefined ? { pidStartedAt: probes.pidStartedAt } : {}),
+  });
+  if (cls.kind === "live" && cls.ageMs !== null && cls.ageMs > SPEC_LOCK_LIVE_WARN_MS) {
+    drift.push({
+      hash,
+      backlog,
+      kind: "stale-live-lock",
+      detail: `'${hash}' spec lock is live-held by pid ${cls.body.pid} for ${Math.floor(cls.ageMs / 3_600_000)}h (>2h) — never auto-reaped; verify the holder is progressing or run devx doctor`,
+    });
+  }
 }
 
 function ownerFrom(specContent: string): string | null {
