@@ -3,13 +3,13 @@ hash: mss103
 type: dev
 created: 2026-07-28T13:43:00-06:00
 title: "Loop split integration"
-status: ready
+status: in-progress
 from: plan/plan-e0a67e-2026-07-28T12:15-mid-story-split.md
 plan: _devx/workstreams/mid-story-split
 phase: 3
 blocked_by: [mss101]
 branch: feat/dev-mss103
-owner: null
+owner: /devx-2026-07-28T1453-1873
 ---
 ## Goal
 
@@ -78,6 +78,7 @@ names are string literals at call sites, per convention.
 
 - 2026-07-28T13:43 — emitted by /devx-plan (RED gate passed; workstream
   mid-story-split, plan phase 3).
+- 2026-07-28T14:53:21-06:00 — claimed by /devx in session /devx-2026-07-28T1453-1873
 
 ## Links
 
