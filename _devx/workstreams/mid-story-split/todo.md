@@ -19,8 +19,14 @@
   - [x] Interview user through PRD sections in order
   - [x] Promote evals-seed into expectations.md E-blocks
 - [x] Gate: prd
-- [ ] Stage: Design
-- [ ] Gate: coverage(design)
+- [x] Stage: Design
+  - [x] Research: split-kernel reuse surfaces (emit-retro-story, mutate lock, parse.ts, claim/locks, drift) (Explore agent)
+  - [x] Research: loop driver terminal paths + iteration-report schema (Explore agent)
+  - [x] Research: Handoff Snippet surface inventory, classified LIVE/CROSS-REF/HISTORICAL (Explore agent)
+  - [x] Ask user's design questions; settle PRD open questions (terminal vocab, exitInProgress, LEARN exemplar, CLI name)
+  - [x] Write design.md (grep-verify every cited path)
+  - [x] Coverage-judge subagent → table JSON (1 UC-3 gap fixed + re-judged → 20 ✅)
+- [x] Gate: coverage(design)
 - [ ] Stage: Plan
 - [ ] Gate: coverage(plan)
 - [ ] Stage: RED
