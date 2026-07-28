@@ -2,8 +2,12 @@
 // not a new daemon (v2/04 §7).
 //
 // Reuse ledger:
-//   - singleton lock       → manage/lock.ts acquireManagerLock (mgr106 —
-//                            stale-PID + PID-recycling cross-check)
+//   - run registration     → loop/instances.ts (mlc105 — per-run instance
+//                            file + fail-fast loop-<run-id>.lock + capacity
+//                            admission). The loop NO LONGER takes
+//                            manager.lock: that is the manage daemon's
+//                            singleton now, and N loops coexist under
+//                            capacity.max_concurrent.
 //   - item pick            → manage/reconcile.ts reconcile (mgr103; the loop
 //                            masks excluded/type-filtered rows to "blocked"
 //                            so blocker resolution stays intact)
@@ -45,11 +49,11 @@ import { loadMerged } from "../config-io.js";
 import { parseBacklogSnapshot, parseDevMd, type DevRow } from "../backlog/parse.js";
 import { reconcile } from "../manage/reconcile.js";
 import {
-  ManagerLockHeldError,
-  acquireManagerLock,
+  PathLockHeldError,
   type LockHandle,
 } from "../manage/lock.js";
 import {
+  ClaimContendedError,
   ClaimError,
   LockHeldError,
   claimSpec,
@@ -69,8 +73,18 @@ import {
   heartbeatIntervalMsFrom,
   loopConfigFrom,
   loopModeGate,
+  maxConcurrentFrom,
   type LoopConfig,
 } from "./config.js";
+import {
+  type InstanceHandle,
+  admitLoop,
+  finalizeInstance,
+  heartbeatInstance,
+  reapScratch,
+  reapStoppedInstances,
+  registerInstance,
+} from "./instances.js";
 import {
   buildCommitRepairPrompt,
   buildIterationPrompt,
@@ -115,8 +129,6 @@ import {
   newRunId,
   recoverStaleLoopState,
   serializeError,
-  writeLoopState,
-  type LoopState,
 } from "./state.js";
 import {
   appendStatusEntryToFile,
@@ -180,9 +192,11 @@ export interface RunLoopOpts {
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
   signal?: AbortSignal;
   pidAlive?: (pid: number) => boolean;
-  /** state.json heartbeat cadence; default 60s. */
+  /** Instance heartbeat cadence; default 60s. Also sizes the registry's
+   *  freshness window (× 3), matching `devx next`'s reader. */
   heartbeatIntervalMs?: number;
-  /** Manager-lock seam (tests). Defaults to acquireManagerLock(cacheDir). */
+  /** Per-run instance-lock seam (tests). Defaults to an O_EXCL
+   *  `locks/loop-<run-id>.lock`. */
   acquireLock?: () => LockHandle;
   /** CI polling knobs forwarded to the tail. */
   ciPollMs?: number;
@@ -493,21 +507,70 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
     return { exitCode: 0, summary: null, reportPath: null, plan };
   }
 
-  // ── Lock + run state ────────────────────────────────────────────────────
-  let lock: LockHandle;
+  // ── Admission + instance registration (mlc105) ──────────────────────────
+  // The loop no longer takes `manager.lock` — that lock is the manage
+  // DAEMON's singleton now (design §Resolved design questions: "does manage
+  // still exclude loops? → No"). N loops coexist, bounded only by
+  // `capacity.max_concurrent`; they arbitrate work through spec locks and
+  // the backlog lock like every other actor.
+  //
+  // Legacy hygiene first: a pre-mlc105 `loop/state.json` claiming "running"
+  // under a dead pid would otherwise keep answering `devx next`'s
+  // read-fallback until someone deleted it by hand.
+  recoverStaleLoopState(cacheDir, opts.pidAlive, now);
+  const startedAt = now();
+  const runId = newRunId(startedAt, process.pid);
+  const freshMs = opts.heartbeatIntervalMs ?? heartbeatIntervalMsFrom(merged);
+  const instanceProbes = {
+    now,
+    // Freshness window = 3 × heartbeat cadence — the SAME derivation
+    // gather.ts uses, so the writer's beat can never fall outside the
+    // reader's window (the LOW-15 lesson, extended to the registry).
+    freshMs: freshMs * 3,
+    ...(opts.pidAlive !== undefined ? { pidAlive: opts.pidAlive } : {}),
+  };
+  // Debris sweep before counting: a night of crashed runs must not eat the
+  // capacity budget. Both reapers are best-effort by construction.
+  reapStoppedInstances(cacheDir, instanceProbes);
+  reapScratch(cacheDir, instanceProbes);
+
+  // admit → register is ONE critical section: two loops starting in the
+  // same millisecond must not both observe N−1 live and both admit.
+  // backlog.lock is the system's only blocking lock, so serializing here
+  // introduces no new lock-ordering surface (design §Architecture 2).
+  const scope = flags.only !== undefined ? `only:${flags.only}` : null;
+  let instance: InstanceHandle;
   try {
-    lock = (opts.acquireLock ?? (() => acquireManagerLock(cacheDir)))();
+    const admitted = withBacklogLock(cacheDir, "loop-admission", () => {
+      const verdict = admitLoop(cacheDir, maxConcurrentFrom(merged), instanceProbes);
+      if (!verdict.admitted) return { verdict, handle: null };
+      return {
+        verdict,
+        handle: registerInstance(cacheDir, {
+          runId,
+          startedAt,
+          scope,
+          ...instanceProbes,
+          ...(opts.acquireLock !== undefined ? { acquireLock: opts.acquireLock } : {}),
+        }),
+      };
+    });
+    if (admitted.handle === null) {
+      const reason = admitted.verdict.message ?? "loop admission refused";
+      out(`devx loop: ${reason}`);
+      return { exitCode: 1, refusedReason: reason, summary: null, reportPath: null };
+    }
+    instance = admitted.handle;
   } catch (e) {
-    if (e instanceof ManagerLockHeldError) {
-      out(`devx loop: ${e.message} (a manager or another loop is already running)`);
+    // A live duplicate run-id (the id carries the pid and a millisecond
+    // timestamp, so this means a genuine same-process re-entry) or an
+    // unwritable registry. Both are "can't safely run", not "crash".
+    if (e instanceof PathLockHeldError || e instanceof BacklogLockTimeoutError) {
+      out(`devx loop: ${e.message}`);
       return { exitCode: 1, refusedReason: e.message, summary: null, reportPath: null };
     }
     throw e;
   }
-
-  recoverStaleLoopState(cacheDir, opts.pidAlive, now);
-  const startedAt = now();
-  const runId = newRunId(startedAt, process.pid);
   const sessionId = opts.sessionId ?? runId;
   const worker = opts.worker ?? makeClaudeWorker();
   const tailFn = opts.tail ?? defaultTail;
@@ -522,40 +585,42 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
         // BH-MED-4: claimSpec's own git calls (add/commit/push/worktree)
         // don't inject GIT_TERMINAL_PROMPT — wrap the seam so the claim's
         // push can never hang on a credential TTY prompt overnight.
+        // LC_ALL=C (mlc104 EC-1): isRejectedPush matches git's English
+        // rejection strings; a localized git would misroute every real
+        // race into the systemic-failure budget.
         exec: (cmd, args, o) =>
-          exec(cmd, args, { ...(o ?? {}), env: { GIT_TERMINAL_PROMPT: "0" } }),
+          exec(cmd, args, {
+            ...(o ?? {}),
+            env: { GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
+          }),
         type,
       }));
 
-  const writeState = (status: LoopState["status"], abortReason?: string): void => {
-    const state: LoopState = {
-      status,
-      pid: process.pid,
-      ts: now().toISOString(),
-      run_id: runId,
-      started_at: startedAt.toISOString(),
-      ...(abortReason !== undefined ? { abort_reason: abortReason } : {}),
-    };
-    try {
-      writeLoopState(cacheDir, state);
-    } catch {
-      // never let a state write kill the loop
-    }
+  // Progress the heartbeat carries so `devx next` / `devx status` can say
+  // WHAT each live loop is doing, not just that it exists. Mutated at item
+  // pick and at every iteration boundary; the beat picks up the latest.
+  const progress: { item: string | null; iteration: number } = {
+    item: null,
+    iteration: 0,
+  };
+  const beat = (): void => {
+    heartbeatInstance(
+      cacheDir,
+      instance,
+      { currentItem: progress.item, iteration: progress.iteration },
+      now,
+    );
   };
   const event = (name: string, fields: Record<string, unknown> = {}): void => {
     appendEvent(cacheDir, runId, name, fields, now);
   };
 
-  writeState("running");
-  event("loop:start", { mode, budgets, pid: process.pid });
+  event("loop:start", { mode, budgets, pid: process.pid, runId, scope });
   // Heartbeat cadence derives from manager.heartbeat_interval_s — the same
   // knob `devx next` uses for its freshness window (interval × 3), so a
   // config edit can't put the writer's cadence outside the reader's window
   // and flap a live loop between running/dead (review finding LOW-15).
-  const hbInterval = setInterval(
-    () => writeState("running"),
-    opts.heartbeatIntervalMs ?? heartbeatIntervalMsFrom(merged),
-  );
+  const hbInterval = setInterval(beat, freshMs);
   hbInterval.unref?.();
 
   // ── The run ─────────────────────────────────────────────────────────────
@@ -565,7 +630,8 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
   let abortReason: string | null = null;
   let stopReason: string | null = null;
   const excluded = new Set<string>();
-  const isAttempted = (r: ItemResult): boolean => r.outcome !== "claim-failed";
+  const isAttempted = (r: ItemResult): boolean =>
+    r.outcome !== "claim-failed" && r.outcome !== "claim-contended";
   // Review finding MED-7: without a bound, a SYSTEMIC claim failure (locks
   // dir unwritable, origin push refused, git broken) walks the entire
   // backlog doing a full commit+rollback cycle per row. Three in a row is
@@ -607,6 +673,9 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
         break;
       }
       excluded.add(pick.hash);
+      progress.item = pick.hash;
+      progress.iteration = 0;
+      beat();
       event("item:pick", { hash: pick.hash, type: pick.type, path: pick.path });
 
       // Claim (dvx101 atomic claim; its own rollback on failure).
@@ -614,6 +683,35 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
       try {
         claim = await claimFn(pick.hash, pick.type);
       } catch (e) {
+        if (e instanceof ClaimContendedError) {
+          // mlc104 (design §Architecture 3): a peer won the push race and
+          // the bounded rebase-retries still lost — healthy contention, not
+          // a broken claim. The hash is already masked for this run (the
+          // `excluded.add` above); pick the next item. Deliberately does
+          // NOT touch consecutiveClaimFailures — that budget is reserved
+          // for genuinely broken claims (locks dir unwritable, origin
+          // refusing every push), and contention under N live loops is the
+          // system working as designed (races R2/R5).
+          event("item:claim-contended", {
+            hash: pick.hash,
+            error: serializeError(e),
+          });
+          out(
+            `loop: claim contended for ${pick.hash} — a peer won the push race; picking next (${firstLineOf(e.message)})`,
+          );
+          items.push({
+            hash: pick.hash,
+            type: pick.type,
+            title: pick.title,
+            specPath: pick.path,
+            outcome: "claim-contended",
+            iterationsGood: 0,
+            iterationsFailed: 0,
+            tokens: emptyTokens(),
+            detail: firstLineOf(e.message),
+          });
+          continue;
+        }
         const detail =
           e instanceof LockHeldError
             ? `spec lock already held (${e.lockPath})`
@@ -670,6 +768,10 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
           totals,
           maxTotalTokens,
           untilDeadline,
+          onIteration: (n: number) => {
+            progress.iteration = n;
+            beat();
+          },
           ciPollMs: opts.ciPollMs,
           ciTimeoutMs: opts.ciTimeoutMs,
         });
@@ -691,6 +793,14 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
         });
         throw e;
       }
+      // The item is done (merged / abandoned / handed off): clear it from
+      // the heartbeat before the next pick, so a peer reading `devx next`
+      // between two items sees "idle" rather than an item this run no
+      // longer holds — the stale-current_item read that would make a human
+      // avoid an item that is actually free.
+      progress.item = null;
+      progress.iteration = 0;
+      beat();
       items.push(result.item);
       if (result.loopAbort !== null) {
         abortReason = result.loopAbort;
@@ -762,12 +872,17 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
     tokens: totals,
     report: reportPathOut,
   });
-  writeState(abortReason !== null ? "aborted" : "stopped", abortReason ?? undefined);
-  try {
-    lock.release();
-  } catch {
-    // surfaced by the next acquire's stale sweep if it matters
-  }
+  // finalizeInstance marks the record stopped/aborted AND drops the per-run
+  // lock — one call, so the two can never diverge (a released lock with a
+  // still-"running" record would keep eating a capacity slot for a whole
+  // freshness window).
+  finalizeInstance(
+    cacheDir,
+    instance,
+    abortReason !== null ? "aborted" : "stopped",
+    abortReason ?? undefined,
+    now,
+  );
   if (reportPathOut !== null) out(`loop: morning report written to ${reportPathOut}`);
   if (abortReason !== null) out(`loop: ABORTED — ${abortReason}`);
   else out(`loop: stopped — ${stopReason ?? "done"}`);
@@ -808,6 +923,10 @@ interface RunItemArgs {
   totals: TokenTotals;
   maxTotalTokens: number;
   untilDeadline: Date | null;
+  /** Progress sink — called once per iteration start so the run's instance
+   *  heartbeat can report `iteration` without runItem knowing the registry
+   *  exists (mlc105). */
+  onIteration?: (iteration: number) => void;
   ciPollMs?: number;
   ciTimeoutMs?: number;
 }
@@ -1796,6 +1915,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       );
     }
     iteration++;
+    args.onIteration?.(iteration);
 
     // ── Pre-flight: clean tree required (unless this is a repair pass) ──
     if (pendingRepair === null) {
@@ -2347,12 +2467,33 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     // false rather than reporting a blocked flip that never happened.
     let splitFailedOut = false;
     backlogLockBestEffort("finalize-merged", () => {
-      const pull = exec("git", ["pull", "--ff-only"], {
+      let pull = exec("git", ["pull", "--ff-only"], {
         cwd: repoRoot,
         env: { GIT_TERMINAL_PROMPT: "0" },
       });
       if (pull.exitCode !== 0) {
-        event("item:pull-ff-failed", { stderr: pull.stderr.trim() });
+        // mlc104 (AC 3): one fetch+retry under the same lock hold before
+        // giving up — a transient fetch failure (network blip, a peer's
+        // push landing mid-fetch) shouldn't strand the reconcile when the
+        // second attempt would fast-forward cleanly. Still-failing keeps
+        // the pre-mlc104 event; dispatcher row 4 reconciles the drift.
+        const fetch = exec("git", ["fetch", "origin"], {
+          cwd: repoRoot,
+          env: { GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
+        });
+        if (fetch.exitCode !== 0) {
+          event("item:pull-ff-retry-fetch-failed", { stderr: fetch.stderr.trim() });
+        }
+        // Deliberately still attempted after a failed fetch (review AA-7):
+        // `git pull` runs its own fetch, so the explicit fetch above is
+        // belt-and-suspenders, not a precondition.
+        pull = exec("git", ["pull", "--ff-only"], {
+          cwd: repoRoot,
+          env: { GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
+        });
+        if (pull.exitCode !== 0) {
+          event("item:pull-ff-failed", { stderr: pull.stderr.trim() });
+        }
       }
       // Worker-requested split runs AFTER the pull (so it patches the
       // squash-merged parent copy) and BEFORE the done-flip bookkeeping,

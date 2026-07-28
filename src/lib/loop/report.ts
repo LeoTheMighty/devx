@@ -32,7 +32,8 @@ export type ItemOutcome =
   | "released" // environment failure (infra-errors) — claim rolled back to ready; item not at fault (dc7514)
   | "blocked-on-human" // filed INTERVIEW/MANUAL mid-run
   | "in-progress-at-exit" // the loop stopped (budget/signal) mid-item
-  | "claim-failed"; // couldn't claim (lock held / row raced away)
+  | "claim-failed" // couldn't claim (lock held / row raced away)
+  | "claim-contended"; // push race lost after bounded rebase-retries (mlc104) — peer healthy, item skipped this run
 
 export interface TokenTotals {
   /** Uncached input tokens (authoritative CLI usage, debug-494590). */
@@ -156,6 +157,7 @@ const OUTCOME_LABEL: Record<ItemOutcome, string> = {
   "blocked-on-human": "blocked on human",
   "in-progress-at-exit": "in progress at loop exit",
   "claim-failed": "claim failed (skipped)",
+  "claim-contended": "claim contended (a peer won the push race — skipped this run)",
 };
 
 function itemSection(item: ItemResult): string {
@@ -269,6 +271,11 @@ function nextSteps(summary: RunSummary): string[] {
           }; its spec lock is still held by this run's session (verify before re-claiming).`,
         );
         break;
+      case "claim-contended":
+        out.push(
+          `- \`${item.hash}\` — claim contended (a peer won the push race; mlc104): no action needed, it re-enters the pick pool on the next run. Verify the peer actually claimed it (\`git log --oneline -5\` on main / \`.devx-cache/locks/spec-${item.hash}.lock\`) if it keeps recurring.`,
+        );
+        break;
       default:
         break;
     }
@@ -286,6 +293,7 @@ export function renderMorningReport(summary: RunSummary): string {
     "blocked-on-human": 0,
     "in-progress-at-exit": 0,
     "claim-failed": 0,
+    "claim-contended": 0,
   };
   for (const item of summary.items) counts[item.outcome]++;
 
@@ -310,7 +318,11 @@ export function renderMorningReport(summary: RunSummary): string {
       counts.released > 0 ? ` · ${counts.released} released (environment)` : ""
     }${
       counts["in-progress-at-exit"] > 0 ? ` · ${counts["in-progress-at-exit"]} in progress at exit` : ""
-    }`,
+    }${
+      // mlc104 (review EC-9): a night of pure contention must not render a
+      // summary line that says nothing happened.
+      counts["claim-contended"] > 0 ? ` · ${counts["claim-contended"]} claim-contended (peers won races)` : ""
+    }${counts["claim-failed"] > 0 ? ` · ${counts["claim-failed"]} claim-failed` : ""}`,
   );
   lines.push(`**Tokens:** ${fmtTokens(summary.totals)}`);
   lines.push(

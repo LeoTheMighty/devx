@@ -3,12 +3,12 @@ hash: mlc106
 type: dev
 created: 2026-07-28T09:02:00-06:00
 title: "Scope model: epic-aware rows + loop scope flags"
-status: ready
+status: in-progress
 from: plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md
 plan: _devx/workstreams/multi-loop-concurrency
 blocked_by: [mlc105]
 branch: feat/dev-mlc106
-owner: null
+owner: /devx-2026-07-28T1708-47064
 ---
 ## Goal
 
@@ -52,6 +52,7 @@ Design §Architecture 6. Blocker status lookup is already global
 
 - 2026-07-28T09:02 — emitted by /devx-plan (RED gate passed; workstream
   multi-loop-concurrency, plan phase 6).
+- 2026-07-28T17:08:52-06:00 — claimed by /devx in session /devx-2026-07-28T1708-47064
 
 ## Links
 

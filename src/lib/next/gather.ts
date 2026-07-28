@@ -54,6 +54,10 @@ import {
   SPEC_LOCK_LIVE_WARN_MS,
   classifySpecLock,
 } from "../devx/spec-lock.js";
+import {
+  instancesDir,
+  listLiveInstances,
+} from "../loop/instances.js";
 import { heartbeatPath } from "../manage/state.js";
 import { parseFrontmatterValue } from "../plan/validate-emit.js";
 import { type Exec, realExec } from "../tour/exec.js";
@@ -64,6 +68,7 @@ import {
   type DriftEntry,
   type GateInfo,
   type InterviewBlockSignal,
+  type LoopInstanceSignal,
   type LoopSignal,
   type MergeReconcileSignal,
   type OutcomeDueSignal,
@@ -836,6 +841,7 @@ function gatherLoopSignal(
     pid: null,
     ts: null,
     ageSeconds: null,
+    loops: [],
     overnightReport: findOvernightReport(fs, repoRoot, now),
   };
 
@@ -846,6 +852,62 @@ function gatherLoopSignal(
   // (adversarial-review BH#2 / EC#1 / EC#2).
   const isFresh = (tsMs: number): boolean =>
     Math.abs(now.getTime() - tsMs) <= freshS * 1000;
+
+  // mlc105: the per-run instance registry is the loop's state now. Probed
+  // BEFORE the legacy singleton so a repo carrying both (an upgrade that
+  // left `loop/state.json` behind) reports the truth, not the debris.
+  // Liveness is the registry's own two-predicate rule (fresh heartbeat AND
+  // live, non-recycled PID) — freshness alone would count a SIGKILLed run
+  // live for a whole window, which is exactly the E-5 dead-instance clause.
+  const instancesAbs = instancesDir(cacheDir);
+  if (fs.exists(instancesAbs)) {
+    const live = listLiveInstances(cacheDir, {
+      now: () => now,
+      freshMs: freshS * 1000,
+      readdir: (p) => fs.readdir(p),
+      readFile: (p) => fs.readFile(p),
+      ...(opts.lockProbes?.pidAlive !== undefined
+        ? { pidAlive: opts.lockProbes.pidAlive }
+        : {}),
+      ...(opts.lockProbes?.pidStartedAt !== undefined
+        ? { pidStartedAt: opts.lockProbes.pidStartedAt }
+        : {}),
+    });
+    const loops: LoopInstanceSignal[] = live.map((i) => {
+      const tsMs = Date.parse(i.ts);
+      return {
+        run_id: i.run_id,
+        scope: i.scope,
+        current_item: i.current_item,
+        iteration: i.iteration,
+        pid: i.pid,
+        age_seconds: Number.isFinite(tsMs)
+          ? Math.round((now.getTime() - tsMs) / 1000)
+          : 0,
+      };
+    });
+    if (loops.length > 0) {
+      // listLiveInstances sorts freshest-first, so loops[0] is the run whose
+      // pid/ts represent the registry in the scalar fields the pre-mlc105
+      // LoopSignal shape exposes (consumers that never learned about
+      // `loops` keep seeing a coherent single-loop answer).
+      const head = loops[0];
+      return {
+        ...dead,
+        live: true,
+        source: "loop-instance",
+        pid: head.pid,
+        ts: live[0].ts,
+        ageSeconds: head.age_seconds,
+        loops,
+      };
+    }
+    // Registry present but nothing live: fall through to the manager
+    // heartbeat (a different actor entirely) — but NOT to the legacy
+    // singleton, whose only writer was a loop that this registry supersedes
+    // (design §Architecture 5: fallback "only when the dir is absent").
+    return gatherManagerHeartbeat(fs, cacheDir, dead, isFresh, now, warnings);
+  }
 
   // v2l101's loop state file — probed first so the overnight loop wins the
   // "who is live" attribution once it lands. Degrades gracefully to the
@@ -885,6 +947,19 @@ function gatherLoopSignal(
     }
   }
 
+  return gatherManagerHeartbeat(fs, cacheDir, dead, isFresh, now, warnings);
+}
+
+/** The `devx manage` daemon's heartbeat — a DIFFERENT actor from a loop
+ *  run, so it is consulted whether or not the instance registry exists. */
+function gatherManagerHeartbeat(
+  fs: NextFs,
+  cacheDir: string,
+  dead: LoopSignal,
+  isFresh: (tsMs: number) => boolean,
+  now: Date,
+  warnings: string[],
+): LoopSignal {
   const hbAbs = heartbeatPath(cacheDir);
   if (!fs.exists(hbAbs)) return dead;
   try {

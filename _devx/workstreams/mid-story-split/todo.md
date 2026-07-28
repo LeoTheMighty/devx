@@ -49,8 +49,25 @@
     - [x] T1.5 insertDevMdRow generalization (type param + after-parent anchor)
     - [x] T1.6 devx split CLI + registration + ls-remote refusal
     - [x] T1.7 E-1 case group green (eval RED re-run observed 2026-07-28T13:54, right-reason; GREEN 14:04; E-5 still RED)
-  - [ ] Phase 2: Claim branch inheritance → mss102
+  - [x] Phase 2: Claim branch inheritance → mss102
+    - [x] T2.1 parseSpecClaimFields surfaces branch: (E-5 RED re-run observed 2026-07-28T14:20, right-reason; GREEN 15:05)
+    - [x] T2.2 claimSpec attach arm (no -b) when branch: names an existing branch — keyed on recorded != derived (INTERVIEW Q#14)
+    - [x] T2.3 E-5 case group green (dispatch row 8, claim inheritance both shapes, drift = 0); 5 → 12 cases after review
   - [ ] Phase 3: Loop split integration → mss103
+    - [x] T3.1 split_request validation + explicit copy-through (iteration.ts)
+    - [x] T3.2 OUTPUT_FIELD_LINES + clean-seam prompt wording
+    - [x] T3.3 split outcome across report/label/counts/nextSteps/itemSection
+    - [x] T3.4 splitItem terminal helper + commitOnMain extraPaths + abandon fallback
+    - [x] T3.5 budget-rail predicate at exhaustion (both rails; gated on
+          hasCommittedProgress — goodWithFiles + clean tree + not
+          bookkeeping-only)
+    - [x] T3.6 worker-request merge-first path in the merge tail (merged +
+          handed-off tails; same progress gate)
+    - [x] T3.7 events + rail wiring into afterItemCompleted
+    - [ ] T3.8 E-3/E-4 evals RED→GREEN + case groups + fallback test (RED observed 2026-07-28T14:15, right-reason)
+    - [x] Phase 4 self-review: 3-agent parallel (Blind Hunter + Edge Case
+          Hunter + Acceptance Auditor); 20 unique findings, all fixed
+          in-place; chain-cap product question → INTERVIEW Q#15
   - [ ] Phase 4: Handoff Snippet retirement sweep → mss104
 - [ ] Stage: Retro
 - [ ] Stage: Outcome

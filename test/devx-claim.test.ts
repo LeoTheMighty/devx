@@ -674,7 +674,15 @@ describe("claimSpec — rollback paths", () => {
     const exec = (cmd: string, args: string[]): ExecResult => {
       calls.push({ cmd, args });
       if (cmd === "git" && args[0] === "push") {
-        return { stdout: "", stderr: "non-fast-forward", exitCode: 1 };
+        // A BROKEN push (network), not a race-shaped rejection — mlc104's
+        // rebase-retry must NOT engage, so this keeps testing the plain
+        // ClaimError('git-push') rollback shape. The contended paths are
+        // covered by test/claim-contention.test.ts.
+        return {
+          stdout: "",
+          stderr: "fatal: unable to access remote: network is unreachable",
+          exitCode: 1,
+        };
       }
       if (cmd === "git" && args[0] === "rev-parse") {
         return { stdout: "abc\n", stderr: "", exitCode: 0 };

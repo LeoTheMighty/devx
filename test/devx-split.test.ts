@@ -12,9 +12,13 @@
 //
 // Spec: dev/dev-mss101-2026-07-28T13:43-split-primitive-lib-cli.md
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import type { ClaimFs } from "../src/lib/devx/claim.js";
+import type { ClaimFs, Exec, ExecResult } from "../src/lib/devx/claim.js";
+import { claimSpec } from "../src/lib/devx/claim.js";
+import { parseSpecClaimFields } from "../src/lib/devx/verify-claim.js";
+import { decideRepoNext } from "../src/lib/next/decide.js";
+import { gatherRepoSnapshot } from "../src/lib/next/gather.js";
 import {
   type SplitPayload,
   SplitError,
@@ -744,7 +748,455 @@ describe("E-1: split primitive round-trip (mss101)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// branch-handoff branch override (mss103) — the loop driver's seam.
+// E-5 case group — marker "E-5:" pinned by the eval wrapper
+// `_devx/workstreams/mid-story-split/evals/E-5_fresh-claim-viability.ts`.
+// Fixtures are built by phase 1's performSplit (both shapes), then driven
+// through the REAL dispatcher (gatherRepoSnapshot + decideRepoNext — zero
+// gather.ts edits, per plan.md phase 2 Context) and the REAL claimSpec.
+// ---------------------------------------------------------------------------
+
+/** NextFs adapter over the same in-memory Map the split fixtures use. */
+function makeNextFs(files: Map<string, string>) {
+  const fake = makeFakeFs(files);
+  return {
+    readFile: (p: string) => fake.readFile(p),
+    exists: (p: string) => fake.exists(p),
+    readdir: (p: string) => fake.readdir(p),
+    statMtimeMs: () => 0,
+  };
+}
+
+function gatherSplitFixture(files: Map<string, string>) {
+  return gatherRepoSnapshot({
+    repoRoot: REPO,
+    merged: {},
+    engine: {
+      workstreamsRoot: "_devx/workstreams",
+      expectationsMin: 3,
+      proseBudgetKb: 60,
+    },
+    fs: makeNextFs(files),
+    now: () => FIXED_NOW,
+    sessionToken: "sess-1",
+    skipGh: true,
+  });
+}
+
+/** Simulate the parent's normal merge tail (merge-first shape only): spec
+ *  done, row flipped [x]/done, spec lock released by Phase 8 cleanup.
+ *  Asserts it actually changed something — silently no-op'ing on a
+ *  branch-handoff fixture (whose parent is already `superseded` + struck)
+ *  would leave a test claiming a pre-state it never established
+ *  (review EC-7). */
+function markParentMerged(files: Map<string, string>): void {
+  const specBefore = files.get(PARENT_ABS)!;
+  const devMdBefore = files.get(DEV_MD_ABS)!;
+  const specAfter = specBefore.replace("status: in-progress", "status: done");
+  const devMdAfter = devMdBefore
+    .replace("- [/] `dev/dev-abc123", "- [x] `dev/dev-abc123")
+    .replace("Parent item. Status: in-progress.", "Parent item. Status: done.");
+  if (specAfter === specBefore || devMdAfter === devMdBefore) {
+    throw new Error(
+      "markParentMerged is only meaningful on a merge-first fixture (parent still in-progress)",
+    );
+  }
+  files.set(PARENT_ABS, specAfter);
+  files.set(DEV_MD_ABS, devMdAfter);
+  files.delete(LOCK_PATH);
+}
+
+interface ClaimExecOpts {
+  /** Fully-qualified refs that exist locally / as tracking refs. */
+  existingRefs?: string[];
+  /** Branch names origin has, reachable by a targeted fetch. */
+  originBranches?: string[];
+  /** branch name → worktree path holding it checked out. */
+  checkedOut?: Record<string, string>;
+  /** Force `git branch <b> <start>` to fail. */
+  failBranchCreate?: boolean;
+}
+
+/** Fake exec for claimSpec. `show-ref` answers with a real `<sha> <ref>`
+ *  line (the shape the production probe requires); a targeted `git fetch`
+ *  of an origin branch materializes its tracking ref; `worktree list
+ *  --porcelain` renders the checked-out map; everything else
+ *  blanket-succeeds, which keeps indeterminate results on the derive path. */
+function makeClaimExec(opts: ClaimExecOpts | string[]): {
+  exec: Exec;
+  calls: Array<{ cmd: string; args: string[] }>;
+} {
+  const o: ClaimExecOpts = Array.isArray(opts) ? { existingRefs: opts } : opts;
+  const refs = new Set(o.existingRefs ?? []);
+  const originBranches = new Set(o.originBranches ?? []);
+  const checkedOut = o.checkedOut ?? {};
+  const calls: Array<{ cmd: string; args: string[] }> = [];
+  const exec: Exec = (cmd, args): ExecResult => {
+    calls.push({ cmd, args: [...args] });
+    if (cmd === "git" && args[0] === "show-ref") {
+      const ref = args[args.length - 1];
+      return refs.has(ref)
+        ? { stdout: `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef ${ref}\n`, stderr: "", exitCode: 0 }
+        : { stdout: "", stderr: "", exitCode: 1 };
+    }
+    if (cmd === "git" && args[0] === "fetch") {
+      // `+refs/heads/<b>:refs/remotes/origin/<b>`
+      const spec = args[args.length - 1];
+      const b = spec.replace(/^\+?refs\/heads\//, "").split(":")[0];
+      if (!originBranches.has(b)) {
+        return { stdout: "", stderr: `couldn't find remote ref refs/heads/${b}`, exitCode: 128 };
+      }
+      refs.add(`refs/remotes/origin/${b}`);
+      return { stdout: "", stderr: "", exitCode: 0 };
+    }
+    if (cmd === "git" && args[0] === "branch" && args[1] !== "-D") {
+      if (o.failBranchCreate) {
+        return { stdout: "", stderr: "fatal: cannot create branch", exitCode: 128 };
+      }
+      refs.add(`refs/heads/${args[1]}`);
+      return { stdout: "", stderr: "", exitCode: 0 };
+    }
+    if (cmd === "git" && args[0] === "worktree" && args[1] === "list") {
+      const lines: string[] = ["worktree /repo", "branch refs/heads/main", ""];
+      for (const [b, path] of Object.entries(checkedOut)) {
+        lines.push(`worktree ${path}`, `branch refs/heads/${b}`, "");
+      }
+      return { stdout: lines.join("\n"), stderr: "", exitCode: 0 };
+    }
+    if (cmd === "git" && args[0] === "rev-parse" && args[1] === "HEAD") {
+      return { stdout: "cafe0000cafe\n", stderr: "", exitCode: 0 };
+    }
+    return { stdout: "", stderr: "", exitCode: 0 };
+  };
+  return { exec, calls };
+}
+
+/** Build a branch-handoff follow-up and return its hash + fixture state,
+ *  with the parent's lock released and its worktree already gone. */
+function handoffFixture(): { files: Map<string, string>; fs: ClaimFs; followUpHash: string } {
+  const files = makeFiles();
+  const fs = makeFakeFs(files);
+  const result = performSplit(
+    "abc123",
+    splitOpts({ files, fs }, { shape: "branch-handoff" }),
+  );
+  files.delete(LOCK_PATH);
+  return { files, fs, followUpHash: result.followUpHash };
+}
+
+function claimOpts(run: SplitRun, exec: Exec) {
+  return {
+    sessionId: "sess-2",
+    repoRoot: REPO,
+    config: {
+      git: { default_branch: "main", branch_prefix: "feat/", integration_branch: null },
+    },
+    fs: run.fs,
+    exec,
+    now: () => FIXED_NOW,
+    lock: <T>(_label: string, fn: () => T): T => fn(),
+  };
+}
+
+describe("E-5: fresh-claim viability of a follow-up (mss102)", () => {
+  it("parseSpecClaimFields surfaces the branch: frontmatter field on the claim path", () => {
+    const fields = parseSpecClaimFields(PARENT_SPEC);
+    expect(fields.branch).toBe("feat/dev-abc123");
+    expect(parseSpecClaimFields("---\nstatus: ready\n---\nbody").branch).toBeNull();
+  });
+
+  it("branch-handoff fixture: devx next routes row 8 to the follow-up immediately; split-attributable drift = 0", () => {
+    const files = makeFiles();
+    const fs = makeFakeFs(files);
+    const result = performSplit(
+      "abc123",
+      splitOpts({ files, fs }, { shape: "branch-handoff" }),
+    );
+    files.delete(LOCK_PATH); // driver releases the parent's lock post-split
+
+    const snapshot = gatherSplitFixture(files);
+    expect(snapshot.drift).toEqual([]);
+    expect(snapshot.devReady.map((i) => i.hash)).toEqual([result.followUpHash]);
+
+    const decision = decideRepoNext(snapshot);
+    expect(decision.row).toBe(8);
+    expect(decision.command).toBe(`/devx ${result.followUpHash}`);
+  });
+
+  it("merge-first fixture: follow-up blocked until the parent merges, then the row-8 ready pick; drift = 0 in both states", () => {
+    const files = makeFiles();
+    const fs = makeFakeFs(files);
+    const result = performSplit("abc123", splitOpts({ files, fs }));
+
+    // Pre-merge: blocked-by the in-progress parent — not a ready pick.
+    const before = gatherSplitFixture(files);
+    expect(before.drift).toEqual([]);
+    expect(before.devReady.map((i) => i.hash)).not.toContain(result.followUpHash);
+    expect(before.blocked.map((b) => b.hash)).toContain(result.followUpHash);
+
+    // Parent merges via the normal tail → blockersResolved flips with zero
+    // gather.ts edits (follow-up rows are ordinary ready+Blocked-by rows).
+    markParentMerged(files);
+    const after = gatherSplitFixture(files);
+    expect(after.drift).toEqual([]);
+    const decision = decideRepoNext(after);
+    expect(decision.row).toBe(8);
+    expect(decision.command).toBe(`/devx ${result.followUpHash}`);
+  });
+
+  it("claim honors recorded branch inheritance on the branch-handoff fixture: attach, not -b (local branch present)", async () => {
+    const { files, fs, followUpHash } = handoffFixture();
+    const { exec, calls } = makeClaimExec({
+      existingRefs: ["refs/heads/feat/dev-abc123"],
+    });
+    const claimed = await claimSpec(followUpHash, claimOpts({ files, fs }, exec));
+
+    // The recorded WIP branch is inherited, not a fresh derived one.
+    expect(claimed.branch).toBe("feat/dev-abc123");
+    const worktreeAdd = calls.find(
+      (c) => c.cmd === "git" && c.args[0] === "worktree" && c.args[1] === "add",
+    );
+    expect(worktreeAdd!.args).toEqual([
+      "worktree",
+      "add",
+      `${REPO}/.worktrees/dev-${followUpHash}`,
+      "feat/dev-abc123",
+    ]);
+    expect(worktreeAdd!.args).not.toContain("-b");
+    // A local hit needs no network and no tracking-ref consult.
+    expect(calls.filter((c) => c.args[0] === "fetch")).toEqual([]);
+  });
+
+  it("cold session: the inherited branch is fetched from origin by targeted refspec, then attached without single-remote DWIM", async () => {
+    // The flagship scenario — a session that has never seen the branch.
+    // Pre-fix the probe consulted only the local ref store, silently
+    // deriving from main and stranding the parent's pushed WIP (BH-1).
+    const { files, fs, followUpHash } = handoffFixture();
+    const { exec, calls } = makeClaimExec({
+      existingRefs: [],
+      originBranches: ["feat/dev-abc123"],
+    });
+    const claimed = await claimSpec(followUpHash, claimOpts({ files, fs }, exec));
+    expect(claimed.branch).toBe("feat/dev-abc123");
+
+    const fetch = calls.find((c) => c.args[0] === "fetch");
+    expect(fetch!.args).toEqual([
+      "fetch",
+      "origin",
+      "+refs/heads/feat/dev-abc123:refs/remotes/origin/feat/dev-abc123",
+    ]);
+    // Local branch created explicitly from the fetched ref, so `worktree
+    // add <path> <branch>` never depends on DWIM picking a remote.
+    const branchCreate = calls.find(
+      (c) => c.args[0] === "branch" && c.args[1] === "feat/dev-abc123",
+    );
+    expect(branchCreate!.args[2]).toBe("refs/remotes/origin/feat/dev-abc123");
+    const worktreeAdd = calls.find(
+      (c) => c.args[0] === "worktree" && c.args[1] === "add",
+    );
+    expect(worktreeAdd!.args).not.toContain("-b");
+  });
+
+  it("a stale tracking ref for a branch deleted upstream does NOT qualify: fetch fails → derive with a warning", async () => {
+    const { files, fs, followUpHash } = handoffFixture();
+    // Tracking ref lingers (git never prunes by default) but origin no
+    // longer has the branch, so the targeted fetch fails.
+    const { exec } = makeClaimExec({
+      existingRefs: ["refs/remotes/origin/feat/dev-abc123"],
+      originBranches: [],
+    });
+    const warnings: string[] = [];
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        warnings.push(String(chunk));
+        return true;
+      });
+    try {
+      const claimed = await claimSpec(followUpHash, claimOpts({ files, fs }, exec));
+      expect(claimed.branch).toBe(`feat/dev-${followUpHash}`);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(warnings.join("")).toContain("neither locally nor on origin");
+  });
+
+  it("refuses to attach when the inherited branch is checked out elsewhere — and fails BEFORE mutating anything", async () => {
+    // EC-1: the parent's worktree still holds the branch in the flagship
+    // handoff shape. Pre-fix this wedged post-push with a rerun hint that
+    // could never succeed.
+    const { files, fs, followUpHash } = handoffFixture();
+    const devMdBefore = files.get(DEV_MD_ABS)!;
+    const { exec, calls } = makeClaimExec({
+      existingRefs: ["refs/heads/feat/dev-abc123"],
+      checkedOut: { "feat/dev-abc123": `${REPO}/.worktrees/dev-abc123` },
+    });
+    await expect(
+      claimSpec(followUpHash, claimOpts({ files, fs }, exec)),
+    ).rejects.toThrow(/checked out in the worktree at .*\.worktrees\/dev-abc123/);
+
+    // Nothing was mutated: no commit, no push, no backlog flip, no lock.
+    expect(files.get(DEV_MD_ABS)).toBe(devMdBefore);
+    expect(calls.some((c) => c.args[0] === "commit" || c.args[0] === "push")).toBe(false);
+    expect(files.has(`${REPO}/.devx-cache/locks/spec-${followUpHash}.lock`)).toBe(false);
+  });
+
+  it("refuses to attach to the default/integration branch", async () => {
+    const { files, fs, followUpHash } = handoffFixture();
+    const followUpAbs = [...files.keys()].find((k) => k.includes(followUpHash))!;
+    files.set(
+      followUpAbs,
+      files.get(followUpAbs)!.replace(/^branch: .*$/m, "branch: main"),
+    );
+    const { exec, calls } = makeClaimExec({ existingRefs: ["refs/heads/main"] });
+    const warnings: string[] = [];
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        warnings.push(String(chunk));
+        return true;
+      });
+    try {
+      const claimed = await claimSpec(followUpHash, claimOpts({ files, fs }, exec));
+      expect(claimed.branch).toBe(`feat/dev-${followUpHash}`);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(warnings.join("")).toContain("default/integration branch");
+    const worktreeAdd = calls.find(
+      (c) => c.args[0] === "worktree" && c.args[1] === "add",
+    );
+    expect(worktreeAdd!.args).toContain("-b");
+  });
+
+  it("claim of a merge-first follow-up takes the derive path: it records its OWN derived branch, so -b creates it", async () => {
+    const files = makeFiles();
+    const fs = makeFakeFs(files);
+    const result = performSplit("abc123", splitOpts({ files, fs }));
+    markParentMerged(files);
+
+    const { exec, calls } = makeClaimExec([]);
+    const claimed = await claimSpec(
+      result.followUpHash,
+      claimOpts({ files, fs }, exec),
+    );
+    expect(claimed.branch).toBe(`feat/dev-${result.followUpHash}`);
+    const worktreeAdd = calls.find(
+      (c) => c.cmd === "git" && c.args[0] === "worktree" && c.args[1] === "add",
+    );
+    expect(worktreeAdd!.args).toEqual([
+      "worktree",
+      "add",
+      `${REPO}/.worktrees/dev-${result.followUpHash}`,
+      "-b",
+      `feat/dev-${result.followUpHash}`,
+      "main",
+    ]);
+  });
+
+  it("recorded == derived is NOT inheritance: a leftover same-named branch still fails loudly at -b, never silently adopted", async () => {
+    // BH-3/EC-2: every plan-emitted spec records its own derived name, so
+    // keying attach on "recorded branch exists" would silently adopt debris
+    // from a crashed run. Inheritance requires recorded != derived.
+    const files = makeFiles();
+    const fs = makeFakeFs(files);
+    const result = performSplit("abc123", splitOpts({ files, fs }));
+    markParentMerged(files);
+    const derived = `feat/dev-${result.followUpHash}`;
+
+    const { exec, calls } = makeClaimExec({
+      existingRefs: [`refs/heads/${derived}`],
+    });
+    await expect(
+      claimSpec(result.followUpHash, {
+        ...claimOpts({ files, fs }, exec),
+        // Debris branch exists → real git fails `worktree add -b`; the fake
+        // reproduces that so the pre-mss102 loud failure is pinned.
+        exec: (cmd, args, o) =>
+          cmd === "git" && args[0] === "worktree" && args[1] === "add"
+            ? { stdout: "", stderr: `fatal: a branch named '${derived}' already exists`, exitCode: 128 }
+            : exec(cmd, args, o),
+      }),
+    ).rejects.toThrow(/already exists/);
+    // No probing at all — recorded == derived short-circuits before any git.
+    expect(calls.filter((c) => c.args[0] === "show-ref")).toEqual([]);
+    expect(calls.filter((c) => c.args[0] === "fetch")).toEqual([]);
+  });
+
+  it("legal-YAML branch spellings still inherit: quoted, trailing comment, refs/heads/ prefix", async () => {
+    for (const spelling of [
+      '"feat/dev-abc123"',
+      "feat/dev-abc123 # parent WIP",
+      "refs/heads/feat/dev-abc123",
+    ]) {
+      const { files, fs, followUpHash } = handoffFixture();
+      const followUpAbs = [...files.keys()].find((k) => k.includes(followUpHash))!;
+      files.set(
+        followUpAbs,
+        files.get(followUpAbs)!.replace(/^branch: .*$/m, `branch: ${spelling}`),
+      );
+      const { exec } = makeClaimExec({
+        existingRefs: ["refs/heads/feat/dev-abc123"],
+      });
+      const claimed = await claimSpec(followUpHash, claimOpts({ files, fs }, exec));
+      expect(claimed.branch, `spelling: ${spelling}`).toBe("feat/dev-abc123");
+    }
+  });
+
+  it("a transient spec-read failure at probe time fails the claim instead of silently deriving", async () => {
+    // EC-3: swallowing every error here let a handoff follow-up be built
+    // from main with the parent's pushed WIP stranded and no warning.
+    const { files, fs, followUpHash } = handoffFixture();
+    const followUpAbs = [...files.keys()].find((k) => k.includes(followUpHash))!;
+    const flaky: ClaimFs = {
+      ...fs,
+      readFile: (p) => {
+        if (p === followUpAbs) {
+          const e = new Error("EIO: transient read failure") as NodeJS.ErrnoException;
+          e.code = "EIO";
+          throw e;
+        }
+        return fs.readFile(p);
+      },
+    };
+    const { exec } = makeClaimExec({ existingRefs: ["refs/heads/feat/dev-abc123"] });
+    await expect(
+      claimSpec(followUpHash, {
+        ...claimOpts({ files, fs: flaky }, exec),
+        fs: flaky,
+      }),
+    ).rejects.toThrow(/resolve branch inheritance/);
+  });
+
+  it("specs without branch: never probe — the derive path runs with zero show-ref calls", async () => {
+    const files = makeFiles();
+    const fs = makeFakeFs(files);
+    const result = performSplit("abc123", splitOpts({ files, fs }));
+    markParentMerged(files);
+    // Strip the recorded branch line from the follow-up spec.
+    const followUpAbs = `${REPO}/${result.followUpSpecPath}`;
+    files.set(
+      followUpAbs,
+      files.get(followUpAbs)!.replace(/^branch: .*\n/m, ""),
+    );
+
+    const { exec, calls } = makeClaimExec([]);
+    const claimed = await claimSpec(
+      result.followUpHash,
+      claimOpts({ files, fs }, exec),
+    );
+    expect(claimed.branch).toBe(`feat/dev-${result.followUpHash}`);
+    expect(calls.filter((c) => c.args[0] === "show-ref")).toEqual([]);
+    const worktreeAdd = calls.find(
+      (c) => c.cmd === "git" && c.args[0] === "worktree" && c.args[1] === "add",
+    );
+    expect(worktreeAdd!.args).toContain("-b");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// branch-handoff `branch` override (mss103) — the loop driver's seam.
+// claimSpec never writes `branch:` frontmatter, so the loop passes its
+// claim's branch explicitly; the CLI path still reads the parent spec.
 // ---------------------------------------------------------------------------
 
 describe("performSplit — branch-handoff `branch` override (mss103)", () => {

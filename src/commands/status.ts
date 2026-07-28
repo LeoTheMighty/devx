@@ -35,6 +35,8 @@ import { loadEngineContext } from "../lib/engine/context.js";
 import { readEngineState } from "../lib/engine/frontmatter.js";
 import { renderFocusLine, renderGateSummary } from "../lib/engine/render.js";
 import { loadTodoDoc } from "../lib/engine/todo-truth.js";
+import { heartbeatIntervalMsFrom } from "../lib/loop/config.js";
+import { listLiveInstances } from "../lib/loop/instances.js";
 import {
   type EngineFs,
   planFilenameWorkstreamRel,
@@ -47,6 +49,8 @@ export interface RunStatusOpts {
   /** Test seam: explicit project config path (skip findProjectConfig walk). */
   projectPath?: string;
   fs?: Partial<EngineFs>;
+  /** Clock seam (live-loop freshness). */
+  now?: () => Date;
 }
 
 const HASH_FROM_NAME_RE = /^plan-([a-z0-9]{3,12})-/i;
@@ -139,12 +143,52 @@ export function runStatus(opts: RunStatusOpts = {}): number {
     }
   }
 
-  out(
-    blocks.length > 0
-      ? `${blocks.join("\n\n")}\n`
-      : "no active workstreams\n",
-  );
+  // Live loops (mlc105) — the same registry `devx next` row 1 aggregates,
+  // rendered here so `devx status` answers "is anything running right now"
+  // without a second command. Read-only and fail-soft: a corrupt registry
+  // degrades to no section, never a non-zero exit.
+  const loopBlock = renderLiveLoops(repoRoot, ctx.ctx.merged, fs, opts.now);
+
+  const body =
+    blocks.length > 0 ? blocks.join("\n\n") : "no active workstreams";
+  out(loopBlock !== null ? `${loopBlock}\n\n${body}\n` : `${body}\n`);
   return 0;
+}
+
+function renderLiveLoops(
+  repoRoot: string,
+  merged: unknown,
+  fs: EngineFs,
+  now: (() => Date) | undefined,
+): string | null {
+  const cacheDir = join(repoRoot, ".devx-cache");
+  let live;
+  try {
+    live = listLiveInstances(cacheDir, {
+      ...(now !== undefined ? { now } : {}),
+      // Same window derivation as gather.ts / the driver's beat: 3 ×
+      // manager.heartbeat_interval_s. Three surfaces, one knob.
+      freshMs: heartbeatIntervalMsFrom(merged) * 3,
+      readdir: (p) => [...fs.readdir(p)],
+      readFile: (p) => fs.readFile(p),
+    });
+  } catch {
+    return null;
+  }
+  if (live.length === 0) return null;
+  const lines = [`live loops: ${live.length}`];
+  for (const i of live) {
+    const tsMs = Date.parse(i.ts);
+    const age = Number.isFinite(tsMs)
+      ? `${Math.round(((now ? now() : new Date()).getTime() - tsMs) / 1000)}s ago`
+      : "unknown";
+    lines.push(
+      `  ${i.run_id} (pid ${i.pid})  scope: ${i.scope ?? "all"} · ` +
+        `${i.current_item !== null ? `item ${i.current_item}, iteration ${i.iteration}` : "idle"} · ` +
+        `heartbeat ${age}`,
+    );
+  }
+  return lines.join("\n");
 }
 
 export function register(program: Command): void {
