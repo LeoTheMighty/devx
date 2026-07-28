@@ -4,8 +4,8 @@ type: dev
 created: 2026-07-26T15:57:00-06:00
 title: Loop preflight main-health check
 from: dev/dev-hfiret-2026-07-24T10:43-retro-harness-fold-in.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-07-28T0915-70985
 branch: feat/dev-lpf101
 ---
 
@@ -48,3 +48,4 @@ green otherwise.
 ## Status log
 
 - 2026-07-26T15:57:00-06:00 — filed by hfiret retro (E7, med/code).
+- 2026-07-28T09:15:51-06:00 — claimed by /devx in session /devx-2026-07-28T0915-70985
