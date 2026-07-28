@@ -37,6 +37,7 @@ was branch-level only; ours is gate-level too).
 
 ```
 devx loop [--until 07:30] [--max-items N] [--max-tokens N] [--only <type>]
+          [--allow-worktree-root]   # test-only: skip the linked-worktree launch refusal (mlc101)
 ```
 
 Two nested loops, both bounded:

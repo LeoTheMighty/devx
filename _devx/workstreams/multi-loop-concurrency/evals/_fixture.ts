@@ -8,6 +8,7 @@ import {
   mkdtempSync,
   writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,7 +20,17 @@ export const repoRoot = join(
   "..",
   "..",
 );
-export const tsxBin = join(repoRoot, "node_modules", ".bin", "tsx");
+// tsx resolved via Node's module walk, not path construction: a linked
+// worktree has no node_modules of its own (the main checkout's is found
+// by upward resolution), so `<repoRoot>/node_modules/.bin/tsx` silently
+// doesn't exist there and every runCli would spawn-fail with empty output.
+const tsxCliEntry = createRequire(import.meta.url).resolve("tsx/cli");
+/** Executable + leading args for running a .ts entry through tsx —
+ *  `spawn(nodeBin, [...tsxArgs, entry, ...])`. Named nodeBin (not tsxBin)
+ *  so a consumer forgetting tsxArgs fails loudly at import, not by
+ *  silently running plain node on a .ts file. */
+export const nodeBin = process.execPath;
+export const tsxArgs = [tsxCliEntry];
 export const cliPath = join(repoRoot, "src", "cli.ts");
 
 export interface CliResult {
@@ -47,7 +58,7 @@ export function runCli(
   env: Record<string, string> = {},
 ): CliResult {
   try {
-    const stdout = execFileSync(tsxBin, [cliPath, ...args], {
+    const stdout = execFileSync(nodeBin, [...tsxArgs, cliPath, ...args], {
       cwd,
       env: { ...GIT_ENV, ...env },
       encoding: "utf8",

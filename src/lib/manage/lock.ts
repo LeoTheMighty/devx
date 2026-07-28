@@ -57,14 +57,17 @@ export class ManagerLockHeldError extends PathLockHeldError {
   }
 }
 
-export function managerLockPath(cacheDir: string = ".devx-cache"): string {
+// No `.devx-cache` default on either function (mlc101): a cwd-relative
+// fallback is exactly the forked-universe foothold R1 is about — every
+// caller must say which universe it means.
+export function managerLockPath(cacheDir: string): string {
   return join(cacheDir, "locks", "manager.lock");
 }
 
 const MAX_STALE_RETRIES = 1;
 
 export function acquireManagerLock(
-  cacheDir: string = ".devx-cache",
+  cacheDir: string,
   opts: AcquireExtra = {},
 ): LockHandle {
   return acquirePathLock(managerLockPath(cacheDir), {
