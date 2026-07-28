@@ -53,7 +53,7 @@ splits instead of abandoning on real progress, and the Handoff Snippet
 contract retires. Deps: mss101 → {mss102, mss103} → mss104; mss102 and
 mss103 are parallel-safe (no shared files).
 
-- [/] `dev/dev-mss101-2026-07-28T13:43-split-primitive-lib-cli.md` — Split primitive (lib + CLI). Status: in-progress. From: epic-mid-story-split.
+- [x] `dev/dev-mss101-2026-07-28T13:43-split-primitive-lib-cli.md` — Split primitive (lib + CLI). Status: done. From: epic-mid-story-split. PR: https://github.com/LeoTheMighty/devx/pull/95 (merged ec3af6e)
 - [ ] `dev/dev-mss102-2026-07-28T13:43-claim-branch-inheritance.md` — Claim branch inheritance. Status: ready. Blocked-by: mss101. Parallel-safe with mss103.
 - [ ] `dev/dev-mss103-2026-07-28T13:43-loop-split-integration.md` — Loop split integration. Status: ready. Blocked-by: mss101. Parallel-safe with mss102.
 - [ ] `dev/dev-mss104-2026-07-28T13:43-handoff-snippet-retirement.md` — Handoff Snippet retirement sweep. Status: ready. Blocked-by: mss102, mss103.

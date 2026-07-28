@@ -3,7 +3,7 @@ hash: mss101
 type: dev
 created: 2026-07-28T13:43:00-06:00
 title: "Split primitive (lib + CLI)"
-status: in-progress
+status: done
 from: plan/plan-e0a67e-2026-07-28T12:15-mid-story-split.md
 plan: _devx/workstreams/mid-story-split
 phase: 1
@@ -74,6 +74,31 @@ settled-blocker allowlists `src/lib/next/gather.ts:254-260`,
 
 - 2026-07-28T13:43 — emitted by /devx-plan (RED gate passed; workstream
   mid-story-split, plan phase 1).
+- 2026-07-28T13:54 — phase 2: spec ACs direct (v2 native); 5 ACs;
+  workstream=mid-story-split; red-artifacts=evals/E-1_split-roundtrip.ts
+  (re-ran RED in worktree: 4 named missing-feature failures, right-reason).
+- 2026-07-28T14:14 — phase 3: implemented split.ts (payload/compose/atomic
+  write/performSplit) + devx split CLI + generateHash export/widen +
+  insertDevMdRow type/anchor generalization; E-1 eval GREEN, E-5 stays RED,
+  full suite 2441 passed (help snapshot refreshed for the new command row).
+- 2026-07-28T14:35 — phase 4: 3-agent parallel adversarial review (Blind
+  Hunter + Edge Case Hunter + Acceptance Auditor); 13 findings (4 MED, 9
+  LOW; auditor: all 5 ACs met, 0 blocking); 11 fixed in-place — most
+  load-bearing: backlog-row marker collision (a payload title carrying
+  `Status:`/`Blocked-by:` hijacked parseDevMd's first-match markers on the
+  composed row → now rejected at validate), plus backslash-title YAML
+  corruption, canonical-root guard (mlc101 R1 class), after-parent anchor
+  false-positive; 2 accepted with justification (takeValue `--` convention
+  matches runClaim repo-wide; blocked_by []/owner null shapes test-pinned);
+  re-review + 13/13 tests + E-1 GREEN clean.
+- 2026-07-28T14:46 — phase 5: local CI green — typecheck + full vitest
+  (125 files, 2440 tests) post-fixes; E-1 GREEN, E-5 RED (right-reason).
+- 2026-07-28T14:57 — phase 7: PR opened
+  https://github.com/LeoTheMighty/devx/pull/95 (body via devx pr-body, no
+  unresolved placeholders); phase 7.5: tour published (7 stops, 6 decisions,
+  trail A grep-verified) — body updated with tour link.
+- 2026-07-28T15:00 — merged via PR #95 (squash → ec3af6e); remote CI
+  devx-ci success (run 30397722313); worktree removed.
 - 2026-07-28T13:52:42-06:00 — claimed by /devx in session /devx-2026-07-28T1352-33223
 
 ## Links

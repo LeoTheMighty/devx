@@ -41,7 +41,14 @@
   - [x] Emit mss101–mss104 + mssret (validate-emit ok)
 - [x] Gate: evals
 - [ ] Stage: Execute
-  - [ ] Phase 1: Split primitive (lib + CLI) → mss101
+  - [x] Phase 1: Split primitive (lib + CLI) → mss101
+    - [x] T1.1 SplitPayload + validateSplitPayload
+    - [x] T1.2 composeSplit (both shapes)
+    - [x] T1.3 writeSplitAtomically (claim rollback posture)
+    - [x] T1.4 performSplit + generateHash export/widen
+    - [x] T1.5 insertDevMdRow generalization (type param + after-parent anchor)
+    - [x] T1.6 devx split CLI + registration + ls-remote refusal
+    - [x] T1.7 E-1 case group green (eval RED re-run observed 2026-07-28T13:54, right-reason; GREEN 14:04; E-5 still RED)
   - [ ] Phase 2: Claim branch inheritance → mss102
   - [ ] Phase 3: Loop split integration → mss103
   - [ ] Phase 4: Handoff Snippet retirement sweep → mss104
