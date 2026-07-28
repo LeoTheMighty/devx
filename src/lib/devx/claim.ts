@@ -68,6 +68,7 @@ import {
   acquireSpecLock,
   composeSpecLockBody,
 } from "./spec-lock.js";
+import { VerifyClaimError, parseSpecClaimFields } from "./verify-claim.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -221,7 +222,11 @@ export interface ClaimSpecOpts {
 }
 
 export interface ClaimSpecResult {
-  /** Derived branch — `<branch_prefix><type>-<hash>`. */
+  /** The claim's branch. Normally the derived
+   *  `<branch_prefix><type>-<hash>`; in mss102 attach mode it is the branch
+   *  the spec's `branch:` frontmatter handed off, which the claim did NOT
+   *  create — consumers that dispose of the branch must account for that
+   *  (see `debug/debug-b41f7c-…-attach-branch-loop-hazards.md`). */
   branch: string;
   /** Absolute path to the `.devx-cache/locks/spec-<hash>.lock` sentinel. */
   lockPath: string;
@@ -567,7 +572,7 @@ export async function claimSpec(
     }
   }
 
-  const branch = deriveBranch(opts.config, type, hash);
+  const derivedBranch = deriveBranch(opts.config, type, hash);
   // Push target vs worktree base — the two are the same on single-branch
   // projects (this repo) and DIFFER on split-branch:
   //
@@ -614,6 +619,75 @@ export async function claimSpec(
   }
   if (!fs.exists(devMdAbs)) {
     throw new ClaimError("resolve", `${backlogName} not found at ${devMdAbs}`);
+  }
+
+  // mss102: claim branch inheritance. A branch-handoff follow-up (devx
+  // split) records its PARENT's WIP branch in `branch:` frontmatter; the
+  // claim attaches the worktree to that branch (no `-b`, no base) so the
+  // handed-off work is claimable cold by any session.
+  //
+  // Scope is deliberately narrower than "spec carries `branch:`": every
+  // plan-emitted spec records its own DERIVED name in advance (enforced by
+  // validate-emit), so treating "recorded branch exists" as attach-worthy
+  // would silently adopt debris — a leftover branch from a crashed loop
+  // run or a closed-not-merged PR — where pre-mss102 the claim failed
+  // loudly at `worktree add -b`. Inheritance is therefore keyed on the
+  // recorded branch DIFFERING from the derived one, which is true only for
+  // a genuine handoff. Ordinary claims keep their pre-mss102 behavior
+  // byte-for-byte and never pay a probe. This narrows AC 2's literal
+  // wording; the decision is INTERVIEW Q#14.
+  let recordedBranch: string | null = null;
+  try {
+    recordedBranch = parseSpecClaimFields(fs.readFile(specPath)).branch;
+  } catch (e) {
+    // Malformed frontmatter is pre-mss102 territory: the claim proceeds on
+    // the derive path and fails loudly at compose, as it always did. A real
+    // read failure must NOT degrade into a silently-wrong base — a
+    // handoff follow-up would re-implement from main with the parent's
+    // pushed WIP stranded (review EC-3).
+    if (!(e instanceof VerifyClaimError)) {
+      throw new ClaimError(
+        "resolve",
+        `could not read ${specPath} to resolve branch inheritance: ${errMessage(e)}`,
+      );
+    }
+  }
+  // Note: on the cold-session path this fetches one ref and creates the
+  // local branch — repo mutations that happen BEFORE the claim transaction
+  // and are therefore not covered by its rollback. Both are idempotent and
+  // inert (a tracking-ref update plus a branch pointing exactly at it), so
+  // a claim that fails afterwards leaves nothing to undo; the next attempt
+  // simply hits the local probe instead of re-fetching.
+  const inheritance = resolveInheritedBranch({
+    exec,
+    repoRoot: opts.repoRoot,
+    recorded: recordedBranch,
+    derivedBranch,
+    reserved: [pushTarget, integrationBranch],
+  });
+  for (const w of inheritance.warnings) {
+    process.stderr.write(`devx claim: WARN — ${w}\n`);
+  }
+  const attachBranch = inheritance.branch;
+  const branch = attachBranch ?? derivedBranch;
+
+  // Attach cannot work while the branch is checked out elsewhere — git
+  // refuses `worktree add` on a branch another worktree holds. In the
+  // flagship handoff shape the PARENT's worktree is exactly that holder
+  // (the loop's split sequence never removes it), so this is the common
+  // case, not the exotic one. Fail HERE, before the claim transaction
+  // mutates anything, with the removal command the operator actually
+  // needs — pre-fix this surfaced as a post-push wedge whose suggested
+  // rerun could never succeed (review EC-1).
+  if (attachBranch !== null) {
+    const holder = worktreeHolding(exec, opts.repoRoot, attachBranch);
+    if (holder !== null) {
+      throw new ClaimError(
+        "validate",
+        `spec ${hash} inherits branch '${attachBranch}', but that branch is checked out in the worktree at ${holder} — ` +
+          `remove it first (\`git worktree remove ${holder}\`), then re-run the claim`,
+      );
+    }
   }
 
   // mlc102: the whole claim transaction — spec lock, backlog + spec flips,
@@ -1048,24 +1122,21 @@ export async function claimSpec(
       ".worktrees",
       `${type}-${hash}`,
     );
-    const worktreeResult = exec(
-      "git",
-      [
-        "worktree",
-        "add",
-        worktreePath,
-        "-b",
-        branch,
-        worktreeBase,
-      ],
-      { cwd: opts.repoRoot },
-    );
+    // Attach mode (mss102): the spec's recorded branch exists, so the
+    // worktree checks it out directly — no `-b`, no base. A remote-only
+    // branch resolves via git's own DWIM (creates the local tracking
+    // branch from origin/<branch>).
+    const worktreeArgs =
+      attachBranch !== null
+        ? ["worktree", "add", worktreePath, branch]
+        : ["worktree", "add", worktreePath, "-b", branch, worktreeBase];
+    const worktreeResult = exec("git", worktreeArgs, { cwd: opts.repoRoot });
     if (worktreeResult.exitCode !== 0) {
       releaseLock();
       throw new ClaimError(
         "worktree",
         `git worktree add failed (exit ${worktreeResult.exitCode}): ${worktreeResult.stderr.trim()} ` +
-          `(claim ${claimSha} is durable on origin/${pushTarget}; rerun \`git worktree add ${worktreePath} -b ${branch} ${worktreeBase}\` by hand)`,
+          `(claim ${claimSha} is durable on origin/${pushTarget}; rerun \`git ${worktreeArgs.join(" ")}\` by hand)`,
       );
     }
 
@@ -1083,6 +1154,124 @@ export async function claimSpec(
 
 function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+/**
+ * Does a fully-qualified ref exist? `git show-ref --verify <ref>` prints
+ * `<sha> <ref>` on hit. Requiring the ref in stdout (not just exit 0) keeps
+ * indeterminate exec results — including test fakes that blanket-return
+ * exit 0 with empty stdout — on the derive path: only positive evidence of
+ * an existing branch switches the claim into attach mode.
+ */
+function branchRefExists(exec: Exec, repoRoot: string, ref: string): boolean {
+  const r = exec("git", ["show-ref", "--verify", ref], { cwd: repoRoot });
+  return r.exitCode === 0 && r.stdout.includes(ref);
+}
+
+/**
+ * Path of the worktree that currently has `branch` checked out, or null.
+ * `git worktree list --porcelain` emits a `branch refs/heads/<name>` line
+ * under the owning worktree's `worktree <path>` line.
+ */
+function worktreeHolding(
+  exec: Exec,
+  repoRoot: string,
+  branch: string,
+): string | null {
+  const r = exec("git", ["worktree", "list", "--porcelain"], { cwd: repoRoot });
+  if (r.exitCode !== 0) return null;
+  let current: string | null = null;
+  for (const line of r.stdout.split("\n")) {
+    if (line.startsWith("worktree ")) {
+      current = line.slice("worktree ".length).trim();
+    } else if (line.trim() === `branch refs/heads/${branch}`) {
+      return current;
+    }
+  }
+  return null;
+}
+
+export interface InheritedBranchResolution {
+  /** Non-null → attach mode: check this branch out instead of creating one. */
+  branch: string | null;
+  /** Operator-facing WARNs; each is a case where a recorded branch was
+   *  present but deliberately not inherited. Never silent. */
+  warnings: string[];
+}
+
+/**
+ * Decide whether this claim inherits the spec's recorded `branch:` (mss102).
+ *
+ * Inheritance requires the recorded branch to DIFFER from the derived one —
+ * a plan-emitted spec records its own derived name, so "recorded == derived"
+ * is the ordinary case and must keep the pre-mss102 derive path (including
+ * its loud `-b`-on-existing-branch failure when debris survives). A genuine
+ * branch-handoff follow-up records its parent's branch, which never matches.
+ *
+ * Resolution order once inheritance is in play:
+ *   1. reserved (default / integration branch) → refuse + WARN. Attaching
+ *      would put every agent commit straight onto the branch PRs target.
+ *   2. local `refs/heads/<b>` → attach (may carry unpushed work).
+ *   3. otherwise fetch that one ref from origin and attach only if the
+ *      fetch SUCCEEDS — a cold session has no tracking ref yet, and a stale
+ *      tracking ref for a branch deleted upstream must not qualify. The
+ *      local branch is then created explicitly from the fetched ref so the
+ *      subsequent `worktree add` needs no single-remote DWIM.
+ *   4. nothing found → WARN + derive.
+ */
+export function resolveInheritedBranch(args: {
+  exec: Exec;
+  repoRoot: string;
+  recorded: string | null;
+  derivedBranch: string;
+  reserved: Array<string | null>;
+}): InheritedBranchResolution {
+  const { exec, repoRoot, recorded, derivedBranch } = args;
+  if (recorded === null || recorded === derivedBranch) {
+    return { branch: null, warnings: [] };
+  }
+  const reserved = args.reserved.filter((r): r is string => Boolean(r));
+  if (reserved.includes(recorded)) {
+    return {
+      branch: null,
+      warnings: [
+        `spec records branch '${recorded}', which is this project's default/integration branch — refusing to attach (agent commits would land on it directly); deriving '${derivedBranch}' instead`,
+      ],
+    };
+  }
+  if (branchRefExists(exec, repoRoot, `refs/heads/${recorded}`)) {
+    return { branch: recorded, warnings: [] };
+  }
+  const fetched = exec(
+    "git",
+    ["fetch", "origin", `+refs/heads/${recorded}:refs/remotes/origin/${recorded}`],
+    { cwd: repoRoot },
+  );
+  if (
+    fetched.exitCode === 0 &&
+    branchRefExists(exec, repoRoot, `refs/remotes/origin/${recorded}`)
+  ) {
+    const created = exec(
+      "git",
+      ["branch", recorded, `refs/remotes/origin/${recorded}`],
+      { cwd: repoRoot },
+    );
+    if (created.exitCode !== 0) {
+      return {
+        branch: null,
+        warnings: [
+          `spec records branch '${recorded}' and it exists on origin, but creating the local branch failed (exit ${created.exitCode}): ${created.stderr.trim()} — deriving '${derivedBranch}' instead; the inherited work is NOT in this worktree`,
+        ],
+      };
+    }
+    return { branch: recorded, warnings: [] };
+  }
+  return {
+    branch: null,
+    warnings: [
+      `spec records branch '${recorded}' but it exists neither locally nor on origin — deriving '${derivedBranch}' instead; if this is a handed-off follow-up, its WIP branch was never pushed and that work is NOT in this worktree`,
+    ],
+  };
 }
 
 function escapeRegex(s: string): string {
