@@ -34,8 +34,16 @@
   - [x] Critique step skipped (send-it; single backend stack layer < min_surfaces 2)
   - [x] Coverage-judge subagent → table JSON → `devx gate coverage` (5✅/0⚠️/0❌ → PASS)
 - [x] Gate: coverage(plan)
-- [ ] Stage: RED
-- [ ] Gate: evals
+- [x] Stage: RED
+  - [x] Revise cascade (`--touched plan.md`): RED artifacts retargeted from in-suite test files to evals/ wrappers (CI-green constraint — see plan.md RED-stage note); coverage gate replayed → PASS
+  - [x] Author 5 eval wrappers (E-1..E-5) + run each standalone — all RED for named missing-feature reasons
+  - [x] `devx gate evals e0a67e` → PASS (5 right-reason runs, 0 deferred) → evals_red, stage: executing
+  - [x] Emit mss101–mss104 + mssret (validate-emit ok)
+- [x] Gate: evals
 - [ ] Stage: Execute
+  - [ ] Phase 1: Split primitive (lib + CLI) → mss101
+  - [ ] Phase 2: Claim branch inheritance → mss102
+  - [ ] Phase 3: Loop split integration → mss103
+  - [ ] Phase 4: Handoff Snippet retirement sweep → mss104
 - [ ] Stage: Retro
 - [ ] Stage: Outcome

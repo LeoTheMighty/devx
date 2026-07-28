@@ -45,6 +45,20 @@ Serial chain — every story touches claim.ts/driver.ts.
 - [ ] `dev/dev-mlc106-2026-07-28T09:02-scope-model-flags.md` — Scope model: epic-aware rows + --epic/--workstream/--items/--exclude/--focus + E-8 sweep. Status: ready. Blocked-by: mlc105.
 - [ ] `dev/dev-mlcret-2026-07-28T09:04-retro-multi-loop-concurrency.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: mlc101, mlc102, mlc103, mlc104, mlc105, mlc106.
 
+### Epic — mid-story-split (plan: e0a67e)
+
+First-class mid-story splits: remaining work becomes a fresh spec wired
+into the dependency tree (merge-first / branch-handoff shapes), the loop
+splits instead of abandoning on real progress, and the Handoff Snippet
+contract retires. Deps: mss101 → {mss102, mss103} → mss104; mss102 and
+mss103 are parallel-safe (no shared files).
+
+- [ ] `dev/dev-mss101-2026-07-28T13:43-split-primitive-lib-cli.md` — Split primitive (lib + CLI). Status: ready. From: epic-mid-story-split.
+- [ ] `dev/dev-mss102-2026-07-28T13:43-claim-branch-inheritance.md` — Claim branch inheritance. Status: ready. Blocked-by: mss101. Parallel-safe with mss103.
+- [ ] `dev/dev-mss103-2026-07-28T13:43-loop-split-integration.md` — Loop split integration. Status: ready. Blocked-by: mss101. Parallel-safe with mss102.
+- [ ] `dev/dev-mss104-2026-07-28T13:43-handoff-snippet-retirement.md` — Handoff Snippet retirement sweep. Status: ready. Blocked-by: mss102, mss103.
+- [ ] `dev/dev-mssret-2026-07-28T13:45-retro-mid-story-split.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: mss101, mss102, mss103, mss104.
+
 ## Phase 0 — Foundation (plan: plan-a01000)
 
 ### Epic 1 — BMAD audit

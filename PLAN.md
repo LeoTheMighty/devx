@@ -55,7 +55,7 @@ CLI primitive shared by interactive `/devx` and the `devx loop` driver
 cold. Merge-first preferred, branch-handoff fallback. Kills the hfi102
 abandoned-while-done class.
 
-- [/] `plan/plan-e0a67e-2026-07-28T12:15-mid-story-split.md` — Mid-story split: split primitive + carried-forward context contract, loop split paths + `split` outcome, Handoff Snippet retirement + skills/docs sweep, state-hygiene invariants. Status: in-planning (PRD gate passed 2026-07-28; stage: design). Blocked-by: —. Related: mlc103 (spec-lock lifecycle), db36af (doctor), lpf101 (preflight).
+- [x] `plan/plan-e0a67e-2026-07-28T12:15-mid-story-split.md` — Mid-story split: split primitive + carried-forward context contract, loop split paths + `split` outcome, Handoff Snippet retirement + skills/docs sweep, state-hygiene invariants. Status: executing (all 4 gates passed 2026-07-28; RED artifacts observed right-reason; emitted mss101–mss104 + mssret to DEV.md). Blocked-by: —. Related: mlc103 (spec-lock lifecycle), db36af (doctor), lpf101 (preflight).
 
 ## Cross-cutting plans
 

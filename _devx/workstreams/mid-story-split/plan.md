@@ -68,17 +68,31 @@ an extra requiring product approval.)
 
 | E-id | Priority | Verified in phase | Validation type | Eval artifact | Coverage |
 |---|---|---|---|---|---|
-| E-1 | P0 | 1 | tests-first | `test/devx-split.test.ts` | full |
+| E-1 | P0 | 1 | tests-first | `_devx/workstreams/mid-story-split/evals/E-1_split-roundtrip.ts` | full |
 | E-2 | P0 | 4 | tests-first | `_devx/workstreams/mid-story-split/evals/E-2_snippet-grep-zero.ts` | full |
-| E-3 | P0 | 3 | tests-first | `test/loop-driver.test.ts` | full |
-| E-4 | P1 | 3 | tests-first | `test/loop-iteration.test.ts` | full |
-| E-5 | P1 | 2 | tests-first | `test/devx-split.test.ts` | full |
+| E-3 | P0 | 3 | tests-first | `_devx/workstreams/mid-story-split/evals/E-3_budget-rail-split.ts` | full |
+| E-4 | P1 | 3 | tests-first | `_devx/workstreams/mid-story-split/evals/E-4_worker-requested-split.ts` | full |
+| E-5 | P1 | 2 | tests-first | `_devx/workstreams/mid-story-split/evals/E-5_fresh-claim-viability.ts` | full |
 
-RED-stage note: `test/devx-split.test.ts` carries both E-1 (phase 1) and
-E-5 (phase 2) case groups — one file, disjoint describe blocks, each
-phase's tests-first re-run watches its own block fail. RED artifacts for
-E-1/E-5 must fail on missing-feature assertions, not import errors (dynamic
-import + existence assertion, per RED-gate wrong-reason rule).
+RED-stage note (revised 2026-07-28 at RED, `devx revise --touched plan.md`
+cascade): the original table pinned in-suite `test/*.test.ts` files as the
+RED artifacts, which cannot satisfy the RED gate without breaking CI — a
+failing vitest file inside the default `test/**/*.test.ts` glob reds `npm
+test` on main and every phase PR from the RED commit until its phase ships
+(phase 1's PR could never merge with the E-5 block red in its own suite).
+Retargeted to standalone `evals/` wrapper scripts per the harness-fold-in
+precedent: each wrapper runs under the `workstream-evals` tsx runner
+(outside the default suite), probes the missing feature directly via
+dynamic import + behavior assertions, and asserts the permanent in-suite
+case group exists — failing NOW with named missing-feature reasons
+(right-reason RED), exiting 0 only when the phase's feature and its
+permanent tests are both in place. The permanent case groups still land in
+`test/devx-split.test.ts` (E-1 phase 1, E-5 phase 2),
+`test/loop-driver.test.ts` (E-3), and `test/loop-iteration.test.ts` (E-4)
+— authored by their phases, discoverable by the wrappers via pinned
+describe-title markers `"E-1:"`, `"E-3:"`, `"E-4:"`, `"E-5:"`. Each
+phase's tests-first re-run is its eval wrapper: watch it fail, then drive
+it green by shipping the feature + case group.
 
 ## Phase checklist
 
@@ -155,8 +169,10 @@ consumers (claim inheritance, loop) build against a merged, tested seam.
     rename failure leaves DEV.md byte-identical (0 changed bytes),
     ownership-mismatch refusal exits 3, all carried-forward section
     headings present.
-  - `npm test` (typecheck included) green; the E-5 case group in the same
-    file remains RED (feature lands in phase 2).
+  - `evals/E-1_split-roundtrip.ts` exits 0 (feature probes + `"E-1:"` case
+    group present in `test/devx-split.test.ts`).
+  - `npm test` (typecheck included) green; the E-5 eval wrapper remains
+    RED (feature lands in phase 2).
 
 **Tasks**:
 - [ ] T1.1 `SplitPayload` + `validateSplitPayload` — files: `src/lib/devx/split.ts`
@@ -165,7 +181,7 @@ consumers (claim inheritance, loop) build against a merged, tested seam.
 - [ ] T1.4 `performSplit`: ownership guard + `generateHash` export/widen — files: `src/lib/devx/split.ts`, `src/lib/engine/workstream.ts`
 - [ ] T1.5 Generalize `insertDevMdRow` (type param + after-parent anchor) — files: `src/lib/plan/emit-retro-story.ts`
 - [ ] T1.6 `devx split` CLI + registration + branch-handoff ls-remote refusal — files: `src/commands/split.ts`, `src/cli.ts`
-- [ ] T1.7 Re-run E-1 RED block, watch it fail, drive green — files: `test/devx-split.test.ts`
+- [ ] T1.7 Re-run `evals/E-1_split-roundtrip.ts`, watch it fail, drive green (author the `"E-1:"` case group) — files: `test/devx-split.test.ts`
 
 ### 2. Phase: Claim branch inheritance
 
@@ -200,12 +216,14 @@ phase 1 (fixtures are built by `performSplit`); parallel-safe with phase 3.
   - E-5 threshold met: dispatch + claim tests green on both merge-first
     and branch-handoff fixtures; recorded branch honored (attach, not
     `-b`); drift assertion count = 0.
+  - `evals/E-5_fresh-claim-viability.ts` exits 0 (feature probes + `"E-5:"`
+    case group present in `test/devx-split.test.ts`).
   - Existing claim tests untouched and green (derive path unchanged).
 
 **Tasks**:
 - [ ] T2.1 Read `branch:` via `parseSpecClaimFields` extension — files: `src/lib/devx/verify-claim.ts`, `src/lib/devx/claim.ts`
 - [ ] T2.2 Worktree attach (no `-b`) + base resolution when `branch:` names an existing branch — files: `src/lib/devx/claim.ts`
-- [ ] T2.3 Re-run E-5 RED block, watch it fail, drive green (incl. drift = 0 + row-8 dispatch assertions) — files: `test/devx-split.test.ts`
+- [ ] T2.3 Re-run `evals/E-5_fresh-claim-viability.ts`, watch it fail, drive green (author the `"E-5:"` case group incl. drift = 0 + row-8 dispatch assertions) — files: `test/devx-split.test.ts`
 
 ### 3. Phase: Loop split integration
 
@@ -268,6 +286,9 @@ parallel-safe with phase 2.
   - E-4 threshold met: ≥3 cases green — well-formed request → exactly 1
     driver-side split; malformed → 1 validation error + 0 spec/backlog
     writes; iteration counter advances and item not terminated.
+  - `evals/E-3_budget-rail-split.ts` + `evals/E-4_worker-requested-split.ts`
+    exit 0 (feature probes + `"E-3:"` / `"E-4:"` case groups present in
+    `test/loop-driver.test.ts` / `test/loop-iteration.test.ts`).
   - Dedicated fallback test: `performSplit` throws → item lands exactly
     where `abandonItem` puts it today.
 
@@ -279,7 +300,7 @@ parallel-safe with phase 2.
 - [ ] T3.5 Budget-rail predicate at exhaustion — files: `src/lib/loop/driver.ts`
 - [ ] T3.6 Worker-request merge-first path in the merge tail — files: `src/lib/loop/driver.ts`
 - [ ] T3.7 Events + rail wiring into `afterItemCompleted` — files: `src/lib/loop/driver.ts`
-- [ ] T3.8 Re-run E-3/E-4 RED blocks, watch them fail, drive green + fallback test — files: `test/loop-driver.test.ts`, `test/loop-iteration.test.ts`
+- [ ] T3.8 Re-run `evals/E-3_budget-rail-split.ts` + `evals/E-4_worker-requested-split.ts`, watch them fail, drive green (author the `"E-3:"` / `"E-4:"` case groups) + fallback test — files: `test/loop-driver.test.ts`, `test/loop-iteration.test.ts`
 
 ### 4. Phase: Handoff Snippet retirement sweep
 
