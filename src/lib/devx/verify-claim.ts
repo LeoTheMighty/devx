@@ -142,18 +142,43 @@ export function parseLockOwner(lockBody: string): string | null {
   return specLockOwner(lockBody);
 }
 
+/**
+ * Normalize a `branch:` frontmatter scalar to a bare branch name.
+ *
+ * The value feeds a verbatim `git show-ref` probe (mss102), so a spelling
+ * git can't match silently disables inheritance. Handles the legal-YAML
+ * shapes a hand-edited spec produces — devx's own emitters always write the
+ * bare unquoted form:
+ *   - trailing `# comment` (YAML requires whitespace before the `#`)
+ *   - single or double quoting
+ *   - a fully-qualified `refs/heads/<name>`
+ *   - the null-ish spellings `null` / `~` / empty
+ */
+function normalizeBranchScalar(raw: string): string | null {
+  let v = raw.replace(/\s+#.*$/, "").trim();
+  const quoted = /^(["'])([\s\S]*)\1$/.exec(v);
+  if (quoted) v = quoted[2].trim();
+  if (v.startsWith("refs/heads/")) v = v.slice("refs/heads/".length);
+  if (v === "" || v === "null" || v === "~") return null;
+  return v;
+}
+
 export interface SpecClaimFields {
   /** Raw `owner:` value (e.g. `/devx-2026-07-05T0953-22822`), or null. */
   owner: string | null;
   /** Raw `status:` value (e.g. `in-progress`), or null when absent. */
   status: string | null;
+  /** Raw `branch:` value (e.g. `feat/dev-abc123`), or null when absent.
+   *  A branch-handoff follow-up (mss102) records its parent's WIP branch
+   *  here; claimSpec attaches to it when it names an existing branch. */
+  branch: string | null;
 }
 
 /**
- * Parse the `owner:` + `status:` fields out of a spec file's frontmatter
- * block. Throws VerifyClaimError("spec-parse") when the frontmatter block
- * itself is missing — a spec without frontmatter is out-of-convention and
- * verify-claim can't reason about it.
+ * Parse the `owner:` + `status:` + `branch:` fields out of a spec file's
+ * frontmatter block. Throws VerifyClaimError("spec-parse") when the
+ * frontmatter block itself is missing — a spec without frontmatter is
+ * out-of-convention and verify-claim can't reason about it.
  */
 export function parseSpecClaimFields(content: string): SpecClaimFields {
   const fmMatch = /^---\n([\s\S]*?)\n---/.exec(content);
@@ -162,6 +187,7 @@ export function parseSpecClaimFields(content: string): SpecClaimFields {
   }
   let owner: string | null = null;
   let status: string | null = null;
+  let branch: string | null = null;
   for (const line of fmMatch[1].split("\n")) {
     const ownerMatch = /^owner:\s*(.*)$/.exec(line);
     if (ownerMatch) {
@@ -173,9 +199,14 @@ export function parseSpecClaimFields(content: string): SpecClaimFields {
     if (statusMatch) {
       const v = statusMatch[1].trim();
       status = v === "" ? null : v;
+      continue;
+    }
+    const branchMatch = /^branch:\s*(.*)$/.exec(line);
+    if (branchMatch) {
+      branch = normalizeBranchScalar(branchMatch[1]);
     }
   }
-  return { owner, status };
+  return { owner, status, branch };
 }
 
 // ---------------------------------------------------------------------------

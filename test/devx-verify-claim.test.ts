@@ -203,6 +203,7 @@ describe("parseSpecClaimFields", () => {
     expect(parseSpecClaimFields(content)).toEqual({
       owner: `/devx-${OWNER_SID}`,
       status: "in-progress",
+      branch: null,
     });
   });
 
@@ -211,7 +212,26 @@ describe("parseSpecClaimFields", () => {
     expect(parseSpecClaimFields(content)).toEqual({
       owner: null,
       status: "ready",
+      branch: null,
     });
+  });
+
+  it("surfaces the branch: frontmatter field (mss102 claim inheritance)", () => {
+    const content = [
+      "---",
+      "hash: roc101",
+      "status: ready",
+      "branch: feat/dev-roc101",
+      "---",
+    ].join("\n");
+    expect(parseSpecClaimFields(content)).toEqual({
+      owner: null,
+      status: "ready",
+      branch: "feat/dev-roc101",
+    });
+    // Empty value normalizes to null like owner/status.
+    const empty = ["---", "status: ready", "branch:", "---"].join("\n");
+    expect(parseSpecClaimFields(empty).branch).toBeNull();
   });
 
   it("throws VerifyClaimError(spec-parse) when frontmatter is missing", () => {
@@ -237,6 +257,7 @@ describe("parseSpecClaimFields", () => {
     expect(parseSpecClaimFields(content)).toEqual({
       owner: null,
       status: "in-progress",
+      branch: null,
     });
   });
 });
