@@ -43,6 +43,7 @@ import {
 } from "../lib/engine/gate-coverage.js";
 import {
   type ShellExec,
+  donePhasesFor,
   projectRunnersFrom,
   realShellExec,
   renderRedReport,
@@ -431,6 +432,7 @@ export function runGateEvalsCli(
     runners: projectRunnersFrom(r.merged),
     exec: opts.exec ?? realShellExec,
     exists: (p) => io.fs.exists(p),
+    donePhases: donePhasesFor(io.fs, r.repoRoot, ws.workstreamRel),
     dryRun: flags.dryRun === true,
   });
 

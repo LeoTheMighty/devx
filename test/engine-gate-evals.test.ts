@@ -34,9 +34,9 @@ describe("parsePlanCoverageTable", () => {
   it("maps E-id → validation type + artifact by header position", () => {
     const rows = parsePlanCoverageTable(validPlan());
     expect(rows).toEqual([
-      { eId: "E-1", validationType: "tests-first", artifact: "test/demo.test.mjs" },
-      { eId: "E-2", validationType: "tests-after", artifact: "test/demo.test.mjs" },
-      { eId: "E-3", validationType: "human", artifact: "evals/E-3_perf.md" },
+      { eId: "E-1", validationType: "tests-first", artifact: "test/demo.test.mjs", phase: 1 },
+      { eId: "E-2", validationType: "tests-after", artifact: "test/demo.test.mjs", phase: 2 },
+      { eId: "E-3", validationType: "human", artifact: "evals/E-3_perf.md", phase: 2 },
     ]);
   });
 
@@ -47,7 +47,7 @@ describe("parsePlanCoverageTable", () => {
       "| human | E-1 | evals/E-1_x.md |",
     ].join("\n");
     expect(parsePlanCoverageTable(plan)).toEqual([
-      { eId: "E-1", validationType: "human", artifact: "evals/E-1_x.md" },
+      { eId: "E-1", validationType: "human", artifact: "evals/E-1_x.md", phase: null },
     ]);
   });
 
@@ -277,6 +277,68 @@ describe("runGateEvals — pure gate", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Shipped-green deferral after a revise cascade (debug-9b9be5)
+// ---------------------------------------------------------------------------
+
+describe("runGateEvals — shipped-green deferral (debug-9b9be5)", () => {
+  // Repro shape (rooted-light 2026-07-25): `devx revise` cleared evals_red
+  // after phases had merged; the replay demanded RED from evals whose
+  // phases already shipped — they exit 0 by definition and the gate FAILed
+  // with "expected RED but exited 0".
+  it("defers a P0 eval whose plan phase resolves to a done dev spec, without running it", () => {
+    const { exec, calls } = fakeExec(0); // shipped suite: green
+    const result = runGateEvals({
+      repoRoot: "/repo",
+      workstreamAbs: "/repo/_devx/workstreams/demo",
+      expectations: validExpectations(),
+      plan: validPlan(),
+      runners: [{ name: "cli", path: ".", test: "npm test --" }],
+      exec,
+      exists: () => true,
+      donePhases: new Set([1]), // E-1's "Verified in phase" is 1
+    });
+    expect(calls).toHaveLength(0); // shipped eval never runs
+    const d = result.deferred.find((r) => r.eId === "E-1")!;
+    expect(d.redVerdict).toBe("not-run (deferred: shipped-green)");
+    expect(d.gap).toBeNull();
+    expect(d.blocking).toBe(false);
+    expect(result.verdict).toBe("PASS");
+  });
+
+  it("without phase resolution the same green P0 still FAILs (grandfather: no silent pass)", () => {
+    const { exec } = fakeExec(0);
+    const result = runGateEvals({
+      repoRoot: "/repo",
+      workstreamAbs: "/repo/_devx/workstreams/demo",
+      expectations: validExpectations(),
+      plan: validPlan(),
+      runners: [{ name: "cli", path: ".", test: "npm test --" }],
+      exec,
+      exists: () => true,
+    });
+    expect(result.verdict).toBe("FAIL");
+    const run = result.runs.find((r) => r.eId === "E-1")!;
+    expect(run.gap).toContain("exited 0");
+  });
+
+  it("a pending phase (not in donePhases) still runs and must be RED", () => {
+    const { exec, calls } = fakeExec(0);
+    const result = runGateEvals({
+      repoRoot: "/repo",
+      workstreamAbs: "/repo/_devx/workstreams/demo",
+      expectations: validExpectations(),
+      plan: validPlan(),
+      runners: [{ name: "cli", path: ".", test: "npm test --" }],
+      exec,
+      exists: () => true,
+      donePhases: new Set([2]), // E-1 is phase 1 — NOT shipped
+    });
+    expect(calls).toHaveLength(1);
+    expect(result.verdict).toBe("FAIL");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // CLI driver layer
 // ---------------------------------------------------------------------------
 
@@ -402,6 +464,56 @@ describe("devx gate evals — CLI driver", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].command).toContain("test/demo.test.mjs");
     expect(calls[0].cwd).toBe(repo.root);
+  });
+
+  // debug-9b9be5: post-revise replay with a shipped phase. The phase's dev
+  // spec (frontmatter `plan:` → this workstream, `phase: 1`, `status: done`)
+  // makes E-1 shipped-green — deferred, not demanded RED.
+  it("defers E-1 when dev/ holds a done spec for its phase; gate passes on a green suite", () => {
+    seed();
+    repo.write(
+      "dev/dev-def456-2026-07-05T14:00-phase-one.md",
+      [
+        "---",
+        "hash: def456",
+        "type: dev",
+        "status: done",
+        `plan: ${WS}`,
+        "phase: 1",
+        "---",
+        "body",
+        "",
+      ].join("\n"),
+    );
+    const { code, io, calls } = gateEvals({}, 0); // green suite
+    expect(code).toBe(0);
+    expect((io.json() as { gate: string }).gate).toBe("PASS");
+    expect(calls).toHaveLength(0);
+    const report = repo.read(`${WS}/evals/RED-report.md`);
+    expect(report).toContain("E-1: not-run (deferred: shipped-green)");
+    const state = readEngineState(repo.read(SPEC_REL));
+    expect(state.gateStatus.evals_red).toBe(true);
+  });
+
+  it("an in-progress phase spec does not defer — green E-1 still FAILs the gate", () => {
+    seed();
+    repo.write(
+      "dev/dev-def456-2026-07-05T14:00-phase-one.md",
+      [
+        "---",
+        "hash: def456",
+        "type: dev",
+        "status: in-progress",
+        `plan: ${WS}`,
+        "phase: 1",
+        "---",
+        "body",
+        "",
+      ].join("\n"),
+    );
+    const { code, io } = gateEvals({}, 0);
+    expect(code).toBe(1);
+    expect((io.json() as { gate: string }).gate).toBe("FAIL");
   });
 
   it("unknown hash → exit 2", () => {

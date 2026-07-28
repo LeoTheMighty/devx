@@ -16,6 +16,10 @@
 //     to `tests-first` (must run).
 //   - `.md` artifacts (eval specs under evals/) are not mechanically
 //     runnable — they count as deferred and follow the same type rules.
+//   - Shipped-green (debug-9b9be5): an eval whose plan-table phase resolves
+//     to a `status: done` dev spec is deferred at any priority — after a
+//     revise cascade its behavior already merged and the artifact is green
+//     by definition, so demanding RED would wedge the replay.
 //
 // Writes `evals/RED-report.md` (shared verdict block; reviewer
 // `devx gate evals`) with command + exit code + failure quote per E-id.
@@ -33,6 +37,7 @@ import {
   normalizePriority,
   parseExpectations,
 } from "./expectations.js";
+import { readEngineState } from "./frontmatter.js";
 import {
   INACTIVE_WAIVER,
   type Verdict,
@@ -49,6 +54,8 @@ export interface PlanCoverageRow {
   eId: string;
   validationType: ValidationType | null;
   artifact: string | null;
+  /** `Verified in phase` column, when it's a bare positive integer. */
+  phase: number | null;
 }
 
 const VALIDATION_TYPES: ReadonlySet<string> = new Set([
@@ -76,6 +83,7 @@ export function parsePlanCoverageTable(plan: string): PlanCoverageRow[] {
     if (idCol === -1) continue;
     const typeCol = headers.findIndex((h) => h.includes("type"));
     const artifactCol = headers.findIndex((h) => h.includes("artifact"));
+    const phaseCol = headers.findIndex((h) => h.includes("phase"));
     // Walk rows until the table ends (first non-| line). Skip the divider.
     const rows: PlanCoverageRow[] = [];
     for (let j = i + 1; j < lines.length; j++) {
@@ -89,12 +97,15 @@ export function parsePlanCoverageTable(plan: string): PlanCoverageRow[] {
         typeCol !== -1 ? (cells[typeCol] ?? "").replace(/`/g, "").trim().toLowerCase() : "";
       const artifactRaw =
         artifactCol !== -1 ? (cells[artifactCol] ?? "").replace(/`/g, "").trim() : "";
+      const phaseRaw =
+        phaseCol !== -1 ? (cells[phaseCol] ?? "").replace(/`/g, "").trim() : "";
       rows.push({
         eId: eId.toUpperCase().replace(/^E/, "E"),
         validationType: VALIDATION_TYPES.has(typeRaw)
           ? (typeRaw as ValidationType)
           : null,
         artifact: artifactRaw === "" || artifactRaw === "-" ? null : artifactRaw,
+        phase: /^[1-9]\d*$/.test(phaseRaw) ? Number(phaseRaw) : null,
       });
     }
     if (rows.length > 0) return rows;
@@ -165,6 +176,55 @@ export function resolveRunner(
 }
 
 // ---------------------------------------------------------------------------
+// Shipped-phase resolution — dev/ frontmatter scan (debug-9b9be5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Plan phases already shipped for a workstream: every `dev/dev-*.md` whose
+ * `plan:` frontmatter points at `workstreamRel`, carries a `phase:` number,
+ * and is `status: done` contributes its phase. Anything unresolvable
+ * (missing dir, unreadable spec, absent `phase:`) reads not-done — the
+ * conservative direction; the gate then demands RED as before. Frontmatter
+ * is the only phase→spec mapping gates may read: the workstream working-
+ * memory file also holds one, but gates are firewalled from it (hfi E-2).
+ */
+export function donePhasesFor(
+  fs: {
+    exists(path: string): boolean;
+    readdir(path: string): string[];
+    readFile(path: string): string;
+  },
+  repoRoot: string,
+  workstreamRel: string,
+): Set<number> {
+  const done = new Set<number>();
+  const dir = join(repoRoot, "dev");
+  if (!fs.exists(dir)) return done;
+  let names: string[];
+  try {
+    names = fs.readdir(dir);
+  } catch {
+    return done;
+  }
+  for (const name of names) {
+    if (!name.startsWith("dev-") || !name.endsWith(".md")) continue;
+    try {
+      const state = readEngineState(fs.readFile(join(dir, name)));
+      if (
+        state.plan === workstreamRel &&
+        state.phase !== null &&
+        state.status?.toLowerCase() === "done"
+      ) {
+        done.add(state.phase);
+      }
+    } catch {
+      // unreadable spec reads not-done
+    }
+  }
+  return done;
+}
+
+// ---------------------------------------------------------------------------
 // The gate
 // ---------------------------------------------------------------------------
 
@@ -195,6 +255,7 @@ export type RedVerdict =
   | "not-run (deferred: tests-after)"
   | "not-run (deferred: human)"
   | "not-run (deferred: none)"
+  | "not-run (deferred: shipped-green)"
   | "not-run (eval-spec)"
   | "not-run (no runner)";
 
@@ -223,6 +284,12 @@ export interface GateEvalsInputs {
   exec: ShellExec;
   /** fs.exists seam. */
   exists: (absPath: string) => boolean;
+  /** Plan phases whose dev spec is `status: done` (see donePhasesFor).
+   *  Evals verified in a shipped phase are green by definition — a
+   *  post-revise replay defers them instead of demanding RED
+   *  (debug-9b9be5). Absent → no deferral (grandfathered specs without
+   *  `phase:` frontmatter keep today's strict behavior). */
+  donePhases?: ReadonlySet<number>;
   /** Dry-run: resolve everything, run nothing. */
   dryRun?: boolean;
 }
@@ -327,6 +394,17 @@ function evaluateExpectation(
     gap: null,
     blocking: false,
   };
+
+  // Shipped-green (debug-9b9be5): the eval's phase already merged (its dev
+  // spec is `status: done`), so its artifact is green by definition — a
+  // post-revise replay defers it (any priority, P0 included) instead of
+  // demanding RED from shipped behavior. Checked before every other rule:
+  // a shipped phase's eval is never run, never a gap.
+  const phase = planRow?.phase ?? null;
+  if (phase !== null && inputs.donePhases?.has(phase)) {
+    base.redVerdict = "not-run (deferred: shipped-green)";
+    return base;
+  }
 
   // Deferred validation types: legal stubs for P1+, a P0 floor breach for P0.
   if (validationType !== "tests-first") {

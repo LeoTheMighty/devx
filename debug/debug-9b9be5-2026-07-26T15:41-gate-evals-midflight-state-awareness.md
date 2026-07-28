@@ -51,6 +51,14 @@ operator can record a D-9 WAIVED verdict via the CLI instead of hand-editing
 
 - 2026-07-26T15:41:23-06:00 — spec filed from DEBUG.md intake row (rooted-light session 2026-07-25); repro documented from the original session's gate replay output.
 - 2026-07-28T09:08:44-06:00 — claimed by /devx in session /devx-loop-2026-07-28T15-08-44-989-68192
+- 2026-07-28T15:29:04.780Z — loop iteration 1: Implemented the gate-evals mid-flight state-awareness fix: shipped-green evals (Verified-in-phase → done dev spec) are now deferred instead of failing the RED gate, and a --waive CLI path writes D-9 WAIVED verdicts, with regression tests passing (31/31 in the touched test file).
+  - Change: Added shipped-phase deferral logic to devx gate evals (src/lib/engine/gate-evals.ts): evals whose 'Verified in phase' resolves to a dev spec with status: done are deferred rather than required to be RED, so post-revise gate replays no longer block on already-merged phases.
+  - Change: Added a first-class waiver path (gate.ts + gate-evals.ts) so an operator can record a D-9 WAIVED verdict into the RED report via the CLI instead of hand-editing RED-report.md.
+  - Change: Extended frontmatter parsing (src/lib/engine/frontmatter.ts) to support resolving dev-spec status for the deferral check.
+  - Change: Added ~120 lines of regression tests in test/engine-gate-evals.test.ts covering the shipped-green deferral and waiver flows, plus small fixture updates in four other engine test files; the touched test file passes 31/31.
+  - Learning: The iteration ended while a full 'npm test' (suite + build + typecheck) background run was still in flight, so the full-suite result was never confirmed in-session — only the targeted engine-gate-evals test file has been verified green.
+  - Learning: The spec's status log was not updated with the root-cause documentation or implementation entries (AC 2), and AC checkboxes remain unchecked — a future iteration must append the status log evidence and run the full suite before claiming completion.
+  - Learning: Long-running full-suite npm test in this harness emits only heartbeat progress lines for 10+ minutes; a targeted vitest run of the touched file is a fast (~2s) intermediate confidence check.
 
 ## Links
 
