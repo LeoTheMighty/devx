@@ -3,12 +3,12 @@ hash: mlc102
 type: dev
 created: 2026-07-28T09:02:00-06:00
 title: "Backlog mutation lock + atomic-writer conversion"
-status: ready
+status: in-progress
 from: plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md
 plan: _devx/workstreams/multi-loop-concurrency
 blocked_by: [mlc101]
 branch: feat/dev-mlc102
-owner: null
+owner: /devx-2026-07-28T1020-28370
 ---
 ## Goal
 
@@ -44,6 +44,7 @@ isolation). Wrap `acquirePathLockBlocking` (`src/lib/manage/lock.ts:211`)
 
 - 2026-07-28T09:02 — emitted by /devx-plan (RED gate passed; workstream
   multi-loop-concurrency, plan phase 2).
+- 2026-07-28T10:20:26-06:00 — claimed by /devx in session /devx-2026-07-28T1020-28370
 
 ## Links
 
