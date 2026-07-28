@@ -32,9 +32,8 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
-  writeFileSync,
 } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import {
   type EngineState,
@@ -43,6 +42,7 @@ import {
   readEngineState,
 } from "./frontmatter.js";
 import { type EngineConfig } from "./config.js";
+import { writeAtomic } from "../supervisor-internal.js";
 
 // ---------------------------------------------------------------------------
 // fs seam — same shape as devx/claim.ts's ClaimFs (subset).
@@ -58,7 +58,21 @@ export interface EngineFs {
 
 export const realEngineFs: EngineFs = {
   readFile: (p) => readFileSync(p, "utf8"),
-  writeFile: (p, c) => writeFileSync(p, c, "utf8"),
+  // mlc102: tmp+rename for every engine write — a kill mid-write must never
+  // tear a spec's frontmatter patch (R10) or a scaffolded artifact. The
+  // explicit parent-dir probe preserves writeFileSync's ENOENT contract
+  // (review EC-F7): writeAtomic mkdirs missing parents, which would let a
+  // typo'd/stale path silently mint stray directories instead of erroring.
+  writeFile: (p, c) => {
+    if (!existsSync(dirname(p))) {
+      const err = new Error(
+        `ENOENT: no such directory, write '${p}'`,
+      ) as NodeJS.ErrnoException;
+      err.code = "ENOENT";
+      throw err;
+    }
+    writeAtomic(p, c);
+  },
   exists: (p) => existsSync(p),
   mkdirRecursive: (p) => mkdirSync(p, { recursive: true }),
   readdir: (p) => readdirSync(p),

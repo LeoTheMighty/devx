@@ -382,7 +382,7 @@ const STD_CONFIG = {
 function makeFixture(): {
   fs: ClaimFs;
   state: FakeFsState;
-  baseOpts: Pick<ClaimSpecOpts, "sessionId" | "repoRoot" | "config" | "now">;
+  baseOpts: Pick<ClaimSpecOpts, "sessionId" | "repoRoot" | "config" | "now" | "lock">;
 } {
   const initial: Record<string, string> = {
     [`${REPO}/DEV.md`]: SAMPLE_DEV_MD,
@@ -395,6 +395,10 @@ function makeFixture(): {
     repoRoot: REPO,
     config: STD_CONFIG,
     now: () => new Date(2026, 4, 5, 18, 30, 0),
+    // Identity lock (mlc102): the fake-fs fixture's /repo root has no real
+    // .devx-cache to take the cross-process backlog lock in. The real-git
+    // integration tests below leave the default (real) lock in place.
+    lock: <T,>(_label: string, fn: () => T): T => fn(),
   };
   return { fs, state, baseOpts };
 }
@@ -980,7 +984,7 @@ describe("claimSpec — debug type (v2d101)", () => {
   function makeDebugFixture(): {
     fs: ClaimFs;
     state: FakeFsState;
-    baseOpts: Pick<ClaimSpecOpts, "sessionId" | "repoRoot" | "config" | "now">;
+    baseOpts: Pick<ClaimSpecOpts, "sessionId" | "repoRoot" | "config" | "now" | "lock">;
   } {
     const initial: Record<string, string> = {
       [`${REPO}/DEBUG.md`]: SAMPLE_DEBUG_MD,
@@ -996,6 +1000,8 @@ describe("claimSpec — debug type (v2d101)", () => {
         repoRoot: REPO,
         config: STD_CONFIG,
         now: () => new Date(2026, 6, 5, 12, 0, 0),
+        // Identity lock — same rationale as makeFixture (fake /repo root).
+        lock: <T,>(_label: string, fn: () => T): T => fn(),
       },
     };
   }

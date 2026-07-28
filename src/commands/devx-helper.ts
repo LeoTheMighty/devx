@@ -86,6 +86,7 @@ import {
   LockHeldError,
   claimSpec,
 } from "../lib/devx/claim.js";
+import { BacklogLockTimeoutError } from "../lib/backlog/mutate.js";
 import {
   type AwaitRemoteCiOpts,
   GhProbeError,
@@ -212,6 +213,17 @@ export async function runClaim(
   } catch (e) {
     if (e instanceof LockHeldError) {
       out(`${JSON.stringify({ error: "lock held", lockPath: e.lockPath })}\n`);
+      err(`devx devx-helper claim: ${e.message}\n`);
+      return 1;
+    }
+    if (e instanceof BacklogLockTimeoutError) {
+      // mlc102 (review BH-MED-2): a live peer holding the backlog lock past
+      // the 30s deadline is the retryable "held" condition, not a rollback —
+      // nothing was mutated (the timeout fires before step 1). Exit 1 like
+      // the spec-lock held case; the JSON names the holder for diagnosis.
+      out(
+        `${JSON.stringify({ error: "backlog lock held", lockPath: e.lockPath, holderPid: e.holderPid })}\n`,
+      );
       err(`devx devx-helper claim: ${e.message}\n`);
       return 1;
     }

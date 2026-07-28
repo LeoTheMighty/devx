@@ -53,6 +53,11 @@ import {
   type DeriveBranchConfig,
   deriveBranch,
 } from "../plan/derive-branch.js";
+import {
+  type BacklogLockFn,
+  BacklogLockTimeoutError,
+  withBacklogLock,
+} from "../backlog/mutate.js";
 import { REV_PARSE_ARGS, interpretRevParse } from "../repo-root.js";
 
 // ---------------------------------------------------------------------------
@@ -151,7 +156,18 @@ export const realFs: ClaimFs = {
 };
 
 const realExec: Exec = (cmd, args, opts) => {
-  const r = spawnSync(cmd, args, { encoding: "utf8", cwd: opts?.cwd });
+  // GIT_TERMINAL_PROMPT=0 (mlc102 review BH-MED-3): the claim's push now
+  // runs INSIDE the global backlog lock — a credential prompt hanging the
+  // push would wedge every concurrent loop's mutations behind a live,
+  // unreapable holder. Failing the push fast (and rolling the claim back)
+  // is strictly better than an interactive hang inside the critical
+  // section. The loop driver already injected this via its exec seam;
+  // this closes the direct-CLI path.
+  const r = spawnSync(cmd, args, {
+    encoding: "utf8",
+    cwd: opts?.cwd,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+  });
   if (r.error || r.status === null) {
     const detail = r.error ? r.error.message : "spawn returned null status";
     return { stdout: r.stdout ?? "", stderr: detail, exitCode: 127 };
@@ -182,6 +198,11 @@ export interface ClaimSpecOpts {
    *  debug/* specs (DEBUG.md row flip, `.worktrees/debug-<hash>` stem);
    *  any other type throws ClaimError("validate"). */
   type?: string;
+  /** Test seam — replaces the cross-process backlog lock (mlc102) around
+   *  the claim transaction. Fake-fs unit tests pass the identity lock
+   *  `(label, fn) => fn()` (their `/repo` root has no real `.devx-cache`
+   *  to lock in); production callers leave it unset. */
+  lock?: BacklogLockFn;
 }
 
 export interface ClaimSpecResult {
@@ -530,300 +551,330 @@ export async function claimSpec(
     throw new ClaimError("resolve", `${backlogName} not found at ${devMdAbs}`);
   }
 
-  // ---- Step 1: lock ----
-  // mkdir is wrapped in try/catch separately so a permission failure
-  // doesn't get reported as "lock held" — distinct exit code semantics.
-  try {
-    fs.mkdirRecursive(dirname(lockPath));
-  } catch (e) {
-    throw new ClaimError(
-      "lock",
-      `mkdir ${dirname(lockPath)} failed: ${errMessage(e)}`,
-    );
-  }
-  const lockBody = `${opts.sessionId}\npid=${process.pid}\nclaimed_at=${isoTimestamp}\n`;
-  try {
-    fs.openExclusive(lockPath, lockBody);
-  } catch (e) {
-    // EEXIST is the spec-defined "lock already held" path → exit 1.
-    // Anything else (EACCES, ENOSPC, …) is a system-level failure → exit 2.
-    if (isEexist(e)) {
-      throw new LockHeldError(lockPath);
-    }
-    throw new ClaimError("lock", `openExclusive failed: ${errMessage(e)}`);
-  }
-
-  // From here on, releaseLock() must run on every error path.
-  const releaseLock = () => fs.unlink(lockPath);
-
-  // ---- Step 2 + 3: compose updated DEV.md + spec ----
-  let devMdAfter: string;
-  let specAfter: string;
-  try {
-    const devMdBefore = fs.readFile(devMdAbs);
-    devMdAfter = flipDevMdRow(devMdBefore, hash, type);
-    const specBefore = fs.readFile(specPath);
-    specAfter = updateSpecForClaim(specBefore, opts.sessionId, isoTimestamp);
-  } catch (e) {
-    releaseLock();
-    throw new ClaimError("compose", errMessage(e));
-  }
-
-  // ---- Write to .tmp + atomic rename. Same shape as supervisor-internal's
-  //      writeAtomic + emit-retro-story's renamePlan: write all tmps first,
-  //      then rename in fixed order. If a rename fails mid-batch, undo prior
-  //      renames by writing back the original content.
-  //
-  // Tag includes 8 hex chars of randomness so two claimSpec calls in the
-  // same ms (rapid test loop, future ManageAgent parallelism) don't write
-  // to the same tmp path. emit-retro-story.ts uses the same shape; the
-  // missing randomness here was a regression vs that module (Phase 2+
-  // parallelism would have hit it).
-  const tag = `${process.pid}.${Date.now()}.${randomBytes(4).toString("hex")}`;
-  const devMdTmp = `${devMdAbs}.tmp.${tag}`;
-  const specTmp = `${specPath}.tmp.${tag}`;
-  const tmpsWritten: string[] = [];
-  try {
-    fs.writeFile(devMdTmp, devMdAfter);
-    tmpsWritten.push(devMdTmp);
-    fs.writeFile(specTmp, specAfter);
-    tmpsWritten.push(specTmp);
-  } catch (e) {
-    for (const t of tmpsWritten) fs.unlink(t);
-    releaseLock();
-    throw new ClaimError("write-tmp", errMessage(e));
-  }
-
-  // Capture pre-rename content so we can restore on later failures.
-  let devMdOriginal: string | null = null;
-  let specOriginal: string | null = null;
-  try {
-    devMdOriginal = fs.readFile(devMdAbs);
-    specOriginal = fs.readFile(specPath);
-  } catch (e) {
-    for (const t of tmpsWritten) fs.unlink(t);
-    releaseLock();
-    throw new ClaimError("read-pre-rename", errMessage(e));
-  }
-
-  // Map each rename's destination to its original content so the recovery
-  // loop is generic — restoring N files at once instead of hardcoding the
-  // pair. Future-proofs against reordering or adding a 3rd file.
-  const renamePlan: Array<{ tmp: string; dest: string; original: string }> = [
-    { tmp: devMdTmp, dest: devMdAbs, original: devMdOriginal },
-    { tmp: specTmp, dest: specPath, original: specOriginal },
-  ];
-  const renamesDone: Array<{ dest: string; original: string }> = [];
-  try {
-    for (const step of renamePlan) {
-      fs.rename(step.tmp, step.dest);
-      renamesDone.push({ dest: step.dest, original: step.original });
-    }
-  } catch (e) {
-    // Restore every rename that DID land — generic over N artifacts so a
-    // reorder or addition (e.g. a future PLAN.md edit in the same claim)
-    // doesn't silently skip a restore.
-    for (const done of renamesDone) {
+  // mlc102: the whole claim transaction — spec lock, backlog + spec flips,
+  // claim commit, push, worktree add — is one cross-process critical
+  // section under the backlog mutation lock (design §Architecture 2).
+  // Without it, a peer's DEV.md write between our read and our rename is
+  // silently reverted (R3), and a reader can observe the flipped DEV.md
+  // before the spec flip lands (R4). The lock anchors at
+  // <repoRoot>/.devx-cache — the same universe the spec lock uses.
+  const backlogLock: BacklogLockFn =
+    opts.lock ??
+    ((label, fn) => {
+      // Stage classification (review BH-LOW-5): an acquisition failure that
+      // isn't contention (locks dir EACCES/EROFS) maps to the ClaimError
+      // stage contract like every other pre-transaction failure — nothing
+      // was mutated. fn's own errors (entered) and the timeout keep their
+      // types: LockHeldError/ClaimError propagate to the CLI's existing
+      // branches; BacklogLockTimeoutError gets its own exit-1 mapping.
+      let entered = false;
       try {
-        fs.writeFile(done.dest, done.original);
-      } catch {
-        /* best-effort: operator can recover from git index */
+        return withBacklogLock(join(opts.repoRoot, ".devx-cache"), label, () => {
+          entered = true;
+          return fn();
+        });
+      } catch (e) {
+        if (entered || e instanceof BacklogLockTimeoutError) throw e;
+        throw new ClaimError("backlog-lock", errMessage(e));
       }
-    }
-    // Unlink any tmps that haven't been renamed (renamed tmps no longer
-    // exist; the destination file holds the content).
-    const renamedDests = new Set(renamesDone.map((r) => r.dest));
-    for (const step of renamePlan) {
-      if (!renamedDests.has(step.dest)) fs.unlink(step.tmp);
-    }
-    releaseLock();
-    throw new ClaimError("rename", errMessage(e));
-  }
-
-  // From here, the working tree has the claim edits but they are NOT
-  // committed yet. A failure must restore the originals to the working
-  // tree (the .tmp files have already been renamed away — there's no
-  // .tmp left to recover from). If revert itself fails we surface a
-  // WARN so the operator knows the working tree is dirty; without the
-  // log they'd see only the original failure and miss the dirty index.
-  const revertWorkingTree = () => {
-    try {
-      fs.writeFile(devMdAbs, devMdOriginal);
-    } catch (e) {
-      process.stderr.write(
-        `devx claim: WARN — failed to restore ${devMdAbs} after rollback: ${errMessage(e)}; ` +
-          `working tree is dirty, recover via \`git checkout -- ${relativeFromRepo(devMdAbs, opts.repoRoot)}\`\n`,
-      );
-    }
-    try {
-      fs.writeFile(specPath, specOriginal);
-    } catch (e) {
-      process.stderr.write(
-        `devx claim: WARN — failed to restore ${specPath} after rollback: ${errMessage(e)}; ` +
-          `working tree is dirty, recover via \`git checkout -- ${relativeFromRepo(specPath, opts.repoRoot)}\`\n`,
-      );
-    }
-  };
-
-  // ---- Step 4: claim commit on the base branch ----
-  // We deliberately do NOT touch the lock file — it lives under
-  // .devx-cache/ which is in .gitignore. Same applies for any other
-  // .tmp.* files that may linger. `git add` is scoped to the two
-  // explicit paths to avoid `git add -A` footguns (CLAUDE.md working
-  // agreement: "git add <specific files>; never `git add -A`").
-  const relativeDevMd = relativeFromRepo(devMdAbs, opts.repoRoot);
-  const relativeSpec = relativeFromRepo(specPath, opts.repoRoot);
-  const commitMessage = `chore: claim ${hash} for /devx`;
-  const addResult = exec(
-    "git",
-    ["add", "--", relativeDevMd, relativeSpec],
-    { cwd: opts.repoRoot },
-  );
-  if (addResult.exitCode !== 0) {
-    revertWorkingTree();
-    releaseLock();
-    throw new ClaimError(
-      "git-add",
-      `git add failed (exit ${addResult.exitCode}): ${addResult.stderr.trim()}`,
-    );
-  }
-  // Pathspec-limited commit (v2l101 BH-MED-5 follow-through): a bare
-  // `git commit -m` commits the ENTIRE staged index — anything the user
-  // left staged in the main worktree (an overnight `devx loop` claims
-  // while they sleep) would be silently swept into the claim commit and
-  // pushed to origin. With the trailing pathspec, only the two claim
-  // files are committed regardless of index state.
-  const commitResult = exec(
-    "git",
-    ["commit", "-m", commitMessage, "--", relativeDevMd, relativeSpec],
-    { cwd: opts.repoRoot },
-  );
-  if (commitResult.exitCode !== 0) {
-    // Best-effort un-stage. We don't care about the exit status — even if
-    // it fails we still revertWorkingTree() and release the lock; operator
-    // sees a clean(er) working tree.
-    exec("git", ["restore", "--staged", "--", relativeDevMd, relativeSpec], {
-      cwd: opts.repoRoot,
     });
-    revertWorkingTree();
-    releaseLock();
-    throw new ClaimError(
-      "git-commit",
-      `git commit failed (exit ${commitResult.exitCode}): ${commitResult.stderr.trim()}`,
-    );
-  }
 
-  // ---- Step 5: push to origin/<pushTarget> BEFORE returning. The whole
-  //              point of dvx101 is "claim-commit pushed before any
-  //              subsequent gh pr create". Once this push succeeds, the
-  //              claim is durable; if it fails, we git-reset --hard back
-  //              to the pre-claim state to keep local main and origin/main
-  //              in sync.
-  const pushResult = exec("git", ["push", "origin", pushTarget], {
-    cwd: opts.repoRoot,
-  });
-  if (pushResult.exitCode !== 0) {
-    // Pre-push commit is local-only; reverting is safe and matches the
-    // party-mode locked decision (a) "reset local DEV.md to the pre-claim
-    // state via `git reset HEAD~1` if the claim commit hasn't been pushed".
+  return backlogLock(`claim-${hash}`, (): ClaimSpecResult => {
+    // ---- Step 1: lock ----
+    // mkdir is wrapped in try/catch separately so a permission failure
+    // doesn't get reported as "lock held" — distinct exit code semantics.
+    try {
+      fs.mkdirRecursive(dirname(lockPath));
+    } catch (e) {
+      throw new ClaimError(
+        "lock",
+        `mkdir ${dirname(lockPath)} failed: ${errMessage(e)}`,
+      );
+    }
+    const lockBody = `${opts.sessionId}\npid=${process.pid}\nclaimed_at=${isoTimestamp}\n`;
+    try {
+      fs.openExclusive(lockPath, lockBody);
+    } catch (e) {
+      // EEXIST is the spec-defined "lock already held" path → exit 1.
+      // Anything else (EACCES, ENOSPC, …) is a system-level failure → exit 2.
+      if (isEexist(e)) {
+        throw new LockHeldError(lockPath);
+      }
+      throw new ClaimError("lock", `openExclusive failed: ${errMessage(e)}`);
+    }
+
+    // From here on, releaseLock() must run on every error path.
+    const releaseLock = () => fs.unlink(lockPath);
+
+    // ---- Step 2 + 3: compose updated DEV.md + spec ----
+    let devMdAfter: string;
+    let specAfter: string;
+    try {
+      const devMdBefore = fs.readFile(devMdAbs);
+      devMdAfter = flipDevMdRow(devMdBefore, hash, type);
+      const specBefore = fs.readFile(specPath);
+      specAfter = updateSpecForClaim(specBefore, opts.sessionId, isoTimestamp);
+    } catch (e) {
+      releaseLock();
+      throw new ClaimError("compose", errMessage(e));
+    }
+
+    // ---- Write to .tmp + atomic rename. Same shape as supervisor-internal's
+    //      writeAtomic + emit-retro-story's renamePlan: write all tmps first,
+    //      then rename in fixed order. If a rename fails mid-batch, undo prior
+    //      renames by writing back the original content.
     //
-    // v2l101 review HIGH finding: this rollback used `reset --hard HEAD~1`,
-    // which reverts the ENTIRE working tree — an overnight `devx loop`
-    // claim hitting a failing push would destroy the user's uncommitted
-    // WIP repo-wide. The claim only ever touched two files, so the
-    // rollback must be scoped to exactly those: `--soft` moves HEAD back
-    // without touching index or working tree, then the claim's two files
-    // are un-staged and restored to their captured pre-claim content via
-    // revertWorkingTree(). Everything else in the tree stays untouched.
-    const resetResult = exec("git", ["reset", "--soft", "HEAD~1"], {
-      cwd: opts.repoRoot,
-    });
-    if (resetResult.exitCode !== 0) {
-      // Reset itself failed — local repo is now in a stale state with the
-      // claim commit still on main. Surface this to the operator instead
-      // of swallowing; without the warning they'd see only "git push
-      // failed" and miss that the local branch needs `git reset` by hand.
-      // Do NOT revert the working tree in this branch — HEAD still carries
-      // the claim commit, and rewriting the files under it would leave a
-      // confusing HEAD-vs-tree mismatch on top of the failed reset.
-      process.stderr.write(
-        `devx claim: WARN — git push origin ${pushTarget} failed AND the rollback reset failed (exit ${resetResult.exitCode}): ${resetResult.stderr.trim()}; ` +
-          `local main has the claim commit at HEAD. Run \`git reset --soft HEAD~1\` (or restore origin) by hand.\n`,
+    // Tag includes 8 hex chars of randomness so two claimSpec calls in the
+    // same ms (rapid test loop, future ManageAgent parallelism) don't write
+    // to the same tmp path. emit-retro-story.ts uses the same shape; the
+    // missing randomness here was a regression vs that module (Phase 2+
+    // parallelism would have hit it).
+    const tag = `${process.pid}.${Date.now()}.${randomBytes(4).toString("hex")}`;
+    const devMdTmp = `${devMdAbs}.tmp.${tag}`;
+    const specTmp = `${specPath}.tmp.${tag}`;
+    const tmpsWritten: string[] = [];
+    try {
+      fs.writeFile(devMdTmp, devMdAfter);
+      tmpsWritten.push(devMdTmp);
+      fs.writeFile(specTmp, specAfter);
+      tmpsWritten.push(specTmp);
+    } catch (e) {
+      for (const t of tmpsWritten) fs.unlink(t);
+      releaseLock();
+      throw new ClaimError("write-tmp", errMessage(e));
+    }
+
+    // Capture pre-rename content so we can restore on later failures.
+    let devMdOriginal: string | null = null;
+    let specOriginal: string | null = null;
+    try {
+      devMdOriginal = fs.readFile(devMdAbs);
+      specOriginal = fs.readFile(specPath);
+    } catch (e) {
+      for (const t of tmpsWritten) fs.unlink(t);
+      releaseLock();
+      throw new ClaimError("read-pre-rename", errMessage(e));
+    }
+
+    // Map each rename's destination to its original content so the recovery
+    // loop is generic — restoring N files at once instead of hardcoding the
+    // pair. Future-proofs against reordering or adding a 3rd file.
+    const renamePlan: Array<{ tmp: string; dest: string; original: string }> = [
+      { tmp: devMdTmp, dest: devMdAbs, original: devMdOriginal },
+      { tmp: specTmp, dest: specPath, original: specOriginal },
+    ];
+    const renamesDone: Array<{ dest: string; original: string }> = [];
+    try {
+      for (const step of renamePlan) {
+        fs.rename(step.tmp, step.dest);
+        renamesDone.push({ dest: step.dest, original: step.original });
+      }
+    } catch (e) {
+      // Restore every rename that DID land — generic over N artifacts so a
+      // reorder or addition (e.g. a future PLAN.md edit in the same claim)
+      // doesn't silently skip a restore.
+      for (const done of renamesDone) {
+        try {
+          fs.writeFile(done.dest, done.original);
+        } catch {
+          /* best-effort: operator can recover from git index */
+        }
+      }
+      // Unlink any tmps that haven't been renamed (renamed tmps no longer
+      // exist; the destination file holds the content).
+      const renamedDests = new Set(renamesDone.map((r) => r.dest));
+      for (const step of renamePlan) {
+        if (!renamedDests.has(step.dest)) fs.unlink(step.tmp);
+      }
+      releaseLock();
+      throw new ClaimError("rename", errMessage(e));
+    }
+
+    // From here, the working tree has the claim edits but they are NOT
+    // committed yet. A failure must restore the originals to the working
+    // tree (the .tmp files have already been renamed away — there's no
+    // .tmp left to recover from). If revert itself fails we surface a
+    // WARN so the operator knows the working tree is dirty; without the
+    // log they'd see only the original failure and miss the dirty index.
+    const revertWorkingTree = () => {
+      try {
+        fs.writeFile(devMdAbs, devMdOriginal);
+      } catch (e) {
+        process.stderr.write(
+          `devx claim: WARN — failed to restore ${devMdAbs} after rollback: ${errMessage(e)}; ` +
+            `working tree is dirty, recover via \`git checkout -- ${relativeFromRepo(devMdAbs, opts.repoRoot)}\`\n`,
+        );
+      }
+      try {
+        fs.writeFile(specPath, specOriginal);
+      } catch (e) {
+        process.stderr.write(
+          `devx claim: WARN — failed to restore ${specPath} after rollback: ${errMessage(e)}; ` +
+            `working tree is dirty, recover via \`git checkout -- ${relativeFromRepo(specPath, opts.repoRoot)}\`\n`,
+        );
+      }
+    };
+
+    // ---- Step 4: claim commit on the base branch ----
+    // We deliberately do NOT touch the lock file — it lives under
+    // .devx-cache/ which is in .gitignore. Same applies for any other
+    // .tmp.* files that may linger. `git add` is scoped to the two
+    // explicit paths to avoid `git add -A` footguns (CLAUDE.md working
+    // agreement: "git add <specific files>; never `git add -A`").
+    const relativeDevMd = relativeFromRepo(devMdAbs, opts.repoRoot);
+    const relativeSpec = relativeFromRepo(specPath, opts.repoRoot);
+    const commitMessage = `chore: claim ${hash} for /devx`;
+    const addResult = exec(
+      "git",
+      ["add", "--", relativeDevMd, relativeSpec],
+      { cwd: opts.repoRoot },
+    );
+    if (addResult.exitCode !== 0) {
+      revertWorkingTree();
+      releaseLock();
+      throw new ClaimError(
+        "git-add",
+        `git add failed (exit ${addResult.exitCode}): ${addResult.stderr.trim()}`,
       );
-    } else {
-      // Un-stage the two claim files (back to the pre-claim HEAD's index
-      // state), then restore their pre-claim working-tree content.
-      // Best-effort on the restore-staged — even if it fails, the content
-      // rewrite below is what the next claim reads.
+    }
+    // Pathspec-limited commit (v2l101 BH-MED-5 follow-through): a bare
+    // `git commit -m` commits the ENTIRE staged index — anything the user
+    // left staged in the main worktree (an overnight `devx loop` claims
+    // while they sleep) would be silently swept into the claim commit and
+    // pushed to origin. With the trailing pathspec, only the two claim
+    // files are committed regardless of index state.
+    const commitResult = exec(
+      "git",
+      ["commit", "-m", commitMessage, "--", relativeDevMd, relativeSpec],
+      { cwd: opts.repoRoot },
+    );
+    if (commitResult.exitCode !== 0) {
+      // Best-effort un-stage. We don't care about the exit status — even if
+      // it fails we still revertWorkingTree() and release the lock; operator
+      // sees a clean(er) working tree.
       exec("git", ["restore", "--staged", "--", relativeDevMd, relativeSpec], {
         cwd: opts.repoRoot,
       });
       revertWorkingTree();
+      releaseLock();
+      throw new ClaimError(
+        "git-commit",
+        `git commit failed (exit ${commitResult.exitCode}): ${commitResult.stderr.trim()}`,
+      );
     }
-    releaseLock();
-    throw new ClaimError(
-      "git-push",
-      `git push origin ${pushTarget} failed (exit ${pushResult.exitCode}): ${pushResult.stderr.trim()}`,
-    );
-  }
 
-  // ---- Capture the claim SHA (commit is now durable) ----
-  const headResult = exec("git", ["rev-parse", "HEAD"], {
-    cwd: opts.repoRoot,
+    // ---- Step 5: push to origin/<pushTarget> BEFORE returning. The whole
+    //              point of dvx101 is "claim-commit pushed before any
+    //              subsequent gh pr create". Once this push succeeds, the
+    //              claim is durable; if it fails, we git-reset --hard back
+    //              to the pre-claim state to keep local main and origin/main
+    //              in sync.
+    const pushResult = exec("git", ["push", "origin", pushTarget], {
+      cwd: opts.repoRoot,
+    });
+    if (pushResult.exitCode !== 0) {
+      // Pre-push commit is local-only; reverting is safe and matches the
+      // party-mode locked decision (a) "reset local DEV.md to the pre-claim
+      // state via `git reset HEAD~1` if the claim commit hasn't been pushed".
+      //
+      // v2l101 review HIGH finding: this rollback used `reset --hard HEAD~1`,
+      // which reverts the ENTIRE working tree — an overnight `devx loop`
+      // claim hitting a failing push would destroy the user's uncommitted
+      // WIP repo-wide. The claim only ever touched two files, so the
+      // rollback must be scoped to exactly those: `--soft` moves HEAD back
+      // without touching index or working tree, then the claim's two files
+      // are un-staged and restored to their captured pre-claim content via
+      // revertWorkingTree(). Everything else in the tree stays untouched.
+      const resetResult = exec("git", ["reset", "--soft", "HEAD~1"], {
+        cwd: opts.repoRoot,
+      });
+      if (resetResult.exitCode !== 0) {
+        // Reset itself failed — local repo is now in a stale state with the
+        // claim commit still on main. Surface this to the operator instead
+        // of swallowing; without the warning they'd see only "git push
+        // failed" and miss that the local branch needs `git reset` by hand.
+        // Do NOT revert the working tree in this branch — HEAD still carries
+        // the claim commit, and rewriting the files under it would leave a
+        // confusing HEAD-vs-tree mismatch on top of the failed reset.
+        process.stderr.write(
+          `devx claim: WARN — git push origin ${pushTarget} failed AND the rollback reset failed (exit ${resetResult.exitCode}): ${resetResult.stderr.trim()}; ` +
+            `local main has the claim commit at HEAD. Run \`git reset --soft HEAD~1\` (or restore origin) by hand.\n`,
+        );
+      } else {
+        // Un-stage the two claim files (back to the pre-claim HEAD's index
+        // state), then restore their pre-claim working-tree content.
+        // Best-effort on the restore-staged — even if it fails, the content
+        // rewrite below is what the next claim reads.
+        exec("git", ["restore", "--staged", "--", relativeDevMd, relativeSpec], {
+          cwd: opts.repoRoot,
+        });
+        revertWorkingTree();
+      }
+      releaseLock();
+      throw new ClaimError(
+        "git-push",
+        `git push origin ${pushTarget} failed (exit ${pushResult.exitCode}): ${pushResult.stderr.trim()}`,
+      );
+    }
+
+    // ---- Capture the claim SHA (commit is now durable) ----
+    const headResult = exec("git", ["rev-parse", "HEAD"], {
+      cwd: opts.repoRoot,
+    });
+    if (headResult.exitCode !== 0) {
+      // Push succeeded but rev-parse failed — implausible but defend. Don't
+      // attempt to revert (the commit IS pushed); release lock so a follow-up
+      // /devx can pick up.
+      releaseLock();
+      throw new ClaimError(
+        "rev-parse",
+        `git rev-parse HEAD failed (exit ${headResult.exitCode}): ${headResult.stderr.trim()}`,
+      );
+    }
+    const claimSha = headResult.stdout.trim();
+
+    // ---- Step 6: worktree create ----
+    // Locked decision: post-push worktree-create-failure leaves the claim
+    // (it's already durable on origin) and surfaces the error. The operator
+    // manually retries the worktree step. Lock is released so a subsequent
+    // /devx invocation can attempt the worktree by hand.
+    //
+    // worktreeBase ≠ pushTarget on split-branch projects: the feature branch
+    // forks off integration_branch (e.g. develop), even though the claim
+    // commit was pushed to default_branch. See the pushTarget/worktreeBase
+    // computation above.
+    const worktreePath = join(
+      opts.repoRoot,
+      ".worktrees",
+      `${type}-${hash}`,
+    );
+    const worktreeResult = exec(
+      "git",
+      [
+        "worktree",
+        "add",
+        worktreePath,
+        "-b",
+        branch,
+        worktreeBase,
+      ],
+      { cwd: opts.repoRoot },
+    );
+    if (worktreeResult.exitCode !== 0) {
+      releaseLock();
+      throw new ClaimError(
+        "worktree",
+        `git worktree add failed (exit ${worktreeResult.exitCode}): ${worktreeResult.stderr.trim()} ` +
+          `(claim ${claimSha} is durable on origin/${pushTarget}; rerun \`git worktree add ${worktreePath} -b ${branch} ${worktreeBase}\` by hand)`,
+      );
+    }
+
+    // Lock stays held — the worktree's owner now consumes the lock. /devx
+    // Phase 8 cleanup is responsible for releasing it after merge. (The
+    // lock release on cleanup is dvx107's responsibility; here we only
+    // ensure the file is left in place.)
+    return { branch, lockPath, claimSha };
   });
-  if (headResult.exitCode !== 0) {
-    // Push succeeded but rev-parse failed — implausible but defend. Don't
-    // attempt to revert (the commit IS pushed); release lock so a follow-up
-    // /devx can pick up.
-    releaseLock();
-    throw new ClaimError(
-      "rev-parse",
-      `git rev-parse HEAD failed (exit ${headResult.exitCode}): ${headResult.stderr.trim()}`,
-    );
-  }
-  const claimSha = headResult.stdout.trim();
-
-  // ---- Step 6: worktree create ----
-  // Locked decision: post-push worktree-create-failure leaves the claim
-  // (it's already durable on origin) and surfaces the error. The operator
-  // manually retries the worktree step. Lock is released so a subsequent
-  // /devx invocation can attempt the worktree by hand.
-  //
-  // worktreeBase ≠ pushTarget on split-branch projects: the feature branch
-  // forks off integration_branch (e.g. develop), even though the claim
-  // commit was pushed to default_branch. See the pushTarget/worktreeBase
-  // computation above.
-  const worktreePath = join(
-    opts.repoRoot,
-    ".worktrees",
-    `${type}-${hash}`,
-  );
-  const worktreeResult = exec(
-    "git",
-    [
-      "worktree",
-      "add",
-      worktreePath,
-      "-b",
-      branch,
-      worktreeBase,
-    ],
-    { cwd: opts.repoRoot },
-  );
-  if (worktreeResult.exitCode !== 0) {
-    releaseLock();
-    throw new ClaimError(
-      "worktree",
-      `git worktree add failed (exit ${worktreeResult.exitCode}): ${worktreeResult.stderr.trim()} ` +
-        `(claim ${claimSha} is durable on origin/${pushTarget}; rerun \`git worktree add ${worktreePath} -b ${branch} ${worktreeBase}\` by hand)`,
-    );
-  }
-
-  // Lock stays held — the worktree's owner now consumes the lock. /devx
-  // Phase 8 cleanup is responsible for releasing it after merge. (The
-  // lock release on cleanup is dvx107's responsibility; here we only
-  // ensure the file is left in place.)
-  return { branch, lockPath, claimSha };
 }
 
 // ---------------------------------------------------------------------------
