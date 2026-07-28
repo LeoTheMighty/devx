@@ -149,11 +149,15 @@
   branch names come from `deriveBranch`
   (`src/lib/plan/derive-branch.ts:49`), which already handles the split-user
   configs; revision trigger if the branching model changes.
-- **mlc103 (spec-lock lifecycle) is in flight** on an adjacent branch;
-  assume `releaseSpecLock` remains the release primitive and
-  `.devx-cache/locks/spec-<hash>.lock` keeps its 3-line text body. Revision
-  trigger: mlc103 changes the lock body or release surface — re-check at
-  plan stage before RED.
+- **mlc103 (spec-lock lifecycle) — re-checked at plan stage 2026-07-28,
+  assumption resolved.** mlc103 merged (PR #94): the lock body is now JSON
+  v1 (`composeSpecLockBody`, `src/lib/devx/spec-lock.ts:81`), release is
+  `releaseSpecLockGuarded` (`spec-lock.ts:417`) with ownership probe
+  `specLockOwnedBy` (`spec-lock.ts:462`), and the driver's
+  `releaseSpecLock` closure (`driver.ts:1042`) wraps the guarded release.
+  `parseLockOwner` / `normalizeSessionToken` (`verify-claim.ts:141,126`)
+  survive and parse the JSON body — split's ownership guard and release
+  paths target these mlc103 primitives, not a hand-parsed 3-line body.
 - Old loop workers against a new driver are safe: `validateIterationReport`
   ignores extra keys by design (`iteration.ts:84-91`), and a worker that
   never emits `split_request` simply never triggers the request path.

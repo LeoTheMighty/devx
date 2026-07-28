@@ -27,8 +27,13 @@
   - [x] Write design.md (grep-verify every cited path)
   - [x] Coverage-judge subagent → table JSON (1 UC-3 gap fixed + re-judged → 20 ✅)
 - [x] Gate: coverage(design)
-- [ ] Stage: Plan
-- [ ] Gate: coverage(plan)
+- [x] Stage: Plan
+  - [x] Re-check mlc103 assumption (design revision trigger) — resolved; design.md Assumptions amended to the spec-lock.ts primitives
+  - [x] User settled phase cut: 4 phases (primitive / claim inheritance / loop integration / retirement sweep), 1 → {2,3} → 4
+  - [x] Write plan.md (coverage table, phase checklist, per-phase files/context/verification/tasks)
+  - [x] Critique step skipped (send-it; single backend stack layer < min_surfaces 2)
+  - [ ] Coverage-judge subagent → table JSON → `devx gate coverage`
+- [x] Gate: coverage(plan)
 - [ ] Stage: RED
 - [ ] Gate: evals
 - [ ] Stage: Execute
