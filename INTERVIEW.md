@@ -282,6 +282,61 @@ loop can read.
     13c (a) — follow-up; per-process budgets are safe, just uncoordinated.
   → Answer:
 
+- [ ] **Q#14 — Claim branch inheritance: how wide should the attach arm be?** (from /devx session 2026-07-28, dev-mss102)
+  - Context: mss102 AC 2 reads "when `branch:` names an existing branch, the
+    worktree attaches to it (no `-b`)", and the design assumed "specs without
+    `branch:` (all existing specs) take the derive path unchanged". That
+    assumption is factually wrong: `validate-emit` requires every emitted spec
+    to record its own derived branch name, so essentially every spec carries
+    `branch:`. Implemented literally, the arm would fire on ordinary claims and
+    silently ADOPT a leftover same-named branch (crashed loop run, closed-
+    not-merged PR, failed `branch -D`) where the claim used to fail loudly at
+    `worktree add -b`. Adversarial review flagged this twice independently.
+  - Question: should attach be keyed on "recorded branch differs from the
+    derived name" (i.e. only a genuine branch-handoff inherits), or fire
+    whenever the recorded branch exists?
+  - Blocks: nothing — mss102 shipped on the recommendation below; answering
+    (b) is a small follow-up, not a revert.
+  - Options: (a) recorded != derived (shipped) — ordinary claims keep
+    pre-mss102 behavior byte-for-byte, debris still fails loudly, zero probe
+    cost on the common path; (b) attach whenever the branch exists — literal
+    AC 2, but silently adopts debris on every reclaim; (c) explicit
+    `inherits_branch: true` marker written by `devx split` — most precise,
+    but changes mss101's shipped `split.ts` and the spec format.
+  - Agent recommendation: (a) as shipped, with (c) as the eventual clean
+    form if inheritance ever needs to apply to a non-handoff spec. (a)
+    satisfies every E-5 requirement (branch-handoff follow-ups are claimable
+    cold; merge-first follow-ups derive) while strictly shrinking blast
+    radius. Known residual: when a spec's recorded branch is stale w.r.t. the
+    derived name for an unrelated reason (someone changed `branch_prefix` or
+    `integration_branch` after emission), each claim now pays one `show-ref`
+    plus one failed targeted `git fetch` and prints a WARN.
+
+- [ ] **Q#15 — Split-chain escalation: should a repeatedly-split item ever
+  reach a human?** (from /devx session 2026-07-28, dev-mss103)
+  - Context: before mss103, an overnight item that exhausted its budget with
+    real work landed `[-]` blocked — a human gate. With the budget rail
+    splitting instead, the follow-up is an ordinary `[ ]` ready row, so an
+    item that reliably lands one good iteration per night and never finishes
+    now auto-continues indefinitely: one new spec, one struck parent row, one
+    abandonment-streak reset per night, with no escalation. Nothing breaks
+    structurally (titles no longer compound — the `Continue <hash>:` prefix is
+    stripped on re-split), but the human gate that budget exhaustion used to
+    provide is gone. Adversarial review flagged it as the one finding that is
+    a product decision rather than a bug.
+  - Question: cap the chain?
+  - Blocks: nothing — mss103 ships option (a), which is today's behavior.
+  - Options: (a) no cap — the morning report naming each split is escalation
+    enough; (b) cap at N consecutive branch-handoff splits in one lineage
+    (N=2 or 3), then `abandonItem` → `[-]` blocked so a human re-scopes;
+    (c) no cap, but `devx next` surfaces a "split chain depth ≥ N" advisory
+    row.
+  - Agent recommendation: (b) with N=3 — a spec that needed four nights is
+    mis-scoped, and re-scoping is exactly the judgment call the blocked state
+    exists to request. Implementing it needs lineage depth (walking the
+    `from:` chain at split time), so it belongs in its own follow-up spec
+    rather than being retrofitted into this phase.
+
 ---
 
 ## Phase 0 / cli301 prerequisites
