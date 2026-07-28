@@ -219,6 +219,15 @@ describe("cli303 — devx --help command listing", () => {
         revise [options] <hash>      Apply the v2 cascade-reset table for a touched
                                      workstream artifact (prd/expectations → 4 flags;
                                      design → 3; plan → 2) and print the replay path.
+        split [options] <hash>       Split an in-progress spec: emit a follow-up spec
+                                     + backlog row for the remaining work (mss101).
+                                     merge-first (default): parent lands at reduced
+                                     scope, follow-up Blocked-by parent.
+                                     branch-handoff: parent superseded, follow-up
+                                     inherits the pushed WIP branch. Requires the
+                                     claimer's --session-token; exit 0 ok / 1
+                                     backlog-lock contention / 3 ownership mismatch /
+                                     2 other.
         todo                         Per-workstream todo.md working memory
                                      (harness-fold-in). Subcommand-driven.
         tour                         Static HTML review tour for a spec's PR

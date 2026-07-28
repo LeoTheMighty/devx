@@ -207,7 +207,7 @@ Run the native retro stage (\`/devx retro\` — the \`## Stage: Retro\` section 
 `;
 }
 
-interface FormattedTs {
+export interface FormattedTs {
   /** Full ISO with offset (matches existing `created:` frontmatter values
    *  like "2026-04-28T19:30:00-07:00"). */
   iso: string;
@@ -216,7 +216,7 @@ interface FormattedTs {
   filenameStamp: string;
 }
 
-function formatTimestamps(d: Date): FormattedTs {
+export function formatTimestamps(d: Date): FormattedTs {
   // Render in the local TZ so the `created:` frontmatter matches the
   // contributor's wall clock — every existing spec file was produced this
   // way (offset = -07:00 / -08:00 depending on DST).
@@ -434,13 +434,31 @@ export function writeRetroAtomically(
 // that lands in pln103).
 // ---------------------------------------------------------------------------
 
+export interface InsertDevMdRowOpts {
+  /** Spec type dir in row paths (default "dev"; mss101 generalization —
+   *  debug splits splice DEBUG.md rows through the same helper). */
+  type?: string;
+  /**
+   * Insertion anchor (mss101 generalization):
+   *   - "section-end" (default, retro emission): bottom of the `### `
+   *     epic section containing the first parent hash.
+   *   - "after-parent": directly after the parent hash's own row — the
+   *     split shape, where the parent row always exists and the follow-up
+   *     belongs immediately below it. Needs no section headers, so it
+   *     works on backlog files without `### ` structure (DEBUG.md).
+   */
+  anchor?: "section-end" | "after-parent";
+}
+
 /**
- * Insert the new retro row at the bottom of the epic section in DEV.md.
+ * Insert a new backlog row anchored to the parent hash's row(s).
  *
- * Locates the epic by scanning `### ` heading sections for one whose body
- * contains the first parent hash (matched as `dev-<hash>-`). The new row
- * is spliced after the last existing `- [<state>] \`dev/...` row in that
- * section. Throws if the epic can't be found.
+ * Default shape (retro emission): locates the epic by scanning `### `
+ * heading sections for one whose body contains the first parent hash
+ * (matched as `<type>-<hash>-`) and splices after the last existing
+ * `- [<state>] \`<type>/...` row in that section. The "after-parent"
+ * anchor (split emission) splices directly after the parent row itself.
+ * Throws if the anchor can't be found.
  *
  * Textual rather than markdown-AST because the DEV.md format is line-stable
  * by convention (every backlog file in the repo uses the same `- [ ] \`...\``
@@ -450,8 +468,43 @@ export function insertDevMdRow(
   content: string,
   parentHashes: string[],
   newRow: string,
+  opts: InsertDevMdRowOpts = {},
 ): string {
+  const type = opts.type ?? "dev";
+  const anchor = opts.anchor ?? "section-end";
   const lines = content.split("\n");
+
+  // Probe is anchored to a path-component boundary so a hash that's a
+  // prefix substring of another (e.g. `mrg10` vs `mrg101`) doesn't match
+  // the longer hash's row. Existing rows always look like
+  // `\`<type>/<type>-<hash>-<ts>` — the `-` after the hash is always
+  // followed by a digit (the timestamp's first char is YYYY).
+  const firstParent = parentHashes[0];
+  const probeRe = new RegExp(
+    `${escapeRegex(type)}-${escapeRegex(firstParent)}-\\d`,
+  );
+
+  if (anchor === "after-parent") {
+    // The parent's OWN row: its path must sit in the row-leading backtick
+    // position, not merely be mentioned somewhere in the line — a row that
+    // cross-references the parent's filename in its title must not capture
+    // the splice (review BH-4/EC-3). Tolerates every checkbox state and
+    // the struck wrap a branch-handoff split writes just before splicing
+    // (`- [/] ~~\`dev/...`).
+    const parentRowRe = new RegExp(
+      `^(?:~~)?- (?:\\[[\\sx\\/\\-]\\]\\s+)?(?:~~)?\`${escapeRegex(type)}/${escapeRegex(type)}-${escapeRegex(firstParent)}-\\d`,
+    );
+    for (let i = 0; i < lines.length; i++) {
+      if (parentRowRe.test(lines[i])) {
+        const out = [...lines.slice(0, i + 1), newRow, ...lines.slice(i + 1)];
+        return out.join("\n");
+      }
+    }
+    throw new Error(
+      `insertDevMdRow: no backlog row found for parent hash '${firstParent}' (type '${type}') to anchor after`,
+    );
+  }
+
   const headerIdxs: number[] = [];
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].startsWith("### ")) headerIdxs.push(i);
@@ -466,14 +519,6 @@ export function insertDevMdRow(
   // every section rather than just the last so a re-emit (idempotency
   // probe by pln103) finds the right one even when later sections also
   // reference the hash in cross-references.
-  //
-  // Probe is anchored to a path-component boundary so a hash that's a
-  // prefix substring of another (e.g. `mrg10` vs `mrg101`) doesn't match
-  // the longer hash's row. Existing rows always look like
-  // `\`dev/dev-<hash>-<ts>` — the `-` after the hash is always followed
-  // by a digit (the timestamp's first char is YYYY).
-  const firstParent = parentHashes[0];
-  const probeRe = new RegExp(`dev-${escapeRegex(firstParent)}-\\d`);
   let targetSection = -1;
   for (let s = 0; s < headerIdxs.length; s++) {
     const start = headerIdxs[s];
@@ -498,10 +543,12 @@ export function insertDevMdRow(
       ? headerIdxs[targetSection + 1]
       : lines.length;
 
-  // Find the last existing `- [...] \`dev/...` row in that section. Match
-  // any checkbox state ([ ], [/], [-], [x]) and the strikethrough-wrap
-  // pattern (`~~- [x] \`dev/...~~`) so abandoned rows still anchor.
-  const rowRe = /^(?:~~)?- \[[\sx\/\-]\] `dev\//;
+  // Find the last existing `- [...] \`<type>/...` row in that section.
+  // Checkbox REQUIRED — the pre-mss101 shape, kept byte-identical so a
+  // plain reference bullet (`- \`dev/...\``) can't shift the retro-row
+  // insert position (review BH-7/EC-5). Matches any checkbox state and
+  // the strikethrough-wrap pattern so abandoned rows still anchor.
+  const rowRe = new RegExp(`^(?:~~)?- \\[[\\sx\\/\\-]\\] \`${escapeRegex(type)}/`);
   let insertAt = -1;
   for (let i = sectionEnd - 1; i > sectionStart; i--) {
     if (rowRe.test(lines[i])) {

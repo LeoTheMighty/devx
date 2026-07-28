@@ -38,6 +38,7 @@ import { basename, dirname, join } from "node:path";
 import {
   type EngineState,
   HASH_RE,
+  SPEC_TYPE_DIRS,
   ensureEngineFrontmatter,
   readEngineState,
 } from "./frontmatter.js";
@@ -176,15 +177,23 @@ function formatFullIso(d: Date): string {
   );
 }
 
-function generateHash(fs: EngineFs, repoRoot: string): string {
+export function generateHash(
+  fs: Pick<EngineFs, "exists" | "readdir">,
+  repoRoot: string,
+): string {
   // 6 hex chars per the spec convention. Regenerate on the (unlikely)
-  // collision with an existing plan/dev spec.
+  // collision with an existing spec in ANY type dir — mss101 widened the
+  // scan from `plan/` so consumers minting non-plan hashes (`devx split`)
+  // can't collide with an existing dev/debug/test spec.
   for (let attempt = 0; attempt < 32; attempt++) {
     const hash = randomBytes(3).toString("hex");
-    const planDir = join(repoRoot, PLAN_DIR);
-    const collision =
-      fs.exists(planDir) &&
-      fs.readdir(planDir).some((n) => n.startsWith(`plan-${hash}-`));
+    const collision = SPEC_TYPE_DIRS.some((type) => {
+      const dir = join(repoRoot, type);
+      return (
+        fs.exists(dir) &&
+        fs.readdir(dir).some((n) => n.startsWith(`${type}-${hash}-`))
+      );
+    });
     if (!collision) return hash;
   }
   throw new WorkstreamError("could not generate a collision-free hash");
