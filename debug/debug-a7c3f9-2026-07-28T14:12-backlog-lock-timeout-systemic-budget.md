@@ -3,10 +3,10 @@ hash: a7c3f9
 type: debug
 created: 2026-07-28T14:12:00-06:00
 title: "Backlog-lock timeouts count toward the systemic claim-failure budget"
-status: in-progress
+status: ready
 from: dev/dev-mlc104-2026-07-28T09:02-claim-contention-harness.md
 branch: null
-owner: /devx-loop-2026-07-28T22-28-16-396-77092
+owner: null
 ---
 ## Goal
 
@@ -45,6 +45,13 @@ reduce peer pressure on the lock).
 - 2026-07-28T14:12 — filed by mlc104 Phase 4 review (EC-8); out of
   mlc104's scope (changes mlc102 timeout semantics).
 - 2026-07-28T16:28:16-06:00 — claimed by /devx in session /devx-loop-2026-07-28T22-28-16-396-77092
+- 2026-07-28T16:33 — RELEASED, not worked. The claim was collateral from an
+  mlc105 first-real-run smoke: a real `devx loop --max-items 1` was launched
+  against this repo expecting the capacity gate to refuse it, but the smoke's
+  live instances had already aged out, so the loop was admitted and claimed
+  the top ready DEBUG row. It was killed at iteration 1; no worker commits
+  exist on feat/debug-a7c3f9. Row, frontmatter, worktree, branch and spec
+  lock all reverted; the item is untouched and free to claim.
 
 ## Links
 
