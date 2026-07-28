@@ -23,7 +23,11 @@
 //     ClaimError (exit 2).
 //   • Step 4 fails (commit). Working-tree edits are reverted via
 //     `git checkout -- DEV.md <spec>`. Lock released. Throws (exit 2).
-//   • Step 5 fails (push). Local commit reverted via
+//   • Step 5 fails (push). Race-shaped rejections (non-fast-forward — a
+//     peer pushed first) first rebase-retry in place, ≤2 rounds (mlc104);
+//     still-lost rolls back and throws ClaimContendedError (exit 1 —
+//     retryable contention, not a broken claim). Non-race push failures
+//     roll back as before: local commit reverted via
 //     `git reset --soft HEAD~1` + restore of ONLY the claim's two files
 //     (never `--hard` — that would wipe unrelated user WIP repo-wide;
 //     v2l101 review HIGH finding). Lock released. Throws (exit 2).
@@ -168,10 +172,16 @@ const realExec: Exec = (cmd, args, opts) => {
   // is strictly better than an interactive hang inside the critical
   // section. The loop driver already injected this via its exec seam;
   // this closes the direct-CLI path.
+  // LC_ALL=C (mlc104 review EC-1): isRejectedPush classifies the push
+  // stderr by matching git's English rejection strings ("[rejected]",
+  // "fetch first", "non-fast-forward"). A localized git would emit
+  // translated messages, silently turning every real race into
+  // ClaimError('git-push') — counted by the driver's systemic budget. Pin
+  // the message locale for every claim git call.
   const r = spawnSync(cmd, args, {
     encoding: "utf8",
     cwd: opts?.cwd,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
   });
   if (r.error || r.status === null) {
     const detail = r.error ? r.error.message : "spawn returned null status";
@@ -246,6 +256,56 @@ export class ClaimError extends Error {
     this.name = "ClaimError";
     this.stage = stage;
   }
+}
+
+/**
+ * Thrown when the claim push lost the race to origin and stayed lost after
+ * the bounded rebase-retries (mlc104). Deliberately NOT a ClaimError
+ * subclass: contention is a healthy-peers signal, not a broken-claim
+ * signal — the loop driver masks the hash and picks the next item without
+ * touching its consecutive-claim-failures budget, and the CLI maps it to
+ * the retryable exit 1 (like a held lock), not the rollback exit 2. The
+ * rollback HAS run by the time this throws — nothing durable was left.
+ */
+export class ClaimContendedError extends Error {
+  readonly hash: string;
+  readonly retries: number;
+  constructor(hash: string, retries: number, message: string) {
+    super(
+      `claim contended for ${hash}: push lost to origin after ${retries} rebase-retr${retries === 1 ? "y" : "ies"}: ${message}`,
+    );
+    this.name = "ClaimContendedError";
+    this.hash = hash;
+    this.retries = retries;
+  }
+}
+
+/** Bounded rebase-retries inside the locked claim section (design
+ *  §Architecture 3): initial push + up to 2 pull-rebase-repush rounds. */
+export const CLAIM_PUSH_MAX_RETRIES = 2;
+
+/**
+ * Does this push stderr describe a LOST RACE (peer advanced the remote ref
+ * between our last fetch and our push) rather than a broken push (auth,
+ * network, missing remote, hook policy)? Only race-shaped rejections earn a
+ * rebase-retry; everything else keeps the pre-mlc104 ClaimError('git-push')
+ * path so the driver's systemic-failure budget still sees genuinely broken
+ * claims.
+ *
+ * Deliberately NOT matched (review BH-1): "failed to push some refs" — git
+ * prints that trailer on EVERY refused push, including pre-push/pre-receive
+ * hook rejections and "[remote rejected]" policy refusals, which are not
+ * races and would route persistent refusals around the driver's
+ * systemic-failure budget while walking the whole backlog. Also not
+ * matched: "cannot lock ref" — a remote's STALE ref-lock file is
+ * persistent, not a race, and a genuine concurrent-lock blip failing three
+ * consecutive claims (the systemic threshold) is implausible. The race
+ * markers are the specific non-fast-forward strings only: "[rejected]"
+ * (bracket contents exact, so "[remote rejected]" does not match),
+ * "fetch first", "non-fast-forward".
+ */
+export function isRejectedPush(stderr: string): boolean {
+  return /\[rejected\]|non-fast-forward|fetch first/i.test(stderr);
 }
 
 const HASH_RE = /^[a-z0-9]{3,12}$/i;
@@ -809,9 +869,72 @@ export async function claimSpec(
     //              claim is durable; if it fails, we git-reset --hard back
     //              to the pre-claim state to keep local main and origin/main
     //              in sync.
-    const pushResult = exec("git", ["push", "origin", pushTarget], {
+    let pushResult = exec("git", ["push", "origin", pushTarget], {
       cwd: opts.repoRoot,
     });
+    // mlc104 (design §Architecture 3): a race-shaped rejection (peer pushed
+    // to origin/<pushTarget> since our last fetch) is CONTENTION, not a
+    // broken claim — rebase our claim commit onto the peer's tip and
+    // re-push, bounded at CLAIM_PUSH_MAX_RETRIES rounds. All of this runs
+    // inside the same backlog-lock hold, so only cross-process/cross-machine
+    // peers (the actual R2 shape) ever reach it.
+    // Tracks whether a `pull --rebase` RAN to completion — from then on the
+    // captured pre-claim file content is stale (HEAD may carry peer
+    // commits), so the rollback below must restore the two claim files
+    // from HEAD, never from the capture. (Review BH-5: set on every
+    // completed pull, including a no-op one — HEAD is the authoritative
+    // pre-claim content either way.)
+    let pulledRebase = false;
+    // A rebase that failed AFTER a race-shaped rejection (conflicted pull —
+    // the peer edited the same DEV.md region) is still contention even
+    // though no re-push ran.
+    let rebaseFailedAfterRace = false;
+    // Actual re-pushes performed — reported on ClaimContendedError (review
+    // BH-3: the constant would misreport "after 2 retries" on a
+    // conflicted-rebase exit where zero re-pushes ran).
+    let retriesUsed = 0;
+    for (
+      let retry = 0;
+      retry < CLAIM_PUSH_MAX_RETRIES &&
+      pushResult.exitCode !== 0 &&
+      isRejectedPush(pushResult.stderr);
+      retry++
+    ) {
+      const pullResult = exec(
+        "git",
+        ["pull", "--rebase", "origin", pushTarget],
+        { cwd: opts.repoRoot },
+      );
+      if (pullResult.exitCode !== 0) {
+        // A failed pull leaves the repo mid-rebase — abort back to the
+        // pre-pull state (claim commit at HEAD) so the standard rollback
+        // below applies. NB (review BH-6): user WIP on tracked files makes
+        // `git rebase` refuse outright (we never autostash — WIP is
+        // sacrosanct), so an overnight race over a dirty checkout takes
+        // this branch and classifies contended with zero retries; the item
+        // is masked for the pass and a later claim retries from scratch.
+        const abortResult = exec("git", ["rebase", "--abort"], {
+          cwd: opts.repoRoot,
+        });
+        if (abortResult.exitCode !== 0 && !/no rebase in progress/i.test(abortResult.stderr)) {
+          // Review EC-6: an abort that fails with the repo genuinely
+          // mid-rebase means the rollback below runs against rebase
+          // machinery — surface it instead of reporting a clean-sounding
+          // "contended".
+          process.stderr.write(
+            `devx claim: WARN — git rebase --abort failed (exit ${abortResult.exitCode}): ${abortResult.stderr.trim()}; ` +
+              `the repo may be mid-rebase — inspect \`git status\` before the next claim.\n`,
+          );
+        }
+        rebaseFailedAfterRace = true;
+        break;
+      }
+      pulledRebase = true;
+      retriesUsed++;
+      pushResult = exec("git", ["push", "origin", pushTarget], {
+        cwd: opts.repoRoot,
+      });
+    }
     if (pushResult.exitCode !== 0) {
       // Pre-push commit is local-only; reverting is safe and matches the
       // party-mode locked decision (a) "reset local DEV.md to the pre-claim
@@ -848,9 +971,46 @@ export async function claimSpec(
         exec("git", ["restore", "--staged", "--", relativeDevMd, relativeSpec], {
           cwd: opts.repoRoot,
         });
-        revertWorkingTree();
+        if (pulledRebase) {
+          // A pull --rebase ran, so HEAD may carry peer commits whose
+          // DEV.md/spec content the captured pre-claim copy pre-dates —
+          // writing the capture back would clobber the peer's flips in the
+          // working tree. Restore from HEAD explicitly (`checkout HEAD`,
+          // not bare `checkout --` — the bare form copies from the INDEX,
+          // which still holds our claim content if the best-effort
+          // restore-staged above failed; review BH-4). Checked + WARNed
+          // (review EC-4): a silent failure here leaves our un-owned `[/]`
+          // flip in the working tree for the NEXT claim to commit and push.
+          const checkoutResult = exec(
+            "git",
+            ["checkout", "HEAD", "--", relativeDevMd, relativeSpec],
+            { cwd: opts.repoRoot },
+          );
+          if (checkoutResult.exitCode !== 0) {
+            process.stderr.write(
+              `devx claim: WARN — failed to restore ${relativeDevMd} + ${relativeSpec} from HEAD after the contended rollback ` +
+                `(exit ${checkoutResult.exitCode}): ${checkoutResult.stderr.trim()}; ` +
+                `working tree may still carry this claim's flips — recover via \`git checkout HEAD -- ${relativeDevMd} ${relativeSpec}\`\n`,
+            );
+          }
+        } else {
+          revertWorkingTree();
+        }
       }
       releaseLock();
+      // Classification is by the FINAL failure (review BH-2): contended
+      // only when the last push was itself race-shaped, or the pull-rebase
+      // failed after a race-shaped rejection. A non-race terminal failure
+      // (auth expiry, network death mid-retry) stays ClaimError so the
+      // driver's systemic budget sees it — even if an earlier round DID
+      // lose a real race.
+      if (rebaseFailedAfterRace || isRejectedPush(pushResult.stderr)) {
+        throw new ClaimContendedError(
+          hash,
+          retriesUsed,
+          `git push origin ${pushTarget} (exit ${pushResult.exitCode}): ${pushResult.stderr.trim()}`,
+        );
+      }
       throw new ClaimError(
         "git-push",
         `git push origin ${pushTarget} failed (exit ${pushResult.exitCode}): ${pushResult.stderr.trim()}`,
