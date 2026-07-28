@@ -41,6 +41,11 @@
     - [x] full suite green (2427) + 3-agent review (16 findings incl. 1 HIGH row-gated reap, all fixed) + PR #94 merged f5fa72f
   - [x] Phase 4: Claim contention + lock-aware picking + overlap harness → mlc104
   - [ ] Phase 5: Instance registry + capacity admission + aggregation → mlc105
+    - [x] T5.1 instances module + admission (src/lib/loop/instances.ts)
+    - [x] T5.2 driver swap (manager.lock → admission + instance lock) + legacy state.json write retirement
+    - [x] T5.3 next/status aggregation (gather.ts loops[], decide.ts row 1 payload, status.ts section)
+    - [x] T5.4 scratch namespacing mirror-pair edit (skills/devx.md + .claude/commands/devx.md)
+    - [x] T5.5 E-5 GREEN + E-1 fully GREEN (both clauses); E-2/E-3/E-4 non-regressed; first-real-run on this repo (next + status + admission refusal)
   - [ ] Phase 6: Scope model + flags + degenerate-case sweep → mlc106
 - [ ] Stage: Retro
 - [ ] Stage: Outcome
