@@ -22,7 +22,12 @@
 - [x] Stage: RED
 - [x] Gate: evals
 - [ ] Stage: Execute
-  - [ ] Phase 1: Canonical repo root + worktree refusal → mlc101
+  - [x] Phase 1: Canonical repo root + worktree refusal → mlc101
+    - [x] T1.1 resolveRepoRoot + unit tests (repo-root.ts, repo-root.test.ts)
+    - [x] T1.2 loop/manage refusal + --allow-worktree-root + canonical cacheDir
+    - [x] T1.3 claim-path root assertion (exec-seam probe, skip-on-indeterminate)
+    - [x] T1.4 E-2 GREEN (+ _fixture.ts tsx-resolution infra fix for worktree runs)
+    - [x] full suite green + 3-agent review (10 findings, 9 fixed) + PR #91 merged 68646b3
   - [ ] Phase 2: Backlog mutation lock + atomic-writer conversion → mlc102
   - [ ] Phase 3: Spec-lock lifecycle (classify, reap, guarded release) → mlc103
   - [ ] Phase 4: Claim contention + lock-aware picking + overlap harness → mlc104
