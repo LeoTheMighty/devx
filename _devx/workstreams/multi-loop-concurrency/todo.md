@@ -33,7 +33,12 @@
     - [x] T2.2 claim transaction + driver mutation blocks wrapped
     - [x] T2.3 manage/gate writers → writeAtomic + lock
     - [x] T2.4 R3 dual-writer repro red→green; full suite
-  - [ ] Phase 3: Spec-lock lifecycle (classify, reap, guarded release) → mlc103
+  - [x] Phase 3: Spec-lock lifecycle (classify, reap, guarded release) → mlc103
+    - [x] T3.1 classifier extraction → src/lib/locks/classify.ts (manager lock re-imports; mgr106 tests stay green)
+    - [x] T3.2 spec-lock module: JSON v1 body + legacy parse + classifySpecLock + acquire (reap+retry once) + guarded release
+    - [x] T3.3 claim/driver/gather integration: claim swaps acquire; ownsClaim/release migrate; pick-time live-held masking; 2h live-PID WARN (next drift + run event)
+    - [x] T3.4 E-3 eval GREEN; test/spec-lock.test.ts; full suite
+    - [x] full suite green (2427) + 3-agent review (16 findings incl. 1 HIGH row-gated reap, all fixed) + PR #94 merged f5fa72f
   - [ ] Phase 4: Claim contention + lock-aware picking + overlap harness → mlc104
   - [ ] Phase 5: Instance registry + capacity admission + aggregation → mlc105
   - [ ] Phase 6: Scope model + flags + degenerate-case sweep → mlc106

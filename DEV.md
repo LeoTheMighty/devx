@@ -39,7 +39,7 @@ Serial chain — every story touches claim.ts/driver.ts.
 
 - [x] `dev/dev-mlc101-2026-07-28T09:02-canonical-repo-root.md` — Canonical repo root + worktree refusal (kills R1). Status: done. From: epic-multi-loop-concurrency. PR: https://github.com/LeoTheMighty/devx/pull/91 (merged 68646b3).
 - [x] `dev/dev-mlc102-2026-07-28T09:02-backlog-mutation-lock.md` — Backlog mutation lock + atomic-writer conversion (kills R3/R4/R10). Status: done. Blocked-by: mlc101. PR: https://github.com/LeoTheMighty/devx/pull/93 (merged daaa873)
-- [/] `dev/dev-mlc103-2026-07-28T09:02-spec-lock-lifecycle.md` — Spec-lock lifecycle: classify, reap, guarded release + pick-time masking (kills R7/R8/R12; G-3). Status: in-progress. Blocked-by: mlc102.
+- [x] `dev/dev-mlc103-2026-07-28T09:02-spec-lock-lifecycle.md` — Spec-lock lifecycle: classify, reap, guarded release + pick-time masking (kills R7/R8/R12; G-3). Status: done. Blocked-by: mlc102. PR: https://github.com/LeoTheMighty/devx/pull/94 (merged f5fa72f)
 - [ ] `dev/dev-mlc104-2026-07-28T09:02-claim-contention-harness.md` — Claim contention + overlap harness (kills R2/R5; G-1). Status: ready. Blocked-by: mlc103.
 - [ ] `dev/dev-mlc105-2026-07-28T09:02-instance-registry-admission.md` — Loop instance registry + capacity admission + next/status aggregation + scratch namespacing (kills R6/R11). Status: ready. Blocked-by: mlc104.
 - [ ] `dev/dev-mlc106-2026-07-28T09:02-scope-model-flags.md` — Scope model: epic-aware rows + --epic/--workstream/--items/--exclude/--focus + E-8 sweep. Status: ready. Blocked-by: mlc105.
