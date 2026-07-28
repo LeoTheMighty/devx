@@ -3,12 +3,12 @@ hash: mlc103
 type: dev
 created: 2026-07-28T09:02:00-06:00
 title: "Spec-lock lifecycle: classify, reap, guarded release"
-status: ready
+status: in-progress
 from: plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md
 plan: _devx/workstreams/multi-loop-concurrency
 blocked_by: [mlc102]
 branch: feat/dev-mlc103
-owner: null
+owner: /devx-2026-07-28T1128-30636
 ---
 ## Goal
 
@@ -45,6 +45,7 @@ WARN+doctor — do NOT auto-reap live PIDs).
 
 - 2026-07-28T09:02 — emitted by /devx-plan (RED gate passed; workstream
   multi-loop-concurrency, plan phase 3).
+- 2026-07-28T11:28:35-06:00 — claimed by /devx in session /devx-2026-07-28T1128-30636
 
 ## Links
 
