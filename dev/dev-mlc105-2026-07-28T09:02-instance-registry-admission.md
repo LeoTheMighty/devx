@@ -3,7 +3,7 @@ hash: mlc105
 type: dev
 created: 2026-07-28T09:02:00-06:00
 title: "Loop instance registry + capacity admission + aggregation"
-status: in-progress
+status: done
 from: plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md
 plan: _devx/workstreams/multi-loop-concurrency
 blocked_by: [mlc104]
