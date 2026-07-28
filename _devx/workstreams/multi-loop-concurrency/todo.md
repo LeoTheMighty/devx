@@ -28,7 +28,11 @@
     - [x] T1.3 claim-path root assertion (exec-seam probe, skip-on-indeterminate)
     - [x] T1.4 E-2 GREEN (+ _fixture.ts tsx-resolution infra fix for worktree runs)
     - [x] full suite green + 3-agent review (10 findings, 9 fixed) + PR #91 merged 68646b3
-  - [ ] Phase 2: Backlog mutation lock + atomic-writer conversion → mlc102
+  - [x] Phase 2: Backlog mutation lock + atomic-writer conversion → mlc102
+    - [x] T2.1 withBacklogLock + timeout diagnostics (backlog/mutate.ts, backlog-mutate.test.ts)
+    - [x] T2.2 claim transaction + driver mutation blocks wrapped
+    - [x] T2.3 manage/gate writers → writeAtomic + lock
+    - [x] T2.4 R3 dual-writer repro red→green; full suite
   - [ ] Phase 3: Spec-lock lifecycle (classify, reap, guarded release) → mlc103
   - [ ] Phase 4: Claim contention + lock-aware picking + overlap harness → mlc104
   - [ ] Phase 5: Instance registry + capacity admission + aggregation → mlc105

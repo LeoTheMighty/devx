@@ -3,7 +3,7 @@ hash: mlc102
 type: dev
 created: 2026-07-28T09:02:00-06:00
 title: "Backlog mutation lock + atomic-writer conversion"
-status: in-progress
+status: done
 from: plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md
 plan: _devx/workstreams/multi-loop-concurrency
 blocked_by: [mlc101]
@@ -45,6 +45,44 @@ isolation). Wrap `acquirePathLockBlocking` (`src/lib/manage/lock.ts:211`)
 - 2026-07-28T09:02 — emitted by /devx-plan (RED gate passed; workstream
   multi-loop-concurrency, plan phase 2).
 - 2026-07-28T10:20:26-06:00 — claimed by /devx in session /devx-2026-07-28T1020-28370
+- 2026-07-28T10:24 — phase 2: spec ACs direct (v2 native); 5 ACs;
+  workstream=multi-loop-concurrency; red-artifacts=none (phase-2 RED is the
+  in-phase R3 dual-writer repro in test/backlog-mutate.test.ts — authored
+  red against the unlocked path shape, per plan T2.4).
+- 2026-07-28T10:55 — phase 3: implemented. `withBacklogLock` (re-entrant,
+  30s/20ms, holder-pid timeout diagnostic) in src/lib/backlog/mutate.ts;
+  claim transaction + driver mutation blocks (leaf helpers + composite
+  abandon/release/exit/finalize sequences) wrapped; manage applyBlocking
+  writers + engine realEngineFs.writeFile → writeAtomic + gate spec-patch
+  writes locked. Driver lock degrades (evented) on environment acquire
+  failures, propagates on contention timeout — preserves the LOW-10
+  fail-soft posture. 9 new tests (unit + deterministic R3 interleave +
+  4-process locked contention harness); full suite 2393 green.
+- 2026-07-28T11:20 — phase 4: 3-agent parallel adversarial review (Blind
+  Hunter + Edge Case Hunter + Acceptance Auditor); 12 unique findings
+  (1 HIGH, 4 MED, 7 LOW); ALL fixed in-place — most load-bearing: a 30s
+  backlog-lock contention inside the six composite driver holds
+  (finalize-merged / abandon / release / exit) escaped runItem and aborted
+  the ENTIRE loop run as "unexpected driver error", stranding a merged PR
+  unreconciled with its spec lock held; composites now skip-and-WARN on
+  timeout (never run unlocked) via backlogLockBestEffort. Also fixed:
+  claim CLI maps BacklogLockTimeoutError → exit 1 "backlog lock held"
+  (was rollback/unknown exit 2); claim realExec injects
+  GIT_TERMINAL_PROMPT=0 (push hang inside the global lock = fleet-wide
+  wedge); manage applyBlocking degrades unlocked+WARN on env acquire
+  failure and the caller's silent catch now WARNs; withBacklogLock
+  release failure no longer masks fn success; engine writeFile keeps the
+  ENOENT-on-missing-parent contract; contention-test barrier now gates on
+  worker readiness. Accepted-as-is (documented): unlocked
+  revise/outcome/todo spec patches (design note added), unlocked worktree
+  registry git ops. Re-review + touched-surface re-run clean (222 + 50).
+- 2026-07-28T11:23 — phase 7: PR opened — https://github.com/LeoTheMighty/devx/pull/93
+  (body rendered by devx pr-body, no unresolved placeholders).
+- 2026-07-28T11:33 — phase 7: CI success — devx-ci (run 30382474218).
+- 2026-07-28T11:33 — phase 7.5: tour published —
+  https://htmlpreview.github.io/?https://raw.githubusercontent.com/LeoTheMighty/devx/devx-tours/tours/mlc102/tour.html
+- 2026-07-28T11:34 — merged via PR #93 (squash → daaa873); worktree removed,
+  spec lock released.
 
 ## Links
 

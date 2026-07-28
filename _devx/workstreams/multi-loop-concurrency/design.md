@@ -196,7 +196,12 @@ Six components, composing outside-in:
    change), and gate's engine-frontmatter patch (`commands/gate.ts` via
    `engine/workstream.ts:61`, likewise converted). Worker-side worktree
    git-tx (`git-tx.ts`, cwd=worktree) stays lock-free — worktrees are
-   per-item by construction.
+   per-item by construction. (mlc102 execution note: the enumerated
+   writers above are the locked set. Other engine spec-frontmatter
+   patches — revise/outcome/todo, all via `realEngineFs` — became atomic
+   through the same seam conversion but stay unlocked; they are
+   human-invoked planning surfaces, not loop-concurrent, and join the
+   lock if phase 3+ touches them.)
 
 3. **Claim contention** (`src/lib/devx/claim.ts` + `driver.ts`). Inside
    the locked claim section, a rejected push (`claim.ts:693`) triggers
