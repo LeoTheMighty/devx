@@ -23,19 +23,19 @@ green otherwise.
 
 ## Acceptance criteria
 
-- [ ] Loop entry runs a cheap main-health probe before claiming any item.
+- [x] Loop entry runs a cheap main-health probe before claiming any item.
       Cheapest sufficient signal (implementer's choice, justify in status
       log): last remote-CI conclusion on `main` via `gh run list --branch
       main --limit 1` — do NOT run the full local suite (~7 min) as preflight.
-- [ ] When main is red: default behavior is refuse-with-reason (report names
+- [x] When main is red: default behavior is refuse-with-reason (report names
       the failing run/commit); a `--force` / config knob permits starting
       anyway, in which case the morning report and every iteration prompt
       carry a "main is red at <sha>: <failing check> — treat as baseline"
       line so workers don't re-derive it.
-- [ ] When the probe itself fails (gh auth/network), the loop proceeds but
+- [x] When the probe itself fails (gh auth/network), the loop proceeds but
       records the unknown-health state in the report (uncertainty must not
       block an overnight run, per the failure-ladder philosophy).
-- [ ] Tests: red-main refusal, forced-start baseline line threading,
+- [x] Tests: red-main refusal, forced-start baseline line threading,
       probe-failure passthrough.
 
 ## Technical notes
@@ -49,3 +49,7 @@ green otherwise.
 
 - 2026-07-26T15:57:00-06:00 — filed by hfiret retro (E7, med/code).
 - 2026-07-28T09:15:51-06:00 — claimed by /devx in session /devx-2026-07-28T0915-70985
+- 2026-07-28T09:30:00-06:00 — phase 2: spec ACs direct (v2 native); 4 ACs; workstream=none; red-artifacts=none.
+- 2026-07-28T09:40:00-06:00 — phase 3: implemented src/lib/loop/preflight.ts (probeMainHealth + baseBranchFrom + baselineLine + describeMainHealth), `loop.preflight_main_health` knob (refuse|warn|off, default refuse) in loop/config.ts + config-schema + docs/CONFIG.md, driver wiring (probe before dry-run/lock, exit 5 refusal, forced-start warning, baseline threaded into RunItemArgs → buildIterationPrompt `## Baseline warning` section, summary.mainHealth → morning-report header), `--force` on the loop CLI, and the skill-body Stage: Loop 1.5 bullet (mirror synced). Probe-shape justification (AC #1 asks): `gh run list --branch <base> --limit 15` folded to the NEWEST run per workflow, NOT `--limit 1` — arci1 proved a green sibling workflow shadows a red one when only the newest run is consulted; a workflow's own newer green still forgives its older red. Red = {failure, timed_out, startup_failure, action_required}; cancelled/skipped prove nothing; probe failure/empty/in-flight ⇒ unknown ⇒ proceed (uncertainty never blocks the night). Motivating incident: palateful loop-2026-07-27T17-03 — 8 attempted, 0 merged, 5 handed off, all red on main's own inherited pytest break.
+- 2026-07-28T09:50:00-06:00 — phase 4: single-pass adversarial review (surface < 500 changed lines); 3 findings (0 HIGH, 2 MED, 1 LOW): (MED) probe originally ran before flag validation — moved after so bad flags still exit 4 without a gh call; (MED) config-schema `additionalProperties: false` would have rejected the new key in user configs — schema updated + smoke-tested; (LOW) dry-run needed the would-refuse NOTE or a red-main dry run silently implies a real run would start. ALL fixed in-place; re-review clean.
+- 2026-07-28T09:52:00-06:00 — phase 5: local gates green — typecheck clean; vitest 2346 passed / 23 skipped incl. new test/loop-preflight.test.ts (19 tests); schema-smoke + config-io + config-validate pass; skills mirror synced (sync-skills). One strict-equality fixture in loop-config.test.ts extended for the new key.

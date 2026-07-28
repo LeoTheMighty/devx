@@ -36,6 +36,7 @@ describe("loopConfigFrom", () => {
         max_items: 3,
         max_total_tokens: 500,
         backoff_ms: [1, 2, 3],
+        preflight_main_health: "warn",
       },
     });
     expect(cfg).toEqual({
@@ -45,6 +46,7 @@ describe("loopConfigFrom", () => {
       maxItems: 3,
       maxTotalTokens: 500,
       backoffMs: [1, 2, 3],
+      preflightMainHealth: "warn",
     });
   });
 

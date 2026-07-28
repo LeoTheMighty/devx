@@ -432,9 +432,20 @@ loop:
   max_items: 10                         # per-night item cap
   max_total_tokens: 10000000
   backoff_ms: [60000, 120000, 240000]   # consecutive-failure backoff ladder
+  preflight_main_health: refuse         # lpf101: refuse | warn | off
 ```
 
 Consumed by `devx loop` (v2l101); see `v2/04-overnight-loop.md` §3.
+
+`preflight_main_health` (lpf101): at loop entry the driver probes the
+integration branch's remote CI (`gh run list`, newest run per workflow).
+`refuse` (default) declines to start while that branch is red — a red main
+converts the whole night into unmergeable open PRs, since every feature
+branch inherits the red check and the merge tail correctly hands every item
+off. `warn` starts anyway and threads a "treat as baseline" line into every
+iteration prompt and the morning report (same effect as `devx loop --force`
+for one run). `off` skips the probe. Probe failures and inconclusive signals
+never block the run — only a decisive red does.
 
 Token budgets count **new tokens processed** — uncached input + output +
 cache-creation, from the worker session's authoritative stream-json usage

@@ -1,7 +1,7 @@
 // `devx loop` — trusted unattended operation (v2l101).
 //
 //   devx loop [--until <HH:MM>] [--max-items N] [--max-tokens N]
-//             [--only <type>] [--dry-run]
+//             [--only <type>] [--dry-run] [--force]
 //
 // A MODE OF THE MANAGER, not a new daemon (v2/04 §7): the command acquires
 // the mgr106 manager lock, runs the outer claim cycle under night budgets,
@@ -17,7 +17,9 @@
 // loop-breaker so an outer wrapper can pre-claim the job.
 //
 // Exit codes: 0 stopped clean · 1 lock held · 2 aborted (permanent error /
-// 3 abandoned items) · 3 mode-refused (LOCKDOWN, D-6) · 4 bad flags.
+// 3 abandoned items) · 3 mode-refused (LOCKDOWN, D-6) · 4 bad flags ·
+// 5 preflight-refused (integration branch red at start, lpf101; --force
+// overrides).
 //
 // Spec: dev/dev-v2l101-2026-07-05T13:06-overnight-loop.md
 // Design: v2/04-overnight-loop.md
@@ -36,6 +38,7 @@ interface LoopCliOpts {
   maxTokens?: string;
   only?: string;
   dryRun?: boolean;
+  force?: boolean;
 }
 
 export function parseIntFlag(v: string | undefined): number | undefined {
@@ -63,6 +66,7 @@ export async function runLoopCommand(
     ...(opts.maxTokens !== undefined ? { maxTokens: parseIntFlag(opts.maxTokens) as number } : {}),
     ...(opts.only !== undefined ? { only: opts.only } : {}),
     ...(opts.dryRun === true ? { dryRun: true } : {}),
+    ...(opts.force === true ? { force: true } : {}),
   };
 
   // SIGTERM/SIGINT → abort the driver; it drains the current step, writes
@@ -107,6 +111,11 @@ export function register(program: Command): void {
     .option("--max-tokens <n>", "Cap total tokens this run (min with loop.max_total_tokens)")
     .option("--only <type>", "Restrict picks to one spec type (dev | debug)")
     .option("--dry-run", "Print the plan (items, budgets, mode) without claiming or spawning", false)
+    .option(
+      "--force",
+      "Start even if the integration branch's CI is red (lpf101 preflight); the red baseline is threaded into every iteration prompt and the morning report",
+      false,
+    )
     .action(async (opts: LoopCliOpts) => {
       const code = await runLoopCommand(opts);
       if (code !== 0) process.exit(code);

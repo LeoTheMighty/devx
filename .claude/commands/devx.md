@@ -502,9 +502,17 @@ ladder + merge-gate — NOT permission bypass (D-6; LOCKDOWN refuses the loop
 entirely).
 
 1. Entry: `devx loop [--until <HH:MM>] [--max-items N] [--max-tokens N]
-   [--only <type>] [--dry-run]`. Budgets come from `devx.config.yaml →
-   loop:`; flags override downward only. Run `--dry-run` first when the
-   user is present and show them the plan.
+   [--only <type>] [--dry-run] [--force]`. Budgets come from
+   `devx.config.yaml → loop:`; flags override downward only. Run `--dry-run`
+   first when the user is present and show them the plan.
+1.5. **Preflight main-health (lpf101).** The CLI probes the integration
+   branch's remote CI before claiming anything and exits 5 when it's red —
+   a red main converts the whole night into unmergeable open PRs (every
+   branch inherits the red check; the tail hands every item off with zero
+   merges). Fix main first. `--force` (or `loop.preflight_main_health:
+   warn`) starts anyway and threads a "treat as baseline" line into every
+   iteration prompt + the morning report; probe failure or no decisive
+   signal never blocks the run.
 2. The CLI owns the loop: item pick (reconcile), worker spawn, the
    iteration contract (fresh session per iteration; smallest verifiable
    slice; structured report), commit-or-reset transactions, the failure

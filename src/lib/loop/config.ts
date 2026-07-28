@@ -17,6 +17,11 @@
 // Spec: dev/dev-v2l101-2026-07-05T13:06-overnight-loop.md
 // Design: v2/04-overnight-loop.md §3
 
+/** lpf101 preflight posture: `refuse` (default — a red integration branch
+ *  refuses the run unless --force), `warn` (start anyway, thread the red
+ *  baseline into prompts + report), `off` (skip the probe entirely). */
+export type PreflightMainHealth = "refuse" | "warn" | "off";
+
 export interface LoopConfig {
   maxIterationsPerItem: number;
   maxTokensPerItem: number;
@@ -26,6 +31,8 @@ export interface LoopConfig {
   /** Exponential-ish backoff for hard errors — index by consecutive-errors-1,
    *  clamped to the last entry. */
   backoffMs: number[];
+  /** `loop.preflight_main_health` (lpf101). */
+  preflightMainHealth: PreflightMainHealth;
 }
 
 export const LOOP_DEFAULTS: LoopConfig = {
@@ -35,6 +42,7 @@ export const LOOP_DEFAULTS: LoopConfig = {
   maxItems: 10,
   maxTotalTokens: 10_000_000,
   backoffMs: [60_000, 120_000, 240_000],
+  preflightMainHealth: "refuse",
 };
 
 /** 3 consecutive abandoned items ⇒ stop the whole loop (v2/04 §3 — systemic
@@ -79,6 +87,11 @@ export function loopConfigFrom(merged: unknown): LoopConfig {
       (n): n is number => typeof n === "number" && Number.isFinite(n) && n >= 0,
     );
     if (cleaned.length > 0) out.backoffMs = cleaned;
+  }
+
+  if (typeof l.preflight_main_health === "string") {
+    const v = l.preflight_main_health.trim().toLowerCase();
+    if (v === "refuse" || v === "warn" || v === "off") out.preflightMainHealth = v;
   }
   return out;
 }
