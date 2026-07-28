@@ -41,6 +41,7 @@ import * as restartCommand from "./commands/restart.js";
 import * as resumeCommand from "./commands/resume.js";
 import * as reviseCommand from "./commands/revise.js";
 import * as serveCommand from "./commands/serve.js";
+import * as splitCommand from "./commands/split.js";
 import * as statusCommand from "./commands/status.js";
 import * as tailCommand from "./commands/tail.js";
 import * as todoCommand from "./commands/todo.js";
@@ -76,6 +77,7 @@ const commands: CommandModule[] = [
   resumeCommand,
   reviseCommand,
   serveCommand,
+  splitCommand,
   statusCommand,
   tailCommand,
   todoCommand,
