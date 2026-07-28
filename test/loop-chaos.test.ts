@@ -36,6 +36,7 @@ import {
   readLoopState,
   recoverStaleLoopState,
 } from "../src/lib/loop/state.js";
+import { readInstance } from "../src/lib/loop/instances.js";
 import { type WorkerRunFn } from "../src/lib/loop/worker.js";
 import { type TailFn } from "../src/lib/loop/tail.js";
 
@@ -157,11 +158,15 @@ describe("chaos A — orchestrator killed mid-iteration", () => {
     expect(r2.exitCode).toBe(0);
     expect(r2.summary?.stopReason).toMatch(/no eligible backlog items/);
 
-    // State is consistent: the fresh run's own final state parses and is
-    // NOT "running" — `devx next` row 1 can never wedge on the ghost.
+    // State is consistent: the ghost can never wedge `devx next` row 1.
+    // mlc105 split this into two facts — the legacy singleton was recovered
+    // OFF "running" (new code no longer writes it, so recovery is the only
+    // thing that touches it), and the fresh run's OWN record is an instance
+    // marked stopped.
     const state = readLoopState(fx.cacheDir);
     expect(state).not.toBeNull();
-    expect(state!.status).toBe("stopped");
+    expect(state!.status).not.toBe("running");
+    expect(readInstance(fx.cacheDir, r2.summary!.runId)?.status).toBe("stopped");
     // The torn JSONL never poisoned the old run's log.
     const oldEvents = readEvents(fx.cacheDir, runId);
     expect(oldEvents.length).toBeGreaterThan(0);

@@ -43,6 +43,7 @@ function emptySnapshot(): RepoSnapshot {
       pid: null,
       ts: null,
       ageSeconds: null,
+      loops: [],
       overnightReport: null,
     },
     prs: [],
@@ -70,6 +71,7 @@ function fullSnapshot(): RepoSnapshot {
     pid: 4242,
     ts: "2026-07-05T08:00:00Z",
     ageSeconds: 30,
+    loops: [],
     overnightReport: ".devx-cache/reports/2026-07-05.md",
   };
   s.prs = [
