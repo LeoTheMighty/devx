@@ -42,6 +42,8 @@ function state(overrides?: {
     outcome: { status: null, measure_by: null },
     workstream: null,
     blockedBy: [],
+    plan: null,
+    phase: null,
   };
 }
 

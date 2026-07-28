@@ -47,6 +47,8 @@ function stateWith(flags: Partial<Record<string, boolean>>) {
     outcome: { status: null, measure_by: null },
     workstream: "_devx/workstreams/demo",
     blockedBy: [],
+    plan: null,
+    phase: null,
   };
 }
 
