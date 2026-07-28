@@ -11,12 +11,12 @@ project_shape: empty-dream
 thoroughness: send-it
 stack_layers: [ backend ]
 blocked_by: []
-stage: plan
+stage: red
 entered_at: prd
 gate_status:
   prd_validated: true
   design_verified: true
-  plan_verified: false
+  plan_verified: true
   evals_red: false
 outcome:
   status: null
@@ -25,6 +25,7 @@ workstream: _devx/workstreams/multi-loop-concurrency
 gate_verdicts:
   prd: PASS
   design: PASS
+  plan: CONCERNS
 ---
 
 ## Goal
@@ -276,6 +277,18 @@ scoped loops, one night, real backlog.
   mode, 24/24 rows, 3 extras flagged for product awareness) →
   design_verified, stage: plan. Report:
   `_devx/workstreams/multi-loop-concurrency/decisions/2026-07-28-design-verify.md`.
+- 2026-07-28T09:45 — Plan stage (/devx-plan): plan.md authored — 6 phases
+  (root canonicalization → backlog lock → spec-lock lifecycle → contention +
+  overlap harness → instance registry → scope model), one phase ≙ one PR
+  (D-12); expectation coverage table maps E-1..E-8 with P0 runnable
+  artifacts. Critique step SKIPPED per config (send-it thoroughness,
+  single stack layer [backend] < engine.critique.min_surfaces=2) — sizing
+  call recorded. Coverage judge: 7 covered / 1 partial (E-7 by design);
+  2 nits fixed (E-3 pick-time masking moved into phase 3; E-8 PR-body
+  clause added) and re-judged covered. `devx gate coverage 20eb6f --table …`
+  CONCERNS (plan mode; sole reason = E-7 partial-by-design) →
+  plan_verified, stage: red. Report:
+  `_devx/workstreams/multi-loop-concurrency/decisions/2026-07-28-plan-verify.md`.
 
 ## Links
 
