@@ -11,11 +11,11 @@ project_shape: empty-dream
 thoroughness: send-it
 stack_layers: [ backend ]
 blocked_by: []
-stage: design
+stage: plan
 entered_at: prd
 gate_status:
   prd_validated: true
-  design_verified: false
+  design_verified: true
   plan_verified: false
   evals_red: false
 outcome:
@@ -24,6 +24,7 @@ outcome:
 workstream: _devx/workstreams/multi-loop-concurrency
 gate_verdicts:
   prd: PASS
+  design: PASS
 ---
 
 ## Goal
@@ -263,6 +264,18 @@ scoped loops, one night, real backlog.
   20eb6f` PASS after 2 FAIL rounds (fixes: CAP ID shape to template form,
   angle-bracket placeholder tokens in FRs, numeric thresholds on E-6/E-8,
   bare Verified-by paths on E-7/E-8) → prd_validated, stage: design.
+- 2026-07-28T09:20 — Design stage (/devx-plan): design.md authored (6-component
+  architecture: canonical root / backlog mutation lock / claim contention /
+  spec-lock lifecycle / instance registry / scope model; single-blocking-lock
+  deadlock argument; G-1 in-process harness via RunLoopOpts seams; 4 resolved
+  design questions incl. legacy state.json read-fallback + TTL demoted to
+  WARN+doctor). Coverage judge: 22 covered / 2 partial (G-1 harness
+  undesigned, FR-4 TTL deviation) → both fixed (harness section added;
+  FR-4 prd text aligned per override flow, `devx gate prd` re-verified PASS)
+  → re-judged covered. `devx gate coverage 20eb6f --table …` PASS (design
+  mode, 24/24 rows, 3 extras flagged for product awareness) →
+  design_verified, stage: plan. Report:
+  `_devx/workstreams/multi-loop-concurrency/decisions/2026-07-28-design-verify.md`.
 
 ## Links
 

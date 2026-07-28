@@ -169,9 +169,14 @@ Kills R2/R5/R8.
 `spec-{hash}.lock` becomes JSON `{pid, pid_started_at, session,
 claimed_at}`; acquisition reuses the mgr106 `classifyExistingLock`
 semantics (dead-PID reap, PID-recycling cross-check with grace window,
-unparseable-body reap, conservative on empty). A TTL backstop (default 2h,
-config knob — implementing the long-documented-never-built timeout)
-covers live-PID-but-wedged owners, warn-then-reap. Release re-verifies
+unparseable-body reap, conservative on empty). Live-PID-but-wedged owners
+are surfaced, not auto-reaped: a lock older than a 2h constant raises a
+WARN in `devx next` drift and a `devx doctor` finding with `--fix` as the
+manual reap path — auto-reap stays strictly PID-liveness-based, because a
+legitimate item can run for hours across iterations and a timer-based
+reap would reintroduce the resume-collision class roc101 closed.
+(Refined at design stage — see design.md § Resolved design questions;
+supersedes this FR's earlier warn-then-reap sketch.) Release re-verifies
 ownership inside the backlog lock before unlink (closing the
 check-then-act gap and the delete-a-peer's-lock path). Format migration:
 old single-line lock bodies are readable (treated as unparseable-but-
