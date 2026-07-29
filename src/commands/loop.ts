@@ -2,6 +2,8 @@
 //
 //   devx loop [--until <HH:MM>] [--max-items N] [--max-tokens N]
 //             [--only <type>] [--dry-run] [--force]
+//             [--epic <slug|hash>]… [--workstream <slug>]…
+//             [--items <h1,h2,…>] [--exclude <hash|epic>]… [--focus <text>]
 //
 // A MODE OF THE MANAGER, not a new daemon (v2/04 §7): the command acquires
 // the mgr106 manager lock, runs the outer claim cycle under night budgets,
@@ -30,6 +32,7 @@ import type { Command } from "commander";
 import { findProjectConfig } from "../lib/config-io.js";
 import { attachPhase } from "../lib/help.js";
 import { runLoop, type LoopFlags } from "../lib/loop/driver.js";
+import { type LoopScope } from "../lib/loop/scope.js";
 import { startSleepInhibit } from "../lib/loop/sleep-inhibit.js";
 import {
   resolveRepoRoot,
@@ -45,6 +48,55 @@ interface LoopCliOpts {
   dryRun?: boolean;
   force?: boolean;
   allowWorktreeRoot?: boolean;
+  /** mlc106 scope flags. `--epic`/`--workstream`/`--exclude` are repeatable
+   *  (commander accumulates into an array); `--items` is one comma list;
+   *  `--focus` is free text. */
+  epic?: string[];
+  workstream?: string[];
+  items?: string[];
+  exclude?: string[];
+  focus?: string;
+}
+
+/** Commander collector for a repeatable option. */
+export function collectFlag(value: string, previous: string[] = []): string[] {
+  return [...previous, value];
+}
+
+/**
+ * Split a `--items a,b,c` list. Commas AND whitespace both separate, so
+ * `--items "a, b"` and `--items "a b"` are the same list; empty entries are
+ * preserved as "" so validateScope can name the stray-comma typo rather
+ * than silently swallowing it.
+ */
+export function parseItemsFlag(raw: string): string[] {
+  const parts = raw.split(",").map((s) => s.trim());
+  // A single unsplit chunk may still be whitespace-separated.
+  return parts.flatMap((p) => (p === "" ? [""] : p.split(/\s+/)));
+}
+
+/**
+ * Build the driver-facing scope from the raw CLI options.
+ *
+ * `--items` is repeatable and CONCATENATES, like its four siblings. Leaving
+ * it single-valued made commander last-wins, so `--items a,b --items c`
+ * silently discarded `a,b` and the overnight run worked the wrong set with
+ * nothing to notice it — `validateScope` can't object, because what survived
+ * was perfectly legal (review BH#1).
+ */
+export function scopeFromCliOpts(opts: LoopCliOpts): LoopScope {
+  return {
+    epics: opts.epic ?? [],
+    workstreams: opts.workstream ?? [],
+    items: (opts.items ?? []).flatMap(parseItemsFlag),
+    excludes: opts.exclude ?? [],
+    // `--focus ""` is a user error, not "no focus": keep the empty string so
+    // validateScope exits 4 instead of silently dropping the directive.
+    // Repeated `--focus` is plain commander last-wins, matching the other
+    // single-value options (`--until`, `--only`, `--max-items`); only the
+    // list-shaped flags accumulate.
+    focus: opts.focus !== undefined ? opts.focus : null,
+  };
 }
 
 export function parseIntFlag(v: string | undefined): number | undefined {
@@ -109,6 +161,7 @@ export async function runLoopCommand(
     ...(opts.only !== undefined ? { only: opts.only } : {}),
     ...(opts.dryRun === true ? { dryRun: true } : {}),
     ...(opts.force === true ? { force: true } : {}),
+    scope: scopeFromCliOpts(opts),
   };
 
   // SIGTERM/SIGINT → abort the driver; it drains the current step, writes
@@ -152,6 +205,30 @@ export function register(program: Command): void {
     .option("--max-items <n>", "Cap items claimed this run (min with loop.max_items)")
     .option("--max-tokens <n>", "Cap total tokens this run (min with loop.max_total_tokens)")
     .option("--only <type>", "Restrict picks to one spec type (dev | debug)")
+    .option(
+      "--epic <slug|hash>",
+      "Restrict picks to a DEV.md `### Epic — …` section (slug or plan hash; repeatable)",
+      collectFlag,
+    )
+    .option(
+      "--workstream <slug>",
+      "Restrict picks to an engine workstream's members (repeatable)",
+      collectFlag,
+    )
+    .option(
+      "--items <h1,h2,...>",
+      "Restrict picks to these spec hashes AND claim them in this order (repeatable; lists concatenate)",
+      collectFlag,
+    )
+    .option(
+      "--exclude <hash|epic>",
+      "Never pick this hash or epic (repeatable)",
+      collectFlag,
+    )
+    .option(
+      "--focus <text>",
+      "Free-text directive passed verbatim to every worker iteration (steers the slice; masks nothing)",
+    )
     .option("--dry-run", "Print the plan (items, budgets, mode) without claiming or spawning", false)
     .option(
       "--force",

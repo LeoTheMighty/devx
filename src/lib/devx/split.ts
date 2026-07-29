@@ -2,7 +2,8 @@
 // `/devx` session or `devx loop` item must stop with remaining work, the
 // remainder becomes a first-class follow-up spec wired into the dependency
 // tree, claimable cold by any fresh session. Replaces the conversation-prose
-// Handoff Snippet contract (retired in phase 4).
+// handoff contract retired in phase 4 (mss104) — /devx Phase 9 now routes
+// every early halt through `devx split`.
 //
 // Surface (design § Architecture 1):
 //
@@ -83,7 +84,7 @@ export interface SplitPayload {
   goal?: string;
   /** The remaining acceptance criteria — non-empty, one line each. */
   remaining_acs: string[];
-  /** The re-homed Handoff Snippet sections (FR-2). */
+  /** The re-homed carry-forward sections (FR-2). */
   carried_forward: SplitCarriedForward;
   /** Extra learnings (loop path: accumulated key_learnings). Rendered
    *  under the Gotchas section. */

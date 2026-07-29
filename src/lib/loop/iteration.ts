@@ -427,6 +427,14 @@ export interface IterationPromptParams {
    *  rendered as a warning section so the worker treats the pre-existing
    *  failure as baseline instead of re-deriving (or chasing) it. */
   mainRedBaseline?: string;
+  /**
+   * `--focus` text (mlc106), reproduced VERBATIM as a Specialty directive.
+   * Verbatim is the contract: the operator's words are the instruction, and
+   * any paraphrase the loop invents is an instruction the operator never
+   * gave. Absent/empty ⇒ the section is omitted entirely, so an unscoped
+   * run's prompt is byte-identical to pre-mlc106 (E-8).
+   */
+  focus?: string | null;
 }
 
 const OUTPUT_FIELD_LINES = [
@@ -459,6 +467,25 @@ export function buildIterationPrompt(params: IterationPromptParams): string {
       ? ""
       : `\n\n## Baseline warning\n\n${params.mainRedBaseline}`;
 
+  // Specialty directive (mlc106 `--focus`). Placed AFTER the numbered
+  // instructions and BEFORE the Output contract: it steers *how* the
+  // iteration picks its slice, but it must never outrank rule 6 ("do NOT
+  // commit") or the report schema — an operator's focus note is a
+  // preference, not a licence to break the loop's invariants.
+  const focusText = params.focus?.trim() ?? "";
+  // EVERY line is quoted, not just the first: a pasted multi-paragraph focus
+  // note would otherwise break out of the blockquote and land as bare
+  // markdown directly above the Output contract — a focus containing a
+  // literal `## Output` heading would deform the prompt (review BH#12).
+  const focusQuoted = focusText
+    .split("\n")
+    .map((l) => (l.trim() === "" ? ">" : `> ${l}`))
+    .join("\n");
+  const focusSection =
+    focusText === ""
+      ? ""
+      : `\n\n## Specialty directive\n\nThis run was started with a focus. Prefer work that serves it when choosing this iteration's slice; it narrows priority, it does NOT override the instructions above.\n\n${focusQuoted}`;
+
   return `You are one iteration of an unattended overnight loop working on a devx spec.
 This is iteration ${params.iteration} of at most ${params.maxIterations} on spec \`${params.hash}\`. Each iteration makes one incremental, verifiable step — it does not complete the entire spec.${baselineSection}
 
@@ -471,7 +498,7 @@ This is iteration ${params.iteration} of at most ${params.maxIterations} on spec
 5. When the only remaining work is final verification (full test suite, typecheck), that verification IS this iteration's unit of work: run it to completion inside this iteration and set acs_met from the result. Never end an iteration with verification outstanding — deferring a suite run to a future iteration burns the budget without progress.
 6. Do NOT commit; do NOT edit the Status log — the loop owns both. Do not push, do not touch git branches or worktrees.
 7. Stop any background processes you started (dev servers, watchers, browsers) before finishing.
-8. Only emit the final JSON after the result is final: work complete, validation run, background processes stopped.
+8. Only emit the final JSON after the result is final: work complete, validation run, background processes stopped.${focusSection}
 
 ## Output
 

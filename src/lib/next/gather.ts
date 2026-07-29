@@ -45,6 +45,7 @@ import { formatDate } from "../engine/verdict.js";
 import {
   findSpecForHashInFs,
   planFilenameWorkstreamRel,
+  resolveSpecWorkstream,
 } from "../engine/workstream.js";
 import {
   normalizeSessionToken,
@@ -566,71 +567,33 @@ export function resolveWorkstreamGate(
   warnings: string[],
   hash: string,
 ): GateInfo {
-  const st = readEngineState(specContent);
-  let wsRel: string | null = st.workstream;
-  let planHash: string | null = null;
-
-  if (wsRel === null) {
-    const wsRe = new RegExp(
-      `(?:^|/)${escapeRegex(engine.workstreamsRoot)}/([a-z0-9-]+)(?:/|$)`,
+  // The walk itself lives in engine/workstream.ts (mlc106) — `--workstream`
+  // loop scoping resolves membership through the SAME function, so the two
+  // can't drift into disagreeing about which workstream a spec belongs to.
+  const membership = resolveSpecWorkstream(
+    fs,
+    repoRoot,
+    engine,
+    specContent,
+    parseFrontmatterValue,
+  );
+  if (membership.unclaimed) {
+    warnings.push(
+      `'${hash}' names workstream '${membership.workstreamRel}' but no plan spec claims it — gate not resolvable, treated exempt`,
     );
-    for (const key of ["from", "plan"]) {
-      const v = parseFrontmatterValue(specContent, key);
-      if (!v) continue;
-      const wsMatch = wsRe.exec(v);
-      if (wsMatch) {
-        wsRel = `${engine.workstreamsRoot}/${wsMatch[1]}`;
-        break;
-      }
-      const planMatch = /(?:^|\/)plan-([a-z0-9]{3,12})-[^/]*\.md$/.exec(v);
-      if (planMatch && planHash === null) {
-        planHash = planMatch[1];
-      }
-    }
+    return exemptGate(`workstream '${membership.workstreamRel}' unresolvable`);
   }
-
-  let planState: ReturnType<typeof readEngineState> | null = null;
-  let resolvedWs: string | null = null;
-  if (wsRel !== null) {
-    // Find the plan spec claiming this workstream dir (same adoption walk
-    // as createWorkstream's no-hash path).
-    const planDir = join(repoRoot, "plan");
-    if (fs.exists(planDir)) {
-      for (const name of [...fs.readdir(planDir)].sort()) {
-        if (!name.endsWith(".md")) continue;
-        try {
-          const cand = readEngineState(fs.readFile(join(planDir, name)));
-          if (cand.workstream === wsRel) {
-            planState = cand;
-            resolvedWs = wsRel;
-            break;
-          }
-        } catch {
-          // unreadable plan spec — keep scanning
-        }
-      }
-    }
-    if (planState === null) {
-      warnings.push(
-        `'${hash}' names workstream '${wsRel}' but no plan spec claims it — gate not resolvable, treated exempt`,
-      );
-      return exemptGate(`workstream '${wsRel}' unresolvable`);
-    }
-  } else if (planHash !== null) {
-    const specAbs = findSpecForHashInFs(fs, repoRoot, "plan", planHash);
-    if (specAbs !== null) {
-      try {
-        const cand = readEngineState(fs.readFile(specAbs));
-        // Legacy (pre-engine) plan specs have no stage — exempt.
-        if (cand.stage !== null) {
-          planState = cand;
-          resolvedWs = cand.workstream;
-        }
-      } catch {
-        // unreadable — exempt below
-      }
-    }
-  }
+  const planState = membership.planState;
+  // Pre-mlc106 parity: the plan-hash arm reported the plan spec's OWN
+  // `workstream:` value (null for a legacy pointer-less spec), while the
+  // workstream-path arms reported the named dir. The shared walk fills a
+  // filename-derived fallback for the plan-hash arm; strip it back off here
+  // so this gate's `workstream` field stays byte-identical to what row 8
+  // rendered before the extraction.
+  const resolvedWs =
+    membership.via === "plan-hash"
+      ? (membership.planState?.workstream ?? null)
+      : membership.workstreamRel;
 
   if (planState === null) {
     return exemptGate("standalone spec — no engine workstream in from:/plan: chain");
@@ -1168,6 +1131,5 @@ function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+// (escapeRegex removed at mlc106 — its only caller was the workstream
+// membership walk, which moved to engine/workstream.ts with the helper.)

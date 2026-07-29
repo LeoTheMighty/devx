@@ -42,8 +42,8 @@ Serial chain — every story touches claim.ts/driver.ts.
 - [x] `dev/dev-mlc103-2026-07-28T09:02-spec-lock-lifecycle.md` — Spec-lock lifecycle: classify, reap, guarded release + pick-time masking (kills R7/R8/R12; G-3). Status: done. Blocked-by: mlc102. PR: https://github.com/LeoTheMighty/devx/pull/94 (merged f5fa72f)
 - [x] `dev/dev-mlc104-2026-07-28T09:02-claim-contention-harness.md` — Claim contention + overlap harness (kills R2/R5; G-1). Status: done. Blocked-by: mlc103. PR: https://github.com/LeoTheMighty/devx/pull/96 (merged 3c9f2c0)
 - [x] `dev/dev-mlc105-2026-07-28T09:02-instance-registry-admission.md` — Loop instance registry + capacity admission + next/status aggregation + scratch namespacing (kills R6/R11). Status: done. Blocked-by: mlc104. PR: https://github.com/LeoTheMighty/devx/pull/98 (merged a19eb6d)
-- [/] `dev/dev-mlc106-2026-07-28T09:02-scope-model-flags.md` — Scope model: epic-aware rows + --epic/--workstream/--items/--exclude/--focus + E-8 sweep. Status: in-progress. Blocked-by: mlc105.
-- [ ] `dev/dev-mlcret-2026-07-28T09:04-retro-multi-loop-concurrency.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: mlc101, mlc102, mlc103, mlc104, mlc105, mlc106.
+- [x] `dev/dev-mlc106-2026-07-28T09:02-scope-model-flags.md` — Scope model: epic-aware rows + --epic/--workstream/--items/--exclude/--focus + E-8 sweep. Status: done. Blocked-by: mlc105. PR: https://github.com/LeoTheMighty/devx/pull/100 (merged 1cdf435)
+- [/] `dev/dev-mlcret-2026-07-28T09:04-retro-multi-loop-concurrency.md` — Retro + LEARN.md updates (interim retro discipline). Status: in-progress. Blocked-by: mlc101, mlc102, mlc103, mlc104, mlc105, mlc106.
 
 ### Epic — mid-story-split (plan: e0a67e)
 
@@ -56,8 +56,9 @@ mss103 are parallel-safe (no shared files).
 - [x] `dev/dev-mss101-2026-07-28T13:43-split-primitive-lib-cli.md` — Split primitive (lib + CLI). Status: done. From: epic-mid-story-split. PR: https://github.com/LeoTheMighty/devx/pull/95 (merged ec3af6e)
 - [x] `dev/dev-mss102-2026-07-28T13:43-claim-branch-inheritance.md` — Claim branch inheritance. Status: done. Blocked-by: mss101. Parallel-safe with mss103. PR: https://github.com/LeoTheMighty/devx/pull/97 (merged 46fb9e4)
 - [x] `dev/dev-mss103-2026-07-28T13:43-loop-split-integration.md` — Loop split integration. Status: done. Blocked-by: mss101. Parallel-safe with mss102. PR: https://github.com/LeoTheMighty/devx/pull/99 (merged 962f9a1)
-- [/] `dev/dev-mss104-2026-07-28T13:43-handoff-snippet-retirement.md` — Handoff Snippet retirement sweep. Status: in-progress. Blocked-by: mss102, mss103.
+- [x] `dev/dev-mss104-2026-07-28T13:43-handoff-snippet-retirement.md` — Handoff Snippet retirement sweep. Status: done. Blocked-by: mss102, mss103. PR: https://github.com/LeoTheMighty/devx/pull/101 (merged 5292b19)
 - [ ] `dev/dev-mssret-2026-07-28T13:45-retro-mid-story-split.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: mss101, mss102, mss103, mss104.
+- [ ] `dev/dev-ee7049-2026-07-29T10:12-spec-lock-release-cli.md` — Guarded spec-lock release CLI for the Phase 9 branch-handoff path (swaps the raw `rm` for `devx devx-helper release-lock`). Status: ready. From: mss104 Phase 8 gap sweep. Low priority.
 
 ## Phase 0 — Foundation (plan: plan-a01000)
 

@@ -46,7 +46,12 @@ import { writeAtomic } from "../supervisor-internal.js";
 import { BacklogLockTimeoutError, withBacklogLock } from "../backlog/mutate.js";
 
 import { loadMerged } from "../config-io.js";
-import { parseBacklogSnapshot, parseDevMd, type DevRow } from "../backlog/parse.js";
+import {
+  parseBacklogSnapshot,
+  parseDevMd,
+  parseEpicHeadings,
+  type DevRow,
+} from "../backlog/parse.js";
 import { reconcile } from "../manage/reconcile.js";
 import {
   PathLockHeldError,
@@ -147,6 +152,24 @@ import {
   type MainHealth,
 } from "./preflight.js";
 import { writeMorningReport, type ItemResult, type RunSummary, type TokenTotals } from "./report.js";
+import {
+  type CrossScopeBlock,
+  type LoopScope,
+  applyScopeOrder,
+  buildScopeMask,
+  describeScope,
+  emptyScope,
+  scopeIsEmpty,
+  scopeMasks,
+  validateScope,
+} from "./scope.js";
+import { engineConfigFrom } from "../engine/config.js";
+import {
+  realEngineFs,
+  resolveSpecWorkstream,
+  type PlanSpecIndexCache,
+} from "../engine/workstream.js";
+import { parseFrontmatterValue } from "../plan/validate-emit.js";
 import { defaultTail, type HandOffKind, type TailFn } from "./tail.js";
 import {
   WorkerTimeoutError,
@@ -172,12 +195,18 @@ export interface LoopFlags {
   /** lpf101: start even when the preflight finds the integration branch red
    *  (the red baseline is threaded into every iteration prompt + report). */
   force?: boolean;
+  /** mlc106 scope flags — `--epic`/`--workstream`/`--items`/`--exclude`
+   *  (masking) plus `--focus` (worker directive). Absent = the degenerate
+   *  N=1 run, byte-identical to pre-mlc106 behavior. */
+  scope?: LoopScope;
 }
 
 export interface DryRunPlan {
   mode: string;
   budgets: RunSummary["budgets"];
   items: Array<{ hash: string; type: string; title: string; path: string }>;
+  /** Scope descriptor, or null for an unscoped run (mlc106). */
+  scope?: string | null;
 }
 
 export interface RunLoopOpts {
@@ -320,17 +349,26 @@ function readFileOr(
 
 /**
  * Pick the next claimable item: DEBUG.md rows first (dispatcher rows 7 < 8),
- * then DEV.md, filtered by `--only`, minus `excluded` (already attempted /
- * claim-failed this run). Masking rather than removal: an excluded READY row
- * is rewritten to status "blocked" so it can't be picked but still blocks
- * its dependents (removal would flip dependents' blockers to "unknown" —
- * same conservative posture, but masking keeps the semantics explicit).
+ * then DEV.md, filtered by `--only` and the mlc106 scope flags, minus
+ * `excluded` (already attempted / claim-failed this run). Masking rather
+ * than removal: an excluded READY row is rewritten to status "blocked" so it
+ * can't be picked but still blocks its dependents (removal would flip
+ * dependents' blockers to "unknown" — same conservative posture, but masking
+ * keeps the semantics explicit). Scope masking rides the SAME mechanism,
+ * which is what keeps cross-scope `Blocked-by:` edges holding.
  */
 export function pickNextItem(
   repoRoot: string,
   opts: {
     only?: string;
     excluded: ReadonlySet<string>;
+    /** mlc106 scope; omit (or an empty scope) for the degenerate N=1 run. */
+    scope?: LoopScope;
+    /** Row → engine-workstream slug, for `--workstream`. */
+    workstreamOf?: (row: DevRow) => string | null;
+    /** Called once per in-scope row held up by an out-of-scope blocker
+     *  (AC 3) — the driver dedupes across picks and reports. */
+    onCrossScopeBlock?: (block: CrossScopeBlock) => void;
     model: string;
     now: () => Date;
     /** Non-ENOENT backlog read failures are surfaced here (EC-LOW-10). */
@@ -348,11 +386,34 @@ export function pickNextItem(
   // first-write-wins, so a hash pathologically duplicated across both
   // backlogs would otherwise be shadowed by its masked DEBUG copy and
   // become unpickable for the whole run (EC-LOW-11).
-  const ordered: DevRow[] =
+  const baseOrder: DevRow[] =
     opts.only === "dev"
       ? [...snapshot.dev, ...debugRows]
       : [...debugRows, ...snapshot.dev];
+  // mlc106 scope: computed on the RAW rows (before `excluded`/`--only`/lock
+  // masking) so the cross-scope blocker report names scope-caused holds, not
+  // "already attempted this run" ones.
+  const scope = opts.scope ?? emptyScope();
+  const scopeMask = buildScopeMask(baseOrder, scope, {
+    ...(opts.workstreamOf !== undefined ? { workstreamOf: opts.workstreamOf } : {}),
+  });
+  for (const block of scopeMask.crossScopeBlocks) opts.onCrossScopeBlock?.(block);
+  // `--items` dictates pick order (AC 3): list order beats backlog order.
+  const ordered = applyScopeOrder(baseOrder, scopeMask.order);
   const combined: DevRow[] = ordered.map((row) => {
+    // Scope masking is BROADER than the run-local masks below: an
+    // out-of-scope row must be unclaimable whatever its status, because
+    // reconcile also spawns `in-progress` rows carrying a crash record
+    // (reconcile.ts pickSpawnCandidate). Settled statuses are deliberately
+    // NOT rewritten — a `done` out-of-scope row has to keep answering
+    // blockersResolved for its in-scope dependents, which is the entire
+    // mask-don't-drop mechanism.
+    if (
+      scopeMask.masked.has(row.hash) &&
+      (row.status === "ready" || row.status === "in-progress")
+    ) {
+      return { ...row, status: "blocked" as const };
+    }
     if (
       row.status === "ready" &&
       (opts.excluded.has(row.hash) ||
@@ -467,6 +528,100 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
       return { exitCode: 4, refusedReason: "bad --until", summary: null, reportPath: null };
     }
   }
+  // ── Scope (mlc106) ──────────────────────────────────────────────────────
+  // Validated against the PARSED BACKLOG before anything is locked, written,
+  // or spawned: a typo'd `--epic` must exit 4, not run an empty night.
+  const scope = flags.scope ?? emptyScope();
+  const engineCfg = engineConfigFrom(merged);
+  const specWorkstreamCache = new Map<string, string | null>();
+  // One shared plan/ index for the whole run — resolving 120 rows would
+  // otherwise re-scan the plan dir 120 times, all before any lock is taken.
+  const planIndex: PlanSpecIndexCache = {};
+  const workstreamOf = (row: DevRow): string | null => {
+    if (specWorkstreamCache.has(row.hash)) {
+      return specWorkstreamCache.get(row.hash) ?? null;
+    }
+    let slug: string | null = null;
+    try {
+      const content = readFileSync(join(repoRoot, row.path), "utf8");
+      slug = resolveSpecWorkstream(
+        realEngineFs,
+        repoRoot,
+        engineCfg,
+        content,
+        parseFrontmatterValue,
+        planIndex,
+      ).slug;
+    } catch {
+      // Missing/unreadable spec — no membership. Conservative: a read
+      // failure must never pull an unrelated item INTO a scoped run.
+      slug = null;
+    }
+    specWorkstreamCache.set(row.hash, slug);
+    return slug;
+  };
+  if (!scopeIsEmpty(scope)) {
+    // Non-ENOENT read failures MUST surface here: an unreadable DEV.md
+    // otherwise parses as an empty backlog, and every `--epic` then fails
+    // with "no epic headings found" — a true refusal with a misleading
+    // reason, which sends the operator hunting a typo that isn't there
+    // (same EC-LOW-10 hazard pickNextItem's `warn` closes).
+    const scopeRows = [
+      ...parseDevMd(
+        readFileOr(join(repoRoot, "DEBUG.md"), "", (m) => out(`devx loop: WARN — ${m}`)),
+      ),
+      ...parseDevMd(
+        readFileOr(join(repoRoot, "DEV.md"), "", (m) => out(`devx loop: WARN — ${m}`)),
+      ),
+    ];
+    const scopeErrors = validateScope(scope, scopeRows, {
+      workstreamOf,
+      warn: (msg) => out(`devx loop: WARN — ${msg}`),
+      // Heading-declared epics, so `--epic X` isn't refused for a real
+      // section that simply has no rows yet (or whose rows are all done).
+      knownEpicKeys: [
+        ...parseEpicHeadings(readFileOr(join(repoRoot, "DEBUG.md"), "")),
+        ...parseEpicHeadings(readFileOr(join(repoRoot, "DEV.md"), "")),
+      ].flatMap((e) => (e.planHash !== null ? [e.slug, e.planHash] : [e.slug])),
+      only: flags.only ?? null,
+    });
+    if (scopeErrors.length > 0) {
+      for (const e of scopeErrors) out(`devx loop: ${e}`);
+      return {
+        exitCode: 4,
+        refusedReason: `bad scope flags: ${scopeErrors[0]}`,
+        summary: null,
+        reportPath: null,
+      };
+    }
+  }
+  const scopeDescriptor = describeScope(scope, flags.only ?? null);
+
+  // AC 3: an in-scope item blocked by an out-of-scope UNFINISHED item is
+  // reported, never silently skipped. From inside a scoped run the item just
+  // looks stuck; the blocking hash is the only actionable fact, so it goes
+  // to stdout, to the event stream, AND to the morning report. Deduped —
+  // pickNextItem recomputes the mask on every pass.
+  // Keyed by HASH ALONE, last-wins on the blocker list. Keying on
+  // `hash:blockers` instead would double-report the moment a peer loop lands
+  // one of two blockers — the mask is recomputed every pass, so the shrunken
+  // list is a new key — and that is precisely the multi-loop night this
+  // workstream exists for (review BH#3/EC#4).
+  const crossScopeByHash = new Map<string, CrossScopeBlock>();
+  /** Event sink, wired once the run id exists (post-admission). */
+  let crossScopeEvent: ((b: CrossScopeBlock) => void) | null = null;
+  const noteCrossScopeBlock = (b: CrossScopeBlock): void => {
+    const prev = crossScopeByHash.get(b.hash);
+    crossScopeByHash.set(b.hash, b);
+    // Announce once per (hash, blocker-set) change; re-announcing an
+    // unchanged hold every pass would bury the report.
+    if (prev !== undefined && prev.blockedBy.join(",") === b.blockedBy.join(",")) return;
+    out(
+      `loop: scope hold — ${b.hash} is in scope but blocked by out-of-scope unfinished item(s): ${b.blockedBy.join(", ")} — it will NOT be claimed this run`,
+    );
+    crossScopeEvent?.(b);
+  };
+
   const maxItems =
     flags.maxItems !== undefined ? Math.min(Math.floor(flags.maxItems), cfg.maxItems) : cfg.maxItems;
   const maxTotalTokens =
@@ -505,6 +660,9 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
       const pick = pickNextItem(repoRoot, {
         ...(flags.only !== undefined ? { only: flags.only } : {}),
         excluded,
+        scope,
+        workstreamOf,
+        onCrossScopeBlock: noteCrossScopeBlock,
         model,
         now,
         warn: (msg) => out(`loop: WARN — ${msg}`),
@@ -513,8 +671,11 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
       items.push({ hash: pick.hash, type: pick.type, title: pick.title, path: pick.path });
       excluded.add(pick.hash);
     }
-    const plan: DryRunPlan = { mode, budgets, items };
+    const plan: DryRunPlan = { mode, budgets, items, scope: scopeDescriptor };
     out(`devx loop --dry-run (mode ${mode})`);
+    // Scope line only when scoped — an unscoped dry run stays byte-identical
+    // to the pre-workstream capture (E-8 box 3).
+    if (scopeDescriptor !== null) out(`scope: ${scopeDescriptor}`);
     out(
       `budgets: ${maxItems} items · ${cfg.maxIterationsPerItem} iterations/item · ` +
         `${cfg.maxTokensPerItem.toLocaleString("en-US")} tokens/item · ` +
@@ -588,7 +749,6 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
   // same millisecond must not both observe N−1 live and both admit.
   // backlog.lock is the system's only blocking lock, so serializing here
   // introduces no new lock-ordering surface (design §Architecture 2).
-  const scope = flags.only !== undefined ? `only:${flags.only}` : null;
   let instance: InstanceHandle;
   try {
     const admitted = withBacklogLock(cacheDir, "loop-admission", () => {
@@ -599,7 +759,7 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
         handle: registerInstance(cacheDir, {
           runId,
           startedAt,
-          scope,
+          scope: scopeDescriptor,
           ...instanceProbes,
           ...(opts.acquireLock !== undefined ? { acquireLock: opts.acquireLock } : {}),
         }),
@@ -665,7 +825,16 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
     appendEvent(cacheDir, runId, name, fields, now);
   };
 
-  event("loop:start", { mode, budgets, pid: process.pid, runId, scope, mainHealth });
+  event("loop:start", {
+    mode,
+    budgets,
+    pid: process.pid,
+    runId,
+    scope: scopeDescriptor,
+    mainHealth,
+  });
+  crossScopeEvent = (b) =>
+    event("item:blocked-out-of-scope", { hash: b.hash, blockedBy: b.blockedBy });
   // Heartbeat cadence derives from manager.heartbeat_interval_s — the same
   // knob `devx next` uses for its freshness window (interval × 3), so a
   // config edit can't put the writer's cadence outside the reader's window
@@ -711,6 +880,9 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
       const pick = pickNextItem(repoRoot, {
         ...(flags.only !== undefined ? { only: flags.only } : {}),
         excluded,
+        scope,
+        workstreamOf,
+        onCrossScopeBlock: noteCrossScopeBlock,
         model,
         now,
         warn: (msg) => {
@@ -823,6 +995,7 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
             progress.iteration = n;
             beat();
           },
+          focus: scope.focus,
           ciPollMs: opts.ciPollMs,
           ciTimeoutMs: opts.ciTimeoutMs,
         });
@@ -929,6 +1102,15 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
           },
         }
       : {}),
+    scope: scopeDescriptor,
+    scopeMasks: scopeMasks(scope),
+    // Drop holds for items the run went on to attempt: a peer loop landing
+    // the blocker mid-run unblocks the item, and without this prune the same
+    // report would list it as merged under "## Items" AND as "never started"
+    // under "## Held by out-of-scope blockers" (review EC#4).
+    crossScopeBlocks: [...crossScopeByHash.values()].filter(
+      (b) => !items.some((i) => i.hash === b.hash),
+    ),
   };
   let reportPathOut: string | null = null;
   try {
@@ -1001,6 +1183,9 @@ interface RunItemArgs {
    *  heartbeat can report `iteration` without runItem knowing the registry
    *  exists (mlc105). */
   onIteration?: (iteration: number) => void;
+  /** `--focus` text (mlc106), passed through verbatim to every iteration
+   *  prompt as a Specialty directive. Null ⇒ no directive section. */
+  focus?: string | null;
   ciPollMs?: number;
   ciTimeoutMs?: number;
 }
@@ -2016,6 +2201,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       maxIterations: cfg.maxIterationsPerItem,
       priorAttempts: prior,
       ...(args.baseline !== null ? { mainRedBaseline: args.baseline } : {}),
+      focus: args.focus ?? null,
     });
     const prompt =
       pendingRepair !== null
