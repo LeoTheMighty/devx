@@ -125,6 +125,18 @@ Design §Architecture 6. Blocker status lookup is already global
 - 2026-07-29T00:45 — merged via PR #100 (squash → 1cdf435). check-hold
   clean, merge-gate `{"merge":true}`. Closes plan phase 6 and the
   multi-loop-concurrency execute stage; mlcret is now unblocked.
+- 2026-07-29T09:30 — bookkeeping erratum (mine): the mark-done commit
+  `ac0ccf2` was staged with `git add -A` and therefore also carried two
+  files belonging to the concurrent mss104 session — that spec's phase 2/3
+  status-log lines and `_devx/workstreams/mid-story-split/todo.md`. The
+  content is theirs and landed INTACT (complete entries, nothing truncated
+  or edited); only the commit attribution is wrong. Deliberately NOT
+  reverted: backing it out would delete a live peer's work from main, which
+  is strictly worse than a mis-attributed commit. Recorded here rather than
+  in their spec because they hold the claim and are actively writing that
+  file. Root cause is the contract I broke — CLAUDE.md/devx.md Phase 6 say
+  "stage only files relevant to this item, never `git add -A`", and this is
+  the exact multi-session collision that rule exists for.
 
 ## Links
 
