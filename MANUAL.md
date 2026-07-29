@@ -134,3 +134,37 @@ step↔threshold table + results record:
 - [ ] While you're in there (design § Unresolved): note which `/devx`
       command wins when both repo-level and user-level copies exist —
       record the observation in E-7's Results.
+
+## For multi-loop-concurrency — E-7 real night (filed by mlcret 2026-07-29)
+
+- [ ] **MV-mlc.1 — Run the E-7 supervised multi-loop night (G-2's only evidence).**
+  - Why: `multi-loop-concurrency` shipped all six stories and passed every
+    CI-runnable expectation (E-1…E-6 GREEN, E-8 4/4), but **G-2 is
+    unverified** — the P2 human checklist at
+    `_devx/workstreams/multi-loop-concurrency/evals/E-7_live-overnight.md`
+    was never run. `.devx-cache/loop/instances/` is empty and the newest
+    loop report predates the epic. An epic about making N concurrent loops
+    safe was itself built entirely by concurrent *interactive* sessions.
+    This is the outcome-scoring input for G-2 (due 2026-08-31).
+  - **Blocked until `dev-b931a1` lands (or you rebuild by hand).** The
+    globally-installed `devx` resolves to the main worktree's gitignored
+    `dist/`, last built 2026-07-28 17:04 — before mlc106 merged. Today
+    `devx loop --help | grep -c epic` returns `0`, so step 2 of the E-7
+    checklist would fail with commander's `unknown option`. Minimum
+    unblock: `npm run build` in the main checkout (or `npm run
+    install:global`), then confirm `devx loop --help` lists `--epic`.
+  - How: follow `evals/E-7_live-overnight.md` verbatim — it is the
+    Verified-by target and already carries the thresholds. In short:
+    confirm zero pending drift, start ≥2 loops with **different** scopes
+    (e.g. `devx loop --epic <a> --until 07:00` and `devx loop --epic <b>
+    --until 07:00`), check `devx next` row 1 lists both instances with
+    their scopes, keep the lid open per MV2.2, then run the morning review
+    reconstructing from disk.
+  - Thresholds: ≥1 merged PR per loop; 0 mechanical repairs needed in the
+    morning (no orphaned `locks/spec-*.lock`, no DEV.md drift rows, no
+    `[/]` rows without a live owner); no item in both reports' attempted
+    lists.
+  - Then: file the evidence into the workstream and score with
+    `devx outcome score 20eb6f` when it comes due.
+  - Spec: `dev/dev-mlcret-2026-07-28T09:04-retro-multi-loop-concurrency.md`
+    (retro E7); eval: `evals/E-7_live-overnight.md`.

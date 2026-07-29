@@ -43,7 +43,7 @@ Owner-requested 2026-07-28: N concurrent scoped `devx loop`s on one repo,
 error-proof even under overlapping scopes. Full race inventory (R1–R12) +
 seeded two-layer design live in the plan spec.
 
-- [x] `plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md` — Multi-loop concurrency: repo-global root/locking, backlog mutation lock, claim-contention handling, spec-lock lifecycle, loop instance registry + capacity admission, epic/workstream/`--items`/`--focus` scoping. Status: planned (all 4 gates passed 2026-07-28; 6 dev specs mlc101–mlc106 + mlcret emitted to DEV.md § Cross-cutting plans; stage: executing). Blocked-by: —. Related: db36af (doctor), lpf101 (preflight), c8e2d4 (usage governor), f1d6b2 (fleet — orthogonal, composes on top).
+- [x] `plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md` — Multi-loop concurrency: repo-global root/locking, backlog mutation lock, claim-contention handling, spec-lock lifecycle, loop instance registry + capacity admission, epic/workstream/`--items`/`--focus` scoping. Status: done (all 4 gates passed 2026-07-28; mlc101–mlc106 shipped via PRs #91/#93/#94/#96/#98/#100 — +8,388/−794 across 70 files, ~88 adversarial-review findings fixed in-place; retro 2026-07-29 → `_devx/workstreams/multi-loop-concurrency/RETRO-2026-07-29.md`; stage: done; outcome armed → 2026-08-31 on G-2, whose E-7 real night is still unrun — MANUAL MV-mlc.1). Blocked-by: —. Related: db36af (doctor), lpf101 (preflight), c8e2d4 (usage governor), f1d6b2 (fleet — orthogonal, composes on top).
 
 ## Mid-story split (2026-07-28)
 

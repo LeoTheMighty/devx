@@ -43,7 +43,15 @@ import {
 
 let fixture: Fixture | null = null;
 afterEach(() => {
-  if (fixture) rmSync(fixture.base, { recursive: true, force: true });
+  if (fixture) rmSync(fixture.base, {
+    recursive: true,
+    force: true,
+    // Belt-and-braces against the ENOTEMPTY teardown race; makeFixture
+    // disables the auto-gc that caused it, this survives anything else
+    // that writes into the fixture as it is being torn down.
+    maxRetries: 10,
+    retryDelay: 50,
+  });
   fixture = null;
 });
 

@@ -44,10 +44,23 @@ export function makeFixture(specs: SpecFixture[]): Fixture {
   const origin = join(base, "origin.git");
   const repoRoot = join(base, "repo");
   execFileSync("git", ["init", "--bare", "-q", "-b", "main", origin], { encoding: "utf8" });
+  // Teardown race (CI red on PR #103, and a lost local red before it): a push
+  // into a bare repo can fire `git gc --auto` in the BACKGROUND on the receive
+  // side, which keeps creating objects/locks under origin.git after `git push`
+  // has already returned. afterEach's rmSync then walks a directory that is
+  // being written to and dies with ENOTEMPTY. Only the split/push-bearing
+  // scenarios were affected, which is why it presented as a rare flake rather
+  // than a consistent failure. Disable auto-gc on BOTH sides so nothing
+  // outlives the command that triggered it.
+  g(origin, "config", "gc.auto", "0");
+  g(origin, "config", "receive.autogc", "false");
+  g(origin, "config", "maintenance.auto", "false");
   execFileSync("git", ["clone", "-q", origin, repoRoot], { encoding: "utf8" });
   g(repoRoot, "config", "user.email", "loop@test");
   g(repoRoot, "config", "user.name", "loop");
   g(repoRoot, "config", "commit.gpgsign", "false");
+  g(repoRoot, "config", "gc.auto", "0");
+  g(repoRoot, "config", "maintenance.auto", "false");
 
   const devRows: string[] = ["# DEV — backlog", ""];
   const debugRows: string[] = ["# DEBUG — backlog", ""];
