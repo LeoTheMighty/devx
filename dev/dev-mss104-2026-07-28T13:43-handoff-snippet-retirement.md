@@ -97,6 +97,18 @@ as written — cite, don't edit.
   ambiguous against `performSplit`'s ownership guard — split must land
   after the merge but BEFORE Phase 8's after-merge bookkeeping releases
   the lock, else exit 3. Re-review of the fixed hunks clean.
+- phase 5: local CI green — `npm test` (schema smoke + config io/validate +
+  build + typecheck + vitest) = 128 files / 2531 tests passed, exit 0.
+  E-2 eval GREEN. Targeted re-run after the final review fix (phase9-split
+  + phase1-resume + phase8-discipline + status-log-discipline +
+  skills-sync) = 48 passed; `npm run typecheck` clean.
+- phase 7: PR opened — https://github.com/LeoTheMighty/devx/pull/101
+  (body rendered via `devx pr-body`; no unresolved placeholders).
+- note: this spec's phase 2/3/4 status lines and the workstream todo.md
+  edits were swept onto main by a concurrent session's `git add -A`
+  (commit ac0ccf2; erratum recorded by that session in ba3c65b). Content
+  landed intact — attribution only. Recorded here so the audit trail
+  reads correctly from this spec alone.
 
 ## Links
 
