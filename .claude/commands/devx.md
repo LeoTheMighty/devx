@@ -252,6 +252,8 @@ Steps:
    - Re-run until green.
 6. Do NOT proceed to commit until every required gate passes for the touched surface.
 
+**Prose-bearing diffs: finish editing before you start the gate.** The skill-body discipline tests (`devx-skill-phase*.test.ts`, `skills-sync.test.ts`, `devx-status-log-discipline.test.ts`) read their subject files from disk at test time, so editing `.claude/commands/*.md`, `skills/*.md`, or a spec while the suite is running produces a red that reflects a torn read, not a real failure — and on a long suite that red costs a full re-run to disprove. Batch every prose fix first, run the targeted discipline files (sub-second), and only then start the full gate. If a prose fix becomes necessary after the gate is underway, let the run finish, apply it, and re-run the affected files rather than racing it.
+
 If the config is missing required gate commands, append an item to `INTERVIEW.md` asking the user to supply them, mark the spec `blocked`, and stop.
 
 ### Phase 6: Commit
@@ -410,7 +412,8 @@ After merge:
 3. Delete local branch: `git branch -D <branch-name>` (the `--delete-branch` flag on `gh pr merge` handles the remote).
 4. Update the spec file: `status: done`, append status-log line `merged via PR #<n> (squash → <merge-sha-short>)`.
 5. Update `DEV.md`: flip the checkbox `[/]` → `[x]`, append the PR URL inline in the format used by prior entries: `PR: https://github.com/.../pull/<n> (merged <merge-sha-short>)`. If the spec was abandoned/superseded, wrap the entry line in `~~…~~` instead.
-7. Commit all of (4-6) on `main` with message `chore: mark <hash> done after PR #<n> merge` and push.
+6. If the item belongs to a workstream, run `devx todo sync <plan-hash>` so the phase line trues.
+7. Commit steps 4–6 on `main` with message `chore: mark <hash> done after PR #<n> merge` and push. **Stage by explicit pathspec — `git add <spec> <backlog> [workstream todo]`, never `git add -A`.** This is the same rule as Phase 6, and it matters more here: `main` is the one tree every concurrent session shares, so a blanket stage silently commits peers' in-flight spec and todo edits under your authorship. That has happened twice (2026-07-29 erratum `ba3c65b`); the content survives but the audit trail lies about who wrote it.
 8. File gaps:
    - **Test gaps** observed during implementation → new `test/test-*.md` specs + `TEST.md` entries.
    - **Bugs discovered but out of scope** → new `debug/debug-*.md` specs + `DEBUG.md` entries.

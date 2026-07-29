@@ -290,6 +290,38 @@ epic's evidence; do not treat as promoted rows.*
 
 ---
 
+## mid-story-split — candidates (learn 2026-07-29, for mssret)
+
+*Added by a `/devx-learn` run over the mss104 session (PR #101), user-pruned.
+Candidates only — mssret promotes, merges, or strikes these against the full
+workstream's evidence; do not treat as promoted rows.*
+
+- [C1] [med] [docs] **When a phase carries a mechanical eval, the eval's scan
+  scope — not the AC enumeration — is the real acceptance surface.** mss104's
+  ACs 1–4 named the files to sweep, but E-2 greps all of `.claude/commands/`,
+  `src/`, `test/`, `docs/`, `v2/`; two stale comment tokens in
+  `src/lib/devx/split.ts` kept the eval RED and appeared in no AC. The choice
+  at execute time was to widen the sweep or narrow the eval, and narrowing a
+  permanent invariant to match an incomplete AC list would have been the
+  wrong trade. Generalization for `/devx-plan`: when a phase's verification
+  is an eval, derive the AC file list *from* the eval's scope rather than
+  enumerating by hand, or state explicitly that the eval is authoritative
+  and the AC list illustrative. — applied within mss104 (tokens swept, PR
+  #101); pending mssret promotion review.
+- [C2] [med] [docs] **A test-only-lock that is retired must be ported to its
+  replacement in the same PR, not just deleted.** dvx107's `parseHandoffSnippet`
+  pinned skill-body prose that mss104 deleted; deleting the validator alone
+  would have silently un-pinned Phase 9 at the exact moment its contract
+  changed. `test/devx-skill-phase9-split.test.ts` carries `phase9Body()`
+  across verbatim (including the load-bearing `^(### |## )` bound, itself a
+  dvx107 review finding). — applied in PR #101 as an append-only amendment to
+  `§ epic-devx-skill` E12 and the Cross-epic shape-(c) row; recorded here so
+  mssret sees it without re-deriving. Sub-pattern concordance deliberately
+  left at 1 epic: a successor to the same lock is not an independent
+  observation.
+
+---
+
 ## Cross-epic patterns
 
 Findings that recur across multiple epics get promoted up to this section once they hit ≥3 concordant retros (the Phase 5 `epic-learn-agent` threshold; we mirror it manually here). These are higher-confidence and warrant skill / template / `CLAUDE.md` edits rather than memory.

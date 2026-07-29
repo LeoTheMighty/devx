@@ -133,15 +133,28 @@ describe("devx skill — Phase 8 dispatch discipline (dvx106)", () => {
   it("Phase 8 after-merge bookkeeping is ONE commit on main, pushed (AC #4)", () => {
     const body = phase8Body(loadSkill());
     // The bookkeeping commit must be a single commit covering DEV.md +
-    // spec status + sprint-status + PR URL append.
-    expect(body).toMatch(/(one commit|single commit|all of \(\d+-\d+\) on `main`)/i);
+    // spec status + workstream todo + PR URL append.
+    //
+    // The `all of (N-M)` alternative below is the pre-2026-07-29 phrasing,
+    // kept so this assertion stays about "it's ONE commit" rather than
+    // about wording. The renumbering fix replaced it with `steps N–M`
+    // (en-dash); the contiguity of that range is asserted separately in the
+    // staging-discipline describe block below.
+    expect(body).toMatch(
+      /(one commit|single commit|all of \(\d+-\d+\) on `main`|Commit steps \d+[–-]\d+ on `main`)/i,
+    );
     expect(body).toMatch(/chore: mark .* done after PR/);
     // AC #4 explicitly says the commit is pushed to origin/main. The
     // feedback_devx_push_claim_before_pr.md memory tracks the exact
     // regression mode of forgetting this push — pinning the word here
     // catches a future maintainer who drops "and push" from the
     // bookkeeping step.
-    expect(body).toMatch(/Commit all of \(\d+-\d+\)[\s\S]{0,200}push/i);
+    // Both phrasings accepted (see the note above); the window is widened
+    // because the 2026-07-29 staging-discipline sentence now sits between
+    // the commit instruction and the word "push".
+    expect(body).toMatch(
+      /Commit (all of \(\d+-\d+\)|steps \d+[–-]\d+)[\s\S]{0,400}push/i,
+    );
   });
 
   it("the 'Behavior by mode' enumeration is REMOVED from the skill body (AC #5)", () => {
@@ -182,5 +195,64 @@ describe("devx skill — Phase 8 dispatch discipline (dvx106)", () => {
     expect(body).toMatch(
       /YOLO.*auto[- ]?merge|YOLO.*merges (its own|automatically)|fully autonomous/,
     );
+  });
+});
+
+/**
+ * Explicit-pathspec staging discipline (learn 2026-07-29).
+ *
+ * The `never git add -A` rule lived only in Phase 6, which covers the
+ * feature-branch commit inside an isolated worktree — the one place a
+ * blanket stage is nearly harmless. Phase 8's after-merge bookkeeping
+ * commits on `main`, the single tree every concurrent session shares, and
+ * carried no staging instruction at all. A `git add -A` there sweeps peers'
+ * in-flight spec and todo edits into your commit: the content survives, but
+ * authorship is wrong and the audit trail lies. Observed twice, most
+ * recently erratum `ba3c65b` (commit `ac0ccf2` carried two files belonging
+ * to a live mss104 session).
+ *
+ * Pinned in BOTH phases so a future edit can't quietly drop either copy.
+ */
+describe("devx skill — explicit-pathspec staging discipline (learn 2026-07-29)", () => {
+  const NEVER_ADD_ALL = /never `git add -A`/;
+
+  it("Phase 6 keeps its explicit-pathspec rule", () => {
+    const skill = loadSkill();
+    const phase6 = skill.match(/^### Phase 6:[\s\S]*?(?=^### )/m)?.[0] ?? "";
+    expect(phase6).not.toBe("");
+    expect(phase6).toMatch(NEVER_ADD_ALL);
+  });
+
+  it("Phase 8's after-merge commit step carries the same rule", () => {
+    const body = phase8Body(loadSkill());
+    // Phase 8 is where it actually bites — main is shared. Asserting on the
+    // phase body (not the whole file) is what makes this independent of the
+    // Phase 6 assertion above; a single stray mention elsewhere won't
+    // satisfy it.
+    expect(body).toMatch(NEVER_ADD_ALL);
+  });
+
+  it("Phase 8's after-merge list is contiguously numbered and its commit step references a real range", () => {
+    const body = phase8Body(loadSkill());
+    const afterMerge = body.slice(body.indexOf("After merge:"));
+    expect(afterMerge).not.toBe("");
+
+    // The list previously ran 1,2,3,4,5,7,8,9 — no step 6 — while step 7
+    // instructed "Commit all of (4-6)", a range whose upper bound did not
+    // exist. An agent cannot resolve that; renumbering is the fix and this
+    // asserts it stays fixed.
+    const numbers = [...afterMerge.matchAll(/^(\d+)\. /gm)].map((m) => Number(m[1]));
+    expect(numbers.length).toBeGreaterThanOrEqual(8);
+    for (let i = 0; i < numbers.length; i += 1) {
+      expect(numbers[i]).toBe(i + 1);
+    }
+
+    // Any "steps N–M" style reference in the commit step must name bounds
+    // that exist in the list.
+    const range = afterMerge.match(/steps (\d+)[–-](\d+)/);
+    expect(range).not.toBeNull();
+    const [, lo, hi] = range as RegExpMatchArray;
+    expect(numbers).toContain(Number(lo));
+    expect(numbers).toContain(Number(hi));
   });
 });
