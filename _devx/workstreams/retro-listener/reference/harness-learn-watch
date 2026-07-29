@@ -1,0 +1,603 @@
+#!/usr/bin/env python3
+"""harness-learn-watch — the listening half of the §24 retro listener.
+
+Run it in a terminal window and leave it: it drains ~/.claude/harness/learn-queue.jsonl
+(fed by the plugin's Stop hook, hooks/learn-listener.py), one retro at a time. For each
+queued session it waits until the session is actually over (the hook's SessionEnd
+marker, or the transcript going idle), then spawns an INTERACTIVE fork of that session —
+
+    claude --resume <session-id> --fork-session "/harness-learn"
+
+— in a new tmux window (when run inside tmux) or Terminal.app window (macOS). Ending
+that session any normal way (/exit, Ctrl-D, double Ctrl-C, closing the tab) is what
+advances to the next queued retro; there is no watcher-specific gesture.
+
+Serial on purpose: concurrent retros collide in the one harness-repo checkout and race
+harness-learn's open-PR dedupe — so a second watcher refuses to start while one is
+running. Design: docs/updates/2026-07-28-retro-listener.md
+
+Usage:
+  harness-learn-watch                  # watch (default): drain the queue, serially
+  harness-learn-watch --dry-run        # print spawn commands; changes nothing, and is
+                                       # not refused while a real watcher is running
+  harness-learn-watch list             # show pending + recently processed entries
+  harness-learn-watch requeue <sid>    # put a processed session back on the queue
+
+Environment:
+  HARNESS_LEARN_HOME           queue/marker dir (default ~/.claude/harness)
+  HARNESS_LEARN_IDLE_MINUTES   transcript-idle fallback before a session counts as
+                               over when no SessionEnd marker arrived (default 15)
+  HARNESS_LEARN_RETRO_TIMEOUT_MINUTES
+                               stop waiting on a spawned retro's completion marker
+                               and advance with a warning (default 360)
+"""
+
+import calendar
+import fcntl
+import json
+import os
+import shlex
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HOME = Path(os.environ.get("HARNESS_LEARN_HOME") or Path.home() / ".claude" / "harness")
+QUEUE = HOME / "learn-queue.jsonl"
+DONE = HOME / "learn-queue.done.jsonl"
+MARKERS = HOME / "markers"
+REPOS = HOME / "repos.json"  # {"<cwd>": "allow" | "deny"} — the per-repo allowlist
+LOCK = HOME / ".queue.lock"  # shared with the hook's append
+WATCHER_LOCK = HOME / ".watcher.lock"  # held for a watcher's whole life — one drainer only
+
+
+
+def _env_minutes(name, default):
+    """Minutes from the environment, in seconds. A typo'd override must not take
+    the watcher down at import — warn and fall back."""
+    raw = os.environ.get(name)
+    if not raw:
+        return default * 60
+    try:
+        return int(raw) * 60
+    except ValueError:
+        print(f"warning: {name}={raw!r} is not a number — using {default}", file=sys.stderr)
+        return default * 60
+
+
+IDLE_SECONDS = _env_minutes("HARNESS_LEARN_IDLE_MINUTES", 15)
+RETRO_TIMEOUT_SECONDS = _env_minutes("HARNESS_LEARN_RETRO_TIMEOUT_MINUTES", 360)
+POLL_SECONDS = 5
+
+
+def read_jsonl(path):
+    entries = []
+    if path.exists():
+        for line in path.read_text().splitlines():
+            try:
+                entries.append(json.loads(line))
+            except ValueError:
+                continue
+    return entries
+
+
+def append_jsonl(path, entry):
+    HOME.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
+def locked(fn):
+    HOME.mkdir(parents=True, exist_ok=True)
+    with open(LOCK, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return fn()
+
+
+_singleton = None  # module-level on purpose: a GC'd file object drops its flock
+
+
+def claim_singleton():
+    """Refuse to start when another watcher is already draining the queue.
+
+    Serialism is the invariant this whole design rests on — concurrent retros collide
+    in the one harness-repo checkout and race harness-learn's open-PR dedupe — and until
+    now it was enforced only by there happening to be one process. `locked()` guards the
+    queue *rewrite*, not pick → spawn → finish, so two watchers both take the head entry:
+    two retro tabs for one session, and two `completed` rows for one retro in the done
+    log. Not contrived — the README both says "leave it running in a spare terminal" and
+    gives a `nohup` line, and a watcher that survived a laptop sleep is invisible.
+
+    Separate inode from `LOCK` so a long-held watcher lock can't block the hook's append.
+    """
+    global _singleton
+    HOME.mkdir(parents=True, exist_ok=True)
+    _singleton = open(WATCHER_LOCK, "w")
+    try:
+        fcntl.flock(_singleton, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        sys.exit(
+            f"another harness-learn-watch is already draining {QUEUE} — retros are serial "
+            f"by design (see the module docstring); stop that one first, or "
+            f"`harness-learn-watch list` to see the queue. Lock: {WATCHER_LOCK}"
+        )
+
+
+def remove_from_queue(sid):
+    def _remove():
+        kept = [e for e in read_jsonl(QUEUE) if e.get("session_id") != sid]
+        tmp = QUEUE.with_suffix(".tmp")
+        tmp.write_text("".join(json.dumps(e) + "\n" for e in kept))
+        os.replace(tmp, QUEUE)
+
+    locked(_remove)
+
+
+def queued_at(entry):
+    """When the hook enqueued this entry, in epoch seconds, or None if undatable.
+
+    Deliberately the *original* `ts` rather than `requeued_ts`: requeue keeps `ts` and
+    adds its own stamp, so an explicitly requeued old session stays instantly ready
+    instead of serving a fresh idle window before it may run.
+    """
+    raw = entry.get("ts")
+    if not raw:
+        return None
+    try:
+        return calendar.timegm(time.strptime(raw, "%Y-%m-%dT%H:%M:%SZ"))
+    except ValueError:
+        return None
+
+
+def session_over(entry):
+    """The session is over when the hook saw SessionEnd, or nothing has been written
+    to the transcript for the idle window.
+
+    **No transcript to stat is not proof the session ended.** The hook records
+    `payload.get("transcript_path")`, so an absent field would otherwise collapse
+    "wait out the idle window" into "spawn a focus-stealing tab right now, mid-work" —
+    the same outcome `NO_FAST_PATH_REASONS` exists to prevent, reached from the other
+    side. Age the entry out against its own queue timestamp instead, which makes this
+    path fail-safe rather than fail-open.
+    """
+    if entry.get("session_id") and (MARKERS / f"{entry['session_id']}.ended").exists():
+        return True
+    tp = entry.get("transcript_path")
+    if not tp or not os.path.exists(tp):
+        queued = queued_at(entry)
+        # An undatable entry has no age to check — only reachable via a hand-edited
+        # queue, since the hook always writes `ts`. Serve it rather than wedging the
+        # serial queue on it forever, which is the worse of the two failures.
+        return True if queued is None else time.time() - queued > IDLE_SECONDS
+    return time.time() - os.stat(tp).st_mtime > IDLE_SECONDS
+
+
+_REPO_KEY_CACHE = {}
+
+
+def repo_key(cwd):
+    """Allowlist key: the git repo root, so harness sessions run from two
+    subdirectories of one repo are one decision rather than two prompts.
+
+    Memoized because the watcher is a long-lived poll loop: `pick_ready` resolves a
+    key for every ready entry it scans, every pass, so an unserved backlog forked
+    `git rev-parse` indefinitely (4 entries at POLL_SECONDS=5 is ~69k forks/day). The
+    key is a pure function of `cwd` for any lifetime that matters here — a repo root
+    moving under a running watcher is worth a restart, not a fork per poll.
+    """
+    if not cwd:
+        return ""
+    if cwd in _REPO_KEY_CACHE:
+        return _REPO_KEY_CACHE[cwd]
+    _REPO_KEY_CACHE[cwd] = key = _resolve_repo_key(cwd)
+    return key
+
+
+def _resolve_repo_key(cwd):
+    try:
+        out = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            return out.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return cwd  # not a git checkout (or git unavailable) — the path is the identity
+
+
+def load_repos():
+    try:
+        return json.loads(REPOS.read_text()) if REPOS.exists() else {}
+    except ValueError:
+        return {}
+
+
+def repo_lookup(cwd):
+    """The recorded decision for this repo, or None if it's never been reviewed.
+    Never prompts — the watcher uses this to tell servable entries from ones that
+    need a human at a terminal."""
+    repos = load_repos()
+    for key in (repo_key(cwd), cwd):  # cwd: keys written before repo-root keying
+        if key in repos:
+            return repos[key]
+    return None
+
+
+def can_prompt():
+    """True only if we can actually read from the terminal without being stopped.
+
+    `isatty()` alone is not enough. GNU `nohup` redirects stdin from /dev/null when
+    it's a terminal, so on Linux a backgrounded watcher reads as non-interactive —
+    but **BSD/macOS `nohup` only redirects stdout/stderr**, leaving stdin on the tty.
+    There `isatty()` is True, `input()` reads from the terminal as a background job,
+    and the process takes SIGTTIN and stops — the exact opposite of the documented
+    "skips unreviewed repos rather than blocking". Comparing our process group to the
+    terminal's foreground group is the platform-independent test.
+    """
+    try:
+        if not sys.stdin.isatty():
+            return False
+        return os.getpgrp() == os.tcgetpgrp(sys.stdin.fileno())
+    except OSError:
+        return False  # no controlling terminal, or stdin isn't one
+
+
+def repo_decision(cwd, interactive):
+    known = repo_lookup(cwd)
+    if known is not None:
+        return known
+    # Re-check rather than trusting the startup value: a watcher Ctrl-Z'd and `bg`'d
+    # after launch is no longer in the terminal's foreground group, and `input()` there
+    # does not raise — it takes SIGTTIN and *stops* the process, which no `except`
+    # clause can cover. can_prompt() is a couple of syscalls, so ask it again here.
+    if not interactive or not can_prompt():
+        return "unknown"
+    key = repo_key(cwd)
+    try:
+        answer = input(f"\nRetro queued for a session in {key} — auto-spawn retros for this repo? [y/N] ")
+    except (EOFError, OSError):
+        # stdin went away between that check and this read; the caller drops to
+        # non-interactive rather than looping on an unanswerable prompt.
+        return "unknown"
+    decision = "allow" if answer.strip().lower() in ("y", "yes") else "deny"
+    repos = load_repos()
+    repos[key] = decision
+    HOME.mkdir(parents=True, exist_ok=True)
+    REPOS.write_text(json.dumps(repos, indent=2) + "\n")
+    return decision
+
+
+def finish(entry, outcome):
+    sid = entry.get("session_id")  # .get, so a hand-edited queue line can still be retired
+    done_entry = dict(entry)
+    done_entry["processed_ts"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    done_entry["outcome"] = outcome
+    append_jsonl(DONE, done_entry)
+    remove_from_queue(sid)  # sid None clears exactly the id-less lines
+    if not sid:
+        return
+    for suffix in (".ended", ".done"):
+        marker = MARKERS / f"{sid}{suffix}"
+        if marker.exists():
+            marker.unlink()
+
+
+def wrapper_command(sid, cwd, done_marker):
+    """The shell the spawned tab runs: the retro, wrapped so its completion marker
+    lands on every exit path and carries the exit status. See spawn() for why.
+
+    Exactly one write on every path, so there's no race between a signal trap and
+    an EXIT trap (bash defers a trap until the foreground command returns, so both
+    firing would make the recorded outcome depend on their ordering). The signal
+    trap exits immediately rather than falling through to the status write. There
+    is deliberately **no EXIT trap** — see spawn()'s note.
+
+    The signal trap **reads** the status rather than asserting one. That same trap
+    deferral cuts the other way: a single Ctrl-C in Claude Code clears the input line
+    instead of exiting, so the SIGINT is absorbed, `claude` goes on to exit 0, and a
+    trap hard-coding `w signal` would file a cleanly-finished retro as interrupted.
+    `rc=$?` gets both directions right — an absorbed Ctrl-C records `0`, while a
+    closed tab records `129` (128+SIGHUP), which await_retro's `>= 128` branch already
+    reads as interrupted.
+
+    `HARNESS_RETRO=1` bounds the loop. The hook matches on message *content*, not
+    authorship, so a retro that quotes the §24 sentence while mining it — which is
+    /harness-learn's whole job — would queue itself, and its child could do it
+    again: the fork gets a fresh session id every time, so the dedupe never catches
+    it. The variable is inherited by every hook `claude` runs, and the hook returns
+    early when it's set, which makes "the loop can't self-trigger" mechanical
+    rather than a property of how the retro happens to word its output.
+    """
+    return (
+        f"M={shlex.quote(str(done_marker))}; "
+        'w() { printf "%s" "$1" > "$M.tmp" && mv "$M.tmp" "$M"; }; '
+        "trap 'rc=$?; w \"$rc\"; exit \"$rc\"' HUP INT TERM; "
+        f"cd {shlex.quote(cwd)} || {{ w error-cd; exit 1; }}; "
+        f'HARNESS_RETRO=1 claude --resume {shlex.quote(sid)} --fork-session "/harness-learn"; '
+        'w "$?"'
+    )
+
+
+def spawn(entry, dry_run):
+    """Open the interactive retro in a new tmux window / Terminal.app window.
+
+    The spawned process isn't our child, so completion is signalled through a
+    marker file. Two things the naive `claude …; touch <marker>` got wrong:
+
+    - **The marker must survive a signal.** Closing the tab (a documented way to
+      end a retro) and `tmux kill-window` both deliver SIGHUP, which kills the
+      shell before a trailing `touch` ever runs — wedging the queue forever on
+      the one gesture the README advertises. Trapping HUP/INT/TERM — and
+      deliberately *not* EXIT, which would race the signal trap and make the
+      recorded outcome ordering-dependent — writes the marker exactly once on
+      every exit path a shell can still see.
+    - **The marker must carry the exit status.** Joining with `;` discards
+      `claude`'s status, so a fork that failed (compacted history, moved project
+      dir, stale session id) was filed in the done log as a success. The marker
+      now holds the status, and `learn-queue.done.jsonl` can distinguish a retro
+      that ran from one that never started.
+
+    Marker contents: `0` = clean exit · `128+N` = killed by signal N (tab closed) ·
+    another nonzero number = `claude` failed · `error-cd` = cwd is gone.
+    Written via a temp file + rename so the watcher never reads a partial marker.
+
+    Returns `"spawned"` when a window was opened, `"manual"` when the command was
+    handed to the human instead (nothing to wait on), `"dry-run"` when it was only
+    printed, or `False` on a failed spawn.
+    """
+    # Both hard-indexed on purpose: cmd_watch retires id- or cwd-less entries as
+    # error-malformed before ever spawning, so a KeyError here is a real bug upstream.
+    sid = entry["session_id"]
+    done_marker = MARKERS / f"{sid}.done"
+    cmd = wrapper_command(sid, entry["cwd"], done_marker)
+
+    if dry_run:
+        # Print and touch nothing. The old branch faked a `0` marker, which walked the
+        # entry all the way through await_retro → finish: a `--dry-run` meant to check
+        # someone's setup silently drained every pending retro and wrote `completed`
+        # rows for retros that never ran — into the log the phase-2 debate rests on.
+        print(f"  [dry-run] would spawn: {cmd}")
+        return "dry-run"
+
+    MARKERS.mkdir(parents=True, exist_ok=True)
+    if done_marker.exists():
+        done_marker.unlink()  # a stale marker (e.g. from a requeue) would insta-complete
+    if os.environ.get("TMUX"):
+        result = subprocess.run(["tmux", "new-window", "-n", "harness-retro", cmd])
+        return "spawned" if result.returncode == 0 else False
+    if sys.platform == "darwin":
+        escaped = cmd.replace("\\", "\\\\").replace('"', '\\"')
+        result = subprocess.run(
+            [
+                "osascript",
+                "-e", f'tell application "Terminal" to do script "{escaped}"',
+                "-e", 'tell application "Terminal" to activate',
+            ],
+            capture_output=True,
+        )
+        return "spawned" if result.returncode == 0 else False
+    # No tmux, not macOS: hand the command to the human. Deliberately NOT waited on —
+    # the marker it eventually writes is one only a human can trigger, so blocking on it
+    # held the serial queue for the full retro timeout (default 6h) per entry, on a
+    # branch where nothing was actually spawned to serialize against. The entry is filed
+    # as `manual` and the queue moves on; the pasted command still runs whenever they
+    # get to it, and `requeue` puts it back if they want the watcher to track it.
+    print("  no tmux session and not macOS — run this yourself in another terminal:")
+    print(f"    {cmd}")
+    return "manual"
+
+
+def await_retro(sid):
+    """Wait for the spawned retro's marker and translate it into an outcome.
+
+    Bounded: the wrapper's trap covers every exit path a shell can see, but a
+    SIGKILL'd tab still leaves nothing behind — so this degrades to a warning
+    rather than wedging the queue (and every entry behind it) forever.
+    """
+    done_marker = MARKERS / f"{sid}.done"
+    deadline = time.time() + RETRO_TIMEOUT_SECONDS
+    while not done_marker.exists():
+        if time.time() >= deadline:
+            return "timeout"
+        time.sleep(2)
+    try:
+        status = done_marker.read_text().strip()
+    except OSError:
+        status = ""
+    if status in ("", "0"):
+        return "completed"
+    if status == "signal":
+        return "completed-interrupted"  # markers written by a pre-`rc=$?` wrapper, still in flight
+    if status == "error-cd":
+        return "error-cd"
+    # 128+N means `claude` was killed by signal N — the tab went away, which is a
+    # user gesture, not a fork that failed to start. Only a real nonzero exit is.
+    if status.isdigit() and int(status) >= 128:
+        return "completed-interrupted"
+    return f"error-fork:{status}"
+
+
+def pick_ready(interactive, skip=frozenset()):
+    """The first ready entry we can actually serve, plus the ready ones we can't.
+
+    Non-interactive (`nohup harness-learn-watch < /dev/null > log &`) can't answer the allow
+    prompt, so an unreviewed repo is unservable — skipping past it keeps one
+    unknown repo from starving every other repo's retro permanently.
+
+    `skip` holds session ids this run has already dealt with without consuming them,
+    which is only --dry-run: nothing is filed, so the loop would otherwise re-pick the
+    same head entry and re-print it every pass.
+    """
+    unservable = []
+    for e in read_jsonl(QUEUE):
+        if e.get("session_id") in skip:
+            continue
+        if not session_over(e):
+            continue
+        if not interactive and repo_lookup(e.get("cwd", "")) is None:
+            unservable.append(e)
+            continue
+        return e, unservable
+    return None, unservable
+
+
+def cmd_watch(dry_run):
+    # --dry-run is exempt: it never drains (retire() only remembers, nothing is filed
+    # or rewritten), and the steady state it exists to check — "leave it running in a
+    # spare terminal" — is precisely one where a watcher already holds the lock. The
+    # singleton guards drainers.
+    if not dry_run:
+        claim_singleton()
+    pending = read_jsonl(QUEUE)
+    print(f"harness-learn-watch: {len(pending)} pending · queue {QUEUE}")
+    print("(retros spawn one at a time — end one with /exit, Ctrl-D, or by closing its tab, and the next follows)")
+    if dry_run:
+        print("(--dry-run: printing spawn commands only — the queue and done log are left alone)")
+    interactive = can_prompt()
+    # Once-per-session status lines, keyed by (kind, sid): a session noted as
+    # "waiting to go idle" must still be able to report "unreviewed repo" later.
+    noted = set()
+    seen = set()  # dry-run only: dealt with, but deliberately not consumed
+
+    def note(kind, sid, message):
+        if (kind, sid) not in noted:
+            print(message)
+            noted.add((kind, sid))
+
+    def retire(entry, outcome):
+        """Advance past this entry. `--dry-run` promises to change nothing, so there it
+        remembers the entry instead of filing it — no done-log row, nothing consumed."""
+        if dry_run:
+            seen.add(entry.get("session_id"))
+        else:
+            finish(entry, outcome)
+
+    while True:
+        entry, unservable = pick_ready(interactive, seen)
+        for e in unservable:
+            sid = e.get("session_id") or "?"
+            note("unreviewed", sid,
+                 f"  skipping {sid[:8]}… — unreviewed repo ({e.get('cwd')}); "
+                 f"run the watcher in a terminal once to answer the allow prompt")
+        if entry is None:
+            for e in read_jsonl(QUEUE):
+                if e.get("session_id") not in seen and not session_over(e):
+                    sid = e.get("session_id") or "?"
+                    note("idle", sid,
+                         f"  waiting for session {sid[:8]}… ({e.get('cwd', '?')}) to go idle")
+            time.sleep(POLL_SECONDS)
+            continue
+
+        sid = entry.get("session_id")
+        if not sid:
+            # A hand-edited queue line with no session id: there is nothing to resume, so
+            # retire it rather than crashing the watcher or wedging the serial queue on it.
+            print(f"  discarding a queue line with no session_id: {json.dumps(entry)}")
+            retire(entry, "error-malformed")
+            continue
+        if not entry.get("cwd"):
+            # The hook records payload.get("cwd"), so a null is writable by the normal
+            # path, not just a hand-edit — and past this point a blank cwd only
+            # misbehaves: spawn() would KeyError before finish() runs (re-crashing on
+            # the same head entry every restart), `cd ''` is a no-op so the fork runs
+            # in the wrong directory and files as error-fork instead of error-cd, and
+            # repo_key(None) == "" lets the allow prompt poison the allowlist with
+            # {"": "allow"}. Sessions are per-project: without a directory there is
+            # nothing to resume in, so retire it like the id-less line above.
+            print(f"  discarding a queue line with no cwd: {json.dumps(entry)}")
+            retire(entry, "error-malformed")
+            continue
+        decision = repo_decision(entry.get("cwd", ""), interactive)
+        if decision == "deny":
+            print(f"  skipping {sid[:8]}… — {entry.get('cwd')} is denied in {REPOS}")
+            retire(entry, "skipped-denied-repo")
+            continue
+        if decision == "unknown":
+            # Only reachable when stdin vanished mid-run; treat the rest of this
+            # run as non-interactive so pick_ready routes around it from now on.
+            interactive = False
+            note("unreviewed", sid,
+                 f"  skipping {sid[:8]}… — unreviewed repo ({entry.get('cwd')}) and stdin is not answerable")
+            continue
+
+        print(f"→ spawning retro for session {sid[:8]}… ({entry.get('cwd')})")
+        spawned = spawn(entry, dry_run)
+        if spawned is False:  # every truthy return is a named outcome string
+            print(f"  spawn failed for {sid[:8]}… — recorded in {DONE}; requeue with: harness-learn-watch requeue {sid}")
+            retire(entry, "error-spawn")
+            continue
+        if spawned == "dry-run":
+            retire(entry, "dry-run")  # a no-op by construction — still pending afterwards
+            continue
+        if spawned == "manual":
+            retire(entry, "manual")
+            print(f"  filed {sid[:8]}… as manual — requeue to have the watcher track it: "
+                  f"harness-learn-watch requeue {sid}")
+            continue
+
+        outcome = await_retro(sid)
+        retire(entry, outcome)
+        if outcome == "timeout":
+            print(f"⚠️  no completion marker for {sid[:8]}… after {RETRO_TIMEOUT_SECONDS // 60} min — advancing.")
+            print(f"    If that retro is still open, finish it; requeue with: harness-learn-watch requeue {sid}")
+        elif outcome.startswith("error-"):
+            print(f"⚠️  the retro fork for {sid[:8]}… failed ({outcome}) — no retro ran.")
+            print(f"    transcript: {entry.get('transcript_path', '?')}")
+            print(f"    run it by hand: cd {entry.get('cwd', '?')} && "
+                  f"claude --resume {sid} --fork-session \"/harness-learn\"")
+            print(f"    or requeue: harness-learn-watch requeue {sid}")
+        else:
+            print(f"✓ retro session for {sid[:8]}… ended · {len(read_jsonl(QUEUE))} still pending")
+
+
+def cmd_list():
+    pending = read_jsonl(QUEUE)
+    print(f"pending ({len(pending)}):")
+    for e in pending:
+        state = "ready" if session_over(e) else "session still active"
+        print(f"  {e.get('session_id', '?')}  {e.get('ts')}  {e.get('cwd')}  [{state}]")
+    done = read_jsonl(DONE)
+    print(f"processed (last 5 of {len(done)}):")
+    for e in done[-5:]:
+        print(f"  {e.get('session_id', '?')}  {e.get('processed_ts')}  {e.get('outcome')}")
+
+
+def cmd_requeue(sid):
+    matches = [e for e in read_jsonl(DONE) if e.get("session_id") == sid]
+    if not matches:
+        sys.exit(f"no processed entry for session {sid} in {DONE}")
+    entry = {k: v for k, v in matches[-1].items() if k not in ("processed_ts", "outcome")}
+    entry["requeued_ts"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    def _append_if_absent():
+        if any(e.get("session_id") == sid for e in read_jsonl(QUEUE)):
+            sys.exit(f"session {sid} is already pending")
+        append_jsonl(QUEUE, entry)
+
+    locked(_append_if_absent)
+    print(f"requeued {sid} — it will spawn on the watcher's next pass")
+
+
+def main():
+    sys.stdout.reconfigure(line_buffering=True)  # status lines land promptly when piped/logged
+    args = sys.argv[1:]
+    if args and args[0] in ("-h", "--help"):
+        print(__doc__.strip())  # exit 0: also the documented "does my symlink resolve?" check
+    elif args and args[0] == "list":
+        cmd_list()
+    elif args and args[0] == "requeue":
+        if len(args) != 2:
+            sys.exit("usage: harness-learn-watch requeue <session-id>")
+        cmd_requeue(args[1])
+    elif not args or args == ["--dry-run"]:
+        try:
+            cmd_watch(dry_run=bool(args))
+        except KeyboardInterrupt:
+            print("\nstopped — queue is durable; restart me anytime")
+    else:
+        sys.exit(__doc__.strip())
+
+
+if __name__ == "__main__":
+    main()
