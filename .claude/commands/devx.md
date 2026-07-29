@@ -107,7 +107,7 @@ Repeat per item, respecting `stop_after`:
    devx devx-helper verify-claim <hash> --session-token "$SESSION_TOKEN"
    ```
 
-   (`--session-token` takes the token this session claimed with — the raw sessionId or the `/devx-<sessionId>` shape — but ONLY from this conversation's own memory: the claim performed earlier in this same session, or a Handoff Snippet that carries it. **Never copy the token out of the spec's `owner:` frontmatter or the lock file** — that trivially always matches and defeats the check entirely (the exact E13 incident shape). A fresh post-`/clear` session that doesn't know its token OMITS the flag; the helper auto-derives a new token via the same primitive `claim` uses, which correctly mismatches a live peer's lock.)
+   (`--session-token` takes the token this session claimed with — the raw sessionId or the `/devx-<sessionId>` shape — but ONLY from this conversation's own memory: the claim performed earlier in this same session. **Never copy the token out of the spec's `owner:` frontmatter or the lock file** — that trivially always matches and defeats the check entirely (the exact E13 incident shape). A fresh post-`/clear` session that doesn't know its token OMITS the flag; the helper auto-derives a new token via the same primitive `claim` uses, which correctly mismatches a live peer's lock.)
 
    Branch on the exit code:
    - **0** — `{"hash":"...","owned":true,"sessionToken":"..."}`: this session owns the claim. Resume: skip step 4 (the claim commit + lock + worktree already exist), enter the existing worktree at step 5, and continue from the last status-log line in the spec.
@@ -422,56 +422,38 @@ After merge:
 - If `stop_after == n-items` with remaining count: go to Phase 1 with the next ready item. Decrement the counter.
 - If `stop_after == until-blocked`: repeat until no ready items exist OR the next item is blocked OR capacity/usage is hit.
 - If `stop_after == all`: repeat until no `ready` items remain in `DEV.md`.
-- If you halt early for any reason (context budget, quality risk, blocker, usage pressure, mode change): emit the **Handoff Snippet** below and stop.
+- If you halt early for any reason (context budget, quality risk, blocker, usage pressure, mode change): run `devx split <hash> --payload <file> --session-token <token>` (merge-first if your work is coherent+green — land it through Phases 5–8 first; branch-handoff otherwise — push the WIP branch, split, then release the spec lock), say one sentence on why you stopped, and stop.
 
-## Handoff Snippet (when stopping before the run completes)
+The remaining work becomes a first-class follow-up spec + backlog row that any fresh session can claim cold — there is no conversation-prose bridge to preserve, so do not summarize state into chat instead of splitting.
 
-Emit when stopping short — `stop_after` reached mid-loop, user asked to halt, or you decided to stop for context/quality reasons. Purpose: let the user `/clear` and re-invoke `/devx` in a fresh conversation without rediscovery.
+**Payload file** (JSON). Write it under the session-namespaced scratch dir — derive it here rather than assuming Phase 7 ran, because an early halt can land before Phase 7 ever executed:
+
+```
+SCRATCH=".devx-cache/scratch/${DEVX_SESSION:-$(git branch --show-current)}"
+mkdir -p "$SCRATCH"   # gitignored; fresh worktrees have no .devx-cache
+```
+
+Payload shape → `$SCRATCH/split-payload.json`:
+
+```json
+{
+  "title": "<single-line follow-up title; no `;`>",
+  "goal": "<optional; defaults to a generated continuation line>",
+  "remaining_acs": ["<each unfinished AC, one line each — non-empty>"],
+  "carried_forward": {
+    "state_to_trust": ["<branch, worktree, pushed commits, mode, what CI last said>"],
+    "gotchas": ["<anything that cost more than a minute to figure out>"],
+    "do_not": ["<work already done that must not be redone; files out of scope>"]
+  },
+  "learnings": ["<optional; extra notes worth carrying>"]
+}
+```
 
 Rules:
-- Only emit when stopping early. Full-run completion (all targeted items merged, no pending work) skips the snippet.
-- Unpushed commits are part of the handoff — the next agent pushes them as part of its flow.
-- Be concrete. Every fact a fresh agent would grep for belongs here.
-
-Format exactly like this (inside a fenced ```text``` block):
-
-````text
-/devx <hash|slug|next>
-
-RESUMING from prior session. Do not redo work below.
-
-## Already done (do not rerun)
-- <hash>: <one-line summary> — PR #<n>, merged
-- <hash>: <one-line summary> — PR #<n>, awaiting CI
-
-## Next up (in order)
-- <hash>: <one-line from spec file title>
-- <hash>: ...
-
-## State to trust
-- Current branch on main repo: <branch>
-- Worktrees active: <list or "none">
-- DEV.md entries `in-progress`: <list>
-- Mode: <current mode>
-- Trust-gradient count: <N>/<threshold>
-
-## Gotchas from prior session (save time — don't rediscover)
-- <concrete fact the next agent would waste context relearning>
-- <parallel-agent / untracked-WIP collision note, if any>
-- <framework/version quirk that bit us>
-- <any API/endpoint decision that deviated from the spec and why>
-
-## Do NOT
-- Re-create spec files that already exist under `dev/`.
-- Re-run migrations / re-stage commits already in `git log origin/develop..HEAD`.
-- Touch files outside the current item's scope.
-
-Continue from <next hash or slug>.
-````
-
-Fill every placeholder. Gotchas are the highest-value part — put anything that cost more than a minute to figure out.
-
-After emitting the snippet, say one sentence summarizing why you stopped and stop. Do not keep working.
+- **Choose the shape deliberately.** merge-first (default) = the done portion is coherent and green: land it through Phases 5–8 first, then split. branch-handoff = the work is mid-stream: push the WIP branch FIRST (the CLI refuses the shape when `git ls-remote --heads origin <branch>` is empty), then split.
+- **Split before the lock goes.** `devx split` guards on the parent's spec lock and exits 3 once it's gone. On merge-first that means splitting **after the merge but before Phase 8's after-merge bookkeeping** (worktree removal / `status: done`) — the follow-up is `Blocked-by: <parent>`, immediately satisfied by the merge just landed. On branch-handoff you release the lock yourself, *after* the split returns 0: `rm .devx-cache/locks/spec-<hash>.lock` from the main worktree. The parent goes `superseded` and the follow-up inherits the pushed branch; skipping the release leaves a lock that classifies `live` — and so masks the spec from `devx next` — for as long as this session's process survives, which is exactly the `/clear`-and-resume window the split exists to serve.
+- `--session-token` is never auto-derived for split — pass the token this session claimed with. Exit codes: 0 success · 1 backlog-lock contention (retry shortly) · 2 other failure (stage named in the error) · 3 ownership mismatch (not your claim — do not retry) · 64 usage.
+- Gotchas are the highest-value field. Be concrete: every fact a fresh agent would otherwise grep for belongs there.
 
 ## Finalization (after stop_after satisfied)
 

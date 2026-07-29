@@ -36,6 +36,12 @@ backlog files, spec frontmatter (stage + gate_status), open PRs, CI state,
 | 11 | nothing ready, blocked items exist | report blockers + owners |
 | 12 | genuinely empty | propose: interview Leo for the next objective |
 
+No row is needed for a split follow-up (`devx split`, mss101/mss104): the
+remainder of a halted item is filed as an ordinary spec with `status: ready`,
+so it is picked up by row 8 (or row 7 for a debug parent) exactly like any
+other backlog entry — that indistinguishability is the point of making the
+handoff a file instead of conversation prose.
+
 Row 8 before row 9 keeps shipping ahead of planning when both are available
 (matches today's behavior); `--prefer plan` flips it. The skill body renders
 the table's *output*; the table itself lives in the CLI so the dashboard,

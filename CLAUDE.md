@@ -364,7 +364,10 @@ contract), `devx devx-helper await-remote-ci`
 (dvx106 — Phase 8 dispatch removes per-mode "Behavior by mode" table
 from skill body entirely), `parseHandoffSnippet` test-only validator
 (dvx107 — pins skill-body Handoff Snippet template against silent
-prose drift). Plus `coverageTouchedGate` (dvx104, library-only) and
+prose drift; **retired by mid-story-split** at mss104 — the snippet
+contract is gone, and `test/devx-skill-phase9-split.test.ts` is the
+successor exemplar pinning Phase 9's `devx split` routing). Plus
+`coverageTouchedGate` (dvx104, library-only) and
 `Phase 4 status-log discipline test` (dvx103 — frozen pre-discipline
 grandfather list). dvxret PR (this PR) is the fourth Phase 1 retro
 PR; every Phase 1 PR since prt102 merged is rendered via `devx
