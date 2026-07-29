@@ -95,6 +95,13 @@ export interface EngineState {
   workstream: string | null;
   /** `blocked_by:` entries — the Gate 1 INTERVIEW-blocker signal. */
   blockedBy: string[];
+  /** `plan:` — dev specs point back at their workstream dir with this key
+   *  (plan specs use `workstream:` for the same pointer). */
+  plan: string | null;
+  /** `phase:` — 1-based plan phase an emitted dev spec implements. Null when
+   *  absent or not a positive integer (pre-9b9be5 specs are grandfathered:
+   *  no phase, no shipped-green deferral). */
+  phase: number | null;
 }
 
 export interface EnginePatch {
@@ -177,6 +184,8 @@ export function readEngineState(content: string): EngineState {
     outcome: { status: null, measure_by: null },
     workstream: null,
     blockedBy: [],
+    plan: null,
+    phase: null,
   };
   const split = splitFrontmatter(content);
   if (!split) return state;
@@ -200,6 +209,12 @@ export function readEngineState(content: string): EngineState {
   state.status = str(fm.status);
   state.workstream = str(fm.workstream);
   state.enteredAt = str(fm.entered_at);
+  state.plan = str(fm.plan);
+  if (typeof fm.phase === "number" && Number.isInteger(fm.phase) && fm.phase > 0) {
+    state.phase = fm.phase;
+  } else if (typeof fm.phase === "string" && /^[1-9]\d*$/.test(fm.phase.trim())) {
+    state.phase = Number(fm.phase.trim());
+  }
 
   const stage = str(fm.stage);
   if (stage && (STAGES as readonly string[]).includes(stage)) {

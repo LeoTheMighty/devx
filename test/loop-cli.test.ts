@@ -25,6 +25,7 @@ describe("devx loop registration", () => {
     expect(flags).toContain("--max-tokens <n>");
     expect(flags).toContain("--only <type>");
     expect(flags).toContain("--dry-run");
+    expect(flags).toContain("--allow-worktree-root");
   });
 
   it("description names the refusal mode (LOCKDOWN) and the morning report", () => {
@@ -61,8 +62,13 @@ describe("signal → AbortController wiring (LOW-9)", () => {
       });
       return { exitCode: 0, summary: null, reportPath: null };
     };
-    // dry-run keeps the sleep inhibitor out of the picture.
-    const pending = runLoopCommand({ dryRun: true }, { runLoop: fake });
+    // dry-run keeps the sleep inhibitor out of the picture;
+    // allow-worktree-root keeps the mlc101 refusal out of it (the suite
+    // itself runs inside a /devx worktree during development).
+    const pending = runLoopCommand(
+      { dryRun: true, allowWorktreeRoot: true },
+      { runLoop: fake },
+    );
     await new Promise((r) => setTimeout(r, 20)); // let the handlers install
     expect(captured).toBeDefined();
     expect(captured!.aborted).toBe(false);

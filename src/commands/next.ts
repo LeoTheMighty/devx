@@ -185,6 +185,7 @@ function runRepoNext(
       drift: decision.drift,
       warnings: decision.warnings,
       overnight_report: decision.overnightReport,
+      loops: decision.loops,
       gate_summary: decision.gateSummary,
       focus: decision.focus,
       todo_drift: decision.todoDrift,
@@ -205,6 +206,17 @@ function runRepoNext(
   }
   if (decision.focus !== null) {
     err(`  ${decision.focus}\n`);
+  }
+  // Live loops render on EVERY row (mlc105), not only row 1: once N loops
+  // are allowed, a run can be live while a more specific row fires, and
+  // "what are the other loops on right now" is exactly what stops the
+  // human from claiming an item out from under one.
+  for (const l of decision.loops) {
+    err(
+      `  live loop ${l.run_id} (pid ${l.pid}) scope: ${l.scope ?? "all"} · ` +
+        `${l.current_item !== null ? `item ${l.current_item}, iteration ${l.iteration}` : "idle"} · ` +
+        `heartbeat ${l.age_seconds}s ago\n`,
+    );
   }
   for (const d of decision.todoDrift) {
     err(`  todo-drift (${d.class}) ${d.slug}: ${d.message}\n`);

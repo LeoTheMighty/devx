@@ -32,6 +32,7 @@
 import { join } from "node:path";
 
 import { type ClaimFs, findSpecForHash, realFs } from "./claim.js";
+import { specLockOwner } from "./spec-lock.js";
 
 const HASH_RE = /^[a-z0-9]{3,12}$/i;
 
@@ -130,18 +131,36 @@ export function normalizeSessionToken(raw: string): string {
 }
 
 /**
- * Extract the recorded owner token from a lock-file body. claimSpec writes
- * `${sessionId}\npid=...\nclaimed_at=...` — the owner is the first
- * non-empty line. Returns null when no such line exists (empty/whitespace
- * file — a partial write claimSpec's openExclusive normally forecloses,
- * but a hand-touched lock can still present it).
+ * Extract the recorded owner token from a lock-file body. mlc103 bodies are
+ * JSON v1 (`session` field); legacy bodies are
+ * `${sessionId}\npid=...\nclaimed_at=...` with the owner on the first
+ * non-empty line. Delegates to spec-lock's parser (single source of truth
+ * for both formats). Returns null when the body is empty, unparseable, or
+ * carries no attributable owner.
  */
 export function parseLockOwner(lockBody: string): string | null {
-  for (const line of lockBody.split("\n")) {
-    const t = line.trim();
-    if (t !== "") return t;
-  }
-  return null;
+  return specLockOwner(lockBody);
+}
+
+/**
+ * Normalize a `branch:` frontmatter scalar to a bare branch name.
+ *
+ * The value feeds a verbatim `git show-ref` probe (mss102), so a spelling
+ * git can't match silently disables inheritance. Handles the legal-YAML
+ * shapes a hand-edited spec produces — devx's own emitters always write the
+ * bare unquoted form:
+ *   - trailing `# comment` (YAML requires whitespace before the `#`)
+ *   - single or double quoting
+ *   - a fully-qualified `refs/heads/<name>`
+ *   - the null-ish spellings `null` / `~` / empty
+ */
+function normalizeBranchScalar(raw: string): string | null {
+  let v = raw.replace(/\s+#.*$/, "").trim();
+  const quoted = /^(["'])([\s\S]*)\1$/.exec(v);
+  if (quoted) v = quoted[2].trim();
+  if (v.startsWith("refs/heads/")) v = v.slice("refs/heads/".length);
+  if (v === "" || v === "null" || v === "~") return null;
+  return v;
 }
 
 export interface SpecClaimFields {
@@ -149,13 +168,17 @@ export interface SpecClaimFields {
   owner: string | null;
   /** Raw `status:` value (e.g. `in-progress`), or null when absent. */
   status: string | null;
+  /** Raw `branch:` value (e.g. `feat/dev-abc123`), or null when absent.
+   *  A branch-handoff follow-up (mss102) records its parent's WIP branch
+   *  here; claimSpec attaches to it when it names an existing branch. */
+  branch: string | null;
 }
 
 /**
- * Parse the `owner:` + `status:` fields out of a spec file's frontmatter
- * block. Throws VerifyClaimError("spec-parse") when the frontmatter block
- * itself is missing — a spec without frontmatter is out-of-convention and
- * verify-claim can't reason about it.
+ * Parse the `owner:` + `status:` + `branch:` fields out of a spec file's
+ * frontmatter block. Throws VerifyClaimError("spec-parse") when the
+ * frontmatter block itself is missing — a spec without frontmatter is
+ * out-of-convention and verify-claim can't reason about it.
  */
 export function parseSpecClaimFields(content: string): SpecClaimFields {
   const fmMatch = /^---\n([\s\S]*?)\n---/.exec(content);
@@ -164,6 +187,7 @@ export function parseSpecClaimFields(content: string): SpecClaimFields {
   }
   let owner: string | null = null;
   let status: string | null = null;
+  let branch: string | null = null;
   for (const line of fmMatch[1].split("\n")) {
     const ownerMatch = /^owner:\s*(.*)$/.exec(line);
     if (ownerMatch) {
@@ -175,9 +199,14 @@ export function parseSpecClaimFields(content: string): SpecClaimFields {
     if (statusMatch) {
       const v = statusMatch[1].trim();
       status = v === "" ? null : v;
+      continue;
+    }
+    const branchMatch = /^branch:\s*(.*)$/.exec(line);
+    if (branchMatch) {
+      branch = normalizeBranchScalar(branchMatch[1]);
     }
   }
-  return { owner, status };
+  return { owner, status, branch };
 }
 
 // ---------------------------------------------------------------------------

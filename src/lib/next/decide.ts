@@ -74,7 +74,7 @@ export interface DriftEntry {
   hash: string;
   /** Backlog file the row lives in ("DEV.md" | "DEBUG.md" | "PLAN.md"). */
   backlog: string;
-  kind: "status-mismatch" | "in-progress-without-lock";
+  kind: "status-mismatch" | "in-progress-without-lock" | "stale-live-lock";
   /** Status the backlog row carries (checkbox/Status: text). */
   backlogStatus?: SpecStatus;
   /** Status the spec frontmatter carries. */
@@ -82,14 +82,34 @@ export interface DriftEntry {
   detail: string;
 }
 
+/** One live `devx loop` run, as seen by a peer (mlc105). The `devx next`
+ *  JSON exposes this array verbatim under `loops`; absence of the field
+ *  means an old binary and consumers tolerate it. */
+export interface LoopInstanceSignal {
+  run_id: string;
+  /** Scope descriptor (`only:dev`, and mlc106's richer forms); null =
+   *  everything. */
+  scope: string | null;
+  current_item: string | null;
+  iteration: number;
+  pid: number;
+  age_seconds: number;
+}
+
 export interface LoopSignal {
   live: boolean;
-  /** Which state file said "live". Null when no loop state exists (the
-   *  graceful pre-v2l101 degradation). */
-  source: "manager-heartbeat" | "loop-state" | null;
+  /** Which state said "live". `loop-instance` is the mlc105 per-run
+   *  registry; `loop-state` is the retired singleton file, still read as a
+   *  fallback for pre-mlc105 debris; null when nothing claims liveness
+   *  (the graceful pre-v2l101 degradation). */
+  source: "manager-heartbeat" | "loop-state" | "loop-instance" | null;
   pid: number | null;
   ts: string | null;
   ageSeconds: number | null;
+  /** Every live loop instance. Empty when the registry is absent or all
+   *  instances classify dead/stale/finished — including when `live` is
+   *  true because the MANAGER daemon (not a loop) is the live actor. */
+  loops: LoopInstanceSignal[];
   /** Repo-relative path of a morning report that landed overnight, if any. */
   overnightReport: string | null;
 }
@@ -258,6 +278,13 @@ export interface RepoNextDecision {
    */
   overnightReport: string | null;
   /**
+   * Live `devx loop` instances (mlc105) — surfaced on EVERY decision, not
+   * just row 1: with N loops allowed, a run can be live while some other
+   * row fires (row 1 only claims the dispatcher when there is nothing more
+   * specific to say). Consumers use it to avoid overlapping work.
+   */
+  loops: LoopInstanceSignal[];
+  /**
    * Gate-summary block for the row-9 workstream (hfi102): the `gates: prd
    * PASS · design FAIL · …` line plus FAIL fix-path lines. Null on every
    * other row — only workstream-stage decisions carry gate state.
@@ -294,7 +321,13 @@ type RowFn = (
 ) =>
   | (Omit<
       RepoNextDecision,
-      "drift" | "warnings" | "overnightReport" | "gateSummary" | "focus" | "todoDrift"
+      | "drift"
+      | "warnings"
+      | "overnightReport"
+      | "loops"
+      | "gateSummary"
+      | "focus"
+      | "todoDrift"
     > & { gateSummary?: string; focus?: string | null })
   | null;
 
@@ -307,11 +340,29 @@ const row1: RowFn = (s) => {
   const report = s.loop.overnightReport
     ? ` — a report landed overnight at ${s.loop.overnightReport}; review it first`
     : "";
+  // mlc105: with N loops allowed, "a loop is live" is no longer enough to
+  // act on — the human needs to know how many and on what, so they can
+  // tell "my one overnight run" from "four runs, one of them on the item I
+  // was about to claim". Singular stays byte-identical to the pre-mlc105
+  // line so the S-4 matrix and the skill body don't churn.
+  const head = `a ${who} run is live (pid ${s.loop.pid ?? "?"}, ${age})`;
+  const many =
+    s.loop.loops.length > 1
+      ? `${s.loop.loops.length} loop runs are live — ` +
+        s.loop.loops
+          .map(
+            (l) =>
+              `${l.run_id} (${l.scope ?? "all"}${
+                l.current_item !== null ? `, on ${l.current_item}` : ", idle"
+              })`,
+          )
+          .join("; ")
+      : null;
   return {
     row: 1,
     action: "report-loop",
     command: null,
-    detail: `a ${who} run is live (pid ${s.loop.pid ?? "?"}, ${age}) — don't start overlapping work${report}`,
+    detail: `${many ?? head} — don't start overlapping work${report}`,
   };
 };
 
@@ -544,6 +595,7 @@ export function decideRepoNext(
         drift: snapshot.drift,
         warnings: snapshot.warnings,
         overnightReport: snapshot.loop.overnightReport,
+        loops: snapshot.loop.loops,
         gateSummary: hit.gateSummary ?? null,
         focus: hit.focus ?? null,
         todoDrift: snapshot.todoDrift,
@@ -559,6 +611,7 @@ export function decideRepoNext(
     drift: snapshot.drift,
     warnings: snapshot.warnings,
     overnightReport: snapshot.loop.overnightReport,
+    loops: snapshot.loop.loops,
     gateSummary: null,
     focus: null,
     todoDrift: snapshot.todoDrift,

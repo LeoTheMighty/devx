@@ -127,6 +127,27 @@ export function heartbeatIntervalMsFrom(merged: unknown): number {
   return Math.round(seconds * 1000);
 }
 
+/** Fallback for `capacity.max_concurrent` when the config declares none —
+ *  docs/CONFIG.md's documented default. */
+export const MAX_CONCURRENT_DEFAULT = 3;
+
+/**
+ * Read `capacity.max_concurrent` (mlc105 — the knob's first consumer; it
+ * has been declared in devx.config.yaml since Phase 0 with nothing reading
+ * it). Non-integer / non-positive values fall back to the default rather
+ * than refusing every loop: a typo'd knob must not wedge the night.
+ */
+export function maxConcurrentFrom(merged: unknown): number {
+  if (merged && typeof merged === "object" && !Array.isArray(merged)) {
+    const capacity = (merged as Record<string, unknown>).capacity;
+    if (capacity && typeof capacity === "object" && !Array.isArray(capacity)) {
+      const v = (capacity as Record<string, unknown>).max_concurrent;
+      if (typeof v === "number" && Number.isInteger(v) && v >= 1) return v;
+    }
+  }
+  return MAX_CONCURRENT_DEFAULT;
+}
+
 export interface LoopModeGate {
   allowed: boolean;
   /** Normalized (uppercased) mode string read from the config. */

@@ -382,7 +382,7 @@ const STD_CONFIG = {
 function makeFixture(): {
   fs: ClaimFs;
   state: FakeFsState;
-  baseOpts: Pick<ClaimSpecOpts, "sessionId" | "repoRoot" | "config" | "now">;
+  baseOpts: Pick<ClaimSpecOpts, "sessionId" | "repoRoot" | "config" | "now" | "lock">;
 } {
   const initial: Record<string, string> = {
     [`${REPO}/DEV.md`]: SAMPLE_DEV_MD,
@@ -395,6 +395,10 @@ function makeFixture(): {
     repoRoot: REPO,
     config: STD_CONFIG,
     now: () => new Date(2026, 4, 5, 18, 30, 0),
+    // Identity lock (mlc102): the fake-fs fixture's /repo root has no real
+    // .devx-cache to take the cross-process backlog lock in. The real-git
+    // integration tests below leave the default (real) lock in place.
+    lock: <T,>(_label: string, fn: () => T): T => fn(),
   };
   return { fs, state, baseOpts };
 }
@@ -586,7 +590,10 @@ describe("claimSpec — lock semantics", () => {
     const { fs, state, baseOpts } = makeFixture();
     let claim2Result: Error | null = null;
     const exec1 = (cmd: string, args: string[]): ExecResult => {
-      if (cmd === "git" && args[0] === "rev-parse") {
+      // Trigger on `rev-parse HEAD` specifically — the mlc101 canonical-
+      // root probe (`rev-parse --git-common-dir`) runs pre-lock and must
+      // not launch the interloper before claim #1 holds the lock.
+      if (cmd === "git" && args[0] === "rev-parse" && args[1] === "HEAD") {
         // Simulate "claim #2 starts mid-flight" by attempting it right
         // after push completes but before worktree-add. The lock is
         // already held by claim #1 at this point, so #2 must reject
@@ -667,7 +674,15 @@ describe("claimSpec — rollback paths", () => {
     const exec = (cmd: string, args: string[]): ExecResult => {
       calls.push({ cmd, args });
       if (cmd === "git" && args[0] === "push") {
-        return { stdout: "", stderr: "non-fast-forward", exitCode: 1 };
+        // A BROKEN push (network), not a race-shaped rejection — mlc104's
+        // rebase-retry must NOT engage, so this keeps testing the plain
+        // ClaimError('git-push') rollback shape. The contended paths are
+        // covered by test/claim-contention.test.ts.
+        return {
+          stdout: "",
+          stderr: "fatal: unable to access remote: network is unreachable",
+          exitCode: 1,
+        };
       }
       if (cmd === "git" && args[0] === "rev-parse") {
         return { stdout: "abc\n", stderr: "", exitCode: 0 };
@@ -977,7 +992,7 @@ describe("claimSpec — debug type (v2d101)", () => {
   function makeDebugFixture(): {
     fs: ClaimFs;
     state: FakeFsState;
-    baseOpts: Pick<ClaimSpecOpts, "sessionId" | "repoRoot" | "config" | "now">;
+    baseOpts: Pick<ClaimSpecOpts, "sessionId" | "repoRoot" | "config" | "now" | "lock">;
   } {
     const initial: Record<string, string> = {
       [`${REPO}/DEBUG.md`]: SAMPLE_DEBUG_MD,
@@ -993,6 +1008,8 @@ describe("claimSpec — debug type (v2d101)", () => {
         repoRoot: REPO,
         config: STD_CONFIG,
         now: () => new Date(2026, 6, 5, 12, 0, 0),
+        // Identity lock — same rationale as makeFixture (fake /repo root).
+        lock: <T,>(_label: string, fn: () => T): T => fn(),
       },
     };
   }
@@ -1069,5 +1086,81 @@ describe("claimSpec — debug type (v2d101)", () => {
     await expect(
       claimSpec("zzz999", { ...baseOpts, fs, exec, type: "debug" }),
     ).rejects.toThrow(/debug\/debug-zzz999-\*\.md/);
+  });
+});
+
+describe("claimSpec — canonical-root assertion (mlc101 AC 4)", () => {
+  function revParseExec(gitDir: string, commonDir: string, toplevel: string) {
+    const calls: ExecCall[] = [];
+    const exec = (
+      cmd: string,
+      args: string[],
+    ): ExecResult => {
+      calls.push({ cmd, args });
+      if (cmd === "git" && args[0] === "rev-parse" && args[1] === "--git-dir") {
+        return {
+          stdout: `${gitDir}\n${commonDir}\n${toplevel}\n`,
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+      if (cmd === "git" && args[0] === "rev-parse" && args[1] === "HEAD") {
+        return { stdout: "abc123def456\n", stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "", exitCode: 0 };
+    };
+    return { exec, calls };
+  }
+
+  it("rejects a repoRoot that is a linked worktree, naming the main root, before taking the lock", async () => {
+    const { fs, state, baseOpts } = makeFixture();
+    // git dir is /main/.git/worktrees/x while the common dir is /main/.git
+    // — the passed /repo is a linked worktree of /main.
+    const { exec } = revParseExec("/main/.git/worktrees/x", "/main/.git", REPO);
+    await expect(
+      claimSpec("dvx101", { ...baseOpts, fs, exec }),
+    ).rejects.toMatchObject({ name: "ClaimError", stage: "validate" });
+    await expect(
+      claimSpec("dvx101", { ...baseOpts, fs, exec }),
+    ).rejects.toThrow(/\/main/);
+    // Assertion fired pre-lock: no lock sentinel was created.
+    expect(
+      state.files.has(`${REPO}/.devx-cache/locks/spec-dvx101.lock`),
+    ).toBe(false);
+  });
+
+  it("proceeds when the probe confirms repoRoot IS the main checkout", async () => {
+    const { fs, baseOpts } = makeFixture();
+    const { exec } = revParseExec(`${REPO}/.git`, `${REPO}/.git`, REPO);
+    const result = await claimSpec("dvx101", { ...baseOpts, fs, exec });
+    expect(result.branch).toBe("feat/dev-dvx101");
+  });
+
+  it("proceeds for a submodule main checkout (git dir == common dir under .git/modules)", async () => {
+    const { fs, baseOpts } = makeFixture();
+    const { exec } = revParseExec(
+      "/super/.git/modules/repo",
+      "/super/.git/modules/repo",
+      REPO,
+    );
+    const result = await claimSpec("dvx101", { ...baseOpts, fs, exec });
+    expect(result.branch).toBe("feat/dev-dvx101");
+  });
+
+  it("skips the check when the probe is indeterminate (non-git fixture root)", async () => {
+    const { fs, baseOpts } = makeFixture();
+    const calls: ExecCall[] = [];
+    const exec = (cmd: string, args: string[]): ExecResult => {
+      calls.push({ cmd, args });
+      if (cmd === "git" && args[0] === "rev-parse" && args[1] === "--git-dir") {
+        return { stdout: "", stderr: "fatal: not a git repository", exitCode: 128 };
+      }
+      if (cmd === "git" && args[0] === "rev-parse" && args[1] === "HEAD") {
+        return { stdout: "abc123def456\n", stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "", exitCode: 0 };
+    };
+    const result = await claimSpec("dvx101", { ...baseOpts, fs, exec });
+    expect(result.claimSha).toBe("abc123def456");
   });
 });

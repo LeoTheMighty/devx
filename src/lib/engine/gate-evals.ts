@@ -16,6 +16,10 @@
 //     to `tests-first` (must run).
 //   - `.md` artifacts (eval specs under evals/) are not mechanically
 //     runnable — they count as deferred and follow the same type rules.
+//   - Shipped-green (debug-9b9be5): an eval whose plan-table phase resolves
+//     to a `status: done` dev spec is deferred at any priority — after a
+//     revise cascade its behavior already merged and the artifact is green
+//     by definition, so demanding RED would wedge the replay.
 //
 // Writes `evals/RED-report.md` (shared verdict block; reviewer
 // `devx gate evals`) with command + exit code + failure quote per E-id.
@@ -33,6 +37,7 @@ import {
   normalizePriority,
   parseExpectations,
 } from "./expectations.js";
+import { readEngineState } from "./frontmatter.js";
 import {
   INACTIVE_WAIVER,
   type Verdict,
@@ -49,6 +54,8 @@ export interface PlanCoverageRow {
   eId: string;
   validationType: ValidationType | null;
   artifact: string | null;
+  /** `Verified in phase` column, when it's a bare positive integer. */
+  phase: number | null;
 }
 
 const VALIDATION_TYPES: ReadonlySet<string> = new Set([
@@ -76,6 +83,7 @@ export function parsePlanCoverageTable(plan: string): PlanCoverageRow[] {
     if (idCol === -1) continue;
     const typeCol = headers.findIndex((h) => h.includes("type"));
     const artifactCol = headers.findIndex((h) => h.includes("artifact"));
+    const phaseCol = headers.findIndex((h) => h.includes("phase"));
     // Walk rows until the table ends (first non-| line). Skip the divider.
     const rows: PlanCoverageRow[] = [];
     for (let j = i + 1; j < lines.length; j++) {
@@ -89,12 +97,15 @@ export function parsePlanCoverageTable(plan: string): PlanCoverageRow[] {
         typeCol !== -1 ? (cells[typeCol] ?? "").replace(/`/g, "").trim().toLowerCase() : "";
       const artifactRaw =
         artifactCol !== -1 ? (cells[artifactCol] ?? "").replace(/`/g, "").trim() : "";
+      const phaseRaw =
+        phaseCol !== -1 ? (cells[phaseCol] ?? "").replace(/`/g, "").trim() : "";
       rows.push({
         eId: eId.toUpperCase().replace(/^E/, "E"),
         validationType: VALIDATION_TYPES.has(typeRaw)
           ? (typeRaw as ValidationType)
           : null,
         artifact: artifactRaw === "" || artifactRaw === "-" ? null : artifactRaw,
+        phase: /^[1-9]\d*$/.test(phaseRaw) ? Number(phaseRaw) : null,
       });
     }
     if (rows.length > 0) return rows;
@@ -165,6 +176,55 @@ export function resolveRunner(
 }
 
 // ---------------------------------------------------------------------------
+// Shipped-phase resolution — dev/ frontmatter scan (debug-9b9be5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Plan phases already shipped for a workstream: every `dev/dev-*.md` whose
+ * `plan:` frontmatter points at `workstreamRel`, carries a `phase:` number,
+ * and is `status: done` contributes its phase. Anything unresolvable
+ * (missing dir, unreadable spec, absent `phase:`) reads not-done — the
+ * conservative direction; the gate then demands RED as before. Frontmatter
+ * is the only phase→spec mapping gates may read: the workstream working-
+ * memory file also holds one, but gates are firewalled from it (hfi E-2).
+ */
+export function donePhasesFor(
+  fs: {
+    exists(path: string): boolean;
+    readdir(path: string): string[];
+    readFile(path: string): string;
+  },
+  repoRoot: string,
+  workstreamRel: string,
+): Set<number> {
+  const done = new Set<number>();
+  const dir = join(repoRoot, "dev");
+  if (!fs.exists(dir)) return done;
+  let names: string[];
+  try {
+    names = fs.readdir(dir);
+  } catch {
+    return done;
+  }
+  for (const name of names) {
+    if (!name.startsWith("dev-") || !name.endsWith(".md")) continue;
+    try {
+      const state = readEngineState(fs.readFile(join(dir, name)));
+      if (
+        state.plan === workstreamRel &&
+        state.phase !== null &&
+        state.status?.toLowerCase() === "done"
+      ) {
+        done.add(state.phase);
+      }
+    } catch {
+      // unreadable spec reads not-done
+    }
+  }
+  return done;
+}
+
+// ---------------------------------------------------------------------------
 // The gate
 // ---------------------------------------------------------------------------
 
@@ -195,6 +255,8 @@ export type RedVerdict =
   | "not-run (deferred: tests-after)"
   | "not-run (deferred: human)"
   | "not-run (deferred: none)"
+  | "not-run (deferred: shipped-green)"
+  | "not-run (deferred: waived)"
   | "not-run (eval-spec)"
   | "not-run (no runner)";
 
@@ -223,12 +285,22 @@ export interface GateEvalsInputs {
   exec: ShellExec;
   /** fs.exists seam. */
   exists: (absPath: string) => boolean;
+  /** Plan phases whose dev spec is `status: done` (see donePhasesFor).
+   *  Evals verified in a shipped phase are green by definition — a
+   *  post-revise replay defers them instead of demanding RED
+   *  (debug-9b9be5). Absent → no deferral (grandfathered specs without
+   *  `phase:` frontmatter keep today's strict behavior). */
+  donePhases?: ReadonlySet<number>;
+  /** Uppercased E-ids the operator waived via `--waive` (D-9). Waived
+   *  evals are never run and never a gap; ≥1 applied waiver makes a
+   *  non-FAIL verdict WAIVED (debug-9b9be5). */
+  waived?: ReadonlySet<string>;
   /** Dry-run: resolve everything, run nothing. */
   dryRun?: boolean;
 }
 
 export interface GateEvalsResult {
-  verdict: Extract<Verdict, "PASS" | "CONCERNS" | "FAIL">;
+  verdict: Verdict;
   runs: EvalRun[];
   deferred: EvalRun[];
   reasons: string[];
@@ -295,11 +367,20 @@ export function runGateEvals(inputs: GateEvalsInputs): GateEvalsResult {
 
   const anyBlocking = [...runs, ...deferred].some((r) => r.blocking);
   const anyGap = [...runs, ...deferred].some((r) => r.gap !== null);
+  // ≥1 applied waiver turns a would-be PASS/CONCERNS into WAIVED — the
+  // report must record that the gate cleared by operator override, not on
+  // its own merits (D-9). A blocking gap the waiver didn't cover still
+  // FAILs; the waiver never masks other blockers.
+  const anyWaived = deferred.some(
+    (r) => r.redVerdict === "not-run (deferred: waived)",
+  );
   const verdict: GateEvalsResult["verdict"] = anyBlocking
     ? "FAIL"
-    : anyGap
-      ? "CONCERNS"
-      : "PASS";
+    : anyWaived
+      ? "WAIVED"
+      : anyGap
+        ? "CONCERNS"
+        : "PASS";
 
   return { verdict, runs, deferred, reasons };
 }
@@ -327,6 +408,26 @@ function evaluateExpectation(
     gap: null,
     blocking: false,
   };
+
+  // Operator waiver (debug-9b9be5): explicit `--waive E-n` intent outranks
+  // every mechanical rule — the eval is never run, never a gap, at any
+  // priority. The gate-level verdict becomes WAIVED (see runGateEvals);
+  // the CLI supplies the D-9 approver + reason for the verdict block.
+  if (inputs.waived?.has(block.id.toUpperCase())) {
+    base.redVerdict = "not-run (deferred: waived)";
+    return base;
+  }
+
+  // Shipped-green (debug-9b9be5): the eval's phase already merged (its dev
+  // spec is `status: done`), so its artifact is green by definition — a
+  // post-revise replay defers it (any priority, P0 included) instead of
+  // demanding RED from shipped behavior. Checked before every other rule:
+  // a shipped phase's eval is never run, never a gap.
+  const phase = planRow?.phase ?? null;
+  if (phase !== null && inputs.donePhases?.has(phase)) {
+    base.redVerdict = "not-run (deferred: shipped-green)";
+    return base;
+  }
 
   // Deferred validation types: legal stubs for P1+, a P0 floor breach for P0.
   if (validationType !== "tests-first") {
@@ -423,13 +524,21 @@ export function renderRedReport(args: {
   workstreamRel: string;
   date: string;
   result: GateEvalsResult;
+  /** D-9 waiver detail; required when result.verdict is WAIVED (the
+   *  verdict-block writer refuses an approver-less WAIVED). */
+  waiver?: { approver: string; reason: string };
 }): string {
   const { result } = args;
+  const waivedIds = result.deferred
+    .filter((r) => r.redVerdict === "not-run (deferred: waived)")
+    .map((r) => r.eId);
   const statusReason =
     result.verdict === "PASS"
       ? `Every runnable expectation observed RED for the right reason (${result.runs.length} run(s), ${result.deferred.length} deferred).`
-      : result.reasons.slice(0, 2).join(" ") +
-        (result.reasons.length > 2 ? ` (+${result.reasons.length - 2} more)` : "");
+      : result.verdict === "WAIVED"
+        ? `${waivedIds.join(", ")} waived by ${args.waiver?.approver ?? "(unknown)"}: ${args.waiver?.reason ?? "(no reason)"} — remaining expectations clear (${result.runs.length} run(s), ${result.deferred.length} deferred).`
+        : result.reasons.slice(0, 2).join(" ") +
+          (result.reasons.length > 2 ? ` (+${result.reasons.length - 2} more)` : "");
 
   const lines: string[] = [];
   lines.push(
@@ -438,7 +547,14 @@ export function renderRedReport(args: {
       statusReason,
       reviewer: "devx gate evals",
       updated: args.date,
-      waiver: INACTIVE_WAIVER,
+      waiver:
+        result.verdict === "WAIVED" && args.waiver
+          ? {
+              active: true,
+              approver: args.waiver.approver,
+              reason: args.waiver.reason,
+            }
+          : INACTIVE_WAIVER,
     }),
   );
   lines.push(`# RED report — ${args.workstreamRel} — ${args.date}`);

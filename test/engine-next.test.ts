@@ -46,6 +46,8 @@ function state(overrides: {
     },
     workstream: "_devx/workstreams/demo",
     blockedBy: [],
+    plan: null,
+    phase: null,
   };
 }
 

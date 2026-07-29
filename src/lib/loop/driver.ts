@@ -2,8 +2,12 @@
 // not a new daemon (v2/04 §7).
 //
 // Reuse ledger:
-//   - singleton lock       → manage/lock.ts acquireManagerLock (mgr106 —
-//                            stale-PID + PID-recycling cross-check)
+//   - run registration     → loop/instances.ts (mlc105 — per-run instance
+//                            file + fail-fast loop-<run-id>.lock + capacity
+//                            admission). The loop NO LONGER takes
+//                            manager.lock: that is the manage daemon's
+//                            singleton now, and N loops coexist under
+//                            capacity.max_concurrent.
 //   - item pick            → manage/reconcile.ts reconcile (mgr103; the loop
 //                            masks excluded/type-filtered rows to "blocked"
 //                            so blocker resolution stays intact)
@@ -35,37 +39,52 @@
 // Spec: dev/dev-v2l101-2026-07-05T13:06-overnight-loop.md
 // Design: v2/04-overnight-loop.md (all sections)
 
-import { readFileSync, unlinkSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { writeAtomic } from "../supervisor-internal.js";
+import { BacklogLockTimeoutError, withBacklogLock } from "../backlog/mutate.js";
 
 import { loadMerged } from "../config-io.js";
 import { parseBacklogSnapshot, parseDevMd, type DevRow } from "../backlog/parse.js";
 import { reconcile } from "../manage/reconcile.js";
 import {
-  ManagerLockHeldError,
-  acquireManagerLock,
+  PathLockHeldError,
   type LockHandle,
 } from "../manage/lock.js";
 import {
+  ClaimContendedError,
   ClaimError,
   LockHeldError,
   claimSpec,
   type ClaimSpecResult,
 } from "../devx/claim.js";
 import {
-  normalizeSessionToken,
-  parseLockOwner,
-} from "../devx/verify-claim.js";
+  SPEC_LOCK_LIVE_WARN_MS,
+  classifySpecLock,
+  releaseSpecLockGuarded,
+  specLockOwnedBy,
+} from "../devx/spec-lock.js";
 import { type DeriveBranchConfig } from "../plan/derive-branch.js";
+import { performSplit, type SplitPayload } from "../devx/split.js";
+import { extractAcChecklist } from "../pr-body.js";
 
 import {
   heartbeatIntervalMsFrom,
   loopConfigFrom,
   loopModeGate,
+  maxConcurrentFrom,
   type LoopConfig,
 } from "./config.js";
+import {
+  type InstanceHandle,
+  admitLoop,
+  finalizeInstance,
+  heartbeatInstance,
+  reapScratch,
+  reapStoppedInstances,
+  registerInstance,
+} from "./instances.js";
 import {
   buildCommitRepairPrompt,
   buildIterationPrompt,
@@ -74,6 +93,8 @@ import {
   validateIterationReport,
   type IterationReport,
   type PriorAttempt,
+  type ReportValidationError,
+  type SplitRequest,
 } from "./iteration.js";
 import {
   CommitFailedError,
@@ -108,8 +129,6 @@ import {
   newRunId,
   recoverStaleLoopState,
   serializeError,
-  writeLoopState,
-  type LoopState,
 } from "./state.js";
 import {
   appendStatusEntryToFile,
@@ -183,9 +202,11 @@ export interface RunLoopOpts {
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
   signal?: AbortSignal;
   pidAlive?: (pid: number) => boolean;
-  /** state.json heartbeat cadence; default 60s. */
+  /** Instance heartbeat cadence; default 60s. Also sizes the registry's
+   *  freshness window (× 3), matching `devx next`'s reader. */
   heartbeatIntervalMs?: number;
-  /** Manager-lock seam (tests). Defaults to acquireManagerLock(cacheDir). */
+  /** Per-run instance-lock seam (tests). Defaults to an O_EXCL
+   *  `locks/loop-<run-id>.lock`. */
   acquireLock?: () => LockHandle;
   /** CI polling knobs forwarded to the tail. */
   ciPollMs?: number;
@@ -339,6 +360,43 @@ export function pickNextItem(
     ) {
       return { ...row, status: "blocked" as const };
     }
+    // mlc103 pick-time masking (R8): a READY row whose spec lock classifies
+    // live-held (or unverifiable — empty/unknown-pid/unreadable, the
+    // conservative-held kinds) is a peer's in-flight claim whose backlog
+    // flip we haven't observed yet; masking it here avoids burning a claim
+    // attempt on a guaranteed LockHeldError. Dead/recycled/unparseable
+    // locks stay pickable — the claim-time reap handles them. Live-PID
+    // locks older than 2h WARN (never auto-reaped; devx doctor owns
+    // repair).
+    if (row.status === "ready") {
+      const cls = classifySpecLock(
+        join(repoRoot, ".devx-cache", "locks", `spec-${row.hash}.lock`),
+        { now: opts.now },
+      );
+      if (
+        cls.kind === "live" ||
+        cls.kind === "empty" ||
+        cls.kind === "unknown-pid" ||
+        cls.kind === "unreadable"
+      ) {
+        if (cls.kind === "live") {
+          if (cls.ageMs !== null && cls.ageMs > SPEC_LOCK_LIVE_WARN_MS) {
+            opts.warn?.(
+              `spec lock for ${row.hash} live-held by pid ${cls.body.pid} for ${Math.floor(cls.ageMs / 3_600_000)}h (>2h) — never auto-reaped; verify the holder is progressing (devx doctor)`,
+            );
+          }
+        } else {
+          // Non-live conservative-held kinds are NEVER transient (a
+          // crashed peer's 0-byte lock, a hand-mangled body) — without
+          // this WARN the row silently vanishes from every pick forever
+          // (review BH-F3/EC-2: no drift row covers ready-with-lock).
+          opts.warn?.(
+            `ready item ${row.hash} is masked by a spec lock that classifies '${cls.kind}' — it will never be picked; inspect/remove .devx-cache/locks/spec-${row.hash}.lock`,
+          );
+        }
+        return { ...row, status: "blocked" as const };
+      }
+    }
     return row;
   });
   const recon = reconcile(
@@ -444,7 +502,13 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
     const excluded = new Set<string>();
     const items: DryRunPlan["items"] = [];
     while (items.length < maxItems) {
-      const pick = pickNextItem(repoRoot, { ...(flags.only !== undefined ? { only: flags.only } : {}), excluded, model, now });
+      const pick = pickNextItem(repoRoot, {
+        ...(flags.only !== undefined ? { only: flags.only } : {}),
+        excluded,
+        model,
+        now,
+        warn: (msg) => out(`loop: WARN — ${msg}`),
+      });
       if (!pick) break;
       items.push({ hash: pick.hash, type: pick.type, title: pick.title, path: pick.path });
       excluded.add(pick.hash);
@@ -493,21 +557,70 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
     );
   }
 
-  // ── Lock + run state ────────────────────────────────────────────────────
-  let lock: LockHandle;
+  // ── Admission + instance registration (mlc105) ──────────────────────────
+  // The loop no longer takes `manager.lock` — that lock is the manage
+  // DAEMON's singleton now (design §Resolved design questions: "does manage
+  // still exclude loops? → No"). N loops coexist, bounded only by
+  // `capacity.max_concurrent`; they arbitrate work through spec locks and
+  // the backlog lock like every other actor.
+  //
+  // Legacy hygiene first: a pre-mlc105 `loop/state.json` claiming "running"
+  // under a dead pid would otherwise keep answering `devx next`'s
+  // read-fallback until someone deleted it by hand.
+  recoverStaleLoopState(cacheDir, opts.pidAlive, now);
+  const startedAt = now();
+  const runId = newRunId(startedAt, process.pid);
+  const freshMs = opts.heartbeatIntervalMs ?? heartbeatIntervalMsFrom(merged);
+  const instanceProbes = {
+    now,
+    // Freshness window = 3 × heartbeat cadence — the SAME derivation
+    // gather.ts uses, so the writer's beat can never fall outside the
+    // reader's window (the LOW-15 lesson, extended to the registry).
+    freshMs: freshMs * 3,
+    ...(opts.pidAlive !== undefined ? { pidAlive: opts.pidAlive } : {}),
+  };
+  // Debris sweep before counting: a night of crashed runs must not eat the
+  // capacity budget. Both reapers are best-effort by construction.
+  reapStoppedInstances(cacheDir, instanceProbes);
+  reapScratch(cacheDir, instanceProbes);
+
+  // admit → register is ONE critical section: two loops starting in the
+  // same millisecond must not both observe N−1 live and both admit.
+  // backlog.lock is the system's only blocking lock, so serializing here
+  // introduces no new lock-ordering surface (design §Architecture 2).
+  const scope = flags.only !== undefined ? `only:${flags.only}` : null;
+  let instance: InstanceHandle;
   try {
-    lock = (opts.acquireLock ?? (() => acquireManagerLock(cacheDir)))();
+    const admitted = withBacklogLock(cacheDir, "loop-admission", () => {
+      const verdict = admitLoop(cacheDir, maxConcurrentFrom(merged), instanceProbes);
+      if (!verdict.admitted) return { verdict, handle: null };
+      return {
+        verdict,
+        handle: registerInstance(cacheDir, {
+          runId,
+          startedAt,
+          scope,
+          ...instanceProbes,
+          ...(opts.acquireLock !== undefined ? { acquireLock: opts.acquireLock } : {}),
+        }),
+      };
+    });
+    if (admitted.handle === null) {
+      const reason = admitted.verdict.message ?? "loop admission refused";
+      out(`devx loop: ${reason}`);
+      return { exitCode: 1, refusedReason: reason, summary: null, reportPath: null };
+    }
+    instance = admitted.handle;
   } catch (e) {
-    if (e instanceof ManagerLockHeldError) {
-      out(`devx loop: ${e.message} (a manager or another loop is already running)`);
+    // A live duplicate run-id (the id carries the pid and a millisecond
+    // timestamp, so this means a genuine same-process re-entry) or an
+    // unwritable registry. Both are "can't safely run", not "crash".
+    if (e instanceof PathLockHeldError || e instanceof BacklogLockTimeoutError) {
+      out(`devx loop: ${e.message}`);
       return { exitCode: 1, refusedReason: e.message, summary: null, reportPath: null };
     }
     throw e;
   }
-
-  recoverStaleLoopState(cacheDir, opts.pidAlive, now);
-  const startedAt = now();
-  const runId = newRunId(startedAt, process.pid);
   const sessionId = opts.sessionId ?? runId;
   const worker = opts.worker ?? makeClaudeWorker();
   const tailFn = opts.tail ?? defaultTail;
@@ -522,40 +635,42 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
         // BH-MED-4: claimSpec's own git calls (add/commit/push/worktree)
         // don't inject GIT_TERMINAL_PROMPT — wrap the seam so the claim's
         // push can never hang on a credential TTY prompt overnight.
+        // LC_ALL=C (mlc104 EC-1): isRejectedPush matches git's English
+        // rejection strings; a localized git would misroute every real
+        // race into the systemic-failure budget.
         exec: (cmd, args, o) =>
-          exec(cmd, args, { ...(o ?? {}), env: { GIT_TERMINAL_PROMPT: "0" } }),
+          exec(cmd, args, {
+            ...(o ?? {}),
+            env: { GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
+          }),
         type,
       }));
 
-  const writeState = (status: LoopState["status"], abortReason?: string): void => {
-    const state: LoopState = {
-      status,
-      pid: process.pid,
-      ts: now().toISOString(),
-      run_id: runId,
-      started_at: startedAt.toISOString(),
-      ...(abortReason !== undefined ? { abort_reason: abortReason } : {}),
-    };
-    try {
-      writeLoopState(cacheDir, state);
-    } catch {
-      // never let a state write kill the loop
-    }
+  // Progress the heartbeat carries so `devx next` / `devx status` can say
+  // WHAT each live loop is doing, not just that it exists. Mutated at item
+  // pick and at every iteration boundary; the beat picks up the latest.
+  const progress: { item: string | null; iteration: number } = {
+    item: null,
+    iteration: 0,
+  };
+  const beat = (): void => {
+    heartbeatInstance(
+      cacheDir,
+      instance,
+      { currentItem: progress.item, iteration: progress.iteration },
+      now,
+    );
   };
   const event = (name: string, fields: Record<string, unknown> = {}): void => {
     appendEvent(cacheDir, runId, name, fields, now);
   };
 
-  writeState("running");
-  event("loop:start", { mode, budgets, pid: process.pid, mainHealth });
+  event("loop:start", { mode, budgets, pid: process.pid, runId, scope, mainHealth });
   // Heartbeat cadence derives from manager.heartbeat_interval_s — the same
   // knob `devx next` uses for its freshness window (interval × 3), so a
   // config edit can't put the writer's cadence outside the reader's window
   // and flap a live loop between running/dead (review finding LOW-15).
-  const hbInterval = setInterval(
-    () => writeState("running"),
-    opts.heartbeatIntervalMs ?? heartbeatIntervalMsFrom(merged),
-  );
+  const hbInterval = setInterval(beat, freshMs);
   hbInterval.unref?.();
 
   // ── The run ─────────────────────────────────────────────────────────────
@@ -565,7 +680,8 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
   let abortReason: string | null = null;
   let stopReason: string | null = null;
   const excluded = new Set<string>();
-  const isAttempted = (r: ItemResult): boolean => r.outcome !== "claim-failed";
+  const isAttempted = (r: ItemResult): boolean =>
+    r.outcome !== "claim-failed" && r.outcome !== "claim-contended";
   // Review finding MED-7: without a bound, a SYSTEMIC claim failure (locks
   // dir unwritable, origin push refused, git broken) walks the entire
   // backlog doing a full commit+rollback cycle per row. Three in a row is
@@ -607,6 +723,9 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
         break;
       }
       excluded.add(pick.hash);
+      progress.item = pick.hash;
+      progress.iteration = 0;
+      beat();
       event("item:pick", { hash: pick.hash, type: pick.type, path: pick.path });
 
       // Claim (dvx101 atomic claim; its own rollback on failure).
@@ -614,6 +733,35 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
       try {
         claim = await claimFn(pick.hash, pick.type);
       } catch (e) {
+        if (e instanceof ClaimContendedError) {
+          // mlc104 (design §Architecture 3): a peer won the push race and
+          // the bounded rebase-retries still lost — healthy contention, not
+          // a broken claim. The hash is already masked for this run (the
+          // `excluded.add` above); pick the next item. Deliberately does
+          // NOT touch consecutiveClaimFailures — that budget is reserved
+          // for genuinely broken claims (locks dir unwritable, origin
+          // refusing every push), and contention under N live loops is the
+          // system working as designed (races R2/R5).
+          event("item:claim-contended", {
+            hash: pick.hash,
+            error: serializeError(e),
+          });
+          out(
+            `loop: claim contended for ${pick.hash} — a peer won the push race; picking next (${firstLineOf(e.message)})`,
+          );
+          items.push({
+            hash: pick.hash,
+            type: pick.type,
+            title: pick.title,
+            specPath: pick.path,
+            outcome: "claim-contended",
+            iterationsGood: 0,
+            iterationsFailed: 0,
+            tokens: emptyTokens(),
+            detail: firstLineOf(e.message),
+          });
+          continue;
+        }
         const detail =
           e instanceof LockHeldError
             ? `spec lock already held (${e.lockPath})`
@@ -671,6 +819,10 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
           maxTotalTokens,
           untilDeadline,
           baseline,
+          onIteration: (n: number) => {
+            progress.iteration = n;
+            beat();
+          },
           ciPollMs: opts.ciPollMs,
           ciTimeoutMs: opts.ciTimeoutMs,
         });
@@ -692,6 +844,14 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
         });
         throw e;
       }
+      // The item is done (merged / abandoned / handed off): clear it from
+      // the heartbeat before the next pick, so a peer reading `devx next`
+      // between two items sees "idle" rather than an item this run no
+      // longer holds — the stale-current_item read that would make a human
+      // avoid an item that is actually free.
+      progress.item = null;
+      progress.iteration = 0;
+      beat();
       items.push(result.item);
       if (result.loopAbort !== null) {
         abortReason = result.loopAbort;
@@ -715,8 +875,13 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
         }
       } else if (
         result.item.outcome === "merged" ||
-        result.item.outcome === "handed-off"
+        result.item.outcome === "handed-off" ||
+        result.item.outcome === "split"
       ) {
+        // A split is a COMPLETED item (mss103): the pipeline demonstrably
+        // worked end-to-end (good iterations, push, follow-up filed) — it
+        // resets the abandonment streak, never increments it (ladder.ts
+        // afterItemCompleted; E-3 "streak remains 0").
         ladder = afterItemCompleted(ladder);
       }
       if (result.item.outcome === "in-progress-at-exit") {
@@ -778,12 +943,17 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
     tokens: totals,
     report: reportPathOut,
   });
-  writeState(abortReason !== null ? "aborted" : "stopped", abortReason ?? undefined);
-  try {
-    lock.release();
-  } catch {
-    // surfaced by the next acquire's stale sweep if it matters
-  }
+  // finalizeInstance marks the record stopped/aborted AND drops the per-run
+  // lock — one call, so the two can never diverge (a released lock with a
+  // still-"running" record would keep eating a capacity slot for a whole
+  // freshness window).
+  finalizeInstance(
+    cacheDir,
+    instance,
+    abortReason !== null ? "aborted" : "stopped",
+    abortReason ?? undefined,
+    now,
+  );
   if (reportPathOut !== null) out(`loop: morning report written to ${reportPathOut}`);
   if (abortReason !== null) out(`loop: ABORTED — ${abortReason}`);
   else out(`loop: stopped — ${stopReason ?? "done"}`);
@@ -827,6 +997,10 @@ interface RunItemArgs {
   /** lpf101 forced-start baseline line (null when main isn't red) — threaded
    *  into every iteration prompt. */
   baseline: string | null;
+  /** Progress sink — called once per iteration start so the run's instance
+   *  heartbeat can report `iteration` without runItem knowing the registry
+   *  exists (mlc105). */
+  onIteration?: (iteration: number) => void;
   ciPollMs?: number;
   ciTimeoutMs?: number;
 }
@@ -867,6 +1041,11 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
   };
   let iteration = 0;
   let good = 0;
+  /** Successful iterations whose WORKER actually changed files — the
+   *  split rail's progress oracle (review BH-4). `good` alone over-counts:
+   *  a learnings-only success is legal and commits nothing but the loop's
+   *  own status-log append. */
+  let goodWithFiles = 0;
   let failed = 0;
   /** Iterations lost to environment failures — never charged to the item
    *  (dc7514). */
@@ -880,6 +1059,10 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
    *  per-iteration status log) is discarded, so the next attempt doesn't
    *  start blind (review MED: discard must not erase the breadcrumbs). */
   const failureNotes: string[] = [];
+  /** key_learnings accumulated across SUCCESSFUL iterations — the split
+   *  payloads carry them into the follow-up spec (mss103); failed
+   *  iterations' learnings already flow through failureNotes. */
+  const itemLearnings: string[] = [];
   let pendingRepair: string | null = null;
   let lastFailure: string | null = null;
   /** Loop-owned WARN lines that must reach the morning report (lock-release
@@ -897,6 +1080,68 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
   const baseSha = safeHead(exec, worktree);
 
   /**
+   * mlc102: every main-checkout mutation below (spec status-log writes,
+   * backlog flips, commits, pushes, spec-lock release) runs inside the
+   * cross-process backlog lock so N loops + interactive /devx can't
+   * interleave read-modify-writes (races R3/R4). Re-entrant, so composite
+   * sequences (finalizeMerged, the abandon/release paths) hold it ONCE
+   * across their whole read→write→commit block while the leaf helpers
+   * stay individually guarded for their other call sites. Same repoRoot
+   * anchor as the spec lock above — claimSpec hardcodes the same universe.
+   * Worktree-cwd writes (recordIteration) stay lock-free by design:
+   * worktrees are per-item by construction.
+   *
+   * Failure posture (fail-soft, like every other driver step): when the
+   * lock can't even be CREATED (locks dir unwritable — EACCES/EROFS, an
+   * environment failure), run fn unlocked and event the degradation —
+   * wedging the night's bookkeeping on a broken locks dir loses more than
+   * the lock protects (peers can't take the lock in that environment
+   * either). A TIMEOUT (live contending holder) propagates: proceeding
+   * unlocked under real contention is exactly the lost-update race this
+   * lock exists to kill, and every caller already tolerates a thrown
+   * mutation via its event + WARN path.
+   */
+  const backlogLock = <T>(label: string, fn: () => T): T => {
+    let entered = false;
+    try {
+      return withBacklogLock(join(repoRoot, ".devx-cache"), label, () => {
+        entered = true;
+        return fn();
+      });
+    } catch (e) {
+      // fn's own errors (entered) and contention timeouts keep throwing.
+      if (entered || e instanceof BacklogLockTimeoutError) throw e;
+      event("item:backlog-lock-degraded", { label, error: serializeError(e) });
+      return fn();
+    }
+  };
+
+  /**
+   * Composite-section flavor (review BH-HIGH-1 / EC-F1): the leaf helpers
+   * each catch their own lock timeout, but the composite holds
+   * (finalize-merged, the abandon/release/exit blocks) used to let a
+   * BacklogLockTimeoutError escape runItem — one 30s contention event
+   * (a peer's claim push holding the lock) aborted the ENTIRE run as
+   * "unexpected driver error", stranding a merged-but-unreconciled item
+   * with its spec lock still held. A timed-out composite instead SKIPS its
+   * bookkeeping (never runs it unlocked — that's the R3 race itself),
+   * events, and WARNs the morning report; dispatcher row 4 reconciles the
+   * drift. Non-timeout errors keep the pre-mlc102 behavior.
+   */
+  const backlogLockBestEffort = (label: string, fn: () => void): void => {
+    try {
+      backlogLock(label, fn);
+    } catch (e) {
+      if (!(e instanceof BacklogLockTimeoutError)) throw e;
+      event("item:backlog-lock-timeout", { label, error: serializeError(e) });
+      itemWarnings.push(
+        `backlog lock timed out during ${label} for ${pick.hash} — bookkeeping skipped (spec/backlog/lock state may be stale; devx next drift + dispatcher row 4 reconcile it): ${firstLineOf(e.message)}`,
+      );
+      out(`loop: WARN — backlog lock timeout during ${label} for ${pick.hash}; bookkeeping skipped`);
+    }
+  };
+
+  /**
    * roc101 posture (AA-F1): before the item-end mutations of main-worktree
    * state (abandon flips, done flips, lock release), verify the spec lock
    * still records THIS run's session. Workers are prompt-framed `claude -p`
@@ -904,15 +1149,10 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
    * the check defends against a human (or another agent) legitimately
    * stealing the claim mid-run after manually clearing our lock.
    */
-  const ownsClaim = (): boolean => {
-    try {
-      const owner = parseLockOwner(readFileSync(lockPath, "utf8"));
-      if (owner === null) return false;
-      return normalizeSessionToken(owner) === normalizeSessionToken(args.sessionId);
-    } catch {
-      return false; // lock gone = claim no longer ours
-    }
-  };
+  const ownsClaim = (): boolean =>
+    // mlc103: spec-lock module owns owner extraction (JSON v1 + legacy);
+    // lock gone / unreadable / unattributable = claim no longer ours.
+    specLockOwnedBy(lockPath, args.sessionId);
 
   const baseItem = (): Omit<ItemResult, "outcome"> => ({
     hash: pick.hash,
@@ -968,25 +1208,55 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     learnings?: string[],
   ): void => {
     try {
-      appendStatusEntryToFile(mainSpecPath, {
-        iso: now().toISOString(),
-        prefix,
-        head,
-        ...(learnings !== undefined && learnings.length > 0 ? { learnings } : {}),
-      });
+      backlogLock("append-main-entry", () =>
+        appendStatusEntryToFile(mainSpecPath, {
+          iso: now().toISOString(),
+          prefix,
+          head,
+          ...(learnings !== undefined && learnings.length > 0 ? { learnings } : {}),
+        }),
+      );
     } catch (e) {
       event("item:main-status-append-failed", { error: serializeError(e) });
     }
   };
 
-  const commitOnMain = (message: string): void => {
+  const commitOnMain = (message: string, extraPaths: string[] = []): void => {
     try {
       // BH-MED-5: pathspec-limit the COMMIT itself. A bare `git commit -m`
       // commits the entire staged index — sweeping any work the user left
       // staged in the main worktree overnight into a loop-authored commit
       // (and, on the merged path, pushing it). With the trailing pathspec,
-      // only the loop's two files are committed regardless of index state.
-      const r = exec(
+      // only the loop's own files are committed regardless of index state.
+      // `extraPaths` (mss103) is how the split paths add the follow-up spec
+      // — extend via the param, never widen the literal.
+      const r = backlogLock("commit-on-main", () => {
+        let paths = extraPaths;
+        if (paths.length > 0) {
+          // Pathspec-mode commit only records paths already KNOWN to git;
+          // the follow-up spec is a brand-new untracked file, so it must be
+          // added first (the add is pathspec-limited too).
+          //
+          // A FAILED add (stale index.lock, EACCES) must not take the whole
+          // bookkeeping commit down with it (review BH-5/EC-4): without the
+          // exit check, the following pathspec commit dies on "did not
+          // match any file(s) known to git" and the done-flip / superseded
+          // / backlog edits — which would have committed fine — are lost
+          // behind a misleading commit-failed event. Drop the extras and
+          // commit the tracked paths instead.
+          const add = exec("git", ["add", "--", ...paths], {
+            cwd: repoRoot,
+            env: { GIT_TERMINAL_PROMPT: "0" },
+          });
+          if (add.exitCode !== 0) {
+            event("item:main-add-failed", { paths, stderr: add.stderr.trim() });
+            itemWarnings.push(
+              `could not stage ${paths.join(", ")} for the loop's bookkeeping commit — the file exists on disk but is UNCOMMITTED; commit it by hand: ${firstLineOf(add.stderr) || "(no stderr)"}`,
+            );
+            paths = [];
+          }
+        }
+        return exec(
         "git",
         [
           "-c",
@@ -999,9 +1269,14 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
           "--",
           pick.path,
           backlogRel(pick.type),
+          // `paths`, NOT `extraPaths` — the add-failure guard above drops
+          // the unstageable extras precisely so this commit still names
+          // only paths git knows.
+          ...paths,
         ],
         { cwd: repoRoot, env: { GIT_TERMINAL_PROMPT: "0" } },
-      );
+        );
+      });
       if (r.exitCode !== 0) throw new Error(r.stderr.trim() || r.stdout.trim());
     } catch (e) {
       event("item:main-commit-failed", { error: serializeError(e) });
@@ -1010,7 +1285,28 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
 
   const releaseSpecLock = (): void => {
     try {
-      unlinkSync(lockPath);
+      // mlc103 guarded release: re-read the body and unlink only on session
+      // match, inside the backlog lock (closes R7's TOCTOU — after a human
+      // cleared our lock and a peer re-claimed, the old unconditional
+      // unlink deleted the PEER's lock).
+      const res = backlogLock("release-spec-lock", () =>
+        releaseSpecLockGuarded(lockPath, args.sessionId),
+      );
+      if (res.released || res.reason === "missing") return;
+      if (res.reason === "not-owner") {
+        event("item:lock-release-skipped", { lockPath, owner: res.owner });
+        itemWarnings.push(
+          `spec lock for ${pick.hash} is now owned by '${res.owner ?? "unknown"}' (not this run) — release skipped; a peer re-claimed after our lock was cleared`,
+        );
+        out(`loop: WARN — spec lock for ${pick.hash} owned by another session; release skipped`);
+        return;
+      }
+      // "unreadable" — body unreadable/unattributable; left in place.
+      event("item:lock-release-failed", { lockPath, error: { reason: res.reason } });
+      itemWarnings.push(
+        `spec lock body for ${pick.hash} is unreadable — release skipped; inspect ${relToRepo(lockPath, repoRoot)} by hand or the next claim will refuse`,
+      );
+      out(`loop: WARN — failed to release spec lock ${lockPath}`);
     } catch (e) {
       // ENOENT = already gone (fine). Anything else (EACCES, EPERM, …)
       // means the lock file is STILL on disk and every future claim of
@@ -1034,10 +1330,24 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
    * origin" WARN so the human knows to push.
    */
   const pushMain = (): void => {
-    const push = exec("git", ["push"], {
-      cwd: repoRoot,
-      env: { GIT_TERMINAL_PROMPT: "0" },
-    });
+    let push: ReturnType<Exec>;
+    try {
+      push = backlogLock("push-main", () =>
+        exec("git", ["push"], {
+          cwd: repoRoot,
+          env: { GIT_TERMINAL_PROMPT: "0" },
+        }),
+      );
+    } catch (e) {
+      // Same tolerance as the sibling leaf helpers (BH-HIGH-1): a lock
+      // timeout must not escape the item — the commit is local and the
+      // report's WARN tells the human main is ahead of origin.
+      event("item:main-push-failed", { error: serializeError(e) });
+      itemWarnings.push(
+        `main is ahead of origin — push skipped (backlog lock unavailable): ${firstLineOf(e instanceof Error ? e.message : String(e))}`,
+      );
+      return;
+    }
     if (push.exitCode !== 0) {
       event("item:main-push-failed", { stderr: push.stderr.trim() });
       itemWarnings.push(
@@ -1108,18 +1418,23 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     statusText: "ready" | "in-progress" | "blocked",
   ): void => {
     try {
-      const content = readFileSync(backlogPath, "utf8");
-      const next = setBacklogRowState(content, pick.hash, pick.type, checkbox, statusText);
-      if (next === null) {
-        // No row for this hash — the exact drift class this flip exists to
-        // kill must not recur silently (EC-MED-9).
-        event("item:backlog-row-missing", { hash: pick.hash, backlog: backlogRel(pick.type) });
-        itemWarnings.push(
-          `no ${backlogRel(pick.type)} row found for ${pick.hash} — backlog not flipped to [${checkbox}] ${statusText}; reconcile by hand`,
-        );
-        return;
-      }
-      if (next !== content) writeAtomic(backlogPath, next);
+      // mlc102: the read AND the write sit inside one lock hold — locking
+      // only the write would still let a peer's flip land between our read
+      // and our writeAtomic (the R3 lost-update anatomy).
+      backlogLock("set-backlog-row", () => {
+        const content = readFileSync(backlogPath, "utf8");
+        const next = setBacklogRowState(content, pick.hash, pick.type, checkbox, statusText);
+        if (next === null) {
+          // No row for this hash — the exact drift class this flip exists to
+          // kill must not recur silently (EC-MED-9).
+          event("item:backlog-row-missing", { hash: pick.hash, backlog: backlogRel(pick.type) });
+          itemWarnings.push(
+            `no ${backlogRel(pick.type)} row found for ${pick.hash} — backlog not flipped to [${checkbox}] ${statusText}; reconcile by hand`,
+          );
+          return;
+        }
+        if (next !== content) writeAtomic(backlogPath, next);
+      });
     } catch (e) {
       event("item:backlog-row-flip-failed", { error: serializeError(e) });
     }
@@ -1161,21 +1476,22 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
 
   /** Roll the claim's main-worktree state back to ready: spec `status:
    *  ready`, dead `owner:` cleared, backlog row `[ ]` + `Status: ready`. */
-  const rollClaimBackToReady = (): void => {
-    try {
-      if (!setSpecStatus(mainSpecPath, "ready")) {
-        event("item:ready-status-flip-noop", { spec: pick.path });
+  const rollClaimBackToReady = (): void =>
+    backlogLock("roll-claim-back-to-ready", () => {
+      try {
+        if (!setSpecStatus(mainSpecPath, "ready")) {
+          event("item:ready-status-flip-noop", { spec: pick.path });
+        }
+      } catch (e) {
+        event("item:ready-status-flip-failed", { error: serializeError(e) });
       }
-    } catch (e) {
-      event("item:ready-status-flip-failed", { error: serializeError(e) });
-    }
-    try {
-      clearSpecOwner(mainSpecPath);
-    } catch (e) {
-      event("item:owner-clear-failed", { error: serializeError(e) });
-    }
-    setBacklogRow(" ", "ready");
-  };
+      try {
+        clearSpecOwner(mainSpecPath);
+      } catch (e) {
+        event("item:owner-clear-failed", { error: serializeError(e) });
+      }
+      setBacklogRow(" ", "ready");
+    });
 
   const abandonItem = (reason: string): RunItemResult => {
     event("item:abandon", { hash: pick.hash, reason, worktree });
@@ -1209,15 +1525,17 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       // The discarded worktree held the per-iteration [FAIL]/learning
       // entries — fold them into the main-spec entry so the next attempt
       // doesn't start blind.
-      appendMainEntry(
-        "[FAIL]",
-        `loop abandoned ${pick.hash}: ${reason}; no real work was preserved — bookkeeping-only worktree discarded, item left ready`,
-        failureNotes,
-      );
-      rollClaimBackToReady();
-      releaseSpecLock();
-      commitOnMain(`chore(loop): abandon ${pick.hash} (${reason}; nothing preserved — left ready)`);
-      pushMain();
+      backlogLockBestEffort("abandon-discarded", () => {
+        appendMainEntry(
+          "[FAIL]",
+          `loop abandoned ${pick.hash}: ${reason}; no real work was preserved — bookkeeping-only worktree discarded, item left ready`,
+          failureNotes,
+        );
+        rollClaimBackToReady();
+        releaseSpecLock();
+        commitOnMain(`chore(loop): abandon ${pick.hash} (${reason}; nothing preserved — left ready)`);
+        pushMain();
+      });
       out(`loop: abandoned ${pick.hash} — ${reason}; nothing preserved, item left ready`);
       return {
         item: {
@@ -1231,21 +1549,23 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         loopAbort: null,
       };
     }
-    appendMainEntry(
-      "[FAIL]",
-      `loop abandoned ${pick.hash}: ${reason}; worktree preserved at ${relToRepo(worktree, repoRoot)}`,
-    );
-    try {
-      if (!setSpecStatus(mainSpecPath, "blocked")) {
-        event("item:abandon-status-flip-noop", { spec: pick.path });
+    backlogLockBestEffort("abandon-preserved", () => {
+      appendMainEntry(
+        "[FAIL]",
+        `loop abandoned ${pick.hash}: ${reason}; worktree preserved at ${relToRepo(worktree, repoRoot)}`,
+      );
+      try {
+        if (!setSpecStatus(mainSpecPath, "blocked")) {
+          event("item:abandon-status-flip-noop", { spec: pick.path });
+        }
+      } catch (e) {
+        event("item:abandon-status-flip-failed", { error: serializeError(e) });
       }
-    } catch (e) {
-      event("item:abandon-status-flip-failed", { error: serializeError(e) });
-    }
-    setBacklogRow("-", "blocked");
-    releaseSpecLock();
-    commitOnMain(`chore(loop): abandon ${pick.hash} (${reason})`);
-    pushMain();
+      setBacklogRow("-", "blocked");
+      releaseSpecLock();
+      commitOnMain(`chore(loop): abandon ${pick.hash} (${reason})`);
+      pushMain();
+    });
     out(`loop: abandoned ${pick.hash} — ${reason}; worktree preserved at ${worktree}`);
     return {
       item: {
@@ -1258,6 +1578,274 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       },
       loopAbort: null,
     };
+  };
+
+  // ── Mid-story split (mss103) ──────────────────────────────────────────
+  // Workers never write specs/backlogs — the DRIVER performs every split
+  // via performSplit. Two shapes: the budget rail always splits
+  // branch-handoff (at exhaustion the driver has no green signal), the
+  // worker-requested path always splits merge-first (the committed portion
+  // ships through the normal tail first). Any thrown error on the
+  // budget-rail path falls back to today's abandonItem verbatim — the
+  // status-quo floor.
+
+  /** Collapse to one line (SplitPayload lists are one markdown row each). */
+  const oneLine = (s: string): string => s.replace(/\s*[\n\r]+\s*/g, " ").trim();
+
+  /** Payload-safe title: single-line, no `;`, no backlog row markers
+   *  (validateSplitPayload refuses all three). */
+  const titleSafe = (s: string): string =>
+    oneLine(s)
+      .replace(/;/g, ",")
+      .replace(/\b(Status|Blocked-by|Blocks):/gi, "$1 -");
+
+  /** The parent's still-unmet ACs (first line each), read from the
+   *  worktree spec copy — the honest "remaining" set at split time. Falls
+   *  back to a pointer at the parent when nothing parses.
+   *
+   *  Everything except `[x]` counts as unmet (review EC-3): the checkbox
+   *  vocabulary includes `[/]` in-progress and `[-]` blocked, and a
+   *  half-done AC dropped here would survive ONLY on a spec this same
+   *  split is about to mark superseded. Whitespace between the dash and
+   *  the bracket is tolerated for the same reason extractAcChecklist
+   *  tolerates it. */
+  const remainingAcsFromSpec = (): string[] => {
+    try {
+      const checklist = extractAcChecklist(readFileSync(worktreeSpecPath, "utf8"));
+      const unmet = checklist
+        .split("\n")
+        .filter((l) => /^\s*-\s+\[[^x]\]/i.test(l))
+        .map((l) => oneLine(l.replace(/^\s*-\s+\[[^x]\]\s*/i, "")))
+        .filter((l) => l !== "");
+      if (unmet.length > 0) return unmet;
+    } catch {
+      // fall through
+    }
+    return [
+      `Complete the remaining acceptance criteria of ${pick.path} (see its Status log for what already landed)`,
+    ];
+  };
+
+  /** Budget-rail payload: assembled from the spec's remaining ACs, the
+   *  accumulated failure breadcrumbs, and successful iterations' learnings. */
+  const branchHandoffPayload = (reason: string): SplitPayload => ({
+    // Strip any inherited `Continue <hash>: ` prefix before re-wrapping
+    // (review BH-6): a follow-up of a follow-up would otherwise compound
+    // into `Continue c: Continue b: Continue a: …` and eat the 50-char
+    // slug budget with nothing but lineage.
+    title: titleSafe(
+      `Continue ${pick.hash}: ${(pick.title || pick.path).replace(/^Continue [a-z0-9]+:\s*/i, "")}`,
+    ),
+    goal: oneLine(
+      `Continue ${pick.path} from its pushed WIP branch — the loop split it at budget exhaustion (${titleSafe(reason)}).`,
+    ),
+    remaining_acs: remainingAcsFromSpec(),
+    carried_forward: {
+      state_to_trust: [
+        `WIP branch ${args.claim.branch} is pushed to origin with ${good} good iteration commit(s) — continue from its tip`,
+        `parent spec ${pick.path} is superseded by this follow-up; its Status log (on the branch) carries the full iteration history`,
+      ],
+      gotchas: failureNotes.map(oneLine).filter((l) => l !== ""),
+      do_not: [
+        `Do not recreate the parent's work — the WIP branch ${args.claim.branch} already holds it`,
+        "Do not rewrite or force-push the WIP branch history",
+      ],
+    },
+    ...(itemLearnings.length > 0
+      ? { learnings: itemLearnings.map(oneLine).filter((l) => l !== "").slice(0, 20) }
+      : {}),
+  });
+
+  /** Worker-requested payload: the worker chose the seam — its title and
+   *  remaining ACs win; the driver only sanitizes and adds carried-forward
+   *  context it alone knows. */
+  const workerSplitPayload = (req: SplitRequest): SplitPayload => ({
+    title: titleSafe(req.title),
+    remaining_acs: req.remaining_acs.map(oneLine).filter((l) => l !== ""),
+    carried_forward: {
+      state_to_trust: [
+        `parent ${pick.path} shipped its committed portion at reduced scope through the normal PR/CI/merge tail`,
+      ],
+      gotchas: failureNotes.map(oneLine).filter((l) => l !== ""),
+      do_not: [
+        "Do not redo ACs already shipped by the parent — audit its PR diff first",
+      ],
+    },
+    ...(req.learnings !== undefined && req.learnings.length > 0
+      ? { learnings: req.learnings.map(oneLine).filter((l) => l !== "").slice(0, 20) }
+      : {}),
+  });
+
+  /** Remove the worktree but KEEP the local branch — after a branch-handoff
+   *  split the branch is the preserved state (pushed + recorded on the
+   *  follow-up spec), and a branch can only be checked out in one worktree:
+   *  leaving the checkout parked would wedge the follow-up's claim. */
+  const removeWorktreeKeepBranch = (): void => {
+    try {
+      const r = exec("git", ["worktree", "remove", "--force", worktree], {
+        cwd: repoRoot,
+        env: { GIT_TERMINAL_PROMPT: "0" },
+      });
+      if (r.exitCode !== 0) {
+        event("item:split-worktree-remove-failed", { stderr: r.stderr.trim() });
+        itemWarnings.push(
+          `worktree ${relToRepo(worktree, repoRoot)} could not be removed after the split — remove it by hand or the follow-up's claim of ${args.claim.branch} will fail (branch already checked out)`,
+        );
+      }
+    } catch (e) {
+      event("item:split-worktree-remove-failed", { error: serializeError(e) });
+      itemWarnings.push(
+        `worktree ${relToRepo(worktree, repoRoot)} could not be removed after the split — remove it by hand or the follow-up's claim of ${args.claim.branch} will fail (branch already checked out)`,
+      );
+    }
+  };
+
+  /**
+   * Budget-rail terminal (beside abandonItem): push the WIP branch, file
+   * the branch-handoff follow-up, release, commit + push the bookkeeping.
+   * The throwing steps (pushCurrentBranch, performSplit) both precede any
+   * main-worktree mutation, so the fallback to abandonItem is always safe
+   * — the failed attempt left nothing half-split behind.
+   */
+  const splitItem = (reason: string): RunItemResult => {
+    if (!ownsClaim()) {
+      // abandonItem re-checks and takes its ownership-lost path (roc101).
+      return abandonItem(reason);
+    }
+    let res: { followUpHash: string; followUpSpecPath: string };
+    try {
+      pushCurrentBranch(exec, worktree);
+      res = performSplit(pick.hash, {
+        sessionToken: args.sessionId,
+        repoRoot,
+        config: (args.merged ?? {}) as DeriveBranchConfig,
+        payload: branchHandoffPayload(reason),
+        shape: "branch-handoff",
+        type: pick.type,
+        branch: args.claim.branch,
+        now,
+      });
+    } catch (e) {
+      event("item:split-fallback", {
+        hash: pick.hash,
+        shape: "branch-handoff",
+        reason,
+        error: serializeError(e),
+      });
+      out(
+        `loop: split failed for ${pick.hash} — falling back to abandon (${firstLineOf(e instanceof Error ? e.message : String(e))})`,
+      );
+      return abandonItem(reason);
+    }
+    event("item:split", {
+      hash: pick.hash,
+      shape: "branch-handoff",
+      reason,
+      followUpHash: res.followUpHash,
+      followUpSpecPath: res.followUpSpecPath,
+    });
+    // Snapshot BEFORE the worktree goes away (diffStat needs it alive —
+    // BH-MED-6 posture).
+    const snapshot = baseItem();
+    removeWorktreeKeepBranch();
+    backlogLockBestEffort("split-bookkeeping", () => {
+      releaseSpecLock();
+      commitOnMain(
+        `chore(loop): split ${pick.hash} → follow-up ${res.followUpHash} (${reason})`,
+        [res.followUpSpecPath],
+      );
+      pushMain();
+    });
+    out(`loop: split ${pick.hash} — follow-up ${res.followUpSpecPath} ready (${reason})`);
+    return {
+      item: {
+        ...snapshot,
+        ...(itemWarnings.length > 0 ? { warnings: itemWarnings } : {}),
+        outcome: "split",
+        leftState: "ready",
+        followUpSpecPath: res.followUpSpecPath,
+        ...(lastFailure !== null ? { lastFailure } : {}),
+        detail: reason,
+      },
+      loopAbort: null,
+    };
+  };
+
+  /**
+   * True when the item has COMMITTED product work worth handing to a
+   * follow-up. Three conjuncts, each closing a distinct hazard:
+   *
+   *  - `goodWithFiles >= 1` — at least one successful iteration whose
+   *    WORKER changed files. Plain `good >= 1` over-counts: a
+   *    learnings-only success (legal — `no-op` needs no changes AND no
+   *    learnings) commits just the loop's status-log append under a
+   *    `feat(<hash>):` subject, which isBookkeepingOnlyWorktree can't
+   *    recognize as bookkeeping. Splitting there supersedes the parent
+   *    for a branch holding zero product work (review BH-4).
+   *  - clean tree — a dirty worktree is the commit-failure preserve path
+   *    (`pendingRepair`, the one no-rollback path): pushCurrentBranch
+   *    pushes only COMMITTED work, so splitting would `worktree remove
+   *    --force` the preserved-but-uncommitted work out of existence while
+   *    the follow-up claims the branch tip holds everything (review
+   *    BH-1, HIGH). Uncertainty (a throwing git status) reads as dirty.
+   *  - not bookkeeping-only — the dc7514 oracle, unchanged.
+   */
+  const hasCommittedProgress = (): boolean => {
+    if (goodWithFiles < 1 || baseSha === null) return false;
+    if (pendingRepair !== null) return false;
+    try {
+      if (hasUncommittedChanges(exec, worktree)) return false;
+    } catch {
+      return false;
+    }
+    return !isBookkeepingOnlyWorktree(exec, worktree, baseSha);
+  };
+
+  /**
+   * Budget-rail dispatch (mss103): real committed progress → split instead
+   * of abandoning; anything else takes today's abandon path verbatim
+   * (E-3's zero-progress branch).
+   */
+  const budgetExhausted = (reason: string): RunItemResult =>
+    hasCommittedProgress() ? splitItem(reason) : abandonItem(reason);
+
+  /**
+   * Worker-requested merge-first split: file the follow-up on main. Never
+   * throws — the parent already merged (or handed off) and the status-quo
+   * floor for THIS path is "no follow-up filed" + a WARN; abandoning a
+   * shipped item would be worse than the failure.
+   */
+  const tryWorkerSplit = (req: SplitRequest): string | null => {
+    try {
+      const res = performSplit(pick.hash, {
+        sessionToken: args.sessionId,
+        repoRoot,
+        config: (args.merged ?? {}) as DeriveBranchConfig,
+        payload: workerSplitPayload(req),
+        shape: "merge-first",
+        type: pick.type,
+        now,
+      });
+      event("item:split", {
+        hash: pick.hash,
+        shape: "merge-first",
+        followUpHash: res.followUpHash,
+        followUpSpecPath: res.followUpSpecPath,
+      });
+      out(`loop: filed follow-up ${res.followUpSpecPath} for ${pick.hash} (worker-requested split)`);
+      return res.followUpSpecPath;
+    } catch (e) {
+      event("item:split-fallback", {
+        hash: pick.hash,
+        shape: "merge-first",
+        error: serializeError(e),
+      });
+      itemWarnings.push(
+        `worker-requested split for ${pick.hash} failed — follow-up NOT filed; the remaining ACs stay on the parent spec: ${firstLineOf(e instanceof Error ? e.message : String(e))}`,
+      );
+      out(`loop: WARN — worker-requested split failed for ${pick.hash}; follow-up not filed`);
+      return null;
+    }
   };
 
   /**
@@ -1294,12 +1882,14 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       // run's claim half-execute and wedge (`worktree add -b` fails on the
       // existing path/branch — review EC-HIGH-2). Keep the claim intact
       // instead: the honest, resumable stopped-mid-item shape.
-      appendMainEntry(
-        "",
-        `loop aborted mid-item (${reason}); worktree + claim preserved at ${relToRepo(worktree, repoRoot)}`,
-      );
-      commitOnMain(`chore(loop): ${pick.hash} in progress at loop exit (environment failure)`);
-      pushMain();
+      backlogLockBestEffort("release-preserved", () => {
+        appendMainEntry(
+          "",
+          `loop aborted mid-item (${reason}); worktree + claim preserved at ${relToRepo(worktree, repoRoot)}`,
+        );
+        commitOnMain(`chore(loop): ${pick.hash} in progress at loop exit (environment failure)`);
+        pushMain();
+      });
       out(`loop: ${pick.hash} left in progress — ${reason}; worktree + claim preserved`);
       return {
         item: {
@@ -1312,15 +1902,17 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         loopAbort: null,
       };
     }
-    appendMainEntry(
-      "",
-      `loop released ${pick.hash} back to ready: ${reason}; no real work was lost (bookkeeping-only worktree discarded)`,
-      failureNotes,
-    );
-    rollClaimBackToReady();
-    releaseSpecLock();
-    commitOnMain(`chore(loop): release ${pick.hash} back to ready (environment failure — item not at fault)`);
-    pushMain();
+    backlogLockBestEffort("release-to-ready", () => {
+      appendMainEntry(
+        "",
+        `loop released ${pick.hash} back to ready: ${reason}; no real work was lost (bookkeeping-only worktree discarded)`,
+        failureNotes,
+      );
+      rollClaimBackToReady();
+      releaseSpecLock();
+      commitOnMain(`chore(loop): release ${pick.hash} back to ready (environment failure — item not at fault)`);
+      pushMain();
+    });
     out(`loop: released ${pick.hash} back to ready — ${reason}`);
     return {
       item: {
@@ -1353,12 +1945,14 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         loopAbort: null,
       };
     }
-    appendMainEntry("", `loop stopped mid-item (${why}); worktree + claim preserved`);
-    // Commit + push the appended entry: an uncommitted main-worktree edit
-    // left overnight is exactly the kind of surprise dirt the loop must
-    // not leave behind (review finding LOW-11).
-    commitOnMain(`chore(loop): ${pick.hash} in progress at loop exit (${why})`);
-    pushMain();
+    backlogLockBestEffort("exit-in-progress", () => {
+      appendMainEntry("", `loop stopped mid-item (${why}); worktree + claim preserved`);
+      // Commit + push the appended entry: an uncommitted main-worktree edit
+      // left overnight is exactly the kind of surprise dirt the loop must
+      // not leave behind (review finding LOW-11).
+      commitOnMain(`chore(loop): ${pick.hash} in progress at loop exit (${why})`);
+      pushMain();
+    });
     return {
       item: {
         ...baseItem(),
@@ -1385,16 +1979,17 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     // item's budgets into an abandon (dc7514; the pure-infra case is
     // bounded by the 3-consecutive-infra run abort instead).
     if (good + failed >= cfg.maxIterationsPerItem) {
-      return abandonItem(
+      return budgetExhausted(
         `iteration budget exhausted (${cfg.maxIterationsPerItem} iterations without acs_met)`,
       );
     }
     if (tokensTotal(itemTokens) - infraTokens >= cfg.maxTokensPerItem) {
-      return abandonItem(
+      return budgetExhausted(
         `per-item token budget exhausted (${tokensTotal(itemTokens) - infraTokens}/${cfg.maxTokensPerItem})`,
       );
     }
     iteration++;
+    args.onIteration?.(iteration);
 
     // ── Pre-flight: clean tree required (unless this is a repair pass) ──
     if (pendingRepair === null) {
@@ -1430,6 +2025,24 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     let raw = "";
     let workerError: Error | null = null;
     let report: IterationReport | null = null;
+    /** mss103: a malformed split_request rides its OWN error path — the
+     *  report stays valid, the request is already stripped by the
+     *  validator; the driver's whole job here is the event + WARN. */
+    const acceptReport = (v: {
+      report: IterationReport;
+      splitRequestErrors?: ReportValidationError[];
+    }): IterationReport => {
+      if (v.splitRequestErrors !== undefined) {
+        event("iteration:split-request-invalid", {
+          iteration,
+          errors: v.splitRequestErrors,
+        });
+        out(
+          `loop: WARN — ${pick.hash} iteration ${iteration} sent a malformed split_request — ignored (${v.splitRequestErrors.map((e) => e.message).join("; ")})`,
+        );
+      }
+      return v.report;
+    };
     /** The PRIMARY worker call rejected (timeout kill / spawn failure).
      *  Deliberately narrow (review MED): a retry-session death (the primary
      *  demonstrably RAN) and post-processing throws are hard-errors, never
@@ -1454,7 +2067,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       const parsed = extractReportJson(raw);
       const validated = parsed !== null ? validateIterationReport(parsed) : null;
       if (validated !== null && validated.ok) {
-        report = validated.report;
+        report = acceptReport(validated);
       } else if (signal?.aborted) {
         // Review finding LOW-13: the abort check is hoisted ABOVE the
         // report-retry spawn — never start a second worker session against
@@ -1484,7 +2097,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         const reparsed = extractReportJson(retry.rawOutput);
         const revalidated = reparsed !== null ? validateIterationReport(reparsed) : null;
         if (revalidated !== null && revalidated.ok) {
-          report = revalidated.report;
+          report = acceptReport(revalidated);
         } else {
           // Permanent-error classification applies only NOW — after the
           // retry also failed — and only against the transcript TAIL:
@@ -1600,11 +2213,40 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     switch (cls) {
       case "success": {
         good++;
+        // `filesChanged` was sampled BEFORE recordIteration wrote the
+        // loop's own status entry, so it reflects the worker's changes
+        // alone — exactly the signal the split rail needs (BH-4).
+        if (filesChanged) goodWithFiles++;
         prior.push({ iteration, success: true, summary: report!.summary });
         changeSummaries.push(...report!.key_changes_made);
+        itemLearnings.push(...report!.key_learnings);
         out(`loop: ${pick.hash} iteration ${iteration} ok — ${report!.summary}`);
         if (report!.acs_met) {
           return await completeItem();
+        }
+        if (report!.split_request !== undefined) {
+          // Worker-requested split (mss103): a valid request on a good
+          // acs_met=false report means the committed portion is complete at
+          // reduced scope — ship it through the NORMAL merge tail, then
+          // file the merge-first follow-up. (With acs_met=true the spec is
+          // done and any request is moot — the branch above already left.)
+          //
+          // The clean-seam claim is VERIFIED, not trusted (review BH-3):
+          // the prompt's "only when committed, coherent, green" is advisory,
+          // and honoring it blindly would let an exploratory iteration that
+          // changed nothing open a status-log-only PR, auto-merge it, and
+          // mark the parent done. Same rail the budget path uses.
+          if (hasCommittedProgress()) {
+            return await completeItem(report!.split_request);
+          }
+          event("iteration:split-request-ignored", {
+            iteration,
+            hash: pick.hash,
+            reason: "no committed product work on the branch",
+          });
+          out(
+            `loop: WARN — ${pick.hash} iteration ${iteration} requested a split with no committed product work on the branch — ignored; continuing to iterate`,
+          );
         }
         break;
       }
@@ -1733,7 +2375,12 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
   }
 
   // ── acs_met tail (D-11: hand off to the normal PR/CI/merge path) ───────
-  async function completeItem(): Promise<RunItemResult> {
+  // `splitRequest` (mss103): present on the worker-requested-split route —
+  // the committed portion ships as complete-at-reduced-scope, then the
+  // driver files the merge-first follow-up (before finalizeMerged's
+  // bookkeeping on a merged tail; still filed — blocked until the PR lands
+  // — on a handed-off tail, whose outcome stays "handed-off").
+  async function completeItem(splitRequest?: SplitRequest): Promise<RunItemResult> {
     try {
       pushCurrentBranch(exec, worktree);
     } catch (e) {
@@ -1778,7 +2425,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       // against a deleted directory and reports 0/+0/-0 for exactly the
       // items that shipped the most work.
       const snapshot = baseItem();
-      finalizeMerged(tailOutcome.prUrl);
+      const finalized = finalizeMerged(tailOutcome.prUrl, splitRequest);
       return {
         item: {
           ...snapshot,
@@ -1787,13 +2434,41 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
           ...(itemWarnings.length > 0 ? { warnings: itemWarnings } : {}),
           outcome: "merged",
           prUrl: tailOutcome.prUrl,
+          ...(finalized.followUpSpecPath !== null
+            ? { followUpSpecPath: finalized.followUpSpecPath }
+            : {}),
+          // The PR merged, but a failed split left the spec `[-]` blocked
+          // rather than done (see finalizeMerged). Surfacing that as
+          // leftState keeps the morning report from claiming a clean
+          // "merged" while the backlog says otherwise (review AA-7).
+          ...(finalized.splitFailed ? { leftState: "blocked" as const } : {}),
         },
         loopAbort: null,
       };
     }
     // handed-off: PR exists (or creation failed) — the claim + worktree stay
     // for the morning; the report carries the reason. The kind routes the
-    // driver's systemic rail (review finding MED-6).
+    // driver's systemic rail (review finding MED-6). A worker-requested
+    // split still files its follow-up (blocked until the parent PR lands via
+    // its Blocked-by: row); the outcome stays "handed-off" (mss103).
+    let handedOffFollowUp: string | null = null;
+    if (splitRequest !== undefined) {
+      // One composite hold across splice → commit → push, like every
+      // sibling section (mlc102 contract; review EC-6). The inner locks in
+      // performSplit / commitOnMain / pushMain are re-entrant no-ops under
+      // it, so a peer loop can't interleave a DEV.md commit between the
+      // follow-up row landing and the commit that records it.
+      backlogLockBestEffort("handed-off-split", () => {
+        handedOffFollowUp = tryWorkerSplit(splitRequest);
+        if (handedOffFollowUp !== null) {
+          commitOnMain(
+            `chore(loop): file follow-up for ${pick.hash} (worker-requested split; parent PR pending)`,
+            [handedOffFollowUp],
+          );
+          pushMain();
+        }
+      });
+    }
     return {
       item: {
         ...baseItem(),
@@ -1802,13 +2477,23 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         worktreePath: relToRepo(worktree, repoRoot),
         detail: tailOutcome.detail,
         ...(lastFailure !== null ? { lastFailure } : {}),
+        ...(handedOffFollowUp !== null ? { followUpSpecPath: handedOffFollowUp } : {}),
       },
       loopAbort: null,
       handoffKind: tailOutcome.kind,
     };
   }
 
-  function finalizeMerged(prUrl: string): void {
+  interface FinalizeResult {
+    /** Set when a worker-requested split filed a follow-up (mss103). */
+    followUpSpecPath: string | null;
+    /** True when a split was requested but could NOT be filed — the spec
+     *  was left `[-]` blocked instead of done, so the caller must not
+     *  report a clean merge (review AA-7). */
+    splitFailed: boolean;
+  }
+
+  function finalizeMerged(prUrl: string, splitRequest?: SplitRequest): FinalizeResult {
     // Cleanup (the /devx Phase 12 shape): remove worktree, ff main, mark
     // spec done + backlog [x] + PR link, commit, push. Every step is
     // best-effort — a partial cleanup is dispatcher row-4's bread and
@@ -1816,10 +2501,27 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     if (!ownsClaim()) {
       // The PR merged (that part is real and remote) but our claim was
       // taken over mid-run — leave the local reconcile to whoever owns it
-      // now; dispatcher row 4 catches the drift either way.
-      event("item:finalize-ownership-lost", { hash: pick.hash, prUrl });
+      // now; dispatcher row 4 catches the drift either way. No split
+      // either: performSplit's ownership guard would refuse the same way.
+      event("item:finalize-ownership-lost", {
+        hash: pick.hash,
+        prUrl,
+        ...(splitRequest !== undefined ? { splitPending: true } : {}),
+      });
       out(`loop: ${pick.hash} merged but claim ownership was lost — skipping local reconcile`);
-      return;
+      if (splitRequest !== undefined) {
+        // Every other split-failure path WARNs; this one used to swallow
+        // the request entirely (review EC-2) — the remaining ACs lived
+        // only in the worker's report JSON, so the new claim owner would
+        // flip the parent done with no trace that scope was cut.
+        itemWarnings.push(
+          `worker-requested split for ${pick.hash} was NOT filed — claim ownership was lost before the split; these acceptance criteria are unmet and recorded nowhere else: ${splitRequest.remaining_acs.join("; ")}`,
+        );
+      }
+      // splitFailed stays false: we deliberately touched NOTHING, so the
+      // spec is whatever its new owner says — claiming "left blocked"
+      // would misreport a state we didn't write.
+      return { followUpSpecPath: null, splitFailed: false };
     }
     try {
       const r = exec("git", ["worktree", "remove", "--force", worktree], {
@@ -1830,52 +2532,126 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     } catch (e) {
       event("item:worktree-remove-failed", { error: serializeError(e) });
     }
-    const pull = exec("git", ["pull", "--ff-only"], {
-      cwd: repoRoot,
-      env: { GIT_TERMINAL_PROMPT: "0" },
-    });
-    if (pull.exitCode !== 0) {
-      event("item:pull-ff-failed", { stderr: pull.stderr.trim() });
-    }
-    try {
-      // BH-LOW-9 / EC-MED-5: a `false` return means the frontmatter had no
-      // flippable status line — surface it (the checkbox is about to flip
-      // while the source-of-truth field silently stays in-progress).
-      if (!setSpecStatus(mainSpecPath, "done")) {
-        event("item:done-status-flip-noop", { spec: pick.path });
+    // mlc102: one lock hold across the whole reconcile — the ff-pull, the
+    // spec/backlog flips, the commit and the push must not interleave with
+    // a peer loop's claim commit on the same checkout (races R3/R4). The
+    // inner helpers' own locks are re-entrant no-ops under this hold.
+    let followUpSpecPath: string | null = null;
+    // Assigned INSIDE the hold: when backlogLockBestEffort skips the body
+    // on a lock timeout, nothing was written, so this correctly stays
+    // false rather than reporting a blocked flip that never happened.
+    let splitFailedOut = false;
+    backlogLockBestEffort("finalize-merged", () => {
+      let pull = exec("git", ["pull", "--ff-only"], {
+        cwd: repoRoot,
+        env: { GIT_TERMINAL_PROMPT: "0" },
+      });
+      if (pull.exitCode !== 0) {
+        // mlc104 (AC 3): one fetch+retry under the same lock hold before
+        // giving up — a transient fetch failure (network blip, a peer's
+        // push landing mid-fetch) shouldn't strand the reconcile when the
+        // second attempt would fast-forward cleanly. Still-failing keeps
+        // the pre-mlc104 event; dispatcher row 4 reconciles the drift.
+        const fetch = exec("git", ["fetch", "origin"], {
+          cwd: repoRoot,
+          env: { GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
+        });
+        if (fetch.exitCode !== 0) {
+          event("item:pull-ff-retry-fetch-failed", { stderr: fetch.stderr.trim() });
+        }
+        // Deliberately still attempted after a failed fetch (review AA-7):
+        // `git pull` runs its own fetch, so the explicit fetch above is
+        // belt-and-suspenders, not a precondition.
+        pull = exec("git", ["pull", "--ff-only"], {
+          cwd: repoRoot,
+          env: { GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
+        });
+        if (pull.exitCode !== 0) {
+          event("item:pull-ff-failed", { stderr: pull.stderr.trim() });
+        }
       }
-    } catch (e) {
-      event("item:done-status-flip-failed", { error: serializeError(e) });
-    }
-    // dvx103 (cf65aa): the interactive /devx skill writes the mandatory
-    // `phase 4:` status-log line itself, but in the loop the orchestrator
-    // owns the Status log and workers may not touch it — so the merge tail
-    // appends the line when it's missing, or every loop-shipped spec reds
-    // test/devx-status-log-discipline.test.ts on the next branch cut.
-    try {
-      if (!hasPhase4StatusLine(readFileSync(mainSpecPath, "utf8"))) {
+      // Worker-requested split runs AFTER the pull (so it patches the
+      // squash-merged parent copy) and BEFORE the done-flip bookkeeping,
+      // whose commit then carries the follow-up via extraPaths (mss103).
+      // tryWorkerSplit never throws (a failure here must not skip the
+      // done-flip below — the merge is already real and remote).
+      if (splitRequest !== undefined) {
+        followUpSpecPath = tryWorkerSplit(splitRequest);
+      }
+      // Marking the parent done at REDUCED scope is sound only while the
+      // follow-up exists to carry the rest (review BH-2). When the split
+      // failed, flipping done would strand ACs the worker explicitly
+      // declared unmet on a spec no dispatcher row can ever surface — so
+      // the parent lands `[-]` blocked instead, with the remaining ACs in
+      // its status log. The PR itself is merged and stays merged.
+      const splitFailed = splitRequest !== undefined && followUpSpecPath === null;
+      splitFailedOut = splitFailed;
+      if (splitFailed) {
         appendMainEntry(
-          "",
-          "phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103",
+          "[FAIL]",
+          `merged at reduced scope via PR ${prUrl}, but the worker-requested split FAILED — no follow-up spec was filed; these acceptance criteria remain unmet on this spec and need a human decision (re-split with \`devx split\`, or re-scope): ${splitRequest.remaining_acs.join("; ")}`,
         );
+        try {
+          if (!setSpecStatus(mainSpecPath, "blocked")) {
+            event("item:blocked-status-flip-noop", { spec: pick.path });
+          }
+        } catch (e) {
+          event("item:blocked-status-flip-failed", { error: serializeError(e) });
+        }
+        setBacklogRow("-", "blocked");
       }
-    } catch (e) {
-      event("item:phase4-append-failed", { error: serializeError(e) });
-    }
-    appendMainEntry("", `merged via devx loop — PR ${prUrl}`);
-    try {
-      const content = readFileSync(backlogPath, "utf8");
-      const next = markBacklogRowDone(content, pick.hash, pick.type, prUrl);
-      // EC-LOW-13: tmp+rename like every other loop write — a kill -9
-      // mid-write must never tear the backlog.
-      if (next !== content) writeAtomic(backlogPath, next);
-    } catch (e) {
-      event("item:backlog-done-flip-failed", { error: serializeError(e) });
-    }
-    releaseSpecLock();
-    commitOnMain(`chore: mark ${pick.hash} done after loop merge (${prUrl})`);
-    pushMain();
-    out(`loop: ${pick.hash} merged + reconciled (${prUrl})`);
+      try {
+        // BH-LOW-9 / EC-MED-5: a `false` return means the frontmatter had no
+        // flippable status line — surface it (the checkbox is about to flip
+        // while the source-of-truth field silently stays in-progress).
+        if (!splitFailed && !setSpecStatus(mainSpecPath, "done")) {
+          event("item:done-status-flip-noop", { spec: pick.path });
+        }
+      } catch (e) {
+        event("item:done-status-flip-failed", { error: serializeError(e) });
+      }
+      // dvx103 (cf65aa): the interactive /devx skill writes the mandatory
+      // `phase 4:` status-log line itself, but in the loop the orchestrator
+      // owns the Status log and workers may not touch it — so the merge tail
+      // appends the line when it's missing, or every loop-shipped spec reds
+      // test/devx-status-log-discipline.test.ts on the next branch cut.
+      try {
+        if (!hasPhase4StatusLine(readFileSync(mainSpecPath, "utf8"))) {
+          appendMainEntry(
+            "",
+            "phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103",
+          );
+        }
+      } catch (e) {
+        event("item:phase4-append-failed", { error: serializeError(e) });
+      }
+      appendMainEntry("", `merged via devx loop — PR ${prUrl}`);
+      if (!splitFailed) {
+        try {
+          const content = readFileSync(backlogPath, "utf8");
+          const next = markBacklogRowDone(content, pick.hash, pick.type, prUrl);
+          // EC-LOW-13: tmp+rename like every other loop write — a kill -9
+          // mid-write must never tear the backlog.
+          if (next !== content) writeAtomic(backlogPath, next);
+        } catch (e) {
+          event("item:backlog-done-flip-failed", { error: serializeError(e) });
+        }
+      }
+      releaseSpecLock();
+      commitOnMain(
+        splitFailed
+          ? `chore(loop): ${pick.hash} merged at reduced scope via ${prUrl} but its split failed — left blocked`
+          : `chore: mark ${pick.hash} done after loop merge (${prUrl})`,
+        followUpSpecPath !== null ? [followUpSpecPath] : [],
+      );
+      pushMain();
+    });
+    out(
+      splitFailedOut
+        ? `loop: ${pick.hash} merged (${prUrl}) at reduced scope, but its split failed — spec left blocked for a human`
+        : `loop: ${pick.hash} merged + reconciled (${prUrl})`,
+    );
+    return { followUpSpecPath, splitFailed: splitFailedOut };
   }
 
   function backlogRel(type: string): string {

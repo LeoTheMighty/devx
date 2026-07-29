@@ -19,9 +19,10 @@
 // at most one cleanup pass before we surface the held error
 // (ManagerLockHeldError for the manager path, PathLockHeldError generically).
 
-import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, unlinkSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 
+import { classifyExistingLock, defaultPidAlive } from "../locks/classify.js";
 import { probePidStartedAt } from "./pid-uptime.js";
 
 export interface LockHandle {
@@ -57,14 +58,17 @@ export class ManagerLockHeldError extends PathLockHeldError {
   }
 }
 
-export function managerLockPath(cacheDir: string = ".devx-cache"): string {
+// No `.devx-cache` default on either function (mlc101): a cwd-relative
+// fallback is exactly the forked-universe foothold R1 is about — every
+// caller must say which universe it means.
+export function managerLockPath(cacheDir: string): string {
   return join(cacheDir, "locks", "manager.lock");
 }
 
 const MAX_STALE_RETRIES = 1;
 
 export function acquireManagerLock(
-  cacheDir: string = ".devx-cache",
+  cacheDir: string,
   opts: AcquireExtra = {},
 ): LockHandle {
   return acquirePathLock(managerLockPath(cacheDir), {
@@ -235,139 +239,8 @@ function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-interface LockBody {
-  pid: number;
-  acquired_at: string;
-}
-
-type LockClassification =
-  | { kind: "held" }
-  | { kind: "stale"; message: string };
-
-/**
- * Examine the existing lock file and decide whether to (a) accept it as
- * genuinely held or (b) reap it as stale. The only reaping cases are:
- *   - lock file unparseable (corrupt / hand-edited)
- *   - lock holder's PID isn't running
- *   - lock holder's PID is running BUT its process started after
- *     `acquired_at` (recycled)
- *
- * Conservative posture: any uncertainty (probe returns null, ISO timestamp
- * unparseable) defaults to "held" — better to surface a spurious
- * ManagerLockHeldError than to clobber a peer manager's lock.
- */
-function classifyExistingLock(
-  path: string,
-  pidAlive: (pid: number) => boolean,
-  pidStartedAt: (pid: number) => Date | null,
-): LockClassification {
-  let raw: string;
-  try {
-    raw = readFileSync(path, "utf8");
-  } catch (err) {
-    // Lock file disappeared between EEXIST and read (a peer reaped it).
-    // Treat as stale → caller's retry will succeed on the open.
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") {
-      return { kind: "stale", message: `lock at ${path} vanished between EEXIST and read; retrying` };
-    }
-    // EACCES, EIO etc. — can't determine, treat as held (conservative).
-    return { kind: "held" };
-  }
-  // Empty / whitespace-only content is the signature of a peer's
-  // mid-write race: openSync(O_EXCL|O_CREAT) creates the file empty, then
-  // writeSync populates it. A reader that lands inside that window sees
-  // an empty file. Reaping here would clobber the peer's lock once their
-  // write lands → two-manager scenario (BH-H3). Conservative posture:
-  // empty content → "held". Cost: a truly corrupt empty lock from a
-  // catastrophic mid-write crash sticks until manually deleted, but
-  // mgr101's cleanup-on-throw already reaps that case proactively, and
-  // the operator can always `rm .devx-cache/locks/manager.lock`.
-  if (raw.trim().length === 0) {
-    return { kind: "held" };
-  }
-  const body = parseLockBody(raw);
-  if (!body) {
-    return {
-      kind: "stale",
-      message: `lock at ${path} is unparseable; deleting and retrying`,
-    };
-  }
-  if (!pidAlive(body.pid)) {
-    return {
-      kind: "stale",
-      message: `lock at ${path} holds pid ${body.pid} (not running); deleting and retrying`,
-    };
-  }
-  // PID alive — cross-check against PID-recycling.
-  //
-  // Grace window: `ps -o etime=` has 1-second resolution. A process that
-  // started < 1s ago reports elapsed=0, so probePidStartedAt returns
-  // `now()` — which is later than `acquired_at` if any time passed
-  // between the lock write and the probe (always true). Without a grace
-  // window, every same-process re-acquire would false-positive as
-  // recycled. RECYCLING_GRACE_MS subsumes etime's 1s resolution + clock
-  // jitter; real PID recycling involves seconds-to-minutes deltas (the
-  // PID counter has to wrap or the process has to be reaped + a new fork
-  // claim the slot), so a 2s threshold doesn't compromise detection.
-  const startedAt = pidStartedAt(body.pid);
-  const acquiredAt = new Date(body.acquired_at);
-  if (
-    startedAt &&
-    Number.isFinite(acquiredAt.getTime()) &&
-    startedAt.getTime() > acquiredAt.getTime() + RECYCLING_GRACE_MS
-  ) {
-    return {
-      kind: "stale",
-      message:
-        `lock at ${path} holds pid ${body.pid} but its process started ` +
-        `${startedAt.toISOString()} (after acquired_at ${body.acquired_at}); ` +
-        `pid recycled — deleting and retrying`,
-    };
-  }
-  return { kind: "held" };
-}
-
-const RECYCLING_GRACE_MS = 2_000;
-
-function parseLockBody(raw: string): LockBody | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-  const o = parsed as Record<string, unknown>;
-  if (typeof o.pid !== "number" || !Number.isInteger(o.pid) || o.pid <= 0) return null;
-  // Reject whitespace-only acquired_at (EC: would fall through to
-  // Number.isFinite(NaN) === false → conservative held forever, even if
-  // the PID is recyclable). Trim-and-length-check forces unparseable.
-  if (typeof o.acquired_at !== "string" || o.acquired_at.trim().length === 0) return null;
-  return { pid: o.pid, acquired_at: o.acquired_at };
-}
-
-/**
- * Default PID-existence probe — `process.kill(pid, 0)` is the POSIX idiom
- * (signal 0 performs permission + existence checks without delivering
- * anything). Mirrors loop.ts's `defaultPidAlive`; kept locally to avoid a
- * cross-module dep cycle (loop.ts imports lock.ts in production via the
- * acquire path; the reverse import would close a cycle).
- *
- *   ESRCH → no such process → false
- *   EPERM → process exists but we lack permission to signal → true
- *           (conservative: don't false-positive a stale-lock reap)
- *   anything else → swallow + true (don't reap on a kernel hiccup)
- */
-function defaultPidAlive(pid: number): boolean {
-  if (typeof pid !== "number" || !Number.isFinite(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code === "ESRCH") return false;
-    if (code === "EPERM") return true;
-    return true;
-  }
-}
+// classifyExistingLock + defaultPidAlive + RECYCLING_GRACE_MS moved to
+// src/lib/locks/classify.ts (mlc103) so spec locks share the identical
+// mgr106 liveness posture. The manager lock's default JSON body
+// `{pid, acquired_at}` is the classifier's default parse, so behavior
+// here is byte-identical to the pre-extraction code.

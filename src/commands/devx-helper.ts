@@ -26,7 +26,14 @@
 //
 //   `claim`:
 //     • 0  → claim successful. JSON `{branch, lockPath, claimSha}` on stdout.
-//     • 1  → lock-already-held. JSON `{error, lockPath}` on stdout.
+//            (mlc104: a push race lost once may have been rebase-retried to
+//            success transparently — the claim commit is at origin's tip.)
+//     • 1  → retryable contention, nothing mutated. Three JSON shapes on
+//            stdout: `{error: "lock held", lockPath}` (spec lock),
+//            `{error: "backlog lock held", lockPath, holderPid}` (mlc102),
+//            `{error: "claim-contended", hash, retries}` (mlc104 — push
+//            race still lost after the bounded rebase-retries; rollback
+//            already ran).
 //     • 2  → rollback. JSON `{error, stage}` on stdout; stderr has detail.
 //     • 64 → usage error. stderr only.
 //
@@ -81,11 +88,13 @@ import type { Command } from "commander";
 import { findProjectConfig, loadMerged } from "../lib/config-io.js";
 import { attachPhase } from "../lib/help.js";
 import {
+  ClaimContendedError,
   ClaimError,
   type ClaimSpecOpts,
   LockHeldError,
   claimSpec,
 } from "../lib/devx/claim.js";
+import { BacklogLockTimeoutError } from "../lib/backlog/mutate.js";
 import {
   type AwaitRemoteCiOpts,
   GhProbeError,
@@ -212,6 +221,29 @@ export async function runClaim(
   } catch (e) {
     if (e instanceof LockHeldError) {
       out(`${JSON.stringify({ error: "lock held", lockPath: e.lockPath })}\n`);
+      err(`devx devx-helper claim: ${e.message}\n`);
+      return 1;
+    }
+    if (e instanceof ClaimContendedError) {
+      // mlc104: a push race lost after the bounded rebase-retries. The
+      // rollback already ran (nothing durable was left), so this is the
+      // retryable "someone else got there first" family — exit 1 like a
+      // held lock, NOT the rollback exit 2 (the operator/loop response is
+      // "pick another item or retry", not "investigate a broken claim").
+      out(
+        `${JSON.stringify({ error: "claim-contended", hash: e.hash, retries: e.retries })}\n`,
+      );
+      err(`devx devx-helper claim: ${e.message}\n`);
+      return 1;
+    }
+    if (e instanceof BacklogLockTimeoutError) {
+      // mlc102 (review BH-MED-2): a live peer holding the backlog lock past
+      // the 30s deadline is the retryable "held" condition, not a rollback —
+      // nothing was mutated (the timeout fires before step 1). Exit 1 like
+      // the spec-lock held case; the JSON names the holder for diagnosis.
+      out(
+        `${JSON.stringify({ error: "backlog lock held", lockPath: e.lockPath, holderPid: e.holderPid })}\n`,
+      );
       err(`devx devx-helper claim: ${e.message}\n`);
       return 1;
     }

@@ -50,6 +50,14 @@ import {
   normalizeSessionToken,
   parseLockOwner,
 } from "../devx/verify-claim.js";
+import {
+  SPEC_LOCK_LIVE_WARN_MS,
+  classifySpecLock,
+} from "../devx/spec-lock.js";
+import {
+  instancesDir,
+  listLiveInstances,
+} from "../loop/instances.js";
 import { heartbeatPath } from "../manage/state.js";
 import { parseFrontmatterValue } from "../plan/validate-emit.js";
 import { type Exec, realExec } from "../tour/exec.js";
@@ -60,6 +68,7 @@ import {
   type DriftEntry,
   type GateInfo,
   type InterviewBlockSignal,
+  type LoopInstanceSignal,
   type LoopSignal,
   type MergeReconcileSignal,
   type OutcomeDueSignal,
@@ -107,6 +116,13 @@ export interface GatherOpts {
    *  init e2e and offline runs use this; a gh failure degrades the same
    *  way with a warning. */
   skipGh?: boolean;
+  /** Test seams for spec-lock liveness classification (mlc103) — without
+   *  them a fixture lock file hits the real process table (`process.kill`
+   *  + `ps`), making classification host-dependent. */
+  lockProbes?: {
+    pidAlive?: (pid: number) => boolean;
+    pidStartedAt?: (pid: number) => Date | null;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -222,7 +238,42 @@ export function gatherRepoSnapshot(opts: GatherOpts): RepoSnapshot {
             `'${row.hash}' is in-progress with a lock held by another session (lock owner '${claim.lockOwner}') — leave it alone, or verify staleness before intervening`,
           );
         }
+        // Own claims are exempt (review EC-4a): a 3-hour interactive
+        // session running `devx next` mid-work should not be told to
+        // investigate itself — the WARN targets wedged PEER holders.
+        if (claim.ownership !== "no-lock" && claim.ownership !== "owned") {
+          pushStaleLiveLockDrift(fs, repoRoot, backlog, row.hash, now, drift, opts.lockProbes);
+        }
         claims.push(claim);
+      }
+      // READY row with a lock that classifies conservative-held (mlc103,
+      // review BH-F3): a crashed claim's 0-byte or mangled lock on a
+      // still-ready row makes the item invisible to every loop pick, and
+      // no drift kind covers it ("in-progress-without-lock" needs an
+      // in-progress row, "stale-live-lock" needs a live pid). Surface it
+      // as a warning so the operator gets a pointer at the lock file.
+      // Live locks on ready rows are skipped — that's a peer's claim
+      // transaction mid-flight (lock taken, backlog flip not yet
+      // observable), transient by construction.
+      if (effectiveStatus === "ready" && backlog !== "PLAN.md") {
+        const lockPath = join(repoRoot, ".devx-cache", "locks", `spec-${row.hash}.lock`);
+        if (fs.exists(lockPath)) {
+          const cls = classifySpecLock(lockPath, {
+            readFile: (p) => fs.readFile(p),
+            now: () => now,
+            ...(opts.lockProbes?.pidAlive !== undefined
+              ? { pidAlive: opts.lockProbes.pidAlive }
+              : {}),
+            ...(opts.lockProbes?.pidStartedAt !== undefined
+              ? { pidStartedAt: opts.lockProbes.pidStartedAt }
+              : {}),
+          });
+          if (cls.kind === "empty" || cls.kind === "unknown-pid" || cls.kind === "unreadable") {
+            warnings.push(
+              `'${row.hash}' is ready but masked by a spec lock that classifies '${cls.kind}' — loop picks will skip it forever; inspect/remove .devx-cache/locks/spec-${row.hash}.lock`,
+            );
+          }
+        }
       }
       resolved.push({
         row,
@@ -451,6 +502,39 @@ function claimSignalFor(
     ownership: owned ? "owned" : "other-session",
     lockOwner,
   };
+}
+
+/**
+ * mlc103 (design §Architecture 4): a live-PID spec lock older than 2h is a
+ * wedged-but-alive owner — surfaced as drift (never auto-reaped; `devx
+ * doctor` owns repair). Dead/recycled holders are NOT flagged here: the
+ * next claim of the hash reaps them automatically, so drift noise would
+ * outlive its usefulness.
+ */
+function pushStaleLiveLockDrift(
+  fs: NextFs,
+  repoRoot: string,
+  backlog: string,
+  hash: string,
+  now: Date,
+  drift: DriftEntry[],
+  probes?: GatherOpts["lockProbes"],
+): void {
+  const lockPath = join(repoRoot, ".devx-cache", "locks", `spec-${hash}.lock`);
+  const cls = classifySpecLock(lockPath, {
+    readFile: (p) => fs.readFile(p),
+    now: () => now,
+    ...(probes?.pidAlive !== undefined ? { pidAlive: probes.pidAlive } : {}),
+    ...(probes?.pidStartedAt !== undefined ? { pidStartedAt: probes.pidStartedAt } : {}),
+  });
+  if (cls.kind === "live" && cls.ageMs !== null && cls.ageMs > SPEC_LOCK_LIVE_WARN_MS) {
+    drift.push({
+      hash,
+      backlog,
+      kind: "stale-live-lock",
+      detail: `'${hash}' spec lock is live-held by pid ${cls.body.pid} for ${Math.floor(cls.ageMs / 3_600_000)}h (>2h) — never auto-reaped; verify the holder is progressing or run devx doctor`,
+    });
+  }
 }
 
 function ownerFrom(specContent: string): string | null {
@@ -757,6 +841,7 @@ function gatherLoopSignal(
     pid: null,
     ts: null,
     ageSeconds: null,
+    loops: [],
     overnightReport: findOvernightReport(fs, repoRoot, now),
   };
 
@@ -767,6 +852,62 @@ function gatherLoopSignal(
   // (adversarial-review BH#2 / EC#1 / EC#2).
   const isFresh = (tsMs: number): boolean =>
     Math.abs(now.getTime() - tsMs) <= freshS * 1000;
+
+  // mlc105: the per-run instance registry is the loop's state now. Probed
+  // BEFORE the legacy singleton so a repo carrying both (an upgrade that
+  // left `loop/state.json` behind) reports the truth, not the debris.
+  // Liveness is the registry's own two-predicate rule (fresh heartbeat AND
+  // live, non-recycled PID) — freshness alone would count a SIGKILLed run
+  // live for a whole window, which is exactly the E-5 dead-instance clause.
+  const instancesAbs = instancesDir(cacheDir);
+  if (fs.exists(instancesAbs)) {
+    const live = listLiveInstances(cacheDir, {
+      now: () => now,
+      freshMs: freshS * 1000,
+      readdir: (p) => fs.readdir(p),
+      readFile: (p) => fs.readFile(p),
+      ...(opts.lockProbes?.pidAlive !== undefined
+        ? { pidAlive: opts.lockProbes.pidAlive }
+        : {}),
+      ...(opts.lockProbes?.pidStartedAt !== undefined
+        ? { pidStartedAt: opts.lockProbes.pidStartedAt }
+        : {}),
+    });
+    const loops: LoopInstanceSignal[] = live.map((i) => {
+      const tsMs = Date.parse(i.ts);
+      return {
+        run_id: i.run_id,
+        scope: i.scope,
+        current_item: i.current_item,
+        iteration: i.iteration,
+        pid: i.pid,
+        age_seconds: Number.isFinite(tsMs)
+          ? Math.round((now.getTime() - tsMs) / 1000)
+          : 0,
+      };
+    });
+    if (loops.length > 0) {
+      // listLiveInstances sorts freshest-first, so loops[0] is the run whose
+      // pid/ts represent the registry in the scalar fields the pre-mlc105
+      // LoopSignal shape exposes (consumers that never learned about
+      // `loops` keep seeing a coherent single-loop answer).
+      const head = loops[0];
+      return {
+        ...dead,
+        live: true,
+        source: "loop-instance",
+        pid: head.pid,
+        ts: live[0].ts,
+        ageSeconds: head.age_seconds,
+        loops,
+      };
+    }
+    // Registry present but nothing live: fall through to the manager
+    // heartbeat (a different actor entirely) — but NOT to the legacy
+    // singleton, whose only writer was a loop that this registry supersedes
+    // (design §Architecture 5: fallback "only when the dir is absent").
+    return gatherManagerHeartbeat(fs, cacheDir, dead, isFresh, now, warnings);
+  }
 
   // v2l101's loop state file — probed first so the overnight loop wins the
   // "who is live" attribution once it lands. Degrades gracefully to the
@@ -806,6 +947,19 @@ function gatherLoopSignal(
     }
   }
 
+  return gatherManagerHeartbeat(fs, cacheDir, dead, isFresh, now, warnings);
+}
+
+/** The `devx manage` daemon's heartbeat — a DIFFERENT actor from a loop
+ *  run, so it is consulted whether or not the instance registry exists. */
+function gatherManagerHeartbeat(
+  fs: NextFs,
+  cacheDir: string,
+  dead: LoopSignal,
+  isFresh: (tsMs: number) => boolean,
+  now: Date,
+  warnings: string[],
+): LoopSignal {
   const hbAbs = heartbeatPath(cacheDir);
   if (!fs.exists(hbAbs)) return dead;
   try {

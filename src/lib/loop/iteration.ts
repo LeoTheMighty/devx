@@ -50,6 +50,23 @@ export interface IterationReport {
    *  the item to the PR/CI/merge tail (D-11: this is a claim, not
    *  acceptance — merge-gate + CI remain the only path to main). */
   acs_met: boolean;
+  /** Optional mid-story split request (mss103). Only meaningful on a
+   *  success=true / acs_met=false report at a clean seam — the DRIVER
+   *  performs the split (workers never write specs/backlogs). Validated on
+   *  its own error path: a malformed request is stripped and surfaced via
+   *  `splitRequestErrors`, never failing the whole report. */
+  split_request?: SplitRequest;
+}
+
+export interface SplitRequest {
+  /** Follow-up spec title — single-line, non-empty, no `;` (the
+   *  Next-command block title rules performSplit enforces downstream). */
+  title: string;
+  /** The remaining acceptance criteria the follow-up carries — non-empty,
+   *  one single-line entry each. */
+  remaining_acs: string[];
+  /** Optional learnings for the follow-up's carried-forward sections. */
+  learnings?: string[];
 }
 
 export const REPORT_FIELDS = [
@@ -74,7 +91,15 @@ export interface ReportValidationError {
 }
 
 export type ValidateReportResult =
-  | { ok: true; report: IterationReport }
+  | {
+      ok: true;
+      report: IterationReport;
+      /** Present iff the report carried a MALFORMED split_request: the
+       *  request was stripped from `report` (own error path — it never
+       *  fails the report) and these errors say why. The driver events
+       *  `iteration:split-request-invalid` + WARNs, then continues. */
+      splitRequestErrors?: ReportValidationError[];
+    }
   | { ok: false; errors: ReportValidationError[] };
 
 function isStringArray(v: unknown): v is string[] {
@@ -133,6 +158,26 @@ export function validateIterationReport(value: unknown): ValidateReportResult {
     }
   }
   if (errors.length > 0) return { ok: false, errors };
+
+  // split_request rides its OWN error path (mss103): the base report above
+  // is already valid, so a malformed request must never burn a retry or
+  // fail the iteration — it is stripped and the errors are surfaced
+  // alongside. The validator returns a fresh trimmed object, so the
+  // copy-through below is explicit: without it a well-formed request would
+  // be silently dropped (the E-4 silent-drop hazard).
+  let splitRequest: SplitRequest | undefined;
+  let splitRequestErrors: ReportValidationError[] | undefined;
+  // Every falsy value reads as "no split requested", not as a malformed
+  // one: `false` / `0` / `""` are natural ways for a model to say "no" in
+  // JSON, and treating them as errors would fire an
+  // iteration:split-request-invalid event + WARN on every honest
+  // iteration that answered the field negatively (review EC-5).
+  if (obj.split_request) {
+    const v = validateSplitRequest(obj.split_request);
+    if (v.request !== undefined) splitRequest = v.request;
+    else splitRequestErrors = v.errors;
+  }
+
   return {
     ok: true,
     report: {
@@ -141,7 +186,76 @@ export function validateIterationReport(value: unknown): ValidateReportResult {
       key_changes_made: obj.key_changes_made as string[],
       key_learnings: obj.key_learnings as string[],
       acs_met: obj.acs_met as boolean,
+      ...(splitRequest !== undefined ? { split_request: splitRequest } : {}),
     },
+    ...(splitRequestErrors !== undefined ? { splitRequestErrors } : {}),
+  };
+}
+
+/**
+ * Validate the optional split_request shape. Mirrors the downstream
+ * SplitPayload line rules (single-line entries, no `;` in the title) so a
+ * request that passes here won't be rejected again by performSplit's
+ * payload validation for shape reasons.
+ */
+function validateSplitRequest(raw: unknown): {
+  request?: SplitRequest;
+  errors: ReportValidationError[];
+} {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {
+      errors: [
+        {
+          code: "wrong-type",
+          field: "split_request",
+          message: "split_request must be a JSON object",
+        },
+      ],
+    };
+  }
+  const o = raw as Record<string, unknown>;
+  const errors: ReportValidationError[] = [];
+  if (
+    typeof o.title !== "string" ||
+    o.title.trim() === "" ||
+    /[\n\r]/.test(o.title) ||
+    o.title.includes(";")
+  ) {
+    errors.push({
+      code: "wrong-type",
+      field: "split_request.title",
+      message: "split_request.title must be a non-empty single-line string without ';'",
+    });
+  }
+  if (
+    !isStringArray(o.remaining_acs) ||
+    o.remaining_acs.length === 0 ||
+    o.remaining_acs.some((a) => a.trim() === "" || /[\n\r]/.test(a))
+  ) {
+    errors.push({
+      code: "wrong-type",
+      field: "split_request.remaining_acs",
+      message:
+        "split_request.remaining_acs must be a non-empty array of non-empty single-line strings",
+    });
+  }
+  if (o.learnings !== undefined && !isStringArray(o.learnings)) {
+    errors.push({
+      code: "wrong-type",
+      field: "split_request.learnings",
+      message: "split_request.learnings, when present, must be an array of strings",
+    });
+  }
+  if (errors.length > 0) return { errors };
+  return {
+    request: {
+      title: (o.title as string).trim(),
+      remaining_acs: (o.remaining_acs as string[]).map((a) => a.trim()),
+      ...(o.learnings !== undefined
+        ? { learnings: (o.learnings as string[]).map((l) => l.trim()) }
+        : {}),
+    },
+    errors: [],
   };
 }
 
@@ -321,6 +435,7 @@ const OUTPUT_FIELD_LINES = [
   "- key_changes_made: an array of descriptions of key changes you made. Group by logical units of work, not by file. Describe material outcomes, not activities.",
   "- key_learnings: an array of new learnings that were surprising, weren't captured by the Status log, and would inform future iterations.",
   "- acs_met: set to true ONLY when every acceptance criterion in the spec is met and verified. This routes the item to the PR/CI/merge tail — it is a claim, not acceptance; CI still gates the merge.",
+  '- split_request (optional): request a mid-story split ONLY at a clean seam — the done portion is committed, coherent, and green on the done portion (your success=true report is what the loop commits) — and only when the remaining acceptance criteria need more room than the remaining iteration budget allows. An object {"title": "<follow-up title>", "remaining_acs": ["<one AC per entry>"], "learnings": ["<optional>"]}: single-line strings, non-empty remaining_acs, no \';\' in the title. Only meaningful with success=true and acs_met=false; the loop (never you) files the follow-up spec and backlog row.',
 ];
 
 /**

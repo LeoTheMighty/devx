@@ -32,17 +32,18 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
-  writeFileSync,
 } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import {
   type EngineState,
   HASH_RE,
+  SPEC_TYPE_DIRS,
   ensureEngineFrontmatter,
   readEngineState,
 } from "./frontmatter.js";
 import { type EngineConfig } from "./config.js";
+import { writeAtomic } from "../supervisor-internal.js";
 
 // ---------------------------------------------------------------------------
 // fs seam — same shape as devx/claim.ts's ClaimFs (subset).
@@ -58,7 +59,21 @@ export interface EngineFs {
 
 export const realEngineFs: EngineFs = {
   readFile: (p) => readFileSync(p, "utf8"),
-  writeFile: (p, c) => writeFileSync(p, c, "utf8"),
+  // mlc102: tmp+rename for every engine write — a kill mid-write must never
+  // tear a spec's frontmatter patch (R10) or a scaffolded artifact. The
+  // explicit parent-dir probe preserves writeFileSync's ENOENT contract
+  // (review EC-F7): writeAtomic mkdirs missing parents, which would let a
+  // typo'd/stale path silently mint stray directories instead of erroring.
+  writeFile: (p, c) => {
+    if (!existsSync(dirname(p))) {
+      const err = new Error(
+        `ENOENT: no such directory, write '${p}'`,
+      ) as NodeJS.ErrnoException;
+      err.code = "ENOENT";
+      throw err;
+    }
+    writeAtomic(p, c);
+  },
   exists: (p) => existsSync(p),
   mkdirRecursive: (p) => mkdirSync(p, { recursive: true }),
   readdir: (p) => readdirSync(p),
@@ -162,15 +177,23 @@ function formatFullIso(d: Date): string {
   );
 }
 
-function generateHash(fs: EngineFs, repoRoot: string): string {
+export function generateHash(
+  fs: Pick<EngineFs, "exists" | "readdir">,
+  repoRoot: string,
+): string {
   // 6 hex chars per the spec convention. Regenerate on the (unlikely)
-  // collision with an existing plan/dev spec.
+  // collision with an existing spec in ANY type dir — mss101 widened the
+  // scan from `plan/` so consumers minting non-plan hashes (`devx split`)
+  // can't collide with an existing dev/debug/test spec.
   for (let attempt = 0; attempt < 32; attempt++) {
     const hash = randomBytes(3).toString("hex");
-    const planDir = join(repoRoot, PLAN_DIR);
-    const collision =
-      fs.exists(planDir) &&
-      fs.readdir(planDir).some((n) => n.startsWith(`plan-${hash}-`));
+    const collision = SPEC_TYPE_DIRS.some((type) => {
+      const dir = join(repoRoot, type);
+      return (
+        fs.exists(dir) &&
+        fs.readdir(dir).some((n) => n.startsWith(`${type}-${hash}-`))
+      );
+    });
     if (!collision) return hash;
   }
   throw new WorkstreamError("could not generate a collision-free hash");

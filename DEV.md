@@ -37,13 +37,27 @@ Owner-requested 2026-07-28: N concurrent scoped `devx loop`s on one repo,
 overlap-safe by construction (race inventory R1–R12 in the plan spec).
 Serial chain — every story touches claim.ts/driver.ts.
 
-- [ ] `dev/dev-mlc101-2026-07-28T09:02-canonical-repo-root.md` — Canonical repo root + worktree refusal (kills R1). Status: ready. From: epic-multi-loop-concurrency.
-- [ ] `dev/dev-mlc102-2026-07-28T09:02-backlog-mutation-lock.md` — Backlog mutation lock + atomic-writer conversion (kills R3/R4/R10). Status: ready. Blocked-by: mlc101.
-- [ ] `dev/dev-mlc103-2026-07-28T09:02-spec-lock-lifecycle.md` — Spec-lock lifecycle: classify, reap, guarded release + pick-time masking (kills R7/R8/R12; G-3). Status: ready. Blocked-by: mlc102.
-- [ ] `dev/dev-mlc104-2026-07-28T09:02-claim-contention-harness.md` — Claim contention + overlap harness (kills R2/R5; G-1). Status: ready. Blocked-by: mlc103.
-- [ ] `dev/dev-mlc105-2026-07-28T09:02-instance-registry-admission.md` — Loop instance registry + capacity admission + next/status aggregation + scratch namespacing (kills R6/R11). Status: ready. Blocked-by: mlc104.
-- [ ] `dev/dev-mlc106-2026-07-28T09:02-scope-model-flags.md` — Scope model: epic-aware rows + --epic/--workstream/--items/--exclude/--focus + E-8 sweep. Status: ready. Blocked-by: mlc105.
+- [x] `dev/dev-mlc101-2026-07-28T09:02-canonical-repo-root.md` — Canonical repo root + worktree refusal (kills R1). Status: done. From: epic-multi-loop-concurrency. PR: https://github.com/LeoTheMighty/devx/pull/91 (merged 68646b3).
+- [x] `dev/dev-mlc102-2026-07-28T09:02-backlog-mutation-lock.md` — Backlog mutation lock + atomic-writer conversion (kills R3/R4/R10). Status: done. Blocked-by: mlc101. PR: https://github.com/LeoTheMighty/devx/pull/93 (merged daaa873)
+- [x] `dev/dev-mlc103-2026-07-28T09:02-spec-lock-lifecycle.md` — Spec-lock lifecycle: classify, reap, guarded release + pick-time masking (kills R7/R8/R12; G-3). Status: done. Blocked-by: mlc102. PR: https://github.com/LeoTheMighty/devx/pull/94 (merged f5fa72f)
+- [x] `dev/dev-mlc104-2026-07-28T09:02-claim-contention-harness.md` — Claim contention + overlap harness (kills R2/R5; G-1). Status: done. Blocked-by: mlc103. PR: https://github.com/LeoTheMighty/devx/pull/96 (merged 3c9f2c0)
+- [x] `dev/dev-mlc105-2026-07-28T09:02-instance-registry-admission.md` — Loop instance registry + capacity admission + next/status aggregation + scratch namespacing (kills R6/R11). Status: done. Blocked-by: mlc104. PR: https://github.com/LeoTheMighty/devx/pull/98 (merged a19eb6d)
+- [/] `dev/dev-mlc106-2026-07-28T09:02-scope-model-flags.md` — Scope model: epic-aware rows + --epic/--workstream/--items/--exclude/--focus + E-8 sweep. Status: in-progress. Blocked-by: mlc105.
 - [ ] `dev/dev-mlcret-2026-07-28T09:04-retro-multi-loop-concurrency.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: mlc101, mlc102, mlc103, mlc104, mlc105, mlc106.
+
+### Epic — mid-story-split (plan: e0a67e)
+
+First-class mid-story splits: remaining work becomes a fresh spec wired
+into the dependency tree (merge-first / branch-handoff shapes), the loop
+splits instead of abandoning on real progress, and the Handoff Snippet
+contract retires. Deps: mss101 → {mss102, mss103} → mss104; mss102 and
+mss103 are parallel-safe (no shared files).
+
+- [x] `dev/dev-mss101-2026-07-28T13:43-split-primitive-lib-cli.md` — Split primitive (lib + CLI). Status: done. From: epic-mid-story-split. PR: https://github.com/LeoTheMighty/devx/pull/95 (merged ec3af6e)
+- [x] `dev/dev-mss102-2026-07-28T13:43-claim-branch-inheritance.md` — Claim branch inheritance. Status: done. Blocked-by: mss101. Parallel-safe with mss103. PR: https://github.com/LeoTheMighty/devx/pull/97 (merged 46fb9e4)
+- [x] `dev/dev-mss103-2026-07-28T13:43-loop-split-integration.md` — Loop split integration. Status: done. Blocked-by: mss101. Parallel-safe with mss102. PR: https://github.com/LeoTheMighty/devx/pull/99 (merged 962f9a1)
+- [/] `dev/dev-mss104-2026-07-28T13:43-handoff-snippet-retirement.md` — Handoff Snippet retirement sweep. Status: in-progress. Blocked-by: mss102, mss103.
+- [ ] `dev/dev-mssret-2026-07-28T13:45-retro-mid-story-split.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: mss101, mss102, mss103, mss104.
 
 ## Phase 0 — Foundation (plan: plan-a01000)
 
