@@ -112,3 +112,31 @@ Run the native retro stage (`/devx retro` — the `## Stage: Retro` section of `
   CONSUME ee7049's CLI rather than write a second release path
   (CLAUDE.md "Don't duplicate business logic"). Staged by explicit
   pathspec throughout — the discipline this retro is about.
+- 2026-07-29T11:46 — claim ADOPTED by session
+  `/devx-2026-07-29T1108-89447` from dead owner
+  `/devx-2026-07-29T0932-37184`. `devx devx-helper verify-claim mlcret`
+  (tokenless, per roc101) exited 3 `owned-by-other-session`; `ps -p 37184`
+  confirmed the owner process is gone, so this is a dead-owner lock, not a
+  live peer. Halted and surfaced before any worktree edit; adopted only
+  after the user chose to. Lock body rewritten in place (schema 1, this
+  session's token, `adopted_from` recording the predecessor); prior body
+  backed up to scratch. No shipped CLI adopts a stale claim — `ee7049`
+  (`devx devx-helper release-lock`) is filed and unshipped, and a
+  post-adoption `verify-claim --session-token` is tautological by
+  construction (the token is read back from the lock this session just
+  wrote), so neither closes this gap. `b931a1`/`ee7049` should.
+- 2026-07-29T11:46 — phase 5 (RE-RUN, merged tree): the predecessor
+  session's post-merge gate is why this item was NOT mergeable at adoption
+  time — it reported **1 failed / 2664 passed (2665)**, `GATE2_EXIT=1`,
+  and the session died before recording it (the phase-5 line above
+  describes the PRE-merge tree only). Re-ran the full gate on the merged
+  tree `951b4f8`: **131 files / 2,665 tests passed, exit 0**, 882s —
+  read from the "Test Files … passed" summary per
+  `feedback_never_kill_the_gate.md`, not the exit code. Bisected first to
+  rule out a real regression: discipline/prose-budget class (80 tests),
+  concurrency class (129), and the six merge-touched files (113) all
+  green. The failing test's NAME IS UNRECOVERABLE — the background task's
+  output file retained only its 4-line tail. Treated as load-sensitive
+  flake (red run 3,155s wall vs 882s green — a far more loaded machine),
+  NOT as proof of health; filed a test spec so an unidentified 1-in-2,665
+  flake is not silently absorbed.
