@@ -106,6 +106,17 @@ export interface RunSummary {
   };
   items: ItemResult[];
   totals: TokenTotals;
+  /** lpf101 preflight result at loop start. Absent on runs that predate the
+   *  preflight or when `loop.preflight_main_health: off`. */
+  mainHealth?: {
+    state: "green" | "red" | "unknown" | "no-workflow";
+    branch: string;
+    /** Present iff state === "red". */
+    failing?: { workflowName: string; conclusion: string; headSha: string; url: string };
+    detail?: string;
+    /** True when the run started despite a red main (--force / warn). */
+    forced?: boolean;
+  };
   /** Scope descriptor for this run (mlc106), or null/absent when unscoped.
    *  Optional so pre-mlc106 RunSummary literals (tests, other callers) keep
    *  compiling and an unscoped report keeps its exact prior bytes. Note the
@@ -335,6 +346,20 @@ export function renderMorningReport(summary: RunSummary): string {
     `Ran ${fmtDuration(summary.startedAt, summary.endedAt)} (${summary.startedAt} → ${summary.endedAt}) in mode ${summary.mode}.`,
   );
   lines.push("");
+  const mh = summary.mainHealth;
+  if (mh !== undefined && mh.state === "red" && mh.failing !== undefined) {
+    lines.push(
+      `**Baseline: '${mh.branch}' was RED at loop start** — ${mh.failing.workflowName} concluded '${mh.failing.conclusion}' at ${mh.failing.headSha.slice(0, 7)} (${mh.failing.url})${
+        mh.forced === true ? " — forced start; every item's CI red matching this check is baseline, not the item's fault" : ""
+      }.`,
+    );
+    lines.push("");
+  } else if (mh !== undefined && mh.state === "unknown") {
+    lines.push(
+      `Main-health probe inconclusive at loop start${mh.detail !== undefined ? ` (${mh.detail})` : ""} — the run proceeded with unknown '${mh.branch}' health.`,
+    );
+    lines.push("");
+  }
   if (summary.abortReason !== null) {
     lines.push(`**ABORTED: ${summary.abortReason}**`);
     lines.push("");
