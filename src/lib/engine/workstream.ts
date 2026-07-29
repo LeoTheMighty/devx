@@ -478,3 +478,181 @@ export function findSpecForHashInFs(
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// spec content → workstream membership (the shared frontmatter walk)
+// ---------------------------------------------------------------------------
+
+/**
+ * Where a spec's workstream membership came from — the walk tries three
+ * arms in order and reports which one answered, so callers can render an
+ * honest reason instead of guessing.
+ */
+export type MembershipVia =
+  | "workstream-frontmatter" // `workstream: _devx/workstreams/<slug>`
+  | "path-in-from-or-plan" //  `from:`/`plan:` naming a workstream path
+  | "plan-hash" //             `from:`/`plan:` naming a plan-<hash> spec
+  | "none";
+
+export interface SpecWorkstreamMembership {
+  /** Repo-relative workstream dir (`_devx/workstreams/<slug>`), or null. */
+  workstreamRel: string | null;
+  /** Bare slug — the tail of `workstreamRel`. Null when unresolved. */
+  slug: string | null;
+  /** Engine state of the plan spec that owns the workstream, when found. */
+  planState: EngineState | null;
+  /** Plan hash pulled from `from:`/`plan:` when no workstream path appeared. */
+  planHash: string | null;
+  via: MembershipVia;
+  /**
+   * True when the spec NAMES a workstream dir but no plan spec claims it —
+   * the membership is asserted but unverifiable. Gate callers treat this as
+   * exempt-with-warning; scope callers still honor the named slug (the row
+   * says which workstream it belongs to, and a missing plan spec is a
+   * separate drift problem `devx next` already reports).
+   */
+  unclaimed: boolean;
+}
+
+function escapeRegexLiteral(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Lazily-built index of `plan/`'s engine states, shared across calls. */
+export interface PlanSpecIndexCache {
+  entries?: Array<{ name: string; state: EngineState }>;
+}
+
+function planSpecEntries(
+  fs: Pick<EngineFs, "exists" | "readdir" | "readFile">,
+  repoRoot: string,
+  cache: PlanSpecIndexCache | undefined,
+): Array<{ name: string; state: EngineState }> {
+  if (cache?.entries !== undefined) return cache.entries;
+  const entries: Array<{ name: string; state: EngineState }> = [];
+  const planDir = join(repoRoot, PLAN_DIR);
+  if (fs.exists(planDir)) {
+    for (const name of [...fs.readdir(planDir)].sort()) {
+      if (!name.endsWith(".md")) continue;
+      try {
+        entries.push({ name, state: readEngineState(fs.readFile(join(planDir, name))) });
+      } catch {
+        // unreadable plan spec — keep scanning
+      }
+    }
+  }
+  if (cache !== undefined) cache.entries = entries;
+  return entries;
+}
+
+/**
+ * Resolve which engine workstream a spec belongs to, from its file content.
+ *
+ * Chain (design §Architecture 6 / gather.ts's original inline walk):
+ *   1. `workstream:` frontmatter pointer;
+ *   2. `from:` / `plan:` naming a `<workstreamsRoot>/<slug>/…` path;
+ *   3. `from:` / `plan:` naming a `plan/plan-<hash>-…` spec, resolved
+ *      through the plan dir to that spec's engine frontmatter.
+ *
+ * Extracted at mlc106 so `--workstream` scoping and `resolveWorkstreamGate`
+ * share ONE walk. Duplicating it would let the two drift, and the pair
+ * disagreeing about membership is exactly the failure that makes a scoped
+ * overnight run claim an out-of-scope item.
+ *
+ * `frontmatterValue` is injected rather than imported to keep this module
+ * free of a dependency on the plan/ layer (which imports engine/).
+ */
+export function resolveSpecWorkstream(
+  fs: Pick<EngineFs, "exists" | "readdir" | "readFile">,
+  repoRoot: string,
+  engine: EngineConfig,
+  specContent: string,
+  frontmatterValue: (content: string, key: string) => string | null,
+  /**
+   * Optional cross-call memo of the `plan/` directory's engine states.
+   * Without it every call re-`readdir`s plan/ and re-reads every plan spec,
+   * so resolving membership for a 120-row backlog costs ~3,600 file reads
+   * (review BH#15). Callers that resolve many specs in a row (the loop's
+   * scope validation, `devx next`) should pass one shared object.
+   */
+  cache?: PlanSpecIndexCache,
+): SpecWorkstreamMembership {
+  const st = readEngineState(specContent);
+  let wsRel: string | null = st.workstream;
+  let via: MembershipVia = wsRel !== null ? "workstream-frontmatter" : "none";
+  let planHash: string | null = null;
+
+  if (wsRel === null) {
+    const wsRe = new RegExp(
+      `(?:^|/)${escapeRegexLiteral(engine.workstreamsRoot)}/([a-z0-9-]+)(?:/|$)`,
+    );
+    for (const key of ["from", "plan"]) {
+      const v = frontmatterValue(specContent, key);
+      if (!v) continue;
+      const wsMatch = wsRe.exec(v);
+      if (wsMatch) {
+        wsRel = `${engine.workstreamsRoot}/${wsMatch[1]}`;
+        via = "path-in-from-or-plan";
+        break;
+      }
+      const planMatch = /(?:^|\/)plan-([a-z0-9]{3,12})-[^/]*\.md$/.exec(v);
+      if (planMatch && planHash === null) planHash = planMatch[1];
+    }
+  }
+
+  const none = (): SpecWorkstreamMembership => ({
+    workstreamRel: null,
+    slug: null,
+    planState: null,
+    planHash,
+    via: "none",
+    unclaimed: false,
+  });
+
+  if (wsRel !== null) {
+    // Find the plan spec claiming this workstream dir (same adoption walk
+    // as createWorkstream's no-hash path).
+    let planState: EngineState | null = null;
+    for (const entry of planSpecEntries(fs, repoRoot, cache)) {
+      if (entry.state.workstream === wsRel) {
+        planState = entry.state;
+        break;
+      }
+    }
+    return {
+      workstreamRel: wsRel,
+      slug: wsRel.split("/").filter(Boolean).pop() ?? null,
+      planState,
+      planHash,
+      via,
+      unclaimed: planState === null,
+    };
+  }
+
+  if (planHash !== null) {
+    const specAbs = findSpecForHashInFs(fs, repoRoot, PLAN_DIR, planHash);
+    if (specAbs !== null) {
+      try {
+        const cand = readEngineState(fs.readFile(specAbs));
+        // Legacy (pre-engine) plan specs have no stage — not engine members.
+        if (cand.stage !== null) {
+          const rel =
+            cand.workstream ??
+            planFilenameWorkstreamRel(basename(specAbs), engine.workstreamsRoot);
+          return {
+            workstreamRel: rel,
+            slug: rel?.split("/").filter(Boolean).pop() ?? null,
+            planState: cand,
+            planHash,
+            via: "plan-hash",
+            unclaimed: false,
+          };
+        }
+      } catch {
+        // unreadable — fall through to "none"
+      }
+    }
+  }
+
+  return none();
+}

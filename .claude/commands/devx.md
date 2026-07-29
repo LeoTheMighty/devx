@@ -521,6 +521,20 @@ entirely).
    [--only <type>] [--dry-run]`. Budgets come from `devx.config.yaml →
    loop:`; flags override downward only. Run `--dry-run` first when the
    user is present and show them the plan.
+1b. **Scope (mlc106)** — `[--epic <slug|plan-hash>]…
+   [--workstream <slug>]… [--items <h1,h2,…>] [--exclude <hash|epic>]…
+   [--focus <text>]`. Repeated flags union within a dimension; different
+   dimensions intersect. Scope MASKS, never drops: an out-of-scope row
+   still blocks its in-scope dependents, and an in-scope item held by an
+   out-of-scope unfinished blocker is reported by hash (stdout, event,
+   morning report) rather than silently skipped. `--items` also dictates
+   pick order. `--focus` masks nothing — it rides into every iteration
+   prompt verbatim as a Specialty directive. Malformed scope flags — and
+   any scope that selects zero claimable rows — exit 4 against the parsed
+   backlog before any lock, claim, or file write. Use scope to run
+   N loops on disjoint slices; the scope descriptor shows up in the
+   instance file, `devx next` row 1, `devx status`, and the report
+   header.
 2. The CLI owns the loop: item pick (reconcile), worker spawn, the
    iteration contract (fresh session per iteration; smallest verifiable
    slice; structured report), commit-or-reset transactions, the failure

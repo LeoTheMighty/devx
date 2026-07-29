@@ -99,6 +99,22 @@ export interface RunSummary {
   };
   items: ItemResult[];
   totals: TokenTotals;
+  /** Scope descriptor for this run (mlc106), or null/absent when unscoped.
+   *  Optional so pre-mlc106 RunSummary literals (tests, other callers) keep
+   *  compiling and an unscoped report keeps its exact prior bytes. Note the
+   *  descriptor also carries the PRE-mlc106 `--only` filter, so its presence
+   *  alone does not mean the run used a scope flag — see `scopeMasks`. */
+  scope?: string | null;
+  /** True only when an mlc106 scope flag actually carved the backlog. The
+   *  E-7 checklist pointer keys off THIS, not off `scope`: E-7 covers "≥2
+   *  scoped loops", and a plain `devx loop --only dev` — a flag that
+   *  predates this workstream — must not be sent to a multi-loop
+   *  reconciliation checklist (review BH#5/EC#3). */
+  scopeMasks?: boolean;
+  /** In-scope items held up by an out-of-scope unfinished blocker (AC 3).
+   *  Rendered in its own section — a scoped run that "did nothing" must say
+   *  WHY, naming the blocking hash. */
+  crossScopeBlocks?: Array<{ hash: string; blockedBy: string[] }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,6 +200,21 @@ function itemSection(item: ItemResult): string {
 function nextSteps(summary: RunSummary): string[] {
   const out: string[] = [];
   out.push("- `devx next` — the dispatcher's morning review (row 1 reads this report).");
+  // E-7 handoff (mlc106): the multi-loop night's verification checklist is a
+  // human artifact, and a checklist nobody is pointed at is a checklist
+  // nobody runs. Gated on `scopeMasks` — a real mlc106 scope flag — so a
+  // pre-existing `--only dev` run neither gains the pointer nor changes its
+  // Next-steps bytes.
+  if (summary.scopeMasks === true) {
+    out.push(
+      "- `_devx/workstreams/multi-loop-concurrency/evals/E-7_live-overnight.md` — the scoped-multi-loop morning checklist: reconcile every claim from disk, confirm no item appears in two reports, confirm zero mechanical repairs pending.",
+    );
+  }
+  for (const b of summary.crossScopeBlocks ?? []) {
+    out.push(
+      `- \`${b.hash}\` never started — its blocker(s) ${b.blockedBy.map((h) => `\`${h}\``).join(", ")} are outside this run's scope and unfinished. Widen the scope (or land the blocker) before re-running.`,
+    );
+  }
   for (const item of summary.items) {
     switch (item.outcome) {
       case "merged":
@@ -278,6 +309,13 @@ export function renderMorningReport(summary: RunSummary): string {
       counts["claim-contended"] > 0 ? ` · ${counts["claim-contended"]} claim-contended (peers won races)` : ""
     }${counts["claim-failed"] > 0 ? ` · ${counts["claim-failed"]} claim-failed` : ""}`,
   );
+  // Scope header (mlc106): a scoped run's report must say what it was
+  // allowed to touch, or "0 merged" reads as failure instead of "that epic
+  // had nothing ready". Omitted entirely when unscoped — E-8's degenerate
+  // case keeps its pre-mlc106 bytes.
+  if (summary.scope != null && summary.scope !== "") {
+    lines.push(`**Scope:** ${summary.scope}`);
+  }
   lines.push(`**Tokens:** ${fmtTokens(summary.totals)}`);
   lines.push(
     `**Budgets:** max ${summary.budgets.maxItems} items · ${summary.budgets.maxIterationsPerItem} iterations/item · ${summary.budgets.maxTokensPerItem.toLocaleString("en-US")} tokens/item · ${summary.budgets.maxTotalTokens.toLocaleString("en-US")} total${
@@ -298,6 +336,21 @@ export function renderMorningReport(summary: RunSummary): string {
     lines.push("## Items");
     lines.push("");
     lines.push(summary.items.map(itemSection).join("\n\n"));
+  }
+  const held = summary.crossScopeBlocks ?? [];
+  if (held.length > 0) {
+    lines.push("");
+    lines.push("## Held by out-of-scope blockers");
+    lines.push("");
+    lines.push(
+      "_These items are inside this run's scope but could not start — each is blocked by an unfinished item this run was not allowed to touch. Nothing was skipped silently._",
+    );
+    lines.push("");
+    for (const b of held) {
+      lines.push(
+        `- \`${b.hash}\` — blocked by ${b.blockedBy.map((h) => `\`${h}\``).join(", ")} (out of scope, unfinished)`,
+      );
+    }
   }
   lines.push("");
   lines.push("## Next steps");
