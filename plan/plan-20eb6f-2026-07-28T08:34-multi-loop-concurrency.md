@@ -3,7 +3,7 @@ hash: 20eb6f
 type: plan
 created: 2026-07-28T08:34:00-06:00
 title: "Multi-loop concurrency — N scoped `devx loop`s on one repo, error-proof by construction"
-status: ready
+status: done
 from: user request 2026-07-28 (interactive eval session); re-homes the locks/coordination slice of plan-d01000
 spawned: []
 mode: YOLO
@@ -11,7 +11,7 @@ project_shape: empty-dream
 thoroughness: send-it
 stack_layers: [ backend ]
 blocked_by: []
-stage: executing
+stage: done
 entered_at: prd
 gate_status:
   prd_validated: true
@@ -19,8 +19,8 @@ gate_status:
   plan_verified: true
   evals_red: true
 outcome:
-  status: null
-  measure_by: null
+  status: pending
+  measure_by: 2026-08-31
 workstream: _devx/workstreams/multi-loop-concurrency
 gate_verdicts:
   prd: PASS
