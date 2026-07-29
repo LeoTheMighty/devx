@@ -86,15 +86,22 @@ the replay. You never hand-sync a stale plan.
 ## Overnight: `devx loop`
 
 `devx loop` runs the backlog unattended: pick top ready item → full execute
-loop → merge or cleanly park → next item. It has hard budgets (max items,
-iterations, tokens), a 3-strikes abort, and it never deletes failed work —
-abandoned worktrees are preserved for inspection.
+loop → merge, **split**, or cleanly park → next item. It has hard budgets (max
+items, iterations, tokens), a 3-strikes abort, and it never deletes failed work
+— abandoned worktrees are preserved for inspection.
+
+**Split** is the middle outcome between "merged" and "abandoned": when the loop
+runs out of budget with real progress banked — or a worker reports a clean seam
+mid-item — the done portion lands and the remainder becomes a first-class
+follow-up spec + backlog row, claimable cold by any fresh session. Nothing is
+stranded in a conversation you have to reconstruct. The same primitive backs an
+interactive halt (`/devx` Phase 9 → `devx split <hash>`).
 
 **The morning report** (`.devx-cache/loop/<run-id>/report.md`) is its exit
-summary: what it attempted, what merged (PR links), what it abandoned and
-where the wreckage is, what's blocked on you, tokens spent. The first `/devx`
-of your day reads it and re-verifies against disk — the report's claims are
-claims, not verdicts.
+summary: what it attempted, what merged (PR links), what it split and where the
+follow-up lives, what it abandoned and where the wreckage is, what's blocked on
+you, tokens spent. The first `/devx` of your day reads it and re-verifies
+against disk — the report's claims are claims, not verdicts.
 
 ## Reviewing what agents did
 
