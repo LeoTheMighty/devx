@@ -51,8 +51,8 @@
   that fails CI in the same PR → proven by E-6.
 - Retro quotes the nudge while mining it → infinite retro-of-retro chain
   (fresh session ids defeat dedupe) → mitigated by the mechanical
-  `DEVX_RETRO=1` guard: the wrapper exports it, the listener returns before
-  reading stdin when set → proven by E-2.
+  `DEVX_RETRO=1` guard: the wrapper exports it (E-9), the listener returns
+  before reading stdin when set (E-2).
 - Tab closed / `tmux kill-window` delivers SIGHUP before any trailing
   command runs → queue wedges forever → mitigated by the signal-trap
   wrapper (HUP INT TERM, no EXIT trap, `rc=$?` read not asserted) + bounded
@@ -186,8 +186,10 @@ mechanical:
   rewrite via `writeAtomic`), `appendDone`, `readDone`, marker paths.
   All mutations run inside `withQueueLock` (wraps
   `acquirePathLockBlocking(home/locks/learn-queue.lock)`); the listener
-  passes a short timeout and treats `BacklogLockTimeoutError`-style
-  expiry as "drop the detection, exit 0".
+  passes a short timeout and catches `PathLockHeldError` (what
+  `acquirePathLockBlocking` rethrows on deadline — there is no separate
+  timeout error type in the path-lock family) as "drop the detection,
+  exit 0".
 - **Watch (`src/lib/learn/watch.ts` + `src/commands/learn-watch.ts`):**
   `claimSingleton` via `acquirePathLock(home/locks/learn-watch.lock)`
   (fail-fast, dead-PID reap inherited; skipped under `--dry-run`); poll

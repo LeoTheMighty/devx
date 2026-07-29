@@ -24,38 +24,35 @@
   exits 0 with an unchanged queue.
 - **Verified by:** `test/learn-listener.test.ts`
 
-## E-2: The loop cannot self-trigger
+## E-2: The listener is inert inside a retro
 
 - **Priority:** P0
-- **Covers:** G-2, UC-4, CAP-1, FR-1, FR-3
+- **Covers:** G-2, UC-4, CAP-1, FR-1
 - **Trigger:** The listener invoked with `DEVX_RETRO=1` in the environment
-  and a nudge-bearing Stop payload on stdin; and the watcher's spawn wrapper
-  command under inspection.
+  and a nudge-bearing Stop payload on stdin. (The other half of the
+  self-trigger bound — the wrapper exporting the variable — is E-9.)
 - **Expectation (EARS):** When `DEVX_RETRO=1` is set, the system SHALL exit
-  0 without reading the payload or writing to the queue, and the watcher's
-  spawn wrapper SHALL export `DEVX_RETRO=1` into the forked retro's
-  environment.
-- **Threshold:** 0 queue writes under the guard; the generated wrapper
-  command string contains the `DEVX_RETRO=1` export ahead of the `claude`
-  invocation.
+  0 without reading the payload or writing to the queue.
+- **Threshold:** 0 queue writes and 0 marker writes under the guard, across
+  100% of payload shapes exercised (nudge-bearing Stop, SessionEnd,
+  garbage).
 - **Verified by:** `test/learn-listener.test.ts`
 
 ## E-3: Session-over readiness fails safe
 
 - **Priority:** P1
-- **Covers:** CAP-2, FR-1, FR-3
-- **Trigger:** SessionEnd payloads with reasons in and out of the denylist;
-  queue entries with a fresh transcript, an idle transcript, a missing
-  `transcript_path`, and an undatable hand-edited entry.
-- **Expectation (EARS):** When SessionEnd carries a denylisted reason
-  (`clear`, `resume`, `bypass_permissions_disabled`, `logout`), the system
-  SHALL NOT write an `.ended` marker (unknown reasons SHALL write one), and
-  when a queue entry has no transcript to stat, the system SHALL age it
-  against its own queue `ts` rather than treating it as instantly ready.
-- **Threshold:** 100% of the enumerated readiness cases (≥8: 4 denylisted
-  reasons, 1 unknown reason, fresh/idle/missing-transcript entries) produce
-  the specified verdict; the missing-transcript case reports not-ready for
-  the full idle window (0 early spawns).
+- **Covers:** CAP-2, FR-3
+- **Trigger:** Queue entries with a fresh transcript, an idle transcript, a
+  missing `transcript_path`, and an undatable hand-edited entry. (The
+  SessionEnd denylist half of session-over detection is E-10.)
+- **Expectation (EARS):** When a queue entry has no transcript to stat, the
+  system SHALL age it against its own queue `ts` rather than treating it as
+  instantly ready, and an undatable hand-edited entry SHALL serve rather
+  than wedge the queue.
+- **Threshold:** 100% of the ≥4 enumerated readiness cases (fresh, idle,
+  missing-transcript, undatable) produce the specified verdict; the
+  missing-transcript case reports not-ready for the full idle window (0
+  early spawns).
 - **Verified by:** `test/learn-watch.test.ts`
 
 ## E-4: Serial watcher — singleton, outcomes, malformed entries
@@ -72,8 +69,11 @@
   status ≥ 128 `completed-interrupted`, `error-cd` `error-cd`, other nonzero
   `error-fork:<status>`, and no marker within the bounded wait `timeout`;
   when an entry lacks `session_id` or `cwd` the system SHALL retire it as
-  `error-malformed` before any prompt or spawn; and when a processed entry
-  is requeued the system SHALL restore it with its original `ts`.
+  `error-malformed` before any prompt or spawn; when no spawn arm is
+  available (no tmux, not darwin) the system SHALL print the command and
+  file the entry as `manual` immediately without awaiting a marker; and
+  when a processed entry is requeued the system SHALL restore it with its
+  original `ts`.
 - **Threshold:** 100% of enumerated outcome mappings correct; the malformed
   entries never reach the spawn or allow-prompt code paths.
 - **Verified by:** `test/learn-watch.test.ts`
@@ -136,3 +136,32 @@
 - **Threshold:** run-twice diff is 0 bytes; 100% of pre-existing user hook
   entries survive byte-intact (0 removed, 0 reordered).
 - **Verified by:** `test/learn-hook-install.test.ts`
+
+## E-9: The spawn wrapper exports the retro guard
+
+- **Priority:** P0
+- **Covers:** G-2, UC-4, CAP-3, FR-3
+- **Trigger:** The wrapper command generated for a queue entry, inspected
+  as a string and under the fake spawn seam.
+- **Expectation (EARS):** When the watcher builds the spawn wrapper, the
+  system SHALL place the `DEVX_RETRO=1` export ahead of the `claude
+  --resume … --fork-session` invocation so every hook the forked retro
+  runs inherits the guard.
+- **Threshold:** 100% of generated wrapper commands contain the export
+  before the `claude` token (asserted for the tmux, darwin, and manual
+  arms — 3/3).
+- **Verified by:** `test/learn-watch.test.ts`
+
+## E-10: SessionEnd denylist gates the fast path
+
+- **Priority:** P1
+- **Covers:** CAP-2, FR-1
+- **Trigger:** SessionEnd payloads with each denylisted reason (`clear`,
+  `resume`, `bypass_permissions_disabled`, `logout`), an unknown reason,
+  and a missing reason, for a pending session.
+- **Expectation (EARS):** When SessionEnd carries a denylisted reason, the
+  system SHALL NOT write an `.ended` marker, and when the reason is
+  unknown or absent the system SHALL write one (denylist, not allowlist).
+- **Threshold:** 100% of the 6 enumerated reason cases (4 denylisted + 1
+  unknown + 1 absent) produce the specified marker behavior.
+- **Verified by:** `test/learn-listener.test.ts`

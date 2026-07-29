@@ -17,8 +17,8 @@
 - [x] Gate: prd
 - [x] Stage: Design
 - [x] Gate: coverage(design)
-- [ ] Stage: Plan
-- [ ] Gate: coverage(plan)
+- [x] Stage: Plan
+- [x] Gate: coverage(plan)
 - [ ] Stage: RED
 - [ ] Gate: evals
 - [ ] Stage: Execute
