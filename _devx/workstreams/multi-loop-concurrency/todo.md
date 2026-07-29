@@ -21,7 +21,7 @@
 - [x] Gate: coverage(plan)
 - [x] Stage: RED
 - [x] Gate: evals
-- [ ] Stage: Execute
+- [x] Stage: Execute
   - [x] Phase 1: Canonical repo root + worktree refusal → mlc101
     - [x] T1.1 resolveRepoRoot + unit tests (repo-root.ts, repo-root.test.ts)
     - [x] T1.2 loop/manage refusal + --allow-worktree-root + canonical cacheDir
@@ -53,5 +53,5 @@
     - [x] T6.3 five flags + fail-fast validation + driver plumb + report/instance/next surfacing + Specialty directive
     - [x] T6.4 E-6 GREEN + test/loop-scope.test.ts; E-8 swept 4/4 (baseline captured pre-change, re-verified post-fix); E-7 → morning-report Next-steps
     - [x] 3-agent review (26 findings: 3 HIGH, 11 MED, 12 LOW — all fixed in-place) + E-1..E-5 non-regressed + real-repo smoke of all five flags
-- [ ] Stage: Retro
+- [x] Stage: Retro
 - [ ] Stage: Outcome

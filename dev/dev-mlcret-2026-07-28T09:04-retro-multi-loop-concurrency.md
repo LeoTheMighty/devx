@@ -5,8 +5,8 @@ created: 2026-07-28T09:04:23-06:00
 title: Retro + LEARN.md updates (interim retro discipline)
 from: plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md
 plan: plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md
-status: in-progress
-owner: /devx-2026-07-29T0932-37184
+status: done
+owner: /devx-2026-07-29T1108-89447
 blocked_by: [mlc101, mlc102, mlc103, mlc104, mlc105, mlc106]
 branch: feat/dev-mlcret
 ---
@@ -140,3 +140,50 @@ Run the native retro stage (`/devx retro` — the `## Stage: Retro` section of `
   flake (red run 3,155s wall vs 882s green — a far more loaded machine),
   NOT as proof of health; filed a test spec so an unidentified 1-in-2,665
   flake is not silently absorbed.
+- 2026-07-29T12:0x — phase 7.5: review tour built + published (6 stops,
+  5 decisions, 1 grep-verified trail, 8-row change map). The orientation
+  names one AC discrepancy up front: AC 2 says `LEARN.md §
+  epic-multi-loop-concurrency`, the section actually written is
+  `## multi-loop-concurrency` (no `epic-` prefix) — matching the
+  workstream-era convention already used by harness-fold-in and
+  v2-migration, so met in substance and stale in wording.
+  https://htmlpreview.github.io/?https://raw.githubusercontent.com/LeoTheMighty/devx/devx-tours/tours/mlcret/tour.html
+- 2026-07-29T12:0x — phase 7: CI failure — devx-ci run 30477239517.
+  **The predecessor's lost flake, reproduced and named**: same signature
+  (`1 failed | 2664 passed (2665)`), and CI printed what the truncated
+  local capture had not: `test/loop-driver.test.ts > E-3: budget-rail split
+  (mss103) > real progress at iteration-budget exhaustion` dying on
+  `ENOTEMPTY: rmdir '.../devx-loop-driver-*/origin.git'` at the `afterEach`
+  rmSync. Not an assertion failure — a teardown race. Mechanism:
+  `makeFixture` built the bare origin without disabling auto-gc, so a push
+  could fire a BACKGROUND `git gc --auto` on the receive side that keeps
+  writing under `origin.git` after `git push` returns, while `rmSync` walks
+  it. Only push/split-bearing scenarios could trigger it — hence rare and
+  load-sensitive. Fixed at the mechanism (`gc.auto=0`,
+  `receive.autogc=false`, `maintenance.auto=false` on origin AND clone),
+  not by widening a timeout; `maxRetries`/`retryDelay` added to the three
+  fixture teardowns as belt-and-braces. Local re-run of loop-driver +
+  loop-iteration + loop-preflight: 120 passed. Recorded in `test-b7f2c1`,
+  whose persistent-reporter ACs stay open — the diagnosis only arrived
+  because CI happened to reproduce it, which is not a plan.
+- 2026-07-29T12:0x — phase 7 (cont.): CI green on the fix commit
+  (`60cfede`, run 30478554009, conclusion success).
+- 2026-07-29T12:0x — phase 8: `check-hold` → `{"hold":false}`;
+  `devx merge-gate mlcret` → `{"merge":true}` exit 0. merged via PR #103
+  (squash → 034756f). `gh pr merge` exited non-zero from the worktree
+  ('main' is already used by worktree) while the remote merge SUCCEEDED —
+  the documented false negative in `feedback_gh_pr_merge_in_worktree.md`;
+  `gh pr view` confirmed `state: MERGED` + mergeCommit, which is
+  authoritative.
+- 2026-07-29T12:0x — phase 8 (cont.): after-merge reconciliation hit a
+  DIVERGED main — a peer session had committed two unpushed retro-listener
+  planning commits (`47669e2`, `5e236bf`, plan-620c74 created 11:56 today)
+  while this item was in flight, so `pull --ff-only` refused. Integrated
+  with `git merge`, NOT `git rebase`: the peer may still be live and rebase
+  would rewrite its commit SHAs. Their commits are untouched and unpushed
+  work was preserved. Third distinct multi-actor event in this item's own
+  run — after the mid-retro #102 collision and the dead-owner claim.
+- 2026-07-29T12:0x — phase 8 (cont.): spec lock released BY HAND, because
+  finding E3 is exactly that Phase 8 has no release step. This item would
+  otherwise have become the fifth leaked lock in its own retro's evidence
+  table. `b931a1` + `ee7049` remain the structural fix.
