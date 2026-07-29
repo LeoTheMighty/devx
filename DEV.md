@@ -58,6 +58,7 @@ mss103 are parallel-safe (no shared files).
 - [x] `dev/dev-mss103-2026-07-28T13:43-loop-split-integration.md` — Loop split integration. Status: done. Blocked-by: mss101. Parallel-safe with mss102. PR: https://github.com/LeoTheMighty/devx/pull/99 (merged 962f9a1)
 - [x] `dev/dev-mss104-2026-07-28T13:43-handoff-snippet-retirement.md` — Handoff Snippet retirement sweep. Status: done. Blocked-by: mss102, mss103. PR: https://github.com/LeoTheMighty/devx/pull/101 (merged 5292b19)
 - [ ] `dev/dev-mssret-2026-07-28T13:45-retro-mid-story-split.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: mss101, mss102, mss103, mss104.
+- [ ] `dev/dev-ee7049-2026-07-29T10:12-spec-lock-release-cli.md` — Guarded spec-lock release CLI for the Phase 9 branch-handoff path (swaps the raw `rm` for `devx devx-helper release-lock`). Status: ready. From: mss104 Phase 8 gap sweep. Low priority.
 
 ## Phase 0 — Foundation (plan: plan-a01000)
 
