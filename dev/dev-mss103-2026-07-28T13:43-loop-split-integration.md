@@ -79,11 +79,6 @@ names are string literals at call sites, per convention.
 - 2026-07-28T13:43 — emitted by /devx-plan (RED gate passed; workstream
   mid-story-split, plan phase 3).
 - 2026-07-28T14:53:21-06:00 — claimed by /devx in session /devx-2026-07-28T1453-1873
-
-## Links
-
-- Plan: `plan/plan-e0a67e-2026-07-28T12:15-mid-story-split.md`
-- Workstream: `_devx/workstreams/mid-story-split/` (prd/design/plan/evals)
 - 2026-07-28T14:20 — phase 2: spec ACs direct (v2 native); 7 ACs; workstream=mid-story-split; red-artifacts=evals/E-3_budget-rail-split.ts,evals/E-4_worker-requested-split.ts (both re-run RED, right-reason: named missing features T3.1-T3.8, no infra failure).
 - 2026-07-28T15:20 — phase 3: implemented T3.1–T3.7. iteration.ts:
   `split_request` + `validateSplitRequest` on its own error path
@@ -145,3 +140,8 @@ names are string literals at call sites, per convention.
   reported failures) and now also asserts no `item:split` event fired, so it
   cannot silently start passing through the split path later.
 - 2026-07-28T23:45 — merged via PR #99 (squash → 962f9a1). Post-merge gate on the merge commit: 128 files / 2544 tests green; remote CI run 30408043404 success. Phase 7 note: the PR sat with ZERO CI runs for ~15min and three `empty` probes — cause was `mergeable: CONFLICTING` (mss102 + mlc104 + mlc105 landed mid-flight), NOT the workflow `on:` filters the /devx contract's empty-branch assumes. Merged origin/main in (cb4de51), resolved 2 test conflicts (both 'two sessions appended independent blocks'), and CI started immediately. Tour rebuilt post-merge: every cited driver.ts line had shifted ~120 lines, so all 23 anchors were recomputed by grep before republishing.
+
+## Links
+
+- Plan: `plan/plan-e0a67e-2026-07-28T12:15-mid-story-split.md`
+- Workstream: `_devx/workstreams/mid-story-split/` (prd/design/plan/evals)
