@@ -47,7 +47,7 @@
     - [x] T5.4 scratch namespacing mirror-pair edit (skills/devx.md + .claude/commands/devx.md)
     - [x] T5.5 E-5 GREEN + E-1 fully GREEN (both clauses); E-2/E-3/E-4 non-regressed; first-real-run on this repo (next + status + admission refusal)
     - [x] full suite green (2504) + single-pass 3-lens review (4 findings incl. 1 HIGH scratch-reap path escape, all fixed) + PR #98 merged a19eb6d
-  - [ ] Phase 6: Scope model + flags + degenerate-case sweep → mlc106
+  - [x] Phase 6: Scope model + flags + degenerate-case sweep → mlc106
     - [x] T6.1 epic-aware parser (additive DevRow fields) — parse.ts + test/backlog-parse-epic.test.ts
     - [x] T6.2 scope module + membership-walk extraction (resolveSpecWorkstream; gather.ts now calls it, no copy)
     - [x] T6.3 five flags + fail-fast validation + driver plumb + report/instance/next surfacing + Specialty directive

@@ -63,6 +63,40 @@ as written — cite, don't edit.
 - 2026-07-28T13:43 — emitted by /devx-plan (RED gate passed; workstream
   mid-story-split, plan phase 4).
 - 2026-07-29T08:54:24-06:00 — claimed by /devx in session /devx-2026-07-29T0854-84555
+- phase 2: spec ACs direct (v2 native); 5 ACs; workstream=mid-story-split;
+  red-artifacts=`_devx/workstreams/mid-story-split/evals/E-2_snippet-grep-zero.ts`
+  (re-run RED first — enumerated 39 live token sites across
+  `.claude/commands/`, `src/`, `test/`, `v2/` plus the missing Phase 9
+  replacement prose; honest RED, not harness breakage).
+- phase 3: T4.1–T4.5 complete. Phase 9 halt-early bullet now routes to
+  `devx split <hash> --payload <file> --session-token <token>` with the
+  payload shape + shape-selection rules inline; `## Handoff Snippet`
+  section (48 lines) deleted; devx.md:110 token-source clause dropped the
+  snippet half; mirror re-synced byte-identical. Deleted
+  `src/lib/devx/handoff-snippet.ts`, `test/devx-handoff-snippet.test.ts`,
+  `test/fixtures/handoff-snippet-realistic.md`; fixed the dangling
+  reference in `test/devx-skill-phase1-resume.test.ts:22`. New
+  `test/devx-skill-phase9-split.test.ts` (8 tests) carries `phase9Body()`
+  forward verbatim with its load-bearing `^(### |## )` bound. Cross-ref
+  sweep: `v2/03-review-tour.md`, `v2/05-dispatcher.md`,
+  `docs/HOW_TO_USE.md`, `CLAUDE.md`, `LEARN.md` (E12 + shape-(c),
+  append-only amendments). Also swept two `Handoff Snippet` comment
+  tokens out of `src/lib/devx/split.ts` — in E-2's scanned set but not
+  enumerated by any AC.
+- phase 4: single-pass adversarial review (192 changed lines — below the
+  500-line 3-agent threshold, but marker-bearing so reviewed at
+  regex/instruction level); 3 findings (1 HIGH, 2 MED); ALL fixed
+  in-place — most load-bearing: the branch-handoff instruction said
+  "release the parent's spec lock yourself" with no mechanism and no CLI
+  exists (`releaseSpecLockGuarded` is library-only), so an agent would
+  either skip the release and leave a stale lock masking the spec from
+  `devx next`, or guess; now names
+  `rm .devx-cache/locks/spec-<hash>.lock`. Also fixed: `$SCRATCH`
+  referenced at Phase 9 but only derived in Phase 7, which an early halt
+  may never reach (now derived inline); merge-first ordering was
+  ambiguous against `performSplit`'s ownership guard — split must land
+  after the merge but BEFORE Phase 8's after-merge bookkeeping releases
+  the lock, else exit 3. Re-review of the fixed hunks clean.
 
 ## Links
 

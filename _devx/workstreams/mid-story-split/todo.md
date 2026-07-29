@@ -73,5 +73,22 @@
           Hunter + Acceptance Auditor); 20 unique findings, all fixed
           in-place; chain-cap product question → INTERVIEW Q#15
   - [ ] Phase 4: Handoff Snippet retirement sweep → mss104
+    - [x] E-2 re-run RED first — 39 live token sites enumerated; honest RED
+    - [x] T4.1 Phase 9 rewrite → `devx split` + payload shape + shape rules;
+          `## Handoff Snippet` section deleted; devx.md:110 clause fixed;
+          mirror re-synced byte-identical
+    - [x] T4.2 deleted parser + test + fixture; fixed the dangling reference
+          in `test/devx-skill-phase1-resume.test.ts:22`; also swept 2 comment
+          tokens out of `src/lib/devx/split.ts` (in E-2's scanned set, not in
+          any AC)
+    - [x] T4.3 `test/devx-skill-phase9-split.test.ts` — `phase9Body()` moved
+          verbatim (kept the `^(### |## )` bound); 8 tests
+    - [x] T4.4 cross-ref sweep: v2/03, v2/05, HOW_TO_USE, CLAUDE.md,
+          LEARN.md E12 + shape-(c) append-only amendments
+    - [x] T4.5 E-2 flipped GREEN
+    - [x] Phase 4 self-review: single-pass (192 lines, below the 3-agent
+          threshold; marker-bearing so reviewed at regex level); 3 findings
+          (1 HIGH lock-release mechanism unnamed, 2 MED `$SCRATCH` scope +
+          merge-first ordering vs the ownership guard), all fixed in-place
 - [ ] Stage: Retro
 - [ ] Stage: Outcome

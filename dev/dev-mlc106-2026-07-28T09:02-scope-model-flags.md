@@ -3,7 +3,7 @@ hash: mlc106
 type: dev
 created: 2026-07-28T09:02:00-06:00
 title: "Scope model: epic-aware rows + loop scope flags"
-status: in-progress
+status: done
 from: plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md
 plan: _devx/workstreams/multi-loop-concurrency
 blocked_by: [mlc105]
@@ -102,6 +102,29 @@ Design §Architecture 6. Blocker status lookup is already global
   (still byte-identical to pre-workstream 8b757b8); all five flags smoked
   against this repo's real 131-row backlog.
 - 2026-07-28T17:08:52-06:00 — claimed by /devx in session /devx-2026-07-28T1708-47064
+- 2026-07-29T00:20 — phase 5/6/7: local gate green (`npm test` → 130 files /
+  2,656 tests / exit 0 on the final merged tree); committed; PR #100 opened
+  with a `devx pr-body`-rendered body; review tour built + published.
+- 2026-07-29T00:35 — phase 7 CI: FIRST remote run (30410808302) went RED on
+  two failures, NEITHER from this diff. (1) `devx-status-log-discipline`
+  named mss103: its phase 2/3/4/5 status lines had been appended AFTER
+  `## Links`, and the test deliberately bounds its scan to the `## Status
+  log` section — so `main` itself was red for every PR built on it. Repaired
+  on main in `fb7561f` (pure relocation of five lines; zero status-log text
+  rewritten) and merged in. (2) macOS `ENOTEMPTY` rmdir-ing a tmp
+  `origin.git` in mss103's own new `test/loop-driver.test.ts` fixture
+  teardown — a pre-existing macOS-only teardown race; filed as a debug spec
+  rather than fixed here (out of scope). Merged `origin/main` in (mss102 +
+  mss103 had landed); mss103 touched driver.ts/iteration.ts/report.ts — the
+  same three files — so the merge was verified SEMANTICALLY: typecheck
+  clean, every scope call site re-grepped, `--focus` confirmed still ahead
+  of the Output contract after mss103 rewrote the prompt frame. Tour anchors
+  were recomputed by grep (the merge shifted driver.ts ~500 lines) and the
+  builder now derives every `path:line` at build time, so a stale anchor is
+  a build-time throw instead of a wrong link. Re-run 30463113330: success.
+- 2026-07-29T00:45 — merged via PR #100 (squash → 1cdf435). check-hold
+  clean, merge-gate `{"merge":true}`. Closes plan phase 6 and the
+  multi-loop-concurrency execute stage; mlcret is now unblocked.
 
 ## Links
 
