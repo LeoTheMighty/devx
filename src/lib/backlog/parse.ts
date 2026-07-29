@@ -67,6 +67,22 @@ export interface DevRow {
   blocked_by: string[];
   /** True iff the row is wrapped in ~~…~~ (struck — abandoned/deleted). */
   struck: boolean;
+  /**
+   * Slug of the `### Epic — <name> …` section this row sits under, or null
+   * when the row is above any epic heading (or under a non-epic heading at
+   * the same/shallower depth). Additive (mlc106) — every pre-existing
+   * consumer ignores it; `--epic` scoping is the first reader.
+   *
+   * OPTIONAL rather than required on purpose: `parseDevMd` always sets both
+   * fields (null when there's no heading), but hand-built DevRow literals in
+   * tests and callers predate mlc106. Optionality keeps them compiling
+   * untouched, so the epic model lands with zero mechanical fixture churn
+   * (E-8's "no existing test weakened" box). Readers normalize with
+   * `?? null` — never assume the field is present.
+   */
+  epicSlug?: string | null;
+  /** `plan: <hash>` captured from the same heading, or null when absent. */
+  epicPlanHash?: string | null;
 }
 
 export interface InterviewQuestion {
@@ -117,6 +133,111 @@ const ROW_RE =
 const STATUS_TEXT_RE = /Status:\s*([A-Za-z\-]+)/;
 const BLOCKED_BY_TEXT_RE = /Blocked-by:\s*([^.\n]+?)(?:\.|$)/i;
 
+// Epic section headings (mlc106 / design §Architecture 6). Canonical shape:
+//   ### Epic — multi-loop-concurrency (plan: 20eb6f)
+// Tolerated variants seen in this repo's own DEV.md:
+//   ### Epic 1 — BMAD audit                        (numbered, no plan hash)
+//   ### Epic — portability-install (Track 1, plan: b3f7a1)   (extra parenthetical text)
+// The name is everything between the dash and the first ` (`, or to EOL when
+// there is no parenthetical; the plan hash is pulled independently from a
+// `plan: <hash>` anywhere on the heading line, so parenthetical prose before
+// it (the "Track 1, " case) doesn't break the capture.
+const ATX_HEADING_RE = /^(#{1,6})\s+(.*)$/;
+// Capture any run of alphanumerics, then range-check — an anchored
+// `{3,12}` would fail to match a 13-char hash outright and silently yield
+// `null` instead of an honest "that isn't a hash" (review BH#9).
+const EPIC_PLAN_HASH_RE = /\bplan:\s*(?:plan-)?([a-z0-9]+)/i;
+/** A heading whose remaining name is only plan metadata isn't named at all. */
+const PLAN_ONLY_NAME_RE = /^plan:\s*\S+$/i;
+/**
+ * Name/description separators accepted after the `Epic` prefix, most
+ * specific first. Em/en dash is canonical; the spaced ASCII forms are
+ * accepted because epic headings are 100% hand- or agent-typed (nothing in
+ * the codebase emits them) and an editor that autocorrects `—` back to `-`
+ * would otherwise orphan every row under that heading with no diagnostic
+ * (review BH#2/EC#6). Requiring SPACES around the ASCII forms is what keeps
+ * `### Epic 2-b — gamma` splitting on the em dash rather than on the `-`
+ * inside the number.
+ */
+const EPIC_SEPARATORS = ["—", "–", " -- ", " - "] as const;
+
+/**
+ * Extract an epic heading's display name, or null when the text isn't an
+ * epic heading (or names nothing).
+ */
+function epicNameFrom(text: string): string | null {
+  if (!/^Epic\b/.test(text)) return null;
+  let name: string | null = null;
+  for (const sep of EPIC_SEPARATORS) {
+    const i = text.indexOf(sep);
+    if (i > 0) {
+      name = text.slice(i + sep.length).trim();
+      break;
+    }
+  }
+  if (name === null) return null;
+  // Strip ONE trailing parenthetical — that's where `(plan: …)` and
+  // `(Track 1, plan: …)` live. Splitting at the FIRST ` (` instead would
+  // truncate `Epic — devx (v2) engine` down to `devx`, collapsing two
+  // distinct epics onto one key (review EC#7).
+  name = name.replace(/\s*\([^()]*\)\s*$/, "").trim();
+  // `### Epic — (plan: ab12cd)` and `### Epic — plan: ab12cd` name nothing;
+  // without this they'd slugify to the phantom key `plan-ab12cd`.
+  if (name === "" || PLAN_ONLY_NAME_RE.test(name)) return null;
+  return name;
+}
+
+/**
+ * Kebab-case an epic heading's display name. `Alpha Wave` → `alpha-wave`;
+ * `` `/devx-init` skill `` → `devx-init-skill`. Non-alphanumerics collapse to
+ * single hyphens so a heading and a `--epic` argument that differ only in
+ * punctuation still match (the normalization is applied to BOTH sides).
+ */
+export function epicSlugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+interface EpicSection {
+  slug: string;
+  planHash: string | null;
+  /** Heading depth (# count) — a later heading at this depth or shallower
+   *  ends the section; a deeper one (a sub-heading inside the epic) does
+   *  not. Without the depth check, a `#### Notes` bullet list inside an
+   *  epic would orphan every row below it. */
+  depth: number;
+}
+
+/** Track the current epic section as a heading line goes by. */
+function epicSectionFor(
+  line: string,
+  current: EpicSection | null,
+): EpicSection | null {
+  const heading = ATX_HEADING_RE.exec(line);
+  if (!heading) return current;
+  const depth = heading[1].length;
+  const text = heading[2].trim();
+  const name = epicNameFrom(text);
+  if (name !== null) {
+    const planMatch = EPIC_PLAN_HASH_RE.exec(text);
+    const rawHash = planMatch ? planMatch[1].toLowerCase() : null;
+    const planHash =
+      rawHash !== null && rawHash.length >= 3 && rawHash.length <= 12 ? rawHash : null;
+    const slug = epicSlugify(name);
+    // A heading that slugifies to nothing is not a usable partition key —
+    // treat it as a plain heading so rows below it get null rather than an
+    // empty-string slug that `--epic ""` could match.
+    if (slug === "") return depth <= (current?.depth ?? depth) ? null : current;
+    return { slug, planHash, depth };
+  }
+  // Non-epic heading: ends the section only when it's at the same depth or
+  // shallower (a real sibling/parent section boundary).
+  if (current !== null && depth <= current.depth) return null;
+  return current;
+}
+
 /**
  * Strip a trailing `\r` left over from CRLF line endings. Files saved by
  * Windows editors produce `\r\n`, and `content.split("\n")` keeps the `\r`;
@@ -139,21 +260,69 @@ function stripCR(line: string): string {
  * fenced lines closes both via the same primitive.
  */
 export function blankFencedLines(lines: string[]): string[] {
-  let inFence = false;
+  // Both CommonMark fence characters. Tildes matter more since mlc106: a
+  // `~~~`-fenced example containing `### Epic — …` would otherwise not just
+  // inject a phantom ROW (the pre-mlc106 risk) but MIS-ATTRIBUTE every real
+  // row below it to a fictional epic (review BH#4). Three-or-more is
+  // required, so a struck row (`- ~~…~~`) can never read as a fence.
+  let fence: "`" | "~" | null = null;
   return lines.map((line) => {
-    if (/^[ \t]*```/.test(line)) {
-      inFence = !inFence;
+    const m = /^[ \t]*(`{3,}|~{3,})/.exec(line);
+    if (m) {
+      const kind = m[1][0] as "`" | "~";
+      // A fence only closes with its OWN character (CommonMark): a `~~~`
+      // line inside a ``` block is content, not a terminator.
+      if (fence === null) {
+        fence = kind;
+        return "";
+      }
+      if (fence === kind) {
+        fence = null;
+        return "";
+      }
       return "";
     }
-    return inFence ? "" : line;
+    return fence !== null ? "" : line;
   });
+}
+
+export interface EpicHeading {
+  slug: string;
+  planHash: string | null;
+}
+
+/**
+ * Every `### Epic — …` section declared in a backlog file, whether or not it
+ * currently has rows under it.
+ *
+ * Row-derived epic keys alone are not enough for `--epic` validation: an
+ * epic heading whose items are all done — or that was scaffolded ahead of
+ * its rows — genuinely exists, and refusing `--epic <it>` with "matches no
+ * section" sends the operator hunting a typo that isn't there (review EC#8).
+ */
+export function parseEpicHeadings(content: string): EpicHeading[] {
+  const lines = blankFencedLines(content.split("\n").map(stripCR));
+  const out: EpicHeading[] = [];
+  const seen = new Set<string>();
+  let epic: EpicSection | null = null;
+  for (const line of lines) {
+    const next = epicSectionFor(line, epic);
+    if (next !== null && next !== epic && !seen.has(next.slug)) {
+      seen.add(next.slug);
+      out.push({ slug: next.slug, planHash: next.planHash });
+    }
+    epic = next;
+  }
+  return out;
 }
 
 export function parseDevMd(content: string): DevRow[] {
   const lines = blankFencedLines(content.split("\n").map(stripCR));
   const rows: DevRow[] = [];
+  let epic: EpicSection | null = null;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    epic = epicSectionFor(line, epic);
     const m = ROW_RE.exec(line);
     if (!m || !m.groups) continue;
     const groups = m.groups as {
@@ -213,6 +382,8 @@ export function parseDevMd(content: string): DevRow[] {
       status,
       blocked_by,
       struck,
+      epicSlug: epic?.slug ?? null,
+      epicPlanHash: epic?.planHash ?? null,
     });
   }
   return rows;

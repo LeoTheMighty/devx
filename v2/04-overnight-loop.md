@@ -38,7 +38,20 @@ was branch-level only; ours is gate-level too).
 ```
 devx loop [--until 07:30] [--max-items N] [--max-tokens N] [--only <type>]
           [--allow-worktree-root]   # test-only: skip the linked-worktree launch refusal (mlc101)
+          # scope (mlc106) — repeatable flags union; dimensions intersect:
+          [--epic <slug|plan-hash>]… [--workstream <slug>]…
+          [--items <h1,h2,…>] [--exclude <hash|epic>]… [--focus <text>]
 ```
+
+Scope MASKS, it never drops (mlc106): out-of-scope rows are rewritten to
+`blocked` and stay in the row set, so cross-scope `Blocked-by:` edges keep
+holding and an in-scope item stuck behind an out-of-scope unfinished item is
+REPORTED by hash rather than silently skipped. `--items` additionally
+dictates pick order; `--focus` masks nothing and rides into every iteration
+prompt verbatim as a Specialty directive. Malformed scope flags exit 4
+against the parsed backlog before any lock is taken. The resolved scope
+descriptor appears in the instance file, `devx next` row 1, `devx status`,
+and the morning-report header.
 
 Two nested loops, both bounded:
 

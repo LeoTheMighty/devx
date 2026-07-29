@@ -2023,3 +2023,65 @@ describe("devx next — repo-level CLI form", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Row 1 scope rendering (mlc105 plural + mlc106 singular) — review MED:
+// the surface a human actually reads before deciding whether the backlog is
+// taken had no test at all.
+// ---------------------------------------------------------------------------
+
+describe("row 1 — loop scope rendering", () => {
+  const liveLoop = (
+    loops: RepoSnapshot["loop"]["loops"],
+  ): RepoSnapshot => {
+    const s = emptySnapshot();
+    s.loop = {
+      live: true,
+      source: "loop-instance",
+      pid: 4242,
+      ts: "2026-07-28T20:00:00Z",
+      ageSeconds: 30,
+      loops,
+      overnightReport: null,
+    };
+    return s;
+  };
+
+  const inst = (
+    run_id: string,
+    scope: string | null,
+    current_item: string | null = null,
+  ): RepoSnapshot["loop"]["loops"][number] =>
+    ({ run_id, scope, current_item, iteration: 0 }) as RepoSnapshot["loop"]["loops"][number];
+
+  it("an UNSCOPED sole loop keeps the pre-mlc106 singular line (no scope clause)", () => {
+    const d = decideRepoNext(liveLoop([inst("r1", null)]));
+    expect(d.row).toBe(1);
+    expect(d.detail).toContain("run is live (pid 4242,");
+    expect(d.detail).not.toContain("scope");
+  });
+
+  it("a SCOPED sole loop names its scope", () => {
+    const d = decideRepoNext(liveLoop([inst("r1", "epic:alpha-wave")]));
+    expect(d.detail).toContain("scope epic:alpha-wave)");
+  });
+
+  it("renders no scope clause when the registry is empty (legacy fallback)", () => {
+    const d = decideRepoNext(liveLoop([]));
+    expect(d.detail).not.toContain("scope");
+  });
+
+  it("multiple loops list each run's scope (mlc105)", () => {
+    const d = decideRepoNext(
+      liveLoop([inst("r1", "epic:alpha-wave", "aa1101"), inst("r2", "epic:beta-ray")]),
+    );
+    expect(d.detail).toContain("2 loop runs are live");
+    expect(d.detail).toContain("r1 (epic:alpha-wave, on aa1101)");
+    expect(d.detail).toContain("r2 (epic:beta-ray, idle)");
+  });
+
+  it("an unscoped loop in a multi-loop list renders 'all'", () => {
+    const d = decideRepoNext(liveLoop([inst("r1", null), inst("r2", "epic:beta-ray")]));
+    expect(d.detail).toContain("r1 (all, idle)");
+  });
+});

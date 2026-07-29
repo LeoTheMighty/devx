@@ -343,9 +343,24 @@ const row1: RowFn = (s) => {
   // mlc105: with N loops allowed, "a loop is live" is no longer enough to
   // act on — the human needs to know how many and on what, so they can
   // tell "my one overnight run" from "four runs, one of them on the item I
-  // was about to claim". Singular stays byte-identical to the pre-mlc105
-  // line so the S-4 matrix and the skill body don't churn.
-  const head = `a ${who} run is live (pid ${s.loop.pid ?? "?"}, ${age})`;
+  // was about to claim".
+  //
+  // mlc106 refines the singular line: it stays byte-identical for an
+  // UNSCOPED run (the S-4 matrix and skill-body pin), and appends the scope
+  // when the sole live run has one. That is the same descriptor the plural
+  // branch below has rendered since mlc105 — showing it in both branches is
+  // consistency, not drift, and "a run is live" reading as "the backlog is
+  // taken" when the run only owns one epic is exactly the confusion these
+  // descriptors exist to remove.
+  // mlc106: a lone loop's scope belongs on row 1 too — "a loop run is live"
+  // reads as "the backlog is taken" when it might only own one epic. Appended
+  // (not interpolated) so an UNSCOPED singular run keeps the pre-mlc105 bytes
+  // the S-4 matrix and the skill body pin.
+  const soleScope =
+    s.loop.loops.length === 1 && s.loop.loops[0].scope !== null
+      ? `, scope ${s.loop.loops[0].scope}`
+      : "";
+  const head = `a ${who} run is live (pid ${s.loop.pid ?? "?"}, ${age}${soleScope})`;
   const many =
     s.loop.loops.length > 1
       ? `${s.loop.loops.length} loop runs are live — ` +
