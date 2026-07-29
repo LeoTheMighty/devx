@@ -3,13 +3,13 @@ hash: mss104
 type: dev
 created: 2026-07-28T13:43:00-06:00
 title: "Handoff Snippet retirement sweep"
-status: ready
+status: in-progress
 from: plan/plan-e0a67e-2026-07-28T12:15-mid-story-split.md
 plan: _devx/workstreams/mid-story-split
 phase: 4
 blocked_by: [mss102, mss103]
 branch: feat/dev-mss104
-owner: null
+owner: /devx-2026-07-29T0854-84555
 ---
 ## Goal
 
@@ -62,6 +62,7 @@ as written — cite, don't edit.
 
 - 2026-07-28T13:43 — emitted by /devx-plan (RED gate passed; workstream
   mid-story-split, plan phase 4).
+- 2026-07-29T08:54:24-06:00 — claimed by /devx in session /devx-2026-07-29T0854-84555
 
 ## Links
 
