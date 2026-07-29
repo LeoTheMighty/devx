@@ -48,5 +48,10 @@
     - [x] T5.5 E-5 GREEN + E-1 fully GREEN (both clauses); E-2/E-3/E-4 non-regressed; first-real-run on this repo (next + status + admission refusal)
     - [x] full suite green (2504) + single-pass 3-lens review (4 findings incl. 1 HIGH scratch-reap path escape, all fixed) + PR #98 merged a19eb6d
   - [ ] Phase 6: Scope model + flags + degenerate-case sweep → mlc106
+    - [x] T6.1 epic-aware parser (additive DevRow fields) — parse.ts + test/backlog-parse-epic.test.ts
+    - [x] T6.2 scope module + membership-walk extraction (resolveSpecWorkstream; gather.ts now calls it, no copy)
+    - [x] T6.3 five flags + fail-fast validation + driver plumb + report/instance/next surfacing + Specialty directive
+    - [x] T6.4 E-6 GREEN + test/loop-scope.test.ts; E-8 swept 4/4 (baseline captured pre-change, re-verified post-fix); E-7 → morning-report Next-steps
+    - [x] 3-agent review (26 findings: 3 HIGH, 11 MED, 12 LOW — all fixed in-place) + E-1..E-5 non-regressed + real-repo smoke of all five flags
 - [ ] Stage: Retro
 - [ ] Stage: Outcome
