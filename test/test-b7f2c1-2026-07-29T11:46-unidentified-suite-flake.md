@@ -76,6 +76,43 @@ unresolvable:
 - 2026-07-29T11:46 — created by /devx mlcret (Phase 8 gap filing). Filed
   rather than absorbed: the green re-run is evidence the tree is healthy,
   not evidence the flake does not exist.
+- 2026-07-29T11:56 — **IDENTIFIED AND FIXED — by the very next CI run**
+  (PR #103, run 30477239517), which reproduced the identical signature
+  (`1 failed | 2664 passed (2665)`) and named it:
+
+  ```
+  FAIL test/loop-driver.test.ts > E-3: budget-rail split (mss103)
+       > real progress at iteration-budget exhaustion → outcome split: …
+  Error: ENOTEMPTY: directory not empty, rmdir
+         '/var/…/devx-loop-driver-2nWSGn/origin.git'
+   ❯ test/loop-driver.test.ts:46:16   ← the afterEach rmSync
+  ```
+
+  Not an assertion failure — a **teardown race**. Mechanism: `makeFixture`
+  built the bare origin with `git init --bare` and never disabled auto-gc,
+  so a push into it could fire `git gc --auto` on the receive side in the
+  BACKGROUND; that keeps creating objects and lock files under
+  `origin.git` after `git push` has already returned, and `afterEach`'s
+  `rmSync` then walks a directory being written to. Only the push/split-
+  bearing scenarios could trigger it, which is exactly why it presented as
+  a rare load-sensitive flake rather than a consistent failure.
+
+  Fix (AC 1 + AC 2, in PR #103): `test/helpers/loop-git-fixture.ts` sets
+  `gc.auto=0`, `receive.autogc=false`, `maintenance.auto=false` on the
+  bare origin and `gc.auto=0` + `maintenance.auto=false` on the clone —
+  killing the mechanism rather than widening a timeout. The three fixture
+  teardowns (`loop-driver`, `loop-iteration`, `loop-preflight`) also gained
+  `maxRetries: 10, retryDelay: 50` as belt-and-braces for anything else
+  that writes during teardown.
+
+  **AC 3 + AC 4 remain open** — the diagnosis here cost a 52-minute
+  re-run and was ultimately recovered from CI, not from the local capture.
+  A persistent reporter is still worth having. Retitle on next touch:
+  the flake is no longer unidentified.
+- 2026-07-29T11:56 — note on confidence: a green run after this fix is
+  CONSISTENT with the fix, not proof of it — the flake was rare by nature.
+  The evidence that matters is the named mechanism (background auto-gc
+  writing into a directory under `rmSync`), not the passing run.
 
 ## Links
 
