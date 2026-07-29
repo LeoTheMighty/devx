@@ -5,7 +5,8 @@ created: 2026-07-28T09:04:23-06:00
 title: Retro + LEARN.md updates (interim retro discipline)
 from: plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md
 plan: plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md
-status: ready
+status: in-progress
+owner: /devx-2026-07-29T0932-37184
 blocked_by: [mlc101, mlc102, mlc103, mlc104, mlc105, mlc106]
 branch: feat/dev-mlcret
 ---
@@ -31,3 +32,4 @@ Run the native retro stage (`/devx retro` — the `## Stage: Retro` section of `
 ## Status log
 
 - 2026-07-28T09:04:23-06:00 — created by /devx-plan
+- 2026-07-29T09:32:58-06:00 — claimed by /devx in session /devx-2026-07-29T0932-37184
