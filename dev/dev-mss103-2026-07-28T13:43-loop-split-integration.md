@@ -3,7 +3,7 @@ hash: mss103
 type: dev
 created: 2026-07-28T13:43:00-06:00
 title: "Loop split integration"
-status: in-progress
+status: done
 from: plan/plan-e0a67e-2026-07-28T12:15-mid-story-split.md
 plan: _devx/workstreams/mid-story-split
 phase: 3
@@ -84,3 +84,64 @@ names are string literals at call sites, per convention.
 
 - Plan: `plan/plan-e0a67e-2026-07-28T12:15-mid-story-split.md`
 - Workstream: `_devx/workstreams/mid-story-split/` (prd/design/plan/evals)
+- 2026-07-28T14:20 — phase 2: spec ACs direct (v2 native); 7 ACs; workstream=mid-story-split; red-artifacts=evals/E-3_budget-rail-split.ts,evals/E-4_worker-requested-split.ts (both re-run RED, right-reason: named missing features T3.1-T3.8, no infra failure).
+- 2026-07-28T15:20 — phase 3: implemented T3.1–T3.7. iteration.ts:
+  `split_request` + `validateSplitRequest` on its own error path
+  (`splitRequestErrors` on the ok-result; never fails the report) + explicit
+  copy-through + OUTPUT_FIELD_LINES clean-seam line. report.ts: `split`
+  outcome across label/counts/nextSteps/itemSection + `followUpSpecPath`.
+  driver.ts: `splitItem` (push WIP → performSplit(branch-handoff) →
+  worktree removed, branch KEPT → release → commitOnMain(extraPaths) →
+  push), `budgetExhausted` on both rails, worker-requested merge-first path
+  through the normal tail, `item:split` / `item:split-fallback` /
+  `iteration:split-request-invalid`, and `split` joining
+  `afterItemCompleted` (ladder.ts verify-only, unmodified). Seam extension:
+  `PerformSplitOpts.branch` override — `claimSpec` never writes `branch:`
+  frontmatter, so branch-handoff from the loop would otherwise always throw
+  at compose.
+- 2026-07-28T16:05 — phase 4: 3-agent parallel adversarial review (Blind
+  Hunter + Edge Case Hunter + Acceptance Auditor); 20 unique findings
+  (2 HIGH, 10 MED, 8 LOW); ALL fixed in-place. Most load-bearing: the budget
+  rail routed a commit-failure-preserved DIRTY worktree into the split path,
+  where `worktree remove --force` destroyed work `pushCurrentBranch` had not
+  committed — found independently by two reviewers, and a strict work-loss
+  regression vs today's abandon-preserve. Fixed by `hasCommittedProgress()`
+  (goodWithFiles + no pendingRepair + clean tree + not bookkeeping-only),
+  which now gates BOTH the budget rail and the worker-requested path — the
+  latter closing a second hole where an exploratory iteration that changed
+  nothing could open a status-log-only PR, auto-merge it under YOLO, and
+  mark the parent done. Other HIGH: the Acceptance Auditor caught that my
+  own `git add` failure guard was dead code (it dropped the unstageable
+  extras into a local, then still spread `extraPaths` into the commit
+  argv). Also fixed: a failed worker-requested split no longer marks the
+  parent `[x]` done (leaves it `[-]` blocked with the unmet ACs in its
+  status log, and the morning report says "merged at reduced scope" rather
+  than claiming a clean merge); ownership-lost no longer swallows a pending
+  split; `remainingAcsFromSpec` now treats `[/]` and `[-]` as unmet, not
+  just `[ ]`; a falsy `split_request` reads as absent rather than
+  malformed; the handed-off split bookkeeping holds the backlog lock once
+  across splice→commit→push; `Continue <hash>:` title prefixes no longer
+  compound on re-split. Deviation recorded per the auditor: the worker-path
+  progress gate emits a FOURTH event name, `iteration:split-request-ignored`,
+  beyond the three plan.md § phase-3 Context enumerates — deliberate, since
+  folding it into `split-request-invalid` would misreport a well-formed
+  request as malformed. Re-review clean. The one finding that is a product
+  decision rather than a bug — split chains have no escalation cap, so a
+  perpetually-splitting item never reaches a human — is filed as INTERVIEW
+  Q#15 with a recommendation, not silently defaulted.
+- 2026-07-28T17:05 — phase 5: `evals/E-3_budget-rail-split.ts` and
+  `evals/E-4_worker-requested-split.ts` both flipped GREEN (RED→GREEN
+  observed this session; RED re-run at 14:15 was right-reason). Local gate:
+  `test/loop-driver.test.ts` 57 passed. NOTE for the tour/PR — the first
+  full-suite run surfaced 4 failures in PRE-EXISTING loop-driver tests, all
+  `expected 'split' to be 'abandoned'`: they encoded the pre-mss103 contract
+  at exactly the seam AC 4 changes. Three (iteration budget, per-item token
+  budget, debug-494590 cache-read accounting) were retargeted to the new
+  terminal outcome with every accounting assertion left intact. The fourth
+  (MED-4, "abandoned items WITH committed progress don't trip the systemic
+  3-stop") pins a guarantee that is still live but no longer reachable via
+  the budget rail, so it was retargeted to reach abandon-with-progress
+  through the FAILURE LADDER (1 good committed iteration + 3 consecutive
+  reported failures) and now also asserts no `item:split` event fired, so it
+  cannot silently start passing through the split path later.
+- 2026-07-28T23:45 — merged via PR #99 (squash → 962f9a1). Post-merge gate on the merge commit: 128 files / 2544 tests green; remote CI run 30408043404 success. Phase 7 note: the PR sat with ZERO CI runs for ~15min and three `empty` probes — cause was `mergeable: CONFLICTING` (mss102 + mlc104 + mlc105 landed mid-flight), NOT the workflow `on:` filters the /devx contract's empty-branch assumes. Merged origin/main in (cb4de51), resolved 2 test conflicts (both 'two sessions appended independent blocks'), and CI started immediately. Tour rebuilt post-merge: every cited driver.ts line had shifted ~120 lines, so all 23 anchors were recomputed by grep before republishing.

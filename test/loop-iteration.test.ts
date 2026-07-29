@@ -4,7 +4,10 @@
 // unattended iterations honest (v2/04 §2.2). Changing the prompt requires
 // changing these pins in the same PR — that's the point.
 
-import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   buildCommitRepairPrompt,
@@ -14,6 +17,15 @@ import {
   hasFinalReport,
   validateIterationReport,
 } from "../src/lib/loop/iteration.js";
+import { runLoop } from "../src/lib/loop/driver.js";
+import { readEvents } from "../src/lib/loop/state.js";
+import {
+  MERGED,
+  makeFixture,
+  mergedTail,
+  scriptedWorker,
+  type Fixture,
+} from "./helpers/loop-git-fixture.js";
 
 const params = {
   hash: "abc123",
@@ -292,5 +304,213 @@ describe("hasFinalReport (LOW-12 — the grace-kill's positional seam invariant)
     expect(hasFinalReport("")).toBe(false);
     expect(hasFinalReport("no json here")).toBe(false);
     expect(hasFinalReport("unbalanced { brace")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E-4: worker-requested split (mid-story-split phase 3 — mss103)
+//
+// split_request rides its OWN error path: a malformed request is stripped +
+// surfaced (never failing the report, never wedging the item); a
+// well-formed one is explicitly copied through validateIterationReport's
+// fresh-object return (the silent-drop hazard) and produces exactly ONE
+// driver-side merge-first split through the normal merge tail.
+// ---------------------------------------------------------------------------
+
+const WELL_FORMED_REQUEST = {
+  title: "Finish the remaining ACs",
+  remaining_acs: ["the follow-up half of the thing works"],
+  learnings: ["  seam was cleaner than expected  "],
+};
+
+describe("E-4: worker-requested split (mss103)", () => {
+  describe("validateIterationReport split_request path", () => {
+    it("copies a well-formed split_request through (trimmed), with no splitRequestErrors", () => {
+      const r = validateIterationReport({ ...VALID, split_request: WELL_FORMED_REQUEST });
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.report.split_request).toEqual({
+          title: "Finish the remaining ACs",
+          remaining_acs: ["the follow-up half of the thing works"],
+          learnings: ["seam was cleaner than expected"],
+        });
+        expect(r.splitRequestErrors).toBeUndefined();
+      }
+    });
+
+    it("a malformed split_request never fails the report: stripped + exactly 1 typed error surfaced", () => {
+      const r = validateIterationReport({
+        ...VALID,
+        split_request: { title: "fine title", remaining_acs: [] },
+      });
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.report.split_request).toBeUndefined();
+        expect(r.splitRequestErrors).toHaveLength(1);
+        expect(r.splitRequestErrors![0].field).toBe("split_request.remaining_acs");
+      }
+    });
+
+    it("rejects a ';'/multi-line title and a non-object request on the same own-error path", () => {
+      for (const bad of [
+        { title: "multi\nline;bad", remaining_acs: [] },
+        "not an object",
+        ["array"],
+      ]) {
+        const r = validateIterationReport({ ...VALID, split_request: bad });
+        expect(r.ok).toBe(true);
+        if (r.ok) {
+          expect(r.report.split_request).toBeUndefined();
+          expect(r.splitRequestErrors!.length).toBeGreaterThanOrEqual(1);
+        }
+      }
+    });
+
+    it("absent or null split_request → no request, no errors", () => {
+      for (const value of [VALID, { ...VALID, split_request: null }]) {
+        const r = validateIterationReport(value);
+        expect(r.ok).toBe(true);
+        if (r.ok) {
+          expect(r.report.split_request).toBeUndefined();
+          expect(r.splitRequestErrors).toBeUndefined();
+        }
+      }
+    });
+  });
+
+  it("prompt contract names split_request with the clean-seam instruction", () => {
+    const prompt = buildIterationPrompt(params);
+    expect(prompt).toContain("- split_request (optional):");
+    expect(prompt).toContain("ONLY at a clean seam");
+    expect(prompt).toContain("committed, coherent, and green on the done portion");
+    expect(prompt).toContain("the loop (never you) files the follow-up spec");
+  });
+
+  // ── Driver scenarios (real git fixture — shared harness) ────────────────
+
+  let fixture: Fixture | null = null;
+  afterEach(() => {
+    if (fixture) rmSync(fixture.base, { recursive: true, force: true });
+    fixture = null;
+  });
+
+  it("well-formed request on a good acs_met=false report → exactly 1 driver-side merge-first split through the normal tail", async () => {
+    fixture = makeFixture([{ hash: "par111", title: "Splittable thing" }]);
+    const { worker } = scriptedWorker([
+      {
+        kind: "report",
+        files: { "done-half.txt": "done\n" },
+        report: {
+          summary: "shipped the done half",
+          key_changes_made: ["done-half.txt"],
+          acs_met: false,
+          split_request: WELL_FORMED_REQUEST,
+        },
+      },
+    ]);
+    // maxItems 1: the follow-up row is an ORDINARY ready row (by design —
+    // v2/05 dispatcher), so without the cap the loop would claim it next
+    // and the scripted worker would split it again, chaining follow-ups.
+    const r = await runLoop({
+      repoRoot: fixture.repoRoot,
+      merged: MERGED,
+      out: () => {},
+      heartbeatIntervalMs: 3_600_000,
+      worker,
+      tail: mergedTail().tail,
+      flags: { maxItems: 1 },
+    });
+
+    // The committed portion shipped as complete-at-reduced-scope.
+    const item = r.summary!.items[0];
+    expect(item.outcome).toBe("merged");
+    expect(item.iterationsGood).toBe(1);
+    expect(item.followUpSpecPath).toMatch(/^dev\/dev-[a-z0-9]+-.+\.md$/);
+    const followUpPath = item.followUpSpecPath!;
+    const followUpHash = /^dev\/dev-([a-z0-9]+)-/.exec(followUpPath)![1];
+
+    // Exactly ONE driver-side split: one new spec beside the parent, one
+    // item:split event.
+    expect(readdirSync(join(fixture.repoRoot, "dev"))).toHaveLength(2);
+    const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
+    expect(events.filter((e) => e === "item:split")).toHaveLength(1);
+    expect(events).not.toContain("iteration:split-request-invalid");
+
+    // Merge-first shape: follow-up blocked on the (now-merged) parent and
+    // on a freshly DERIVED branch, not the parent's WIP branch.
+    const followUp = readFileSync(join(fixture.repoRoot, followUpPath), "utf8");
+    expect(followUp).toContain("blocked_by: [par111]");
+    expect(followUp).toContain(`branch: feat/dev-${followUpHash}`);
+    expect(followUp).toContain("title: \"Finish the remaining ACs\"");
+    expect(followUp).toContain("the follow-up half of the thing works");
+    expect(followUp).toContain("seam was cleaner than expected");
+
+    // Parent reconciled done + spawned wired; DEV.md carries both rows.
+    const parent = readFileSync(
+      join(fixture.repoRoot, fixture.specRel({ hash: "par111" })),
+      "utf8",
+    );
+    expect(parent).toContain("status: done");
+    expect(parent).toContain(`spawned: [${followUpHash}]`);
+    const dev = readFileSync(join(fixture.repoRoot, "DEV.md"), "utf8");
+    expect(dev).toMatch(/- \[x\] `dev\/dev-par111/);
+    expect(dev).toContain("Blocked-by: par111.");
+
+    // The done-flip commit carried the follow-up (extraPaths) and pushed.
+    expect(
+      execFileSync(
+        "git",
+        ["--git-dir", fixture.origin, "ls-tree", "-r", "--name-only", "main"],
+        { encoding: "utf8" },
+      ),
+    ).toContain(followUpPath);
+  });
+
+  it("malformed request → 1 validation error event + 0 spec/backlog writes; iteration counter advances and the item is not terminated", async () => {
+    fixture = makeFixture([{ hash: "par222", title: "Robust thing" }]);
+    const { worker } = scriptedWorker([
+      {
+        kind: "report",
+        files: { "w1.txt": "w1" },
+        report: {
+          summary: "tried to split badly",
+          key_changes_made: ["w1.txt"],
+          acs_met: false,
+          split_request: { title: "fine title", remaining_acs: [] },
+        },
+      },
+      {
+        kind: "report",
+        files: { "w2.txt": "w2" },
+        report: { summary: "finished instead", key_changes_made: ["w2.txt"], acs_met: true },
+      },
+    ]);
+    const r = await runLoop({
+      repoRoot: fixture.repoRoot,
+      merged: MERGED,
+      out: () => {},
+      heartbeatIntervalMs: 3_600_000,
+      worker,
+      tail: mergedTail().tail,
+    });
+
+    // Exactly 1 validation error surfaced; the request was ignored — no
+    // split, no follow-up spec, no extra backlog row.
+    const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
+    expect(events.filter((e) => e === "iteration:split-request-invalid")).toHaveLength(1);
+    expect(events).not.toContain("item:split");
+    expect(events).not.toContain("item:split-fallback");
+    expect(readdirSync(join(fixture.repoRoot, "dev"))).toHaveLength(1);
+
+    // The iteration counter advanced past the malformed request and the
+    // item ran to normal completion.
+    const item = r.summary!.items[0];
+    expect(item.outcome).toBe("merged");
+    expect(item.iterationsGood).toBe(2);
+    expect(item.followUpSpecPath).toBeUndefined();
+    const dev = readFileSync(join(fixture.repoRoot, "DEV.md"), "utf8");
+    expect(dev).toMatch(/- \[x\] `dev\/dev-par222/);
+    expect((dev.match(/^- \[/gm) ?? [])).toHaveLength(1);
+    expect(existsSync(join(fixture.repoRoot, ".worktrees", "dev-par222"))).toBe(false);
   });
 });

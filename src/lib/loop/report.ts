@@ -27,6 +27,7 @@ import { reportPath, reportsCopyPath } from "./state.js";
 export type ItemOutcome =
   | "merged"
   | "handed-off" // PR opened / pushed, but not merged (CI red, gate said no, hold, …)
+  | "split" // budget exhausted WITH real progress — WIP branch pushed, follow-up spec filed (branch-handoff, mss103); parent superseded
   | "abandoned" // failure ladder or per-item budget — claim released; left blocked (work preserved) or ready (nothing preserved)
   | "released" // environment failure (infra-errors) — claim rolled back to ready; item not at fault (dc7514)
   | "blocked-on-human" // filed INTERVIEW/MANUAL mid-run
@@ -59,9 +60,15 @@ export interface ItemResult {
   /** Iterations lost to environment failures (infra-errors) — never charged
    *  to the item (dc7514). */
   iterationsInfra?: number;
-  /** Where the abandon/release left the backlog row: `blocked` (real work
-   *  preserved, human decides) or `ready` (nothing preserved — re-claimable). */
+  /** Where the abandon/release/split left the backlog: `blocked` (real work
+   *  preserved, human decides) or `ready` (nothing preserved — re-claimable;
+   *  for `split`, the FOLLOW-UP row is the ready one — the parent row is
+   *  struck superseded). */
   leftState?: "ready" | "blocked";
+  /** Repo-relative follow-up spec path when this item split (outcome
+   *  `split`, or a worker-requested merge-first split on a merged/handed-off
+   *  item — mss103). */
+  followUpSpecPath?: string;
   tokens: TokenTotals;
   /** PR URL when one was opened. */
   prUrl?: string;
@@ -147,9 +154,20 @@ function fmtDiff(d: DiffStat | undefined): string {
   return `${d.filesChanged} files, +${d.linesAdded}/-${d.linesDeleted}`;
 }
 
+/** `dev/dev-abc123-2026-…-slug.md` → `abc123` (null when unparseable).
+ *  The timestamp anchor is load-bearing: a looser `^[a-z]+-([a-z0-9]+)-`
+ *  happily reads `not-a-spec-path` as the hash `a` and would print a
+ *  confidently wrong `/devx a` into the morning report. */
+function hashFromSpecPath(specPath: string): string | null {
+  const base = specPath.slice(specPath.lastIndexOf("/") + 1);
+  const m = /^[a-z]+-([a-z0-9]{3,12})-\d{4}-\d{2}-\d{2}T/.exec(base);
+  return m ? m[1] : null;
+}
+
 const OUTCOME_LABEL: Record<ItemOutcome, string> = {
   merged: "merged",
   "handed-off": "handed off (PR open, NOT merged)",
+  split: "split (budget exhausted with real progress — follow-up spec filed)",
   abandoned: "abandoned",
   released: "released (environment failure — item not at fault, left ready)",
   "blocked-on-human": "blocked on human",
@@ -163,7 +181,12 @@ function itemSection(item: ItemResult): string {
   const label =
     item.outcome === "abandoned" && item.leftState === "ready"
       ? "abandoned (nothing preserved — left ready)"
-      : item.outcome === "released" && item.leftState === undefined
+      : item.outcome === "merged" && item.leftState === "blocked"
+        ? // mss103: the PR merged at reduced scope but the follow-up split
+          // failed, so the spec was left blocked. A bare "merged" here
+          // would contradict the backlog row (review AA-7).
+          "merged at reduced scope — split FAILED, spec left blocked"
+        : item.outcome === "released" && item.leftState === undefined
         ? // Ownership-lost release: the backlog was deliberately left
           // untouched — the default label's "left ready" would misstate it.
           "released (environment failure — claim ownership lost; backlog left untouched)"
@@ -190,6 +213,9 @@ function itemSection(item: ItemResult): string {
     lines.push(`- Test delta: not tracked (v1 bound)`);
   }
   if (item.diff) lines.push(`- Diff: ${fmtDiff(item.diff)}`);
+  if (item.followUpSpecPath !== undefined) {
+    lines.push(`- Follow-up: \`${item.followUpSpecPath}\``);
+  }
   if (item.worktreePath) lines.push(`- Preserved worktree: \`${item.worktreePath}\``);
   if (item.lastFailure) lines.push(`- Last failure: ${item.lastFailure}`);
   if (item.detail) lines.push(`- Detail: ${item.detail}`);
@@ -218,7 +244,14 @@ function nextSteps(summary: RunSummary): string[] {
   for (const item of summary.items) {
     switch (item.outcome) {
       case "merged":
-        if (item.prUrl) {
+        if (item.leftState === "blocked") {
+          // mss103: merged at reduced scope, but the follow-up split
+          // failed — the unmet ACs are in the spec's status log and
+          // nowhere else, so this needs a human before anything else.
+          out.push(
+            `- \`${item.hash}\` merged at REDUCED SCOPE but its split failed — the spec is \`[-]\` blocked and its status log lists the acceptance criteria that never shipped; re-split (\`devx split ${item.hash}\`) or re-scope before unblocking.`,
+          );
+        } else if (item.prUrl) {
           out.push(
             `- \`gh pr view ${item.prUrl}\` — verify the merge claim for \`${item.hash}\` (claims, not verdicts).`,
           );
@@ -245,6 +278,16 @@ function nextSteps(summary: RunSummary): string[] {
           );
         }
         break;
+      case "split": {
+        const followHash =
+          item.followUpSpecPath !== undefined ? hashFromSpecPath(item.followUpSpecPath) : null;
+        out.push(
+          `- \`${item.hash}\` — split → follow-up ready: \`/devx ${followHash ?? "<hash>"}\`${
+            item.followUpSpecPath !== undefined ? ` (\`${item.followUpSpecPath}\`)` : ""
+          } — the WIP branch is recorded on the follow-up spec; the parent is superseded.`,
+        );
+        break;
+      }
       case "released":
         out.push(
           item.leftState === "ready"
@@ -275,6 +318,7 @@ export function renderMorningReport(summary: RunSummary): string {
   const counts: Record<ItemOutcome, number> = {
     merged: 0,
     "handed-off": 0,
+    split: 0,
     abandoned: 0,
     released: 0,
     "blocked-on-human": 0,
@@ -300,6 +344,8 @@ export function renderMorningReport(summary: RunSummary): string {
   }
   lines.push(
     `**Items:** ${summary.items.length} attempted · ${counts.merged} merged · ${counts["handed-off"]} handed off · ${counts.abandoned} abandoned · ${counts["blocked-on-human"]} blocked on human${
+      counts.split > 0 ? ` · ${counts.split} split` : ""
+    }${
       counts.released > 0 ? ` · ${counts.released} released (environment)` : ""
     }${
       counts["in-progress-at-exit"] > 0 ? ` · ${counts["in-progress-at-exit"]} in progress at exit` : ""

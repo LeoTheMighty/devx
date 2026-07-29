@@ -3,7 +3,9 @@
 // Real git fixture (bare origin + clone) so the claim (dvx101), the
 // transactional commits/resets, the worktree lifecycle, and the abandon
 // flips all run against actual repositories. The worker and the merge tail
-// are scripted seams; everything else is production code.
+// are scripted seams; everything else is production code. The fixture +
+// scripted seams live in test/helpers/loop-git-fixture.ts (shared with
+// test/loop-iteration.test.ts's E-4 driver scenarios since mss103).
 
 import { execFileSync } from "node:child_process";
 import {
@@ -12,10 +14,10 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -27,168 +29,17 @@ import {
   readInstance,
 } from "../src/lib/loop/instances.js";
 import { WorkerTimeoutError, type WorkerRunFn } from "../src/lib/loop/worker.js";
+import { realExec } from "../src/lib/loop/git-tx.js";
 import { type HandOffKind, type TailFn } from "../src/lib/loop/tail.js";
-
-// ---------------------------------------------------------------------------
-// Fixture: bare origin + clone with DEV.md + specs
-// ---------------------------------------------------------------------------
-
-function g(cwd: string, ...args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
-}
-
-interface SpecFixture {
-  hash: string;
-  type?: "dev" | "debug";
-  title?: string;
-  blockedBy?: string[];
-}
-
-interface Fixture {
-  base: string;
-  origin: string;
-  repoRoot: string;
-  cacheDir: string;
-  specRel: (s: SpecFixture) => string;
-}
-
-function specFilename(s: SpecFixture): string {
-  const type = s.type ?? "dev";
-  return `${type}/${type}-${s.hash}-2026-07-05T13:00-item-${s.hash}.md`;
-}
-
-function makeFixture(specs: SpecFixture[]): Fixture {
-  const base = mkdtempSync(join(tmpdir(), "devx-loop-driver-"));
-  const origin = join(base, "origin.git");
-  const repoRoot = join(base, "repo");
-  execFileSync("git", ["init", "--bare", "-q", "-b", "main", origin], { encoding: "utf8" });
-  execFileSync("git", ["clone", "-q", origin, repoRoot], { encoding: "utf8" });
-  g(repoRoot, "config", "user.email", "loop@test");
-  g(repoRoot, "config", "user.name", "loop");
-  g(repoRoot, "config", "commit.gpgsign", "false");
-
-  const devRows: string[] = ["# DEV — backlog", ""];
-  const debugRows: string[] = ["# DEBUG — backlog", ""];
-  for (const s of specs) {
-    const type = s.type ?? "dev";
-    const rel = specFilename(s);
-    const blocked = s.blockedBy?.length ? ` Blocked-by: ${s.blockedBy.join(", ")}.` : "";
-    const row = `- [ ] \`${rel}\` — ${s.title ?? `Item ${s.hash}`}. Status: ready.${blocked}`;
-    (type === "debug" ? debugRows : devRows).push(row);
-    const spec = [
-      "---",
-      `hash: ${s.hash}`,
-      `type: ${type}`,
-      "created: 2026-07-05T13:00:00-06:00",
-      `title: ${s.title ?? `Item ${s.hash}`}`,
-      "status: ready",
-      "---",
-      "",
-      "## Goal",
-      "",
-      `Do the ${s.hash} thing.`,
-      "",
-      "## Acceptance criteria",
-      "",
-      `- [ ] the ${s.hash} thing works`,
-      "",
-      "## Status log",
-      "",
-      "- 2026-07-05T13:00 — created.",
-      "",
-    ].join("\n");
-    execFileSync("mkdir", ["-p", join(repoRoot, type)]);
-    writeFileSync(join(repoRoot, rel), spec, "utf8");
-  }
-  writeFileSync(join(repoRoot, "DEV.md"), devRows.join("\n") + "\n", "utf8");
-  writeFileSync(join(repoRoot, "DEBUG.md"), debugRows.join("\n") + "\n", "utf8");
-  writeFileSync(join(repoRoot, ".gitignore"), ".devx-cache/\n.worktrees/\n", "utf8");
-  g(repoRoot, "add", "-A");
-  g(repoRoot, "commit", "-q", "-m", "fixture base");
-  g(repoRoot, "push", "-q", "-u", "origin", "main");
-  return { base, origin, repoRoot, cacheDir: join(repoRoot, ".devx-cache"), specRel: specFilename };
-}
-
-const MERGED = {
-  mode: "YOLO",
-  git: { default_branch: "main", integration_branch: null, branch_prefix: "feat/" },
-  loop: {
-    max_iterations_per_item: 4,
-    max_tokens_per_item: 1_000_000,
-    max_consecutive_failures: 3,
-    max_items: 10,
-    max_total_tokens: 1_000_000,
-    backoff_ms: [1, 2, 3],
-  },
-};
-
-// ---------------------------------------------------------------------------
-// Scripted worker + tail
-// ---------------------------------------------------------------------------
-
-type Step =
-  | { kind: "report"; report: Partial<IterationReportShape>; files?: Record<string, string> }
-  | { kind: "raw"; raw: string; files?: Record<string, string> }
-  | { kind: "throw"; message: string };
-
-interface IterationReportShape {
-  success: boolean;
-  summary: string;
-  key_changes_made: string[];
-  key_learnings: string[];
-  acs_met: boolean;
-}
-
-function scriptedWorker(steps: Step[]): { worker: WorkerRunFn; prompts: string[] } {
-  const prompts: string[] = [];
-  const worker: WorkerRunFn = async (prompt, opts) => {
-    prompts.push(prompt);
-    const step = steps[Math.min(prompts.length - 1, steps.length - 1)];
-    if (step.kind !== "throw" && step.files) {
-      for (const [rel, content] of Object.entries(step.files)) {
-        writeFileSync(join(opts.cwd, rel), content, "utf8");
-      }
-    }
-    if (step.kind === "throw") throw new Error(step.message);
-    const raw =
-      step.kind === "report"
-        ? `did work\n\n\`\`\`json\n${JSON.stringify({
-            success: true,
-            summary: "s",
-            key_changes_made: [],
-            key_learnings: [],
-            acs_met: false,
-            ...step.report,
-          })}\n\`\`\`\n`
-        : step.raw;
-    return {
-      rawOutput: raw,
-      exitCode: 0,
-      graceKilled: false,
-      tokens: { input: 100, output: 50, cacheCreation: 0, cacheRead: 0, estimated: true },
-    };
-  };
-  return { worker, prompts };
-}
-
-const mergedTail = (url = "https://github.com/x/y/pull/99"): { tail: TailFn; calls: number[] } => {
-  const calls: number[] = [];
-  const tail: TailFn = async () => {
-    calls.push(1);
-    return { outcome: "merged", prUrl: url, prNumber: 99 };
-  };
-  return { tail, calls };
-};
-
-const instantSleep = (): { sleep: (ms: number) => Promise<void>; slept: number[] } => {
-  const slept: number[] = [];
-  return {
-    sleep: async (ms: number) => {
-      slept.push(ms);
-    },
-    slept,
-  };
-};
+import {
+  MERGED,
+  g,
+  instantSleep,
+  makeFixture,
+  mergedTail,
+  scriptedWorker,
+  type Fixture,
+} from "./helpers/loop-git-fixture.js";
 
 let fixture: Fixture | null = null;
 afterEach(() => {
@@ -509,7 +360,7 @@ describe("runLoop scenarios", () => {
     expect(prompts[1]).toContain("no JSON object found");
   });
 
-  it("iteration budget exhaustion abandons with the budget reason", async () => {
+  it("iteration budget exhaustion with real progress SPLITS with the budget reason (mss103 — was abandon pre-split-rail)", async () => {
     fixture = makeFixture([{ hash: "ggg777" }]);
     // Never acs_met, always success — burns the 4-iteration budget.
     const { worker } = scriptedWorker([
@@ -518,14 +369,30 @@ describe("runLoop scenarios", () => {
       { kind: "report", files: { "inc3.txt": "3" }, report: { summary: "inch forward", key_changes_made: ["inc"] } },
       { kind: "report", files: { "inc4.txt": "4" }, report: { summary: "inch forward", key_changes_made: ["inc"] } },
     ]);
-    const r = await runLoop(baseOpts(fixture, { worker, tail: mergedTail().tail }));
+    // maxItems 1 — the follow-up row is an ordinary ready row and would
+    // otherwise be claimed and split again on the next pass.
+    const r = await runLoop(
+      baseOpts(fixture, { worker, tail: mergedTail().tail, flags: { maxItems: 1 } }),
+    );
     const item = r.summary!.items[0];
-    expect(item.outcome).toBe("abandoned");
+    // mss103: four committed good iterations are exactly the "real
+    // progress" the budget rail now hands to a follow-up instead of
+    // parking behind a forensics chore. The RAIL and its reason string are
+    // unchanged — only the terminal shape is.
+    expect(item.outcome).toBe("split");
     expect(item.detail).toMatch(/iteration budget exhausted \(4 iterations/);
     expect(item.iterationsGood).toBe(4);
-    // The good iterations' commits are preserved in the worktree.
+    // The work now lives on the PUSHED branch (the worktree is released so
+    // the follow-up's claim can attach to it), not in a parked worktree.
     const wt = join(fixture.repoRoot, ".worktrees", "dev-ggg777");
-    expect(existsSync(join(wt, "inc4.txt"))).toBe(true);
+    expect(existsSync(wt)).toBe(false);
+    expect(
+      execFileSync(
+        "git",
+        ["--git-dir", fixture.origin, "ls-tree", "-r", "--name-only", "feat/dev-ggg777"],
+        { encoding: "utf8" },
+      ),
+    ).toContain("inc4.txt");
   });
 
   it("--max-items overrides downward only and stops pre-claim", async () => {
@@ -793,16 +660,18 @@ describe("runLoop review-fix scenarios", () => {
     );
   });
 
-  it("per-item token budget exhaustion abandons the item (AA-F4)", async () => {
+  it("per-item token budget exhaustion trips the rail (AA-F4; terminal shape is split since mss103 — the iteration committed real work)", async () => {
     fixture = makeFixture([{ hash: "tok001" }]);
-    // Worker reports 150 tokens/iteration; cap at 100 → abandon before iteration 2.
+    // Worker reports 150 tokens/iteration; cap at 100 → rail trips before iteration 2.
     const merged = { ...MERGED, loop: { ...MERGED.loop, max_tokens_per_item: 100 } };
     const { worker } = scriptedWorker([
       { kind: "report", files: { "t.txt": "t" }, report: { summary: "step", key_changes_made: ["t"] } },
     ]);
-    const r = await runLoop(baseOpts(fixture, { merged, worker, tail: mergedTail().tail }));
+    const r = await runLoop(
+      baseOpts(fixture, { merged, worker, tail: mergedTail().tail, flags: { maxItems: 1 } }),
+    );
     const item = r.summary!.items[0];
-    expect(item.outcome).toBe("abandoned");
+    expect(item.outcome).toBe("split");
     expect(item.detail).toMatch(/per-item token budget exhausted/);
   });
 
@@ -829,9 +698,13 @@ describe("runLoop review-fix scenarios", () => {
         tokens: { input: 24_000, output: 42, cacheCreation: 600_000, cacheRead: 1_700_000, estimated: false },
       };
     };
-    const r = await runLoop(baseOpts(fixture, { merged, worker, tail: mergedTail().tail }));
+    const r = await runLoop(
+      baseOpts(fixture, { merged, worker, tail: mergedTail().tail, flags: { maxItems: 1 } }),
+    );
     const item = r.summary!.items[0];
-    expect(item.outcome).toBe("abandoned");
+    // Terminal shape is split since mss103 (four committed good iterations
+    // = real progress); the counter math this test exists for is untouched.
+    expect(item.outcome).toBe("split");
     expect(item.detail).toMatch(/per-item token budget exhausted/);
     // Cache reads NOT counted: counting them (2,324,042/iteration) would
     // have tripped after iteration 1; the old in+out-only counter
@@ -1025,13 +898,36 @@ describe("runLoop review-fix scenarios", () => {
       { hash: "big003" },
       { hash: "big004" },
     ]);
-    // 1 iteration/item: every item makes one good committed iteration and
-    // then abandons on the iteration budget — big, not broken.
-    const merged = { ...MERGED, loop: { ...MERGED.loop, max_iterations_per_item: 1 } };
-    const { worker } = scriptedWorker([
-      { kind: "report", files: { "inc.txt": "1" }, report: { summary: "inch", key_changes_made: ["inc"] } },
-    ]);
-    const r = await runLoop(baseOpts(fixture, { merged, worker, tail: mergedTail().tail }));
+    // Reaches abandon-with-progress via the FAILURE LADDER, not the budget
+    // rail: since mss103 a budget-exhausted item with real progress splits
+    // instead of abandoning (see the E-3 group), so the ladder path —
+    // one good committed iteration, then 3 consecutive reported failures —
+    // is where this guarantee still has to hold. Every other abandon
+    // caller (rollback failure, push failure, split fallback) reaches the
+    // same code.
+    const merged = {
+      ...MERGED,
+      loop: { ...MERGED.loop, max_iterations_per_item: 8, max_consecutive_failures: 3 },
+    };
+    const seen = new Map<string, number>();
+    const worker: WorkerRunFn = async (prompt, opts) => {
+      const hash = /on spec `([a-z0-9]+)`/.exec(prompt)?.[1] ?? "unknown";
+      const n = (seen.get(hash) ?? 0) + 1;
+      seen.set(hash, n);
+      if (n === 1) writeFileSync(join(opts.cwd, "inc.txt"), "1", "utf8");
+      const report =
+        n === 1
+          ? { success: true, summary: "inch", key_changes_made: ["inc"], key_learnings: [], acs_met: false }
+          : { success: false, summary: `try ${n} failed`, key_changes_made: [], key_learnings: [], acs_met: false };
+      return {
+        rawOutput: `\`\`\`json\n${JSON.stringify(report)}\n\`\`\``,
+        exitCode: 0,
+        graceKilled: false,
+        tokens: { input: 100, output: 50, cacheCreation: 0, cacheRead: 0, estimated: true },
+      };
+    };
+    const { sleep } = instantSleep();
+    const r = await runLoop(baseOpts(fixture, { merged, worker, sleep, tail: mergedTail().tail }));
     // All FOUR items ran (no abort at 3) and the loop stopped normally.
     expect(r.exitCode).toBe(0);
     expect(r.summary?.abortReason).toBeNull();
@@ -1042,6 +938,12 @@ describe("runLoop review-fix scenarios", () => {
       "abandoned",
     ]);
     expect(r.summary?.items.every((i) => i.iterationsGood === 1)).toBe(true);
+    // Real work preserved → the blocked-with-worktree shape, and NOT the
+    // split rail (which would have reset the streak for a different reason
+    // and so would not exercise afterItemAbandoned's madeProgress arm).
+    expect(r.summary?.items.every((i) => i.leftState === "blocked")).toBe(true);
+    const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
+    expect(events).not.toContain("item:split");
   });
 
   it("3 consecutive handed-off-FAILURE tails trip the systemic stop; the next item is untouched (MED-6)", async () => {
@@ -1489,5 +1391,502 @@ describe("defaultSleep", () => {
     const started = Date.now();
     await defaultSleep(30);
     expect(Date.now() - started).toBeGreaterThanOrEqual(25);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E-3: budget-rail split (mid-story-split phase 3 — mss103)
+//
+// The budget rail splits instead of abandoning when real committed progress
+// exists: WIP branch pushed, branch-handoff follow-up filed by the DRIVER,
+// parent superseded, abandonment streak untouched. Zero progress takes
+// today's abandon path verbatim; any thrown split error falls back to
+// abandonItem (status-quo floor).
+// ---------------------------------------------------------------------------
+
+describe("E-3: budget-rail split (mss103)", () => {
+  it("real progress at iteration-budget exhaustion → outcome split: WIP branch pushed, follow-up spec + DEV.md row committed on main, report names the follow-up path", async () => {
+    fixture = makeFixture([{ hash: "aaa111", title: "Big thing" }]);
+    const { worker } = scriptedWorker([
+      {
+        kind: "report",
+        files: { "real.txt": "real\n" },
+        report: { summary: "step 1", key_changes_made: ["real.txt"], key_learnings: ["worktree layout matters"] },
+      },
+      {
+        kind: "report",
+        files: { "real2.txt": "more\n" },
+        report: { summary: "step 2", key_changes_made: ["real2.txt"] },
+      },
+    ]);
+    const merged = { ...MERGED, loop: { ...MERGED.loop, max_iterations_per_item: 2 } };
+    // maxItems 1: the follow-up row is an ORDINARY ready row (by design),
+    // so without the cap the loop would claim + split it again in a chain.
+    const r = await runLoop(
+      baseOpts(fixture, { merged, worker, tail: mergedTail().tail, flags: { maxItems: 1 } }),
+    );
+
+    expect(r.exitCode).toBe(0);
+    const item = r.summary!.items[0];
+    expect(item.outcome).toBe("split");
+    expect(item.leftState).toBe("ready");
+    expect(item.iterationsGood).toBe(2);
+    expect(item.detail).toMatch(/iteration budget exhausted/);
+    expect(item.followUpSpecPath).toMatch(/^dev\/dev-[a-z0-9]+-.+\.md$/);
+    const followUpPath = item.followUpSpecPath!;
+    const followUpHash = /^dev\/dev-([a-z0-9]+)-/.exec(followUpPath)![1];
+
+    // Follow-up spec on main: branch-handoff shape — inherits the parent's
+    // WIP branch, carries the remaining ACs + carried-forward sections +
+    // the successful iterations' learnings.
+    const followUp = readFileSync(join(fixture.repoRoot, followUpPath), "utf8");
+    expect(followUp).toContain("branch: feat/dev-aaa111");
+    expect(followUp).toContain("from: dev/dev-aaa111-2026-07-05T13:00-item-aaa111.md");
+    expect(followUp).toContain("status: ready");
+    expect(followUp).toContain("the aaa111 thing works");
+    expect(followUp).toContain("## Carried forward");
+    expect(followUp).toContain("### State to trust");
+    expect(followUp).toContain("### Gotchas");
+    expect(followUp).toContain("### Do NOT");
+    expect(followUp).toContain("worktree layout matters");
+
+    // Parent spec on main: superseded, spawned wired.
+    const parent = readFileSync(
+      join(fixture.repoRoot, fixture.specRel({ hash: "aaa111" })),
+      "utf8",
+    );
+    expect(parent).toContain("status: superseded");
+    expect(parent).toContain(`superseded_by: ${followUpHash}`);
+    expect(parent).toContain(followUpHash);
+
+    // DEV.md: parent row struck superseded, follow-up row ready.
+    const dev = readFileSync(join(fixture.repoRoot, "DEV.md"), "utf8");
+    expect(dev).toMatch(new RegExp(`~~.*dev-aaa111.*~~ superseded by ${followUpHash}\\.`));
+    expect(dev).toContain(`\`${followUpPath}\``);
+    expect(dev).toMatch(new RegExp(`${followUpPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\`[^\\n]*Status: ready`));
+
+    // WIP branch pushed to origin; worktree removed; local branch kept
+    // (the follow-up's claim attaches to it).
+    expect(
+      execFileSync(
+        "git",
+        ["--git-dir", fixture.origin, "rev-parse", "--verify", "refs/heads/feat/dev-aaa111"],
+        { encoding: "utf8" },
+      ).trim(),
+    ).toMatch(/^[0-9a-f]{40}$/);
+    expect(existsSync(join(fixture.repoRoot, ".worktrees", "dev-aaa111"))).toBe(false);
+    expect(g(fixture.repoRoot, "branch", "--list", "feat/dev-aaa111")).not.toBe("");
+
+    // Lock released; split bookkeeping committed AND pushed to origin main.
+    expect(existsSync(join(fixture.cacheDir, "locks", "spec-aaa111.lock"))).toBe(false);
+    expect(g(fixture.repoRoot, "log", "-1", "--format=%s")).toContain("split aaa111");
+    expect(
+      execFileSync("git", ["--git-dir", fixture.origin, "log", "-1", "--format=%s", "main"], {
+        encoding: "utf8",
+      }),
+    ).toContain("split aaa111");
+
+    // Morning report names the follow-up path + the /devx command.
+    const report = readFileSync(r.reportPath!, "utf8");
+    expect(report).toContain(followUpPath);
+    expect(report).toContain(`/devx ${followUpHash}`);
+    expect(report).toContain("1 split");
+
+    // Events: item:split emitted, no fallback.
+    const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
+    expect(events).toContain("item:split");
+    expect(events).not.toContain("item:split-fallback");
+  });
+
+  it("bookkeeping-only worktree at budget exhaustion → abandon path byte-identical to today (no split artifacts)", async () => {
+    fixture = makeFixture([{ hash: "bbb222", title: "No-progress thing" }]);
+    // Two reported failures burn the 2-iteration budget with good=0.
+    const { worker } = scriptedWorker([
+      { kind: "report", report: { success: false, summary: "try 1 failed" } },
+      { kind: "report", report: { success: false, summary: "try 2 failed" } },
+    ]);
+    const merged = { ...MERGED, loop: { ...MERGED.loop, max_iterations_per_item: 2 } };
+    const r = await runLoop(baseOpts(fixture, { merged, worker, tail: mergedTail().tail }));
+
+    const item = r.summary!.items[0];
+    expect(item.outcome).toBe("abandoned");
+    expect(item.leftState).toBe("ready");
+    expect(item.detail).toMatch(/iteration budget exhausted/);
+    expect(item.followUpSpecPath).toBeUndefined();
+
+    // Exactly today's dc7514 abandon hygiene: worktree discarded, item left
+    // ready, failure folded into the main spec's status log.
+    expect(existsSync(join(fixture.repoRoot, ".worktrees", "dev-bbb222"))).toBe(false);
+    const spec = readFileSync(join(fixture.repoRoot, fixture.specRel({ hash: "bbb222" })), "utf8");
+    expect(spec).toContain("status: ready");
+    expect(spec).toMatch(/\[FAIL\] loop abandoned bbb222/);
+    expect(spec).not.toContain("superseded");
+
+    // No split artifacts anywhere: single dev spec, no struck row, no
+    // split events.
+    expect(readdirSync(join(fixture.repoRoot, "dev"))).toHaveLength(1);
+    const dev = readFileSync(join(fixture.repoRoot, "DEV.md"), "utf8");
+    expect(dev).not.toContain("~~");
+    expect(dev).not.toContain("superseded");
+    const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
+    expect(events).not.toContain("item:split");
+    expect(events).not.toContain("item:split-fallback");
+  });
+
+  it("a split resets the abandonment streak (afterItemCompleted) — 2 abandons + split + abandon does NOT trip the 3-stop", async () => {
+    // Order in DEV.md: bbb, ccc abandon progress-less (streak 2), aaa
+    // splits (streak → 0), ddd abandons (streak 1). If split failed to
+    // reset, ddd would be the 3rd consecutive → abort exit 2; if split
+    // INCREMENTED, the abort would fire right after aaa.
+    fixture = makeFixture([
+      { hash: "bbb222" },
+      { hash: "ccc333" },
+      { hash: "aaa111" },
+      { hash: "ddd444" },
+    ]);
+    const { worker } = scriptedWorker([
+      { kind: "report", report: { success: false, summary: "b1" } },
+      { kind: "report", report: { success: false, summary: "b2" } },
+      { kind: "report", report: { success: false, summary: "c1" } },
+      { kind: "report", report: { success: false, summary: "c2" } },
+      { kind: "report", files: { "a.txt": "a" }, report: { summary: "a1", key_changes_made: ["a"] } },
+      { kind: "report", files: { "a2.txt": "a2" }, report: { summary: "a2", key_changes_made: ["a2"] } },
+      { kind: "report", report: { success: false, summary: "d1" } },
+      { kind: "report", report: { success: false, summary: "d2" } },
+    ]);
+    const merged = { ...MERGED, loop: { ...MERGED.loop, max_iterations_per_item: 2 } };
+    // maxItems 4: after aaa splits, its follow-up row is ready and sits
+    // directly after aaa's struck row, so the 4th pick is the follow-up
+    // (whose scripted iterations fail progress-less → abandoned). The
+    // discriminator holds either way: a split that INCREMENTED the streak
+    // would abort right after aaa (3rd consecutive); one that failed to
+    // RESET would abort on the 4th abandon (2+1). Only reset-to-0 exits 0.
+    const r = await runLoop(
+      baseOpts(fixture, { merged, worker, tail: mergedTail().tail, flags: { maxItems: 4 } }),
+    );
+
+    expect(r.summary!.items.map((i) => i.outcome)).toEqual([
+      "abandoned",
+      "abandoned",
+      "split",
+      "abandoned",
+    ]);
+    expect(r.exitCode).toBe(0);
+    expect(r.summary!.abortReason).toBeNull();
+  });
+
+  it("split failure falls back to abandonItem verbatim (status-quo floor): thrown push rejects the split transaction before any main mutation", async () => {
+    fixture = makeFixture([{ hash: "eee555", title: "Fallback thing" }]);
+    // Origin rejects feature-branch pushes → pushCurrentBranch (the split
+    // transaction's first step) throws → splitItem falls back. The claim's
+    // main push already happened, so only feat/* is refused.
+    const hookPath = join(fixture.origin, "hooks", "pre-receive");
+    writeFileSync(
+      hookPath,
+      '#!/bin/sh\nwhile read old new ref; do case "$ref" in refs/heads/feat/*) echo "feat pushes rejected"; exit 1;; esac; done\nexit 0\n',
+      "utf8",
+    );
+    chmodSync(hookPath, 0o755);
+    const { worker } = scriptedWorker([
+      { kind: "report", files: { "w.txt": "w" }, report: { summary: "s1", key_changes_made: ["w"] } },
+      { kind: "report", files: { "w2.txt": "w2" }, report: { summary: "s2", key_changes_made: ["w2"] } },
+    ]);
+    const merged = { ...MERGED, loop: { ...MERGED.loop, max_iterations_per_item: 2 } };
+    const r = await runLoop(baseOpts(fixture, { merged, worker, tail: mergedTail().tail }));
+
+    // Exactly where abandonItem puts a real-work item today: [-] blocked,
+    // worktree preserved, lock released, [FAIL] entry on the main spec.
+    const item = r.summary!.items[0];
+    expect(item.outcome).toBe("abandoned");
+    expect(item.leftState).toBe("blocked");
+    expect(item.followUpSpecPath).toBeUndefined();
+    expect(item.worktreePath).toBe(".worktrees/dev-eee555");
+    expect(existsSync(join(fixture.repoRoot, ".worktrees", "dev-eee555"))).toBe(true);
+    const spec = readFileSync(join(fixture.repoRoot, fixture.specRel({ hash: "eee555" })), "utf8");
+    expect(spec).toContain("status: blocked");
+    expect(spec).toMatch(/\[FAIL\] loop abandoned eee555/);
+    expect(readFileSync(join(fixture.repoRoot, "DEV.md"), "utf8")).toMatch(/- \[-\] `dev\/dev-eee555/);
+    expect(existsSync(join(fixture.cacheDir, "locks", "spec-eee555.lock"))).toBe(false);
+
+    // No split artifacts: single dev spec, fallback evented, no item:split.
+    expect(readdirSync(join(fixture.repoRoot, "dev"))).toHaveLength(1);
+    const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
+    expect(events).toContain("item:split-fallback");
+    expect(events).not.toContain("item:split");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E-3 review-fix regressions (mss103 adversarial self-review)
+//
+// The split rail must never be MORE destructive than the abandon path it
+// replaces, and must never supersede a parent whose branch holds no
+// product work.
+// ---------------------------------------------------------------------------
+
+describe("E-3: split rail progress oracle (mss103 review fixes)", () => {
+  it("commit-failure-preserved work at budget exhaustion abandons (preserving the dirty worktree) instead of splitting it away (BH-1/EC-1 HIGH)", async () => {
+    fixture = makeFixture([{ hash: "dir111", title: "Dirty thing" }]);
+    // pre-commit hook blocks worktree commits from the 2nd commit on, so
+    // iteration 2's work stays PRESERVED-uncommitted (pendingRepair) and
+    // the budget runs out before any repair iteration can land it.
+    const hooksDir = join(fixture.base, "hooks");
+    const flagPath = join(fixture.base, "commit-blocked");
+    execFileSync("mkdir", ["-p", hooksDir]);
+    writeFileSync(
+      join(hooksDir, "pre-commit"),
+      `#!/bin/sh\ncase "$PWD" in *".worktrees/"*) [ -f "${flagPath}" ] && { echo "hook says no" >&2; exit 1; } ;; esac\nexit 0\n`,
+      { mode: 0o755 },
+    );
+    g(fixture.repoRoot, "config", "core.hooksPath", hooksDir);
+
+    const { worker, prompts } = scriptedWorker([
+      { kind: "report", files: { "committed.txt": "safe\n" }, report: { summary: "landed step 1", key_changes_made: ["committed.txt"] } },
+      { kind: "report", files: { "precious.txt": "uncommitted gold\n" }, report: { summary: "step 2", key_changes_made: ["precious.txt"] } },
+    ]);
+    // Arm the hook only after iteration 1 committed cleanly.
+    const armingWorker: WorkerRunFn = async (prompt, opts) => {
+      const res = await worker(prompt, opts);
+      if (prompts.length === 1) writeFileSync(flagPath, "1", "utf8");
+      return res;
+    };
+    // Budget 2: iteration 1 good, iteration 2 commit-failure (failed++) →
+    // good + failed === 2 at the next loop top → budget rail fires with a
+    // dirty tree.
+    const merged = { ...MERGED, loop: { ...MERGED.loop, max_iterations_per_item: 2 } };
+    const r = await runLoop(
+      baseOpts(fixture, { merged, worker: armingWorker, tail: mergedTail().tail, flags: { maxItems: 1 } }),
+    );
+
+    const item = r.summary!.items[0];
+    // The status-quo floor: abandon-with-preserved-work, NOT a split.
+    expect(item.outcome).toBe("abandoned");
+    expect(item.leftState).toBe("blocked");
+    expect(item.followUpSpecPath).toBeUndefined();
+
+    // The uncommitted work still exists on disk — the whole point.
+    const wt = join(fixture.repoRoot, ".worktrees", "dev-dir111");
+    expect(existsSync(wt)).toBe(true);
+    expect(readFileSync(join(wt, "precious.txt"), "utf8")).toBe("uncommitted gold\n");
+
+    // No split artifacts: one spec, no struck row, no split events.
+    expect(readdirSync(join(fixture.repoRoot, "dev"))).toHaveLength(1);
+    const dev = readFileSync(join(fixture.repoRoot, "DEV.md"), "utf8");
+    expect(dev).not.toContain("superseded");
+    expect(dev).toMatch(/- \[-\] `dev\/dev-dir111/);
+    const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
+    expect(events).not.toContain("item:split");
+  });
+
+  it("a learnings-only success is not splittable progress: budget exhaustion abandons rather than superseding a parent whose branch holds no product work (BH-4)", async () => {
+    fixture = makeFixture([{ hash: "lrn111", title: "Learnings-only thing" }]);
+    // success=true with NO file changes but new learnings — legal (a no-op
+    // needs both absent), and its commit carries only the loop's own
+    // status-log append under a feat() subject.
+    const { worker } = scriptedWorker([
+      { kind: "report", report: { summary: "read a lot", key_learnings: ["the parser is recursive"] } },
+      { kind: "report", report: { summary: "read more", key_learnings: ["and memoized"] } },
+    ]);
+    const merged = { ...MERGED, loop: { ...MERGED.loop, max_iterations_per_item: 2 } };
+    const r = await runLoop(
+      baseOpts(fixture, { merged, worker, tail: mergedTail().tail, flags: { maxItems: 1 } }),
+    );
+
+    const item = r.summary!.items[0];
+    expect(item.iterationsGood).toBe(2);
+    expect(item.outcome).toBe("abandoned");
+    expect(item.followUpSpecPath).toBeUndefined();
+    expect(readdirSync(join(fixture.repoRoot, "dev"))).toHaveLength(1);
+    const spec = readFileSync(join(fixture.repoRoot, fixture.specRel({ hash: "lrn111" })), "utf8");
+    expect(spec).not.toContain("status: superseded");
+    const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
+    expect(events).not.toContain("item:split");
+  });
+
+  it("a split_request with no committed product work is ignored, not honored: no PR, no follow-up, the loop keeps iterating (BH-3)", async () => {
+    fixture = makeFixture([{ hash: "req111", title: "Premature splitter" }]);
+    const { tail, calls } = mergedTail();
+    const { worker } = scriptedWorker([
+      // Iteration 1: no files, but learnings (so not a no-op) + a
+      // well-formed split request. The branch holds nothing but the
+      // loop's status-log commit — the request must not be honored.
+      {
+        kind: "report",
+        report: {
+          summary: "explored, then asked to split",
+          key_learnings: ["this is bigger than it looked"],
+          split_request: {
+            title: "Do the actual work",
+            remaining_acs: ["the req111 thing works"],
+          },
+        },
+      },
+      // Iteration 2: real work, finishes normally.
+      {
+        kind: "report",
+        files: { "real.txt": "real" },
+        report: { summary: "actually did it", key_changes_made: ["real.txt"], acs_met: true },
+      },
+    ]);
+    const r = await runLoop(baseOpts(fixture, { worker, tail, flags: { maxItems: 1 } }));
+
+    const item = r.summary!.items[0];
+    // The premature request was ignored and the item ran on to completion.
+    expect(item.outcome).toBe("merged");
+    expect(item.iterationsGood).toBe(2);
+    expect(item.followUpSpecPath).toBeUndefined();
+    expect(calls).toHaveLength(1); // exactly one tail run — not one per request
+    expect(readdirSync(join(fixture.repoRoot, "dev"))).toHaveLength(1);
+    const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
+    expect(events).toContain("iteration:split-request-ignored");
+    expect(events).not.toContain("item:split");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E-3: worker-requested split on the non-merged tails (mss103 review fixes)
+// ---------------------------------------------------------------------------
+
+describe("E-3: worker-requested split, non-merged tails (mss103 review fixes)", () => {
+  const SPLIT_REQUEST = {
+    title: "Second half of the work",
+    remaining_acs: ["the second half works"],
+  };
+
+  it("handed-off tail still files the follow-up (blocked on the pending PR) while the outcome stays handed-off (AA-6)", async () => {
+    fixture = makeFixture([{ hash: "hnd111", title: "Handed-off splitter" }]);
+    const { worker } = scriptedWorker([
+      {
+        kind: "report",
+        files: { "half.txt": "half\n" },
+        report: {
+          summary: "shipped the first half",
+          key_changes_made: ["half.txt"],
+          split_request: SPLIT_REQUEST,
+        },
+      },
+    ]);
+    const tail: TailFn = async () => ({
+      outcome: "handed-off",
+      kind: "handed-off-ok",
+      prUrl: "https://github.com/x/y/pull/13",
+      prNumber: 13,
+      detail: "remote CI concluded 'failure' — not merging",
+    });
+    const r = await runLoop(baseOpts(fixture, { worker, tail, flags: { maxItems: 1 } }));
+
+    const item = r.summary!.items[0];
+    expect(item.outcome).toBe("handed-off");
+    expect(item.followUpSpecPath).toMatch(/^dev\/dev-[a-z0-9]+-.+\.md$/);
+    const followUpPath = item.followUpSpecPath!;
+
+    // Merge-first shape: the follow-up waits on the parent's PR landing.
+    const followUp = readFileSync(join(fixture.repoRoot, followUpPath), "utf8");
+    expect(followUp).toContain("blocked_by: [hnd111]");
+    expect(followUp).toContain("the second half works");
+    expect(readFileSync(join(fixture.repoRoot, "DEV.md"), "utf8")).toContain(
+      "Blocked-by: hnd111.",
+    );
+
+    // Claim + worktree still preserved for the morning (handed-off posture).
+    expect(existsSync(join(fixture.repoRoot, ".worktrees", "dev-hnd111"))).toBe(true);
+    expect(existsSync(join(fixture.cacheDir, "locks", "spec-hnd111.lock"))).toBe(true);
+
+    // The follow-up was committed AND pushed, not left dirty on main.
+    expect(g(fixture.repoRoot, "status", "--porcelain")).toBe("");
+    expect(
+      execFileSync("git", ["--git-dir", fixture.origin, "ls-tree", "-r", "--name-only", "main"], {
+        encoding: "utf8",
+      }),
+    ).toContain(followUpPath);
+  });
+
+  it("merged tail whose split FAILS leaves the parent [-] blocked with the unmet ACs in its status log, never [x] done (BH-2/AA-7)", async () => {
+    fixture = makeFixture([{ hash: "fal111", title: "Failing splitter" }]);
+    const { worker } = scriptedWorker([
+      {
+        kind: "report",
+        files: { "shipped.txt": "shipped\n" },
+        report: {
+          summary: "shipped the first half",
+          key_changes_made: ["shipped.txt"],
+          split_request: SPLIT_REQUEST,
+        },
+      },
+    ]);
+    // Break the split at its resolve stage: performSplit needs the DEV.md
+    // row for the parent to splice after, and the spec lock to match. The
+    // cheapest honest break is removing the parent's backlog row between
+    // the claim and the split — insertDevMdRow then throws.
+    const tail: TailFn = async () => {
+      const devMd = join(fixture!.repoRoot, "DEV.md");
+      writeFileSync(
+        devMd,
+        readFileSync(devMd, "utf8")
+          .split("\n")
+          .filter((l) => !l.includes("dev-fal111"))
+          .join("\n"),
+        "utf8",
+      );
+      return { outcome: "merged", prUrl: "https://github.com/x/y/pull/14", prNumber: 14 };
+    };
+    const r = await runLoop(baseOpts(fixture, { worker, tail, flags: { maxItems: 1 } }));
+
+    const item = r.summary!.items[0];
+    // The PR merged (real + remote) but the item is NOT a clean merge.
+    expect(item.outcome).toBe("merged");
+    expect(item.leftState).toBe("blocked");
+    expect(item.followUpSpecPath).toBeUndefined();
+
+    // The parent kept its unmet ACs instead of being marked done.
+    const spec = readFileSync(join(fixture.repoRoot, fixture.specRel({ hash: "fal111" })), "utf8");
+    expect(spec).toContain("status: blocked");
+    expect(spec).not.toContain("status: done");
+    expect(spec).toContain("the worker-requested split FAILED");
+    expect(spec).toContain("the second half works");
+
+    // No follow-up spec was invented.
+    expect(readdirSync(join(fixture.repoRoot, "dev"))).toHaveLength(1);
+
+    // The morning report tells the truth about the divergence.
+    const report = readFileSync(r.reportPath!, "utf8");
+    expect(report).toContain("merged at reduced scope — split FAILED, spec left blocked");
+    expect(report).toContain("devx split fal111");
+    const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
+    expect(events).toContain("item:split-fallback");
+    expect(events).not.toContain("item:split");
+  });
+
+  it("a failed worktree removal still splits, but WARNs that the follow-up's claim of the WIP branch will fail (AA-9)", async () => {
+    fixture = makeFixture([{ hash: "wtf111", title: "Unremovable worktree" }]);
+    const { worker } = scriptedWorker([
+      { kind: "report", files: { "a.txt": "a" }, report: { summary: "s1", key_changes_made: ["a"] } },
+      { kind: "report", files: { "b.txt": "b" }, report: { summary: "s2", key_changes_made: ["b"] } },
+    ]);
+    // Fail ONLY `git worktree remove` — everything else is the real git.
+    const exec: typeof realExec = (cmd, args, opts) => {
+      if (cmd === "git" && args[0] === "worktree" && args[1] === "remove") {
+        return { exitCode: 1, stdout: "", stderr: "fatal: cannot remove worktree (simulated)" };
+      }
+      return realExec(cmd, args, opts);
+    };
+    const merged = { ...MERGED, loop: { ...MERGED.loop, max_iterations_per_item: 2 } };
+    const r = await runLoop(
+      baseOpts(fixture, { merged, worker, exec, tail: mergedTail().tail, flags: { maxItems: 1 } }),
+    );
+
+    const item = r.summary!.items[0];
+    // The split still happened — worktree removal is cleanup, not a gate.
+    expect(item.outcome).toBe("split");
+    expect(item.followUpSpecPath).toBeDefined();
+    expect(existsSync(join(fixture.repoRoot, item.followUpSpecPath!))).toBe(true);
+
+    // …and the operator is told why their next claim would otherwise fail.
+    const warning = (item.warnings ?? []).find((w) => w.includes("could not be removed"));
+    expect(warning).toBeDefined();
+    expect(warning).toContain("feat/dev-wtf111");
+    expect(readFileSync(r.reportPath!, "utf8")).toContain("could not be removed after the split");
+    const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
+    expect(events).toContain("item:split-worktree-remove-failed");
   });
 });
