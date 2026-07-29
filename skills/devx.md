@@ -107,7 +107,7 @@ Repeat per item, respecting `stop_after`:
    devx devx-helper verify-claim <hash> --session-token "$SESSION_TOKEN"
    ```
 
-   (`--session-token` takes the token this session claimed with — the raw sessionId or the `/devx-<sessionId>` shape — but ONLY from this conversation's own memory: the claim performed earlier in this same session, or a Handoff Snippet that carries it. **Never copy the token out of the spec's `owner:` frontmatter or the lock file** — that trivially always matches and defeats the check entirely (the exact E13 incident shape). A fresh post-`/clear` session that doesn't know its token OMITS the flag; the helper auto-derives a new token via the same primitive `claim` uses, which correctly mismatches a live peer's lock.)
+   (`--session-token` takes the token this session claimed with — the raw sessionId or the `/devx-<sessionId>` shape — but ONLY from this conversation's own memory: the claim performed earlier in this same session. **Never copy the token out of the spec's `owner:` frontmatter or the lock file** — that trivially always matches and defeats the check entirely (the exact E13 incident shape). A fresh post-`/clear` session that doesn't know its token OMITS the flag; the helper auto-derives a new token via the same primitive `claim` uses, which correctly mismatches a live peer's lock.)
 
    Branch on the exit code:
    - **0** — `{"hash":"...","owned":true,"sessionToken":"..."}`: this session owns the claim. Resume: skip step 4 (the claim commit + lock + worktree already exist), enter the existing worktree at step 5, and continue from the last status-log line in the spec.
@@ -251,6 +251,8 @@ Steps:
    - Fix the root cause (don't paper over).
    - Re-run until green.
 6. Do NOT proceed to commit until every required gate passes for the touched surface.
+
+**Prose-bearing diffs: finish editing before you start the gate.** The skill-body discipline tests (`devx-skill-phase*.test.ts`, `skills-sync.test.ts`, `devx-status-log-discipline.test.ts`) read their subject files from disk at test time, so editing `.claude/commands/*.md`, `skills/*.md`, or a spec while the suite is running produces a red that reflects a torn read, not a real failure — and on a long suite that red costs a full re-run to disprove. Batch every prose fix first, run the targeted discipline files (sub-second), and only then start the full gate. If a prose fix becomes necessary after the gate is underway, let the run finish, apply it, and re-run the affected files rather than racing it.
 
 If the config is missing required gate commands, append an item to `INTERVIEW.md` asking the user to supply them, mark the spec `blocked`, and stop.
 
@@ -410,7 +412,8 @@ After merge:
 3. Delete local branch: `git branch -D <branch-name>` (the `--delete-branch` flag on `gh pr merge` handles the remote).
 4. Update the spec file: `status: done`, append status-log line `merged via PR #<n> (squash → <merge-sha-short>)`.
 5. Update `DEV.md`: flip the checkbox `[/]` → `[x]`, append the PR URL inline in the format used by prior entries: `PR: https://github.com/.../pull/<n> (merged <merge-sha-short>)`. If the spec was abandoned/superseded, wrap the entry line in `~~…~~` instead.
-7. Commit all of (4-6) on `main` with message `chore: mark <hash> done after PR #<n> merge` and push.
+6. If the item belongs to a workstream, run `devx todo sync <plan-hash>` so the phase line trues.
+7. Commit steps 4–6 on `main` with message `chore: mark <hash> done after PR #<n> merge` and push. **Stage by explicit pathspec — `git add <spec> <backlog> [workstream todo]`, never `git add -A`.** This is the same rule as Phase 6, and it matters more here: `main` is the one tree every concurrent session shares, so a blanket stage silently commits peers' in-flight spec and todo edits under your authorship. That has happened twice (2026-07-29 erratum `ba3c65b`); the content survives but the audit trail lies about who wrote it.
 8. File gaps:
    - **Test gaps** observed during implementation → new `test/test-*.md` specs + `TEST.md` entries.
    - **Bugs discovered but out of scope** → new `debug/debug-*.md` specs + `DEBUG.md` entries.
@@ -422,56 +425,38 @@ After merge:
 - If `stop_after == n-items` with remaining count: go to Phase 1 with the next ready item. Decrement the counter.
 - If `stop_after == until-blocked`: repeat until no ready items exist OR the next item is blocked OR capacity/usage is hit.
 - If `stop_after == all`: repeat until no `ready` items remain in `DEV.md`.
-- If you halt early for any reason (context budget, quality risk, blocker, usage pressure, mode change): emit the **Handoff Snippet** below and stop.
+- If you halt early for any reason (context budget, quality risk, blocker, usage pressure, mode change): run `devx split <hash> --payload <file> --session-token <token>` (merge-first if your work is coherent+green — land it through Phases 5–8 first; branch-handoff otherwise — push the WIP branch, split, then release the spec lock), say one sentence on why you stopped, and stop.
 
-## Handoff Snippet (when stopping before the run completes)
+The remaining work becomes a first-class follow-up spec + backlog row that any fresh session can claim cold — there is no conversation-prose bridge to preserve, so do not summarize state into chat instead of splitting.
 
-Emit when stopping short — `stop_after` reached mid-loop, user asked to halt, or you decided to stop for context/quality reasons. Purpose: let the user `/clear` and re-invoke `/devx` in a fresh conversation without rediscovery.
+**Payload file** (JSON). Write it under the session-namespaced scratch dir — derive it here rather than assuming Phase 7 ran, because an early halt can land before Phase 7 ever executed:
+
+```
+SCRATCH=".devx-cache/scratch/${DEVX_SESSION:-$(git branch --show-current)}"
+mkdir -p "$SCRATCH"   # gitignored; fresh worktrees have no .devx-cache
+```
+
+Payload shape → `$SCRATCH/split-payload.json`:
+
+```json
+{
+  "title": "<single-line follow-up title; no `;`>",
+  "goal": "<optional; defaults to a generated continuation line>",
+  "remaining_acs": ["<each unfinished AC, one line each — non-empty>"],
+  "carried_forward": {
+    "state_to_trust": ["<branch, worktree, pushed commits, mode, what CI last said>"],
+    "gotchas": ["<anything that cost more than a minute to figure out>"],
+    "do_not": ["<work already done that must not be redone; files out of scope>"]
+  },
+  "learnings": ["<optional; extra notes worth carrying>"]
+}
+```
 
 Rules:
-- Only emit when stopping early. Full-run completion (all targeted items merged, no pending work) skips the snippet.
-- Unpushed commits are part of the handoff — the next agent pushes them as part of its flow.
-- Be concrete. Every fact a fresh agent would grep for belongs here.
-
-Format exactly like this (inside a fenced ```text``` block):
-
-````text
-/devx <hash|slug|next>
-
-RESUMING from prior session. Do not redo work below.
-
-## Already done (do not rerun)
-- <hash>: <one-line summary> — PR #<n>, merged
-- <hash>: <one-line summary> — PR #<n>, awaiting CI
-
-## Next up (in order)
-- <hash>: <one-line from spec file title>
-- <hash>: ...
-
-## State to trust
-- Current branch on main repo: <branch>
-- Worktrees active: <list or "none">
-- DEV.md entries `in-progress`: <list>
-- Mode: <current mode>
-- Trust-gradient count: <N>/<threshold>
-
-## Gotchas from prior session (save time — don't rediscover)
-- <concrete fact the next agent would waste context relearning>
-- <parallel-agent / untracked-WIP collision note, if any>
-- <framework/version quirk that bit us>
-- <any API/endpoint decision that deviated from the spec and why>
-
-## Do NOT
-- Re-create spec files that already exist under `dev/`.
-- Re-run migrations / re-stage commits already in `git log origin/develop..HEAD`.
-- Touch files outside the current item's scope.
-
-Continue from <next hash or slug>.
-````
-
-Fill every placeholder. Gotchas are the highest-value part — put anything that cost more than a minute to figure out.
-
-After emitting the snippet, say one sentence summarizing why you stopped and stop. Do not keep working.
+- **Choose the shape deliberately.** merge-first (default) = the done portion is coherent and green: land it through Phases 5–8 first, then split. branch-handoff = the work is mid-stream: push the WIP branch FIRST (the CLI refuses the shape when `git ls-remote --heads origin <branch>` is empty), then split.
+- **Split before the lock goes.** `devx split` guards on the parent's spec lock and exits 3 once it's gone. On merge-first that means splitting **after the merge but before Phase 8's after-merge bookkeeping** (worktree removal / `status: done`) — the follow-up is `Blocked-by: <parent>`, immediately satisfied by the merge just landed. On branch-handoff you release the lock yourself, *after* the split returns 0: `rm .devx-cache/locks/spec-<hash>.lock` from the main worktree. The parent goes `superseded` and the follow-up inherits the pushed branch; skipping the release leaves a lock that classifies `live` — and so masks the spec from `devx next` — for as long as this session's process survives, which is exactly the `/clear`-and-resume window the split exists to serve.
+- `--session-token` is never auto-derived for split — pass the token this session claimed with. Exit codes: 0 success · 1 backlog-lock contention (retry shortly) · 2 other failure (stage named in the error) · 3 ownership mismatch (not your claim — do not retry) · 64 usage.
+- Gotchas are the highest-value field. Be concrete: every fact a fresh agent would otherwise grep for belongs there.
 
 ## Finalization (after stop_after satisfied)
 
@@ -518,9 +503,9 @@ ladder + merge-gate — NOT permission bypass (D-6; LOCKDOWN refuses the loop
 entirely).
 
 1. Entry: `devx loop [--until <HH:MM>] [--max-items N] [--max-tokens N]
-   [--only <type>] [--dry-run]`. Budgets come from `devx.config.yaml →
-   loop:`; flags override downward only. Run `--dry-run` first when the
-   user is present and show them the plan.
+   [--only <type>] [--dry-run] [--force]`. Budgets come from
+   `devx.config.yaml → loop:`; flags override downward only. Run `--dry-run`
+   first when the user is present and show them the plan.
 1b. **Scope (mlc106)** — `[--epic <slug|plan-hash>]…
    [--workstream <slug>]… [--items <h1,h2,…>] [--exclude <hash|epic>]…
    [--focus <text>]`. Repeated flags union within a dimension; different
@@ -535,6 +520,14 @@ entirely).
    N loops on disjoint slices; the scope descriptor shows up in the
    instance file, `devx next` row 1, `devx status`, and the report
    header.
+1.5. **Preflight main-health (lpf101).** The CLI probes the integration
+   branch's remote CI before claiming anything and exits 5 when it's red —
+   a red main converts the whole night into unmergeable open PRs (every
+   branch inherits the red check; the tail hands every item off with zero
+   merges). Fix main first. `--force` (or `loop.preflight_main_health:
+   warn`) starts anyway and threads a "treat as baseline" line into every
+   iteration prompt + the morning report; probe failure or no decisive
+   signal never blocks the run.
 2. The CLI owns the loop: item pick (reconcile), worker spawn, the
    iteration contract (fresh session per iteration; smallest verifiable
    slice; structured report), commit-or-reset transactions, the failure

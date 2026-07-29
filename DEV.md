@@ -21,7 +21,7 @@ planned; this section outranks the paused mobile backlog below.
 
 ### Self-healing state reconciliation (from loop-2026-07-24 post-mortem)
 - [ ] `dev/dev-db36af-2026-07-25T08:55-devx-doctor-reconcile.md` — `devx doctor` — mechanical state reconciliation (stale locks, dead owners, mirror drift, bookkeeping-only abandonments), `--fix` for the mechanical class, wired into `devx next` drift rows + loop start. Status: ready. Blocked-by: dc7514 (shared abandon-path predicate; both touch loop driver). From: debug-dc7514.
-- [ ] `dev/dev-b931a1-2026-07-29T10:15-finalize-merge-tail-primitive.md` — `devx devx-helper finalize <hash>` — merge-tail primitive: scoped staging (kills the `git add -A` peer-file sweep), spec-lock release (4/6 mlc specs leaked), clock-stamped merge line, and a post-merge rebuild of the self-hosted `dist/` (mlc106 merged unreachable from the CLI). Status: ready. From: mlcret retro E1/E2/E3/E5. Related: db36af (offline sweep of already-leaked locks).
+- [ ] `dev/dev-b931a1-2026-07-29T10:15-finalize-merge-tail-primitive.md` — `devx devx-helper finalize <hash>` — merge-tail primitive: scoped staging (kills the `git add -A` peer-file sweep), spec-lock release (4/6 mlc specs leaked), clock-stamped merge line, and a post-merge rebuild of the self-hosted `dist/` (mlc106 merged unreachable from the CLI). Status: ready. From: mlcret retro E1/E2/E3/E5. Consumes: ee7049 (release-lock CLI — do not write a second release path). Builds on: PR #102 (prose+test staging rule already landed; extend, don't replace). Related: db36af (offline sweep of already-leaked locks).
 - [/] `dev/dev-lpf101-2026-07-26T15:57-loop-preflight-main-health.md` — Loop preflight main-health check (probe main CI at run start; refuse-with-reason or forced-start baseline line — red main taxed every hfi102 worker iteration). Status: in-progress. From: hfiret retro E7.
 
 ### Epic — harness-fold-in (plan: eac479)
@@ -57,8 +57,9 @@ mss103 are parallel-safe (no shared files).
 - [x] `dev/dev-mss101-2026-07-28T13:43-split-primitive-lib-cli.md` — Split primitive (lib + CLI). Status: done. From: epic-mid-story-split. PR: https://github.com/LeoTheMighty/devx/pull/95 (merged ec3af6e)
 - [x] `dev/dev-mss102-2026-07-28T13:43-claim-branch-inheritance.md` — Claim branch inheritance. Status: done. Blocked-by: mss101. Parallel-safe with mss103. PR: https://github.com/LeoTheMighty/devx/pull/97 (merged 46fb9e4)
 - [x] `dev/dev-mss103-2026-07-28T13:43-loop-split-integration.md` — Loop split integration. Status: done. Blocked-by: mss101. Parallel-safe with mss102. PR: https://github.com/LeoTheMighty/devx/pull/99 (merged 962f9a1)
-- [/] `dev/dev-mss104-2026-07-28T13:43-handoff-snippet-retirement.md` — Handoff Snippet retirement sweep. Status: in-progress. Blocked-by: mss102, mss103.
+- [x] `dev/dev-mss104-2026-07-28T13:43-handoff-snippet-retirement.md` — Handoff Snippet retirement sweep. Status: done. Blocked-by: mss102, mss103. PR: https://github.com/LeoTheMighty/devx/pull/101 (merged 5292b19)
 - [ ] `dev/dev-mssret-2026-07-28T13:45-retro-mid-story-split.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: mss101, mss102, mss103, mss104.
+- [ ] `dev/dev-ee7049-2026-07-29T10:12-spec-lock-release-cli.md` — Guarded spec-lock release CLI for the Phase 9 branch-handoff path (swaps the raw `rm` for `devx devx-helper release-lock`). Status: ready. From: mss104 Phase 8 gap sweep. Low priority.
 
 ## Phase 0 — Foundation (plan: plan-a01000)
 

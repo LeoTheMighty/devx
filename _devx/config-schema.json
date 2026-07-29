@@ -999,6 +999,14 @@
             "type": "number",
             "minimum": 0
           }
+        },
+        "preflight_main_health": {
+          "type": "string",
+          "enum": [
+            "refuse",
+            "warn",
+            "off"
+          ]
         }
       },
       "additionalProperties": false

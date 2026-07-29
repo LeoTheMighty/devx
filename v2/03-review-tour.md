@@ -87,8 +87,9 @@ devx tour build <hash>
 - Big diffs (>~1500 lines / >25 files): subagent fan-out per semantic area /
   per candidate trail, synthesis in the main context ("the map must be
   coherent in one head").
-- `parseHandoffSnippet`-style pinning: a test validates the tour template +
-  schema against drift (the dvx107 move).
+- `devx-skill-phase9-split.test.ts`-style pinning: a test validates the tour
+  template + schema against drift (the dvx107 move — dvx107's own exemplar was
+  retired by mss104; the successor pins Phase 9's `devx split` routing).
 
 ## 3. Hosting + PR integration
 

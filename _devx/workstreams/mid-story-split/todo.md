@@ -72,7 +72,7 @@
     - [x] Phase 4 self-review: 3-agent parallel (Blind Hunter + Edge Case
           Hunter + Acceptance Auditor); 20 unique findings, all fixed
           in-place; chain-cap product question → INTERVIEW Q#15
-  - [ ] Phase 4: Handoff Snippet retirement sweep → mss104
+  - [x] Phase 4: Handoff Snippet retirement sweep → mss104
     - [x] E-2 re-run RED first — 39 live token sites enumerated; honest RED
     - [x] T4.1 Phase 9 rewrite → `devx split` + payload shape + shape rules;
           `## Handoff Snippet` section deleted; devx.md:110 clause fixed;

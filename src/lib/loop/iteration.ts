@@ -423,6 +423,10 @@ export interface IterationPromptParams {
    *  durable history lives in the spec's Status log, which the prompt sends
    *  the worker to read first. */
   priorAttempts?: PriorAttempt[];
+  /** Forced-start red-main baseline (lpf101): the preflight's baselineLine,
+   *  rendered as a warning section so the worker treats the pre-existing
+   *  failure as baseline instead of re-deriving (or chasing) it. */
+  mainRedBaseline?: string;
   /**
    * `--focus` text (mlc106), reproduced VERBATIM as a Specialty directive.
    * Verbatim is the contract: the operator's words are the instruction, and
@@ -458,6 +462,10 @@ export function buildIterationPrompt(params: IterationPromptParams): string {
               `- iteration ${a.iteration}: ${a.success ? "ok" : "[FAIL]"} — ${a.summary}`,
           )
           .join("\n")}`;
+  const baselineSection =
+    params.mainRedBaseline === undefined
+      ? ""
+      : `\n\n## Baseline warning\n\n${params.mainRedBaseline}`;
 
   // Specialty directive (mlc106 `--focus`). Placed AFTER the numbered
   // instructions and BEFORE the Output contract: it steers *how* the
@@ -479,7 +487,7 @@ export function buildIterationPrompt(params: IterationPromptParams): string {
       : `\n\n## Specialty directive\n\nThis run was started with a focus. Prefer work that serves it when choosing this iteration's slice; it narrows priority, it does NOT override the instructions above.\n\n${focusQuoted}`;
 
   return `You are one iteration of an unattended overnight loop working on a devx spec.
-This is iteration ${params.iteration} of at most ${params.maxIterations} on spec \`${params.hash}\`. Each iteration makes one incremental, verifiable step — it does not complete the entire spec.
+This is iteration ${params.iteration} of at most ${params.maxIterations} on spec \`${params.hash}\`. Each iteration makes one incremental, verifiable step — it does not complete the entire spec.${baselineSection}
 
 ## Instructions
 

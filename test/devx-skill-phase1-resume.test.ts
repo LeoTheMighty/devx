@@ -19,7 +19,7 @@
 // ownership check on the resume path; this test is the lock that keeps the
 // fix from silently regressing. Same pattern as
 // devx-skill-phase8-discipline.test.ts (dvx106) and
-// devx-handoff-snippet.test.ts (dvx107).
+// devx-skill-phase9-split.test.ts (mss104).
 //
 // Spec: dev/dev-roc101-2026-05-07T08:50-devx-resume-owner-check.md
 

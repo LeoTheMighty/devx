@@ -55,8 +55,10 @@ switched timezone).
       `git add -A` / `git add .`. A test proves that an unrelated dirty file
       belonging to a simulated peer session is NOT staged or committed.
 - [ ] **Spec-lock release**: releases `spec-<hash>.lock` under the backlog
-      lock using mlc103's guarded release (never unlinks a lock a peer has
-      since re-acquired). A test covers the re-claimed-by-peer case.
+      lock — by **consuming `dev-ee7049`'s `devx devx-helper release-lock`**
+      (or `releaseSpecLockGuarded` directly if ee7049 has not landed), never
+      by writing a third release path. Never unlinks a lock a peer has since
+      re-acquired; a test covers the re-claimed-by-peer case.
 - [ ] **Clock-stamped merge line, appended in the right section**: the
       status-log line's timestamp comes from the system clock in the repo's
       local-offset format used by every other line, not from a
@@ -76,23 +78,31 @@ switched timezone).
 - [ ] Full suite green; the existing leaked locks are out of scope here
       (offline sweep belongs to `dev-db36af` / `devx doctor`).
 
-## Scope note — do not duplicate the in-flight prose corrective
+## Scope note — two neighbouring changes already landed; do not redo them
 
-A concurrent `/devx-learn` session (mssret-adjacent, uncommitted on main at
-the time this spec was filed, 2026-07-29) added the **prose + test** half of
-defect 1: an explicit-pathspec staging rule in Phase 8 of both skill-body
-copies, plus `test/devx-skill-phase8-discipline.test.ts` assertions pinning
-the `never git add -A` sentence in **both** Phase 6 and Phase 8. Their note
-records the sweep as having occurred twice, not once.
+**1. PR #102 (`8bd514e`, merged 2026-07-29) already shipped the prose+test
+half of defect 1.** An explicit-pathspec staging rule now sits in Phase 8 of
+both skill-body copies, `test/devx-skill-phase8-discipline.test.ts` pins the
+`never git add -A` sentence in **both** Phase 6 and Phase 8, the after-merge
+list's numbering was repaired (it was 1,2,3,4,5,7,8,9 with a commit step
+citing a nonexistent range `(4-6)`), and the missing workstream `todo sync`
+step was added. **Keep all of it.** This spec's contribution to defect 1 is
+the structural half — a primitive that cannot be called with the wrong
+pathspec, demoting the prose rule from load-bearing to advisory. Rewrite the
+Phase 8 prose to invoke the primitive while *preserving* their pinned
+sentences, and **extend** their discipline assertions rather than replacing
+them.
 
-Before starting: check whether that work has landed. If it has, **keep it** —
-do not revert or re-litigate the prose. This spec's contribution to defect 1
-is the structural half (a primitive that cannot be called with the wrong
-pathspec, making the prose rule advisory rather than load-bearing), and its
-unique value is defects 2, 3 and the clock-stamp rider, which their change
-does not touch. Update the Phase 8 prose to invoke the primitive while
-preserving their pinned sentences, and extend rather than replace their
-discipline assertions.
+**2. `dev-ee7049` owns the release CLI.** Filed independently from the
+mss104 gap sweep (`78a10b6`), it ships `devx devx-helper release-lock
+<hash> --session-token <token>` wrapping `releaseSpecLockGuarded` for Phase
+9's raw-`rm` handoff path. Consume it here; do not write a second release
+path. If ee7049 has not landed when this starts, call
+`releaseSpecLockGuarded` directly and leave the CLI to ee7049.
+
+The three specs partition cleanly: ee7049 wraps the release path that goes
+*around* the guarded primitive; this spec adds release to the path that has
+*none*; `db36af` (`devx doctor`) sweeps locks that already leaked.
 
 ## Technical notes
 

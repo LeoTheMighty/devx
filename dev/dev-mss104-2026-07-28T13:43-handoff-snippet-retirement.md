@@ -3,7 +3,7 @@ hash: mss104
 type: dev
 created: 2026-07-28T13:43:00-06:00
 title: "Handoff Snippet retirement sweep"
-status: in-progress
+status: done
 from: plan/plan-e0a67e-2026-07-28T12:15-mid-story-split.md
 plan: _devx/workstreams/mid-story-split
 phase: 4
@@ -109,6 +109,14 @@ as written — cite, don't edit.
   (commit ac0ccf2; erratum recorded by that session in ba3c65b). Content
   landed intact — attribution only. Recorded here so the audit trail
   reads correctly from this spec alone.
+- phase 7.5: review tour built + published —
+  https://htmlpreview.github.io/?https://raw.githubusercontent.com/LeoTheMighty/devx/devx-tours/tours/mss104/tour.html
+  (4 stops, 5 decisions, 2 trails — every trail edge grep-verified at the
+  call site; one 🕳 gap flagged on the four cite-don't-edit prose lines
+  that sit outside E-2's scanned set).
+- phase 8: remote CI green (`devx-ci` run 30466026215, conclusion success);
+  `check-hold` clean; `devx merge-gate mss104` → `{"merge":true}`;
+  merged via PR #101 (squash → 5292b19).
 
 ## Links
 

@@ -144,6 +144,13 @@ import {
   setSpecStatus,
   type EntryPrefix,
 } from "./spec-io.js";
+import {
+  baseBranchFrom,
+  baselineLine,
+  describeMainHealth,
+  probeMainHealth,
+  type MainHealth,
+} from "./preflight.js";
 import { writeMorningReport, type ItemResult, type RunSummary, type TokenTotals } from "./report.js";
 import {
   type CrossScopeBlock,
@@ -185,6 +192,9 @@ export interface LoopFlags {
   /** Restrict picks to one spec type ("dev" | "debug"). */
   only?: string;
   dryRun?: boolean;
+  /** lpf101: start even when the preflight finds the integration branch red
+   *  (the red baseline is threaded into every iteration prompt + report). */
+  force?: boolean;
   /** mlc106 scope flags — `--epic`/`--workstream`/`--items`/`--exclude`
    *  (masking) plus `--focus` (worker directive). Absent = the degenerate
    *  N=1 run, byte-identical to pre-mlc106 behavior. */
@@ -234,7 +244,7 @@ export interface RunLoopOpts {
 
 export interface RunLoopResult {
   /** 0 stopped clean · 1 lock held · 2 aborted · 3 mode-refused ·
-   *  4 bad flags. */
+   *  4 bad flags · 5 preflight-refused (red main; --force overrides). */
   exitCode: number;
   refusedReason?: string;
   summary: RunSummary | null;
@@ -628,6 +638,20 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
   };
   const model = devModelFrom(merged);
 
+  // ── Preflight: main-health probe (lpf101) ───────────────────────────────
+  // A red integration branch converts the whole night into unmergeable open
+  // PRs (every branch inherits the red check; the tail hands every item off).
+  // Probe once, before anything is claimed. Uncertainty (probe failure, no
+  // runs) never blocks the run — only a decisive red does.
+  let mainHealth: MainHealth | null = null;
+  if (cfg.preflightMainHealth !== "off") {
+    mainHealth = probeMainHealth({ exec, repoRoot }, baseBranchFrom(merged));
+  }
+  const baseline = mainHealth !== null ? baselineLine(mainHealth) : null;
+  const redForced =
+    mainHealth?.state === "red" &&
+    (flags.force === true || cfg.preflightMainHealth === "warn");
+
   // ── Dry run: full plan, zero side effects ───────────────────────────────
   if (flags.dryRun === true) {
     const excluded = new Set<string>();
@@ -664,8 +688,34 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
       out("would claim, in order:");
       for (const item of items) out(`  - ${item.hash} (${item.type}) — ${item.title || item.path}`);
     }
+    if (mainHealth !== null) {
+      out(`main health ('${mainHealth.branch}'): ${describeMainHealth(mainHealth)}`);
+      if (mainHealth.state === "red" && !redForced) {
+        out("NOTE: a real run would REFUSE to start (pass --force or set loop.preflight_main_health: warn to override).");
+      }
+    }
     out("no locks taken, no state written, nothing spawned.");
     return { exitCode: 0, summary: null, reportPath: null, plan };
+  }
+
+  // ── Preflight refusal / forced-start warnings (lpf101) ──────────────────
+  if (mainHealth?.state === "red" && !redForced) {
+    const f = mainHealth.failing;
+    const reason =
+      `preflight: '${mainHealth.branch}' is red` +
+      (f !== undefined
+        ? ` — ${f.workflowName} concluded '${f.conclusion}' at ${f.headSha.slice(0, 7)} (${f.url})`
+        : "") +
+      "; fix main first, or start anyway with --force (or loop.preflight_main_health: warn)";
+    out(`devx loop: refused — ${reason}`);
+    return { exitCode: 5, refusedReason: reason, summary: null, reportPath: null };
+  }
+  if (baseline !== null) {
+    out(`devx loop: WARNING — ${baseline}`);
+  } else if (mainHealth?.state === "unknown") {
+    out(
+      `devx loop: main-health probe inconclusive (${mainHealth.detail ?? "no decisive signal"}) — proceeding; uncertainty must not block the night`,
+    );
   }
 
   // ── Admission + instance registration (mlc105) ──────────────────────────
@@ -775,7 +825,14 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
     appendEvent(cacheDir, runId, name, fields, now);
   };
 
-  event("loop:start", { mode, budgets, pid: process.pid, runId, scope: scopeDescriptor });
+  event("loop:start", {
+    mode,
+    budgets,
+    pid: process.pid,
+    runId,
+    scope: scopeDescriptor,
+    mainHealth,
+  });
   crossScopeEvent = (b) =>
     event("item:blocked-out-of-scope", { hash: b.hash, blockedBy: b.blockedBy });
   // Heartbeat cadence derives from manager.heartbeat_interval_s — the same
@@ -933,6 +990,7 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
           totals,
           maxTotalTokens,
           untilDeadline,
+          baseline,
           onIteration: (n: number) => {
             progress.iteration = n;
             beat();
@@ -1024,6 +1082,26 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
     budgets,
     items,
     totals,
+    ...(mainHealth !== null
+      ? {
+          mainHealth: {
+            state: mainHealth.state,
+            branch: mainHealth.branch,
+            ...(mainHealth.failing !== undefined
+              ? {
+                  failing: {
+                    workflowName: mainHealth.failing.workflowName,
+                    conclusion: mainHealth.failing.conclusion,
+                    headSha: mainHealth.failing.headSha,
+                    url: mainHealth.failing.url,
+                  },
+                }
+              : {}),
+            ...(mainHealth.detail !== undefined ? { detail: mainHealth.detail } : {}),
+            ...(redForced ? { forced: true } : {}),
+          },
+        }
+      : {}),
     scope: scopeDescriptor,
     scopeMasks: scopeMasks(scope),
     // Drop holds for items the run went on to attempt: a peer loop landing
@@ -1098,6 +1176,9 @@ interface RunItemArgs {
   totals: TokenTotals;
   maxTotalTokens: number;
   untilDeadline: Date | null;
+  /** lpf101 forced-start baseline line (null when main isn't red) — threaded
+   *  into every iteration prompt. */
+  baseline: string | null;
   /** Progress sink — called once per iteration start so the run's instance
    *  heartbeat can report `iteration` without runItem knowing the registry
    *  exists (mlc105). */
@@ -2119,6 +2200,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       iteration,
       maxIterations: cfg.maxIterationsPerItem,
       priorAttempts: prior,
+      ...(args.baseline !== null ? { mainRedBaseline: args.baseline } : {}),
       focus: args.focus ?? null,
     });
     const prompt =
