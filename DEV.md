@@ -21,6 +21,7 @@ planned; this section outranks the paused mobile backlog below.
 
 ### Self-healing state reconciliation (from loop-2026-07-24 post-mortem)
 - [ ] `dev/dev-db36af-2026-07-25T08:55-devx-doctor-reconcile.md` — `devx doctor` — mechanical state reconciliation (stale locks, dead owners, mirror drift, bookkeeping-only abandonments), `--fix` for the mechanical class, wired into `devx next` drift rows + loop start. Status: ready. Blocked-by: dc7514 (shared abandon-path predicate; both touch loop driver). From: debug-dc7514.
+- [ ] `dev/dev-b931a1-2026-07-29T10:15-finalize-merge-tail-primitive.md` — `devx devx-helper finalize <hash>` — merge-tail primitive: scoped staging (kills the `git add -A` peer-file sweep), spec-lock release (4/6 mlc specs leaked), clock-stamped merge line, and a post-merge rebuild of the self-hosted `dist/` (mlc106 merged unreachable from the CLI). Status: ready. From: mlcret retro E1/E2/E3/E5. Consumes: ee7049 (release-lock CLI — do not write a second release path). Builds on: PR #102 (prose+test staging rule already landed; extend, don't replace). Related: db36af (offline sweep of already-leaked locks).
 - [x] `dev/dev-lpf101-2026-07-26T15:57-loop-preflight-main-health.md` — Loop preflight main-health check (probe main CI at run start; refuse-with-reason or forced-start baseline line — red main taxed every hfi102 worker iteration). Status: done. From: hfiret retro E7. PR: https://github.com/LeoTheMighty/devx/pull/90 (merged 7b08627).
 
 ### Epic — harness-fold-in (plan: eac479)
