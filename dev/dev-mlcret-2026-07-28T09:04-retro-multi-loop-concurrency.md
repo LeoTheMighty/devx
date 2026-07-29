@@ -17,12 +17,12 @@ Run the native retro stage (`/devx retro` — the `## Stage: Retro` section of `
 
 ## Acceptance criteria
 
-- [ ] `/devx retro` stage run against shipped stories (mlc101, mlc102, mlc103, mlc104, mlc105, mlc106).
-- [ ] Findings appended to `LEARN.md § epic-multi-loop-concurrency` (create section if absent).
-- [ ] Each finding tagged `[confidence]` (low/med/high) + `[blast-radius]` (memory/skill/template/config/docs/code).
-- [ ] Low-blast findings applied in retro PR.
-- [ ] Higher-blast findings filed as MANUAL.md or new specs.
-- [ ] Cross-epic patterns hitting ≥3 retros total promoted into `LEARN.md § Cross-epic patterns`.
+- [x] `/devx retro` stage run against shipped stories (mlc101, mlc102, mlc103, mlc104, mlc105, mlc106).
+- [x] Findings appended to `LEARN.md § epic-multi-loop-concurrency` (create section if absent).
+- [x] Each finding tagged `[confidence]` (low/med/high) + `[blast-radius]` (memory/skill/template/config/docs/code).
+- [x] Low-blast findings applied in retro PR.
+- [x] Higher-blast findings filed as MANUAL.md or new specs.
+- [x] Cross-epic patterns hitting ≥3 retros total promoted into `LEARN.md § Cross-epic patterns`.
 
 ## Technical notes
 
