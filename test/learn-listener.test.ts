@@ -17,9 +17,10 @@
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { runLearnListen } from "../src/commands/learn-helper.js";
+import { register, runLearnListen } from "../src/commands/learn-helper.js";
 import { type ListenerResult, handleHookPayload } from "../src/lib/learn/listener.js";
 import { collapseWhitespace } from "../src/lib/learn/nudge.js";
 import {
@@ -678,5 +679,42 @@ describe("rtl101 — `devx learn-helper listen` exits 0 on every path (T1.4)", (
     });
     expect(code).toBe(0);
     expect(seen.map((r) => r.action)).toEqual(["error"]);
+  });
+});
+
+describe("rtl101 — this repo's hook registrations are activated (T1.8)", () => {
+  // AC 6: detection accrues from Phase 1, so the registrations are committed
+  // here rather than waiting for the Phase 5 installer. The queue is durable —
+  // a watcher built weeks later drains whatever accumulated in the meantime.
+  // This pins the file against a silent delete or a rename of the subcommand.
+  const SETTINGS_PATH = resolve(__dirname, "..", ".claude", "settings.json");
+  const COMMAND = "devx learn-helper listen";
+
+  it("registers the listener on both Stop and SessionEnd", () => {
+    expect(existsSync(SETTINGS_PATH)).toBe(true);
+    const settings = JSON.parse(readFileSync(SETTINGS_PATH, "utf8")) as {
+      hooks?: Record<string, { hooks?: { type?: string; command?: string }[] }[]>;
+    };
+    for (const event of ["Stop", "SessionEnd"]) {
+      const commands = (settings.hooks?.[event] ?? []).flatMap((group) =>
+        (group.hooks ?? []).map((h) => `${h.type}:${h.command}`),
+      );
+      expect(commands, `${event} registration`).toContain(`command:${COMMAND}`);
+    }
+  });
+
+  it("names a route the CLI actually registers", () => {
+    // The pin is only worth anything if the string resolves to a live route:
+    // renaming the subcommand must fail here, not at the next turn end in
+    // every hooked repo.
+    const [bin, ...path] = COMMAND.split(" ");
+    expect(bin).toBe("devx");
+    const program = new Command();
+    register(program);
+    const resolved = path.reduce<Command | undefined>(
+      (parent, name) => parent?.commands.find((c) => c.name() === name),
+      program,
+    );
+    expect(resolved, `no CLI route for \`${COMMAND}\``).toBeDefined();
   });
 });

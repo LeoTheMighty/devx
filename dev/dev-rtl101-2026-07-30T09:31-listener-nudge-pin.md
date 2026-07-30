@@ -93,6 +93,13 @@ flip green.
   - Learning: A test that asserts inside a callback passed into `runLearnListen` is vacuous: the command's own catch swallows the thrown expect() and the test passes for the wrong reason. Results must be collected and asserted after the call.
   - Learning: The repo has no lint script — `npm test` is `schema-smoke + config evals + build + typecheck + vitest`, and the full vitest run takes ~16 minutes (960s), so any iteration that runs it should budget for that rather than expecting a quick gate.
   - Learning: `readFileSync(0)` is the right stdin read for the hook (no event-loop turn), but it raises EAGAIN when a human runs the subcommand from a terminal — that path has to look exactly like a miss, not like an error.
+- 2026-07-30T16:37:40.633Z — loop iteration 3: Registered the retro-listener Stop/SessionEnd hooks in this repo's .claude/settings.json (AC 6) and added the E-7 latency eval pins against the rebuilt dist (AC 7), leaving only the full-suite confirmation outstanding.
+  - Change: Added Stop and SessionEnd hook registrations invoking `devx learn-helper listen` to .claude/settings.json, closing AC 6 for this repo's own dogfood wiring.
+  - Change: Added the E-7 latency eval covering the listener hook path against a freshly rebuilt dist, plus a companion pin that exercises the real commander route rather than asserting on a string split.
+  - Change: Rebuilt dist so the latency measurement reflects the shipped listener code rather than a stale build.
+  - Learning: The first cut of the second E-7 pin asserted on a string split of the command line, which would have passed even if commander stopped routing `learn-helper listen`; asserting through the real commander route is the only version that actually pins the contract.
+  - Learning: Latency evals are meaningless against a stale dist — the rebuild has to be part of the eval's own setup, not an assumed precondition, or the number measured is from the previous build.
+  - Learning: The full suite in this worktree takes roughly 16 minutes, which does not fit inside the tail of an iteration that also does implementation work; the gate run needs to be started earlier or owned by a dedicated iteration.
 
 ## Links
 
