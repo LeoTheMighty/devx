@@ -73,6 +73,16 @@ flip green.
 
 - 2026-07-30T09:31 — emitted by /devx-plan RED stage (workstream 620c74).
 - 2026-07-30T10:02:30-06:00 — claimed by /devx in session /devx-loop-2026-07-30T16-02-29-879-60783
+- 2026-07-30T16:09:58.522Z — loop iteration 1: Implemented the nudge pattern pin (nudge.ts) and the shared queue store (queue.ts) with 65 passing tests, flipping RED eval E-6 to green.
+  - Change: src/lib/learn/nudge.ts: NUDGE_PATTERN + collapseWhitespace + containsNudge — the pattern is the minimal marker slice forced by the eval mutations (must span 'friction' through 'run `/devx-learn`'), mid-sentence on both ends so markdown restyling can't break detection (AC 1)
+  - Change: src/lib/learn/queue.ts: config-free learn-home resolution, tolerant JSONL readQueue/readDone, appendPending/appendDone, removeFromQueue via writeAtomic, withQueueLock over acquirePathLockBlocking, and traversal-refusing marker path helpers (AC 2)
+  - Change: Entry identity implemented as non-enumerable lineIndex/rawLine tags so sid-less rows are removable while the tag never leaks into serialized JSON; removeFromQueue re-finds its line when the index goes stale rather than cutting blind
+  - Change: test/learn-nudge-pin.test.ts (24 tests): containment against the on-disk marker and the skills/ mirror, four mutation negatives each guarded against vacuous passes, matcher and whitespace-collapse tables (AC 5, E-6 half)
+  - Change: test/learn-listener.test.ts started (41 tests): the queue-store half — damaged-log tolerance, ts stamping, identity-based removal incl. stale-index re-find, pendingSessionIds, marker safety, lock release and PathLockHeldError on deadline
+  - Learning: The eval mutations mechanically pin NUDGE_PATTERN's extent: E-1 case (d) replaces 'friction' and E-6 mutation (b) replaces the first 'run' occurrence, so any passing pattern must span from 'friction' through 'run `/devx-learn`' — which necessarily includes both em-dashes. There is no shorter or em-dash-free pattern that satisfies both evals.
+  - Learning: E-1 accesses queue entries as flat objects (entries[0]['session_id']), so the plan's 'entries carry an identity' requirement cannot be met with a {entry, index} wrapper. Non-enumerable Object.defineProperty tags are the shape that satisfies both the eval and the no-leak-into-JSON requirement (they are also invisible to vitest's toEqual).
+  - Learning: The Write tool emitted a literal NUL byte when the intended source text was the escape sequence \u0000, which turned the test file into a binary file that grep silently refused to read. Escape sequences destined for source strings need to be written as escaped backslashes or patched in afterwards.
+  - Learning: src/lib/manage/lock.ts already exports BlockingAcquireOpts with timeoutMs/pollMs/nowMs/sleep seams, so withQueueLock needs no timeout machinery of its own — it just forwards opts and lets acquirePathLockBlocking rethrow PathLockHeldError on deadline.
 
 ## Links
 
