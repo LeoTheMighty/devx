@@ -6,7 +6,7 @@ title: "Listener — nudge pattern, queue store, `learn-helper listen`, wire-pro
 from: plan/plan-620c74-2026-07-29T11:56-retro-listener.md
 plan: _devx/workstreams/retro-listener
 phase: 1
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-30T16-02-29-879-60783
 blocked_by: []
 branch: feat/dev-rtl101
@@ -107,6 +107,8 @@ flip green.
   - Learning: Iteration 3's status-log claim that the E-7 eval rebuilds dist as part of its own setup is wrong — E-7 only checks `existsSync(dist/cli.js)` and fails when absent, so a stale-but-present dist would silently measure the previous build. The ordering that actually guarantees a current measurement is running E-7 after `npm test` (which builds), not relying on the eval.
   - Learning: The full gate is ~16 min wall but ~51 min of aggregated test time (Duration 958s, tests 3059.55s) — it is heavily parallel, so it cannot be meaningfully shortened by sharding on this machine, and a verification-only iteration is the right shape for it.
   - Learning: The suite reports 2785 passed / 0 skipped here, versus iteration 2's 2760 passed / 23 skipped; iteration 3 only added ~2 tests, so ~23 tests are environment-conditionally skipped and the headline count is not a stable regression signal across iterations — compare pass/fail, not totals.
+- 2026-07-30T16:58:47.217Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-07-30T16:58:47.217Z — merged via devx loop — PR https://github.com/LeoTheMighty/devx/pull/104
 
 ## Links
 
