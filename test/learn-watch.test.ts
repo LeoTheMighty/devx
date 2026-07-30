@@ -52,6 +52,7 @@ import {
   queuePath,
   readDone,
   readQueue,
+  removeFromQueue,
   reposPath,
   watchLockPath,
   withQueueLock,
@@ -651,8 +652,23 @@ describe("pickReady", () => {
     queued({ cwd: null });
     const first = pick().entry;
     expect(first).not.toBeNull();
-    expect(skipKey(first as TaggedEntry)).toBe("#line:0");
+    expect(skipKey(first as TaggedEntry)).toMatch(/^#line:/);
     expect(pick({ skip: new Set([skipKey(first as TaggedEntry)]) }).entry).toBeNull();
+  });
+
+  it("keys an id-less line by its content, so a queue rewrite can't alias two of them", () => {
+    // `finish` cuts lines while the run's skip-set lives on: an index-keyed
+    // entry would let the survivor inherit the retired line's key.
+    queued({ cwd: "/repo/a" });
+    queued({ cwd: "/repo/b" });
+    const [one, two] = readQueue(home) as TaggedEntry[];
+    expect(skipKey(one as TaggedEntry)).not.toBe(skipKey(two as TaggedEntry));
+    // The second line's key must not change when it slides up to index 0.
+    const keyBefore = skipKey(two as TaggedEntry);
+    removeFromQueue(home, one as TaggedEntry);
+    const [shifted] = readQueue(home) as TaggedEntry[];
+    expect(shifted?.lineIndex).toBe(0);
+    expect(skipKey(shifted as TaggedEntry)).toBe(keyBefore);
   });
 
   it("routes readiness at the same home it read the queue from (.ended fast path)", () => {
@@ -1170,6 +1186,31 @@ describe("terminalArgv / escapeAppleScript", () => {
     expect(args[3]).toBe('tell application "Terminal" to activate');
   });
 
+  // Every other assertion here checks the escape against `unescapeAppleScript`
+  // above — a *model* of the parser, written by the same hand as the escaper,
+  // so the two agree on any mistake they share. This one hands the literal to
+  // the real `osascript` and compares what comes back. It binds the string
+  // instead of running `do script`, so it exercises the identical parse without
+  // opening a Terminal window (the half of AC 6 that needs a human) or asking
+  // for automation permission. Darwin-only: this arm only exists there.
+  it.skipIf(process.platform !== "darwin")(
+    "survives the real AppleScript parser byte-for-byte, quotes and backslashes included",
+    () => {
+      for (const cwd of ["/repo/a", `/tmp/we"ird\\path/it's here`]) {
+        const cmd = buildWrapperCommand(REAL_SID, cwd, "/tmp/x.done");
+        const [, args] = terminalArgv(cmd);
+        const literal = String(args[1]).slice(
+          String(args[1]).indexOf("do script ") + "do script ".length,
+        );
+        const r = spawnSync("osascript", ["-e", `set c to ${literal}`, "-e", "return c"], {
+          encoding: "utf8",
+        });
+        expect(r.status, `osascript rejected the literal for ${cwd}: ${r.stderr}`).toBe(0);
+        expect(String(r.stdout).replace(/\n$/, "")).toBe(cmd);
+      }
+    },
+  );
+
   it("leaves no unescaped double quote to terminate the literal early", () => {
     const cmd = buildWrapperCommand(REAL_SID, "/repo/a", "/tmp/x.done");
     const body = escapeAppleScript(cmd);
@@ -1652,6 +1693,23 @@ describe("drainPass", () => {
     drainPass(drainOpts({ spawn }));
     expect(calls).toEqual([]);
     expect(readDone(home).map((e) => e.outcome)).toEqual(["error-malformed"]);
+    expect(readQueue(home)).toEqual([]);
+  });
+
+  it("retires BOTH id-less lines in one pass — retiring the first reindexes the second", () => {
+    // Regression: the skip-set outlives the queue rewrite `finish` performs, so
+    // an index-keyed id-less entry inherits the key of the line just cut from
+    // under it. The survivor then reads as "already handled" for the whole run
+    // and sits in the queue as a permanently ready row nothing ever serves.
+    queueReady(undefined, "/repo/a");
+    queueReady(undefined, "/repo/b");
+    const { calls, spawn } = fakeSpawn();
+
+    const summary = drainPass(drainOpts({ spawn }));
+
+    expect(calls).toEqual([]);
+    expect(summary.retired).toBe(2);
+    expect(readDone(home).map((e) => e.outcome)).toEqual(["error-malformed", "error-malformed"]);
     expect(readQueue(home)).toEqual([]);
   });
 

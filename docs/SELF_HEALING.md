@@ -192,6 +192,12 @@ ready rather than serving a fresh idle window you already waited out. Requeue
 refuses (exit 1) if that session is already pending; the queue is durable, so
 Ctrl-C on the watcher itself loses nothing.
 
+One wrinkle worth knowing: Ctrl-C is honored *between* retros, not during one.
+While a retro is open the watcher is blocked polling for its completion marker,
+so the stop takes effect when that window closes (or the timeout expires) —
+finish or close the retro's own tab and the watcher exits. To stop it sooner,
+`kill <pid>` from another terminal; the entry simply stays pending.
+
 Knobs live under `learn:` in `devx.config.yaml` (`idle_minutes`,
 `retro_timeout_minutes`, `home`); `DEVX_LEARN_HOME` overrides the home for both
 the hook and the watcher. Design: `_devx/workstreams/retro-listener/design.md`.

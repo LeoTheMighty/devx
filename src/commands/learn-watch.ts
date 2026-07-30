@@ -187,10 +187,15 @@ function delayMs(ms: number): Promise<void> {
  * driver for embedders and tests, which supply their own `shouldStop`.
  *
  * The one window this does NOT cover is a stop pressed *during* a marker wait:
- * `drainPass` is synchronous, so the flag is only read when the retro's
- * marker lands or the retro timeout expires. Closing the retro's own tab ends
- * that wait — and a second Ctrl-C from a human who won't wait still kills the
- * process, losing nothing but the farewell line.
+ * `drainPass` is synchronous, so the flag is only read when the retro's marker
+ * lands or the retro timeout expires. Closing the retro's own tab ends that
+ * wait, and that is the *only* gesture that does — installing this handler
+ * takes SIGINT away from node's default disposition entirely, so extra Ctrl-Cs
+ * during the wait are queued for the blocked loop, not honored (measured: three
+ * SIGINTs to a process blocked in `Atomics.wait` were all delivered to the JS
+ * handler afterwards; none killed it). A human who won't wait needs `kill` from
+ * another terminal — which is safe, because the queue is durable and the entry
+ * is still pending.
  */
 export async function runLearnWatch(opts: WatchCmdOpts = {}): Promise<number> {
   const out = opts.out ?? ((line: string) => process.stdout.write(line));

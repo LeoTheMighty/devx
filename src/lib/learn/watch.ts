@@ -500,10 +500,21 @@ export function classifyEntry(entry: QueueEntry): EntryClass {
  * none. `--dry-run` remembers what it has already dealt with instead of
  * consuming it, and a malformed line (which has no id, by definition) would
  * otherwise be re-picked and re-printed on every pass.
+ *
+ * The id-less key is the line's *content*, not its index. The set lives for the
+ * whole run while `finish` rewrites the queue underneath it, so indices shift:
+ * retiring one id-less line moves the next one into the retired line's slot,
+ * whose key is already in the set — and that second malformed line would then
+ * be silently skipped for the life of the watcher, sitting in the queue as a
+ * permanently "ready" row `list` keeps showing. Content is stable across the
+ * rewrite. (Two byte-identical id-less lines still share a key, which is the
+ * same identity `removeFromQueue`'s raw-line cross-check collapses them to.)
  */
 export function skipKey(entry: TaggedEntry): string {
   const sid = entry.session_id;
   if (typeof sid === "string" && sid !== "") return sid;
+  const raw = entry.rawLine;
+  if (typeof raw === "string" && raw !== "") return `#line:${raw}`;
   return `#line:${entry.lineIndex ?? -1}`;
 }
 
