@@ -6,7 +6,8 @@ title: "`learn:` config section (idle window, retro timeout, home)"
 from: plan/plan-620c74-2026-07-29T11:56-retro-listener.md
 plan: _devx/workstreams/retro-listener
 phase: 2
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-30T16-02-29-879-60783
 blocked_by: []
 branch: feat/dev-rtl102
 ---
@@ -38,6 +39,7 @@ safe with rtl101 (no shared files).
 ## Status log
 
 - 2026-07-30T09:31 — emitted by /devx-plan RED stage (workstream 620c74).
+- 2026-07-30T10:58:48-06:00 — claimed by /devx in session /devx-loop-2026-07-30T16-02-29-879-60783
 
 ## Links
 
