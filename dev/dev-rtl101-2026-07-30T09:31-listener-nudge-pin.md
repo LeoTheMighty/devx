@@ -100,6 +100,13 @@ flip green.
   - Learning: The first cut of the second E-7 pin asserted on a string split of the command line, which would have passed even if commander stopped routing `learn-helper listen`; asserting through the real commander route is the only version that actually pins the contract.
   - Learning: Latency evals are meaningless against a stale dist — the rebuild has to be part of the eval's own setup, not an assumed precondition, or the number measured is from the previous build.
   - Learning: The full suite in this worktree takes roughly 16 minutes, which does not fit inside the tail of an iteration that also does implementation work; the gate run needs to be started earlier or owned by a dedicated iteration.
+- 2026-07-30T16:56:00.490Z — loop iteration 4: Ran the full npm test gate to completion (133 files / 2785 tests, exit 0) and re-verified all five RED evals against the freshly rebuilt dist with E-7 at p95 101.9ms, closing the last outstanding AC.
+  - Change: Full `npm test` gate (schema-smoke + config evals + build + typecheck + vitest) run to completion: exit 0, 133 test files / 2785 tests passed, 958s wall.
+  - Change: All five RED evals re-run against the dist rebuilt by that gate: E-1, E-2, E-6, E-10 exit 0; E-7 reports p95 101.9ms over 20 runs (min 94.0, max 119.2) against the 500ms G-3 bound.
+  - Change: AC-by-AC audit confirmed: nudge/queue/listener exports present, `learn-helper listen` routes through commander, the two AC-5 test files green at 120 tests, and .claude/settings.json registers Stop + SessionEnd as a new file with no pre-existing hooks displaced.
+  - Learning: Iteration 3's status-log claim that the E-7 eval rebuilds dist as part of its own setup is wrong — E-7 only checks `existsSync(dist/cli.js)` and fails when absent, so a stale-but-present dist would silently measure the previous build. The ordering that actually guarantees a current measurement is running E-7 after `npm test` (which builds), not relying on the eval.
+  - Learning: The full gate is ~16 min wall but ~51 min of aggregated test time (Duration 958s, tests 3059.55s) — it is heavily parallel, so it cannot be meaningfully shortened by sharding on this machine, and a verification-only iteration is the right shape for it.
+  - Learning: The suite reports 2785 passed / 0 skipped here, versus iteration 2's 2760 passed / 23 skipped; iteration 3 only added ~2 tests, so ~23 tests are environment-conditionally skipped and the headline count is not a stable regression signal across iterations — compare pass/fail, not totals.
 
 ## Links
 
