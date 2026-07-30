@@ -2,18 +2,29 @@
 // prompt-ability (T3.2), pickReady + malformed classification (T3.3), outcome
 // mapping + finish + requeue + singleton (T3.4).
 //
+// rtl104 extends it with the spawn half (T4.1, T4.2): session-id validation,
+// the wrapper command's trap shape, arm selection, and the osascript/tmux
+// argv builders.
+//
 // Acceptance: _devx/workstreams/retro-listener/evals/E-3_readiness-failsafe.ts
-// (the four readiness cases + the strict-ISO pin) and the phase-3 half of
-// E-4_watch-serial-outcomes.ts. Case names below name the trap they pin, so
-// a failure reads as the failure mode rather than as "expected true, got false".
+// (the four readiness cases + the strict-ISO pin), E-4_watch-serial-outcomes.ts
+// and E-9_wrapper-guard.ts. Case names below name the trap they pin, so a
+// failure reads as the failure mode rather than as "expected true, got false".
 //
 // Every case runs against a tmpdir learn home and injected seams — no real
 // clock, no real git, no real terminal — so nothing here can touch
-// `~/.claude/devx`, fork a subprocess, or take a real SIGTTIN.
+// `~/.claude/devx`, open a window, or take a real SIGTTIN. The single
+// exception is the wrapper-execution pair, which runs the built command under
+// `sh` with a stub `claude` on PATH: the trap/quoting/marker semantics are the
+// whole point of the file, and asserting them on the *string* alone is how
+// upstream shipped three of the bugs these cases pin.
 //
-// Spec: dev/dev-rtl103-2026-07-30T09:31-watcher-core.md (T3.5)
+// Spec: dev/dev-rtl103-2026-07-30T09:31-watcher-core.md (T3.5),
+//       dev/dev-rtl104-2026-07-30T09:31-watcher-cli-spawn.md (T4.5)
 
+import { spawnSync } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -42,6 +53,18 @@ import {
   watchLockPath,
   withQueueLock,
 } from "../src/lib/learn/queue.js";
+import {
+  type RunFn,
+  TMUX_WINDOW_NAME,
+  buildWrapperCommand,
+  escapeAppleScript,
+  isSpawnableSessionId,
+  selectSpawnArm,
+  shellQuote,
+  spawnRetro,
+  terminalArgv,
+  tmuxArgv,
+} from "../src/lib/learn/spawn.js";
 import {
   DEFAULT_IDLE_SECONDS,
   canPrompt,
@@ -846,5 +869,416 @@ describe("claimWatcherSingleton", () => {
     } finally {
       held.release();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Session-id validation — before argv/command construction (E-9 e, T4.1)
+// ---------------------------------------------------------------------------
+
+const REAL_SID = "0f3a1c9e-2b7d-4a10-9c55-6e8b1d2f3a44";
+
+describe("isSpawnableSessionId", () => {
+  it("accepts the UUID Claude Code actually writes into the hook payload", () => {
+    expect(isSpawnableSessionId(REAL_SID)).toBe(true);
+  });
+
+  it("rejects every shell metacharacter that could reach a command string", () => {
+    for (const sid of [
+      "$(rm -rf /)",
+      "`id`",
+      "a; rm -rf /",
+      "a b",
+      "a\nb",
+      "a'b",
+      'a"b',
+      "a|b",
+      "../../etc/passwd",
+      "a$b",
+    ]) {
+      expect(isSpawnableSessionId(sid), sid).toBe(false);
+    }
+  });
+
+  it("rejects non-strings, the empty string, and an over-long id", () => {
+    for (const sid of [null, undefined, 42, {}, "", "abc", "a".repeat(65)]) {
+      expect(isSpawnableSessionId(sid)).toBe(false);
+    }
+  });
+
+  it("is narrower than the queue's filename guard — this id reaches a shell", () => {
+    // `abc_def.log` is a legal marker filename but not a legal spawn id: the
+    // spawn guard refuses rather than sanitizes, so there is no "quoted it,
+    // probably fine" path to reason about.
+    expect(isSpawnableSessionId("abc_def.log")).toBe(false);
+  });
+
+  it("refuses to build a command for an unsafe id", () => {
+    expect(() => buildWrapperCommand("$(rm -rf /)", "/tmp", "/tmp/m.done")).toThrow(
+      /unsafe session id/,
+    );
+  });
+
+  it("refuses to spawn for an unsafe id — before the run seam is reached", () => {
+    let calls = 0;
+    const run: RunFn = () => {
+      calls += 1;
+      return 0;
+    };
+    expect(() =>
+      spawnRetro(home, { session_id: "a; rm -rf /", cwd: "/tmp" }, { arm: "tmux", run }),
+    ).toThrow(/unsafe session id/);
+    expect(calls).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// shellQuote — the cwd/marker embedding (T4.1)
+// ---------------------------------------------------------------------------
+
+describe("shellQuote", () => {
+  it("leaves an ordinary path bare, like shlex.quote", () => {
+    expect(shellQuote("/Users/x/code/devx")).toBe("/Users/x/code/devx");
+  });
+
+  it("quotes a path with a space", () => {
+    expect(shellQuote("/tmp/some repo")).toBe("'/tmp/some repo'");
+  });
+
+  it("quotes a path containing a single quote by close-escape-reopen", () => {
+    expect(shellQuote("/tmp/leo's repo")).toBe(`'/tmp/leo'\\''s repo'`);
+  });
+
+  it("quotes the empty string to '' — a bare empty word would make `cd` a no-op", () => {
+    expect(shellQuote("")).toBe("''");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildWrapperCommand — the trap inventory (E-9 a–d, T4.1)
+// ---------------------------------------------------------------------------
+
+describe("buildWrapperCommand", () => {
+  const MARKER = "/tmp/devx-markers/x.done";
+  const cmd = (cwd = "/repo/a") => buildWrapperCommand(REAL_SID, cwd, MARKER);
+
+  it("exports DEVX_RETRO=1 ahead of claude — the fork must inherit the guard", () => {
+    const c = cmd();
+    expect(c).toContain("DEVX_RETRO=1");
+    // Anchored on `claude --resume`, not on the substring "claude": the default
+    // learn home is `~/.claude/devx`, so the marker path earlier in the command
+    // contains "claude" on every real machine.
+    expect(c.indexOf("DEVX_RETRO=1")).toBeLessThan(c.indexOf("claude --resume"));
+  });
+
+  it("keeps the guard ahead of the fork even when the home path contains 'claude'", () => {
+    const c = buildWrapperCommand(REAL_SID, "/repo/a", "/Users/x/.claude/devx/markers/x.done");
+    expect(c.indexOf("DEVX_RETRO=1")).toBeLessThan(c.indexOf("claude --resume"));
+  });
+
+  it("resumes the session as a fork running /devx-learn", () => {
+    expect(cmd()).toContain(`claude --resume ${REAL_SID} --fork-session "/devx-learn"`);
+  });
+
+  it("traps HUP INT TERM — a closed tab (SIGHUP) would otherwise wedge the queue", () => {
+    expect(cmd()).toMatch(/trap '[^']*'\s+HUP INT TERM/);
+  });
+
+  it("installs NO EXIT trap — bash defers traps, so both firing would race", () => {
+    expect(cmd()).not.toMatch(/trap '[^']*'[^\n]*EXIT/);
+  });
+
+  it("reads $? in the trap instead of asserting an outcome (absorbed Ctrl-C exits 0)", () => {
+    expect(cmd()).toContain("rc=$?");
+    expect(cmd()).not.toContain("w signal");
+  });
+
+  it("writes the marker via tmp+rename so a poller never reads a torn status", () => {
+    expect(cmd()).toContain('> "$M.tmp" && mv "$M.tmp" "$M"');
+  });
+
+  it("guards the cd and files error-cd — a moved project dir must not read as success", () => {
+    expect(cmd()).toContain("|| { w error-cd; exit 1; }");
+  });
+
+  it("quotes a cwd with a space and one with a quote in it", () => {
+    expect(cmd("/tmp/some repo")).toContain("cd '/tmp/some repo' ||");
+    expect(cmd("/tmp/leo's repo")).toContain(`cd '/tmp/leo'\\''s repo' ||`);
+  });
+
+  it("keeps the trap body free of single quotes — it lives inside a quoted word", () => {
+    const body = /trap '([^']*)'/.exec(cmd())?.[1] ?? "";
+    expect(body).not.toBe("");
+    expect(body).not.toContain("'");
+  });
+
+  it("is syntactically valid sh even with a hostile-looking cwd", () => {
+    for (const cwd of ["/repo/a", "/tmp/some repo", "/tmp/leo's repo", `/tmp/a"b`, "/tmp/a\\b"]) {
+      const check = spawnSync("sh", ["-n"], { input: cmd(cwd), encoding: "utf8" });
+      expect(check.status, `sh -n rejected cwd ${cwd}: ${check.stderr}`).toBe(0);
+    }
+  });
+
+  it("rejects a missing marker path rather than writing to a bare $M", () => {
+    expect(() => buildWrapperCommand(REAL_SID, "/tmp", "")).toThrow(/markerPath/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The wrapper, actually run (T4.1) — string assertions can't catch a quoting
+// bug that only shows up when `sh` reads it.
+// ---------------------------------------------------------------------------
+
+describe("the wrapper under sh", () => {
+  /** A `claude` on PATH that exits with `code`, so the marker records a status
+   *  we chose rather than whatever the real CLI would do. */
+  function stubClaude(code: number): string {
+    const bin = join(home, "bin");
+    mkdirSync(bin, { recursive: true });
+    const path = join(bin, "claude");
+    writeFileSync(path, `#!/bin/sh\nexit ${code}\n`);
+    chmodSync(path, 0o755);
+    return bin;
+  }
+
+  function runWrapper(cwd: string, code: number): { status: number | null; marker: string | null } {
+    const bin = stubClaude(code);
+    const marker = join(home, "markers", "x.done");
+    mkdirSync(join(home, "markers"), { recursive: true });
+    const result = spawnSync("sh", ["-c", buildWrapperCommand(REAL_SID, cwd, marker)], {
+      encoding: "utf8",
+      // Stub dir first so it shadows a real `claude`; the rest of PATH stays
+      // because the wrapper's marker write needs `mv`.
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}` },
+    });
+    return {
+      status: result.status,
+      marker: existsSync(marker) ? readFileSync(marker, "utf8") : null,
+    };
+  }
+
+  it("records claude's exit status in the marker — a failed fork is not a success", () => {
+    const workdir = join(home, "work with space");
+    mkdirSync(workdir, { recursive: true });
+    expect(runWrapper(workdir, 3).marker).toBe("3");
+    expect(runWrapper(workdir, 0).marker).toBe("0");
+  });
+
+  it("files error-cd and exits nonzero when the project dir is gone", () => {
+    const gone = join(home, "moved-away");
+    const { status, marker } = runWrapper(gone, 0);
+    expect(marker).toBe("error-cd");
+    expect(status).toBe(1);
+  });
+
+  it("leaves no .tmp file behind — the rename is a move, not a copy", () => {
+    const workdir = join(home, "work");
+    mkdirSync(workdir, { recursive: true });
+    runWrapper(workdir, 0);
+    expect(existsSync(join(home, "markers", "x.done.tmp"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Arm selection (E-4 e, T4.2)
+// ---------------------------------------------------------------------------
+
+describe("selectSpawnArm", () => {
+  it("prefers tmux when $TMUX is set — it works over ssh, where Terminal.app doesn't", () => {
+    expect(selectSpawnArm({ TMUX: "/tmp/tmux-501/default,123,0" }, "darwin")).toBe("tmux");
+    expect(selectSpawnArm({ TMUX: "/tmp/tmux-501/default,123,0" }, "linux")).toBe("tmux");
+  });
+
+  it("falls back to Terminal.app on darwin", () => {
+    expect(selectSpawnArm({}, "darwin")).toBe("terminal");
+  });
+
+  it("reports manual on every other platform — nothing here can open a window", () => {
+    expect(selectSpawnArm({}, "linux")).toBe("manual");
+    expect(selectSpawnArm({}, "win32")).toBe("manual");
+  });
+
+  it("treats an empty $TMUX as absent — a cleared var is not a tmux session", () => {
+    expect(selectSpawnArm({ TMUX: "" }, "linux")).toBe("manual");
+    expect(selectSpawnArm({ TMUX: undefined }, "linux")).toBe("manual");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// argv builders + AppleScript escaping (T4.2)
+// ---------------------------------------------------------------------------
+
+/** Undo an AppleScript string-literal escape, one character at a time — the
+ *  only honest way to assert the escape round-trips. */
+function unescapeAppleScript(literal: string): string {
+  let out = "";
+  for (let i = 0; i < literal.length; i += 1) {
+    if (literal[i] === "\\" && i + 1 < literal.length) {
+      out += literal[i + 1];
+      i += 1;
+    } else {
+      out += literal[i];
+    }
+  }
+  return out;
+}
+
+describe("tmuxArgv", () => {
+  it("passes the whole wrapper as one argv element, so tmux never re-splits it", () => {
+    const cmd = buildWrapperCommand(REAL_SID, "/tmp/some repo", "/tmp/x.done");
+    const [bin, args] = tmuxArgv(cmd);
+    expect(bin).toBe("tmux");
+    expect(args).toEqual(["new-window", "-n", TMUX_WINDOW_NAME, cmd]);
+    expect(args.filter((a) => a === cmd)).toHaveLength(1);
+  });
+});
+
+describe("terminalArgv / escapeAppleScript", () => {
+  it("round-trips a wrapper carrying both quotes and backslashes", () => {
+    // The real wrapper always contains `"` (printf "%s", "$rc"); a cwd with a
+    // backslash in it is the other half. Escaping in the wrong order —
+    // quotes before backslashes — double-escapes and breaks the command.
+    const cmd = buildWrapperCommand(REAL_SID, `/tmp/a"b\\c`, "/tmp/x.done");
+    expect(cmd).toContain('"');
+    expect(cmd).toContain("\\");
+    expect(unescapeAppleScript(escapeAppleScript(cmd))).toBe(cmd);
+  });
+
+  it("emits the do-script and activate pair around the escaped literal", () => {
+    const cmd = buildWrapperCommand(REAL_SID, "/repo/a", "/tmp/x.done");
+    const [bin, args] = terminalArgv(cmd);
+    expect(bin).toBe("osascript");
+    expect(args[0]).toBe("-e");
+    expect(args[1]).toBe(`tell application "Terminal" to do script "${escapeAppleScript(cmd)}"`);
+    expect(args[2]).toBe("-e");
+    expect(args[3]).toBe('tell application "Terminal" to activate');
+  });
+
+  it("leaves no unescaped double quote to terminate the literal early", () => {
+    const cmd = buildWrapperCommand(REAL_SID, "/repo/a", "/tmp/x.done");
+    const body = escapeAppleScript(cmd);
+    // Every `"` in the escaped body must be preceded by an odd-length backslash run.
+    for (let i = 0; i < body.length; i += 1) {
+      if (body[i] !== '"') continue;
+      let backslashes = 0;
+      for (let j = i - 1; j >= 0 && body[j] === "\\"; j -= 1) backslashes += 1;
+      expect(backslashes % 2, `unescaped quote at ${i}`).toBe(1);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// spawnRetro — dry-run, manual, and the run seam (E-4 e, E-5, T4.2)
+// ---------------------------------------------------------------------------
+
+describe("spawnRetro", () => {
+  const entry = { session_id: REAL_SID, cwd: "/repo/a" };
+
+  /** A run seam that records what it was asked to do and never runs it. */
+  function recorder(status: number | null = 0) {
+    const calls: Array<[string, readonly string[]]> = [];
+    const run: RunFn = (bin, args) => {
+      calls.push([bin, args]);
+      return status;
+    };
+    return { calls, run };
+  }
+
+  it("dry-run prints the command and touches nothing at all", () => {
+    const printed: string[] = [];
+    const { calls, run } = recorder();
+    expect(spawnRetro(home, entry, { dryRun: true, run, log: (l) => printed.push(l) })).toBe(
+      "dry-run",
+    );
+    expect(printed).toHaveLength(1);
+    expect(printed[0]).toContain("[dry-run] would spawn:");
+    expect(printed[0]).toContain(REAL_SID);
+    expect(calls).toEqual([]);
+    // Not even the markers directory: --dry-run is byte-identical by
+    // construction, not by a later cleanup.
+    expect(existsSync(markersDir(home))).toBe(false);
+  });
+
+  it("dry-run wins over the arm — a tmux session must not open a window", () => {
+    const { calls, run } = recorder();
+    expect(
+      spawnRetro(home, entry, { dryRun: true, arm: "tmux", run, log: () => {} }),
+    ).toBe("dry-run");
+    expect(calls).toEqual([]);
+  });
+
+  it("dry-run leaves a stale marker in place rather than unlinking it", () => {
+    mkdirSync(markersDir(home), { recursive: true });
+    writeFileSync(doneMarkerPath(home, REAL_SID), "0");
+    spawnRetro(home, entry, { dryRun: true, log: () => {} });
+    expect(readFileSync(doneMarkerPath(home, REAL_SID), "utf8")).toBe("0");
+  });
+
+  it("the manual arm prints the command and opens nothing — never awaited", () => {
+    const printed: string[] = [];
+    const { calls, run } = recorder();
+    expect(
+      spawnRetro(home, entry, { env: {}, platform: "linux", run, log: (l) => printed.push(l) }),
+    ).toBe("manual");
+    expect(printed.join("\n")).toContain("run this yourself in another terminal");
+    expect(printed.join("\n")).toContain("DEVX_RETRO=1 claude --resume");
+    expect(calls).toEqual([]);
+  });
+
+  it("opens a tmux window when $TMUX is set and reports spawned on exit 0", () => {
+    const { calls, run } = recorder(0);
+    expect(
+      spawnRetro(home, entry, { env: { TMUX: "/tmp/tmux-1" }, platform: "linux", run }),
+    ).toBe("spawned");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0]).toBe("tmux");
+    expect(calls[0]?.[1]?.slice(0, 3)).toEqual(["new-window", "-n", TMUX_WINDOW_NAME]);
+  });
+
+  it("uses osascript on darwin without tmux", () => {
+    const { calls, run } = recorder(0);
+    expect(spawnRetro(home, entry, { env: {}, platform: "darwin", run })).toBe("spawned");
+    expect(calls[0]?.[0]).toBe("osascript");
+  });
+
+  it("reports error-spawn on a nonzero status and on a seam that couldn't start", () => {
+    const log = () => {};
+    expect(spawnRetro(home, entry, { arm: "tmux", run: () => 1, log })).toBe("error-spawn");
+    expect(spawnRetro(home, entry, { arm: "tmux", run: () => null, log })).toBe("error-spawn");
+  });
+
+  it("prints the command on a failed spawn — error-spawn is otherwise a dead end", () => {
+    const printed: string[] = [];
+    spawnRetro(home, entry, { arm: "terminal", run: () => 1, log: (l) => printed.push(l) });
+    expect(printed.join("\n")).toContain("spawn failed (terminal arm, status 1)");
+    expect(printed.join("\n")).toContain("DEVX_RETRO=1 claude --resume");
+  });
+
+  it("names a seam that never started as not-started rather than as status null", () => {
+    const printed: string[] = [];
+    spawnRetro(home, entry, { arm: "tmux", run: () => null, log: (l) => printed.push(l) });
+    expect(printed.join("\n")).toContain("status not-started");
+  });
+
+  it("clears a stale .done marker before spawning — it would insta-complete", () => {
+    mkdirSync(markersDir(home), { recursive: true });
+    writeFileSync(doneMarkerPath(home, REAL_SID), "0");
+    const { run } = recorder(0);
+    expect(spawnRetro(home, entry, { arm: "tmux", run })).toBe("spawned");
+    expect(existsSync(doneMarkerPath(home, REAL_SID))).toBe(false);
+  });
+
+  it("points the wrapper at this home's marker for this session", () => {
+    const { calls, run } = recorder(0);
+    spawnRetro(home, entry, { arm: "tmux", run });
+    expect(calls[0]?.[1]?.[3]).toContain(shellQuote(doneMarkerPath(home, REAL_SID)));
+  });
+
+  it("throws for a cwd-less entry — the drain retires those as error-malformed first", () => {
+    const { calls, run } = recorder(0);
+    expect(() => spawnRetro(home, { session_id: REAL_SID, cwd: "" }, { arm: "tmux", run })).toThrow(
+      /no cwd/,
+    );
+    expect(calls).toEqual([]);
   });
 });
