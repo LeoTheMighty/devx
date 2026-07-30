@@ -29,6 +29,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   utimesSync,
   writeFileSync,
@@ -40,6 +41,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   type QueueEntry,
   type TaggedEntry,
+  PathLockHeldError,
   appendDone,
   appendPending,
   doneMarkerPath,
@@ -47,6 +49,7 @@ import {
   endedMarkerPath,
   markersDir,
   queueLockPath,
+  queuePath,
   readDone,
   readQueue,
   reposPath,
@@ -55,6 +58,7 @@ import {
 } from "../src/lib/learn/queue.js";
 import {
   type RunFn,
+  type SpawnResult,
   TMUX_WINDOW_NAME,
   buildWrapperCommand,
   escapeAppleScript,
@@ -67,9 +71,12 @@ import {
 } from "../src/lib/learn/spawn.js";
 import {
   DEFAULT_IDLE_SECONDS,
+  type SpawnFn,
+  awaitMarker,
   canPrompt,
   claimWatcherSingleton,
   classifyEntry,
+  drainPass,
   finish,
   mapMarkerToOutcome,
   pickReady,
@@ -81,6 +88,7 @@ import {
   repoLookup,
   requeueFromDone,
   resetRepoKeyCache,
+  runWatch,
   sessionOver,
   skipKey,
 } from "../src/lib/learn/watch.js";
@@ -1280,5 +1288,578 @@ describe("spawnRetro", () => {
       /no cwd/,
     );
     expect(calls).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// awaitMarker — the only completion signal there is (T4.3)
+// ---------------------------------------------------------------------------
+
+describe("awaitMarker", () => {
+  /** A clock the injected sleep advances, so nothing here waits wall-clock. */
+  function fakeClock(start = NOW) {
+    let t = start;
+    return { now: () => t, sleep: (ms: number) => void (t += ms) };
+  }
+
+  it("returns the marker's contents as soon as the wrapper writes it", () => {
+    const clock = fakeClock();
+    let polls = 0;
+    const marker = awaitMarker(home, REAL_SID, {
+      ...clock,
+      pollMs: 2_000,
+      timeoutMs: 60_000,
+      readMarker: () => (++polls >= 3 ? "129\n" : null),
+    });
+    expect(marker).toBe("129\n");
+    expect(polls).toBe(3);
+  });
+
+  it("reads the real marker file through the default seam", () => {
+    mkdirSync(markersDir(home), { recursive: true });
+    writeFileSync(doneMarkerPath(home, REAL_SID), "0");
+    expect(awaitMarker(home, REAL_SID, { timeoutMs: 1, pollMs: 1 })).toBe("0");
+  });
+
+  it("gives up at the bound and reports null — the SIGKILL case maps to timeout", () => {
+    const clock = fakeClock();
+    const marker = awaitMarker(home, REAL_SID, {
+      ...clock,
+      pollMs: 2_000,
+      timeoutMs: 10_000,
+      readMarker: () => null,
+    });
+    expect(marker).toBeNull();
+    expect(mapMarkerToOutcome(marker)).toBe("timeout");
+  });
+
+  it("never overshoots the deadline — the last sleep is trimmed to what is left", () => {
+    const clock = fakeClock();
+    const slept: number[] = [];
+    awaitMarker(home, REAL_SID, {
+      now: clock.now,
+      sleep: (ms) => {
+        slept.push(ms);
+        clock.sleep(ms);
+      },
+      pollMs: 3_000,
+      timeoutMs: 7_000,
+      readMarker: () => null,
+    });
+    expect(slept).toEqual([3_000, 3_000, 1_000]);
+  });
+
+  it("abandons the wait on SIGINT rather than holding the queue to the bound", () => {
+    let stop = false;
+    let polls = 0;
+    const marker = awaitMarker(home, REAL_SID, {
+      now: () => NOW,
+      sleep: () => {},
+      pollMs: 1,
+      timeoutMs: 60_000,
+      readMarker: () => {
+        polls += 1;
+        stop = true;
+        return null;
+      },
+      shouldStop: () => stop,
+    });
+    expect(marker).toBeNull();
+    expect(polls).toBe(1);
+  });
+
+  it("degrades to a timeout on a clock that never advances, instead of spinning", () => {
+    // A pinned clock (or a suspended VM's) would make the deadline unreachable;
+    // the poll-count backstop is what keeps that a timeout rather than a hang.
+    let polls = 0;
+    const marker = awaitMarker(home, REAL_SID, {
+      now: () => NOW,
+      sleep: () => {},
+      pollMs: 1_000,
+      timeoutMs: 10_000,
+      readMarker: () => {
+        polls += 1;
+        return null;
+      },
+    });
+    expect(marker).toBeNull();
+    expect(polls).toBeLessThanOrEqual(30);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// drainPass — serial serve, outcomes, and the dry-run promise (E-4, E-5, T4.3)
+// ---------------------------------------------------------------------------
+
+describe("drainPass", () => {
+  const SID_A = REAL_SID;
+  const SID_B = "1b2c3d4e-5f60-4712-8394-a5b6c7d8e9f0";
+  const REPO = "/repo/a";
+  /** git is never forked in these tests: the cwd is its own allowlist key. */
+  const gitExec = () => null;
+
+  let printed: string[];
+
+  beforeEach(() => {
+    printed = [];
+  });
+
+  /** Queue an entry old enough to be ready by age (no transcript to stat). */
+  function queueReady(sid: string | undefined, cwd: unknown = REPO): void {
+    const entry: QueueEntry = { transcript_path: null, cwd, ts: isoAgo(2 * IDLE_SECONDS * 1000) };
+    if (sid !== undefined) entry.session_id = sid;
+    appendPending(home, entry);
+  }
+
+  function drainOpts(extra: Record<string, unknown> = {}) {
+    return {
+      home,
+      interactive: false,
+      idleSeconds: IDLE_SECONDS,
+      now: () => NOW,
+      gitExec,
+      log: (line: string) => printed.push(line),
+      ...extra,
+    };
+  }
+
+  /** A spawn seam that records who it was asked to open and opens nothing. */
+  function fakeSpawn(result: SpawnResult = "spawned") {
+    const calls: string[] = [];
+    const spawn: SpawnFn = (_home, entry) => {
+      calls.push(String(entry.session_id));
+      return result;
+    };
+    return { calls, spawn };
+  }
+
+  /** Queue + done log + marker listing, as one comparable blob (E-5's check). */
+  function snapshot(): string {
+    const parts: string[] = [];
+    for (const path of [queuePath(home), donePath(home), reposPath(home)]) {
+      parts.push(existsSync(path) ? readFileSync(path, "utf8") : "<absent>");
+    }
+    parts.push(existsSync(markersDir(home)) ? readdirSync(markersDir(home)).sort().join(",") : "<absent>");
+    return parts.join("\n---\n");
+  }
+
+  const outcomes = () => readDone(home).map((e) => `${String(e.session_id)}:${String(e.outcome)}`);
+
+  // --- dry-run (E-5) ------------------------------------------------------
+
+  it("dry-run prints one spawn command per ready entry and changes nothing", () => {
+    queueReady(SID_A);
+    queueReady(SID_B);
+    const before = snapshot();
+
+    const summary = drainPass(drainOpts({ dryRun: true }));
+
+    expect(summary.printed).toBe(2);
+    expect(summary.retired).toBe(0);
+    expect(printed.filter((l) => l.includes("[dry-run] would spawn")).length).toBe(2);
+    expect(printed.join("\n")).toContain(SID_A);
+    expect(printed.join("\n")).toContain(SID_B);
+    expect(snapshot()).toBe(before);
+  });
+
+  it("dry-run drains the whole queue in one pass — a setup check must not show only the head", () => {
+    queueReady(SID_A);
+    queueReady(SID_B);
+    drainPass(drainOpts({ dryRun: true }));
+    expect(printed.filter((l) => l.includes(SID_B)).length).toBeGreaterThan(0);
+  });
+
+  it("dry-run runs under a held singleton — a read-only check must not demand a kill", () => {
+    queueReady(SID_A);
+    const held = claimWatcherSingleton(home);
+    try {
+      expect(() => drainPass(drainOpts({ dryRun: true }))).not.toThrow();
+      expect(printed.join("\n")).toContain("[dry-run] would spawn");
+    } finally {
+      held.release();
+    }
+  });
+
+  it("the per-run seen-set keeps a second pass from reprinting the same entry", () => {
+    queueReady(SID_A);
+    const seen = new Set<string>();
+    drainPass(drainOpts({ dryRun: true, seen }));
+    drainPass(drainOpts({ dryRun: true, seen }));
+    expect(printed.filter((l) => l.includes("[dry-run] would spawn")).length).toBe(1);
+  });
+
+  it("dry-run shows an unreviewed repo rather than hiding it behind the prompt gate", () => {
+    // The first run is exactly when no repo has been reviewed; a dry-run that
+    // reported an empty queue there would be useless as a setup check.
+    queueReady(SID_A);
+    drainPass(drainOpts({ dryRun: true }));
+    expect(printed.join("\n")).toContain("repo not reviewed yet");
+    expect(printed.join("\n")).toContain("[dry-run] would spawn");
+  });
+
+  it("dry-run honors a recorded deny without writing repos.json", () => {
+    recordRepoDecision(home, REPO, "deny", { gitExec });
+    queueReady(SID_A);
+    const before = snapshot();
+    const summary = drainPass(drainOpts({ dryRun: true }));
+    expect(summary.printed).toBe(0);
+    expect(printed.join("\n")).toContain("would skip");
+    expect(snapshot()).toBe(before);
+  });
+
+  it("dry-run never files a malformed entry — nothing at all is written", () => {
+    queueReady(undefined);
+    const before = snapshot();
+    const summary = drainPass(drainOpts({ dryRun: true }));
+    expect(summary.handled).toBe(1);
+    expect(summary.retired).toBe(0);
+    expect(snapshot()).toBe(before);
+  });
+
+  // --- serving (E-4) ------------------------------------------------------
+
+  it("serves an allowed repo end to end: spawn, marker, done row, queue cut", () => {
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady(SID_A);
+    const { calls, spawn } = fakeSpawn("spawned");
+
+    const summary = drainPass(drainOpts({ spawn, awaitMarkerFn: () => "0\n" }));
+
+    expect(calls).toEqual([SID_A]);
+    expect(summary.retired).toBe(1);
+    expect(outcomes()).toEqual([`${SID_A}:completed`]);
+    expect(readQueue(home)).toEqual([]);
+  });
+
+  it("serves entries one at a time, in queue order", () => {
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady(SID_A);
+    queueReady(SID_B);
+    const order: string[] = [];
+    const spawn: SpawnFn = (_h, entry) => {
+      order.push(`spawn:${String(entry.session_id)}`);
+      return "spawned";
+    };
+    drainPass(
+      drainOpts({
+        spawn,
+        awaitMarkerFn: (sid: string) => {
+          order.push(`await:${sid}`);
+          return "0";
+        },
+      }),
+    );
+    expect(order).toEqual([`spawn:${SID_A}`, `await:${SID_A}`, `spawn:${SID_B}`, `await:${SID_B}`]);
+  });
+
+  it("maps a missing marker to timeout rather than to a fabricated status", () => {
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady(SID_A);
+    const { spawn } = fakeSpawn("spawned");
+    drainPass(drainOpts({ spawn, awaitMarkerFn: () => null }));
+    expect(outcomes()).toEqual([`${SID_A}:timeout`]);
+  });
+
+  it("maps a nonzero wrapper status to error-fork:<status>", () => {
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady(SID_A);
+    const { spawn } = fakeSpawn("spawned");
+    drainPass(drainOpts({ spawn, awaitMarkerFn: () => "3" }));
+    expect(outcomes()).toEqual([`${SID_A}:error-fork:3`]);
+  });
+
+  it("files the manual arm immediately and never awaits a marker only a human could write", () => {
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady(SID_A);
+    const { calls, spawn } = fakeSpawn("manual");
+    let awaited = 0;
+    drainPass(
+      drainOpts({
+        spawn,
+        awaitMarkerFn: () => {
+          awaited += 1;
+          return "0";
+        },
+      }),
+    );
+    expect(calls).toEqual([SID_A]);
+    expect(awaited).toBe(0); // upstream held the serial queue 6h per entry here
+    expect(outcomes()).toEqual([`${SID_A}:manual`]);
+    expect(readQueue(home)).toEqual([]);
+  });
+
+  it("files a failed spawn as error-spawn without awaiting a marker", () => {
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady(SID_A);
+    const { spawn } = fakeSpawn("error-spawn");
+    let awaited = 0;
+    drainPass(
+      drainOpts({
+        spawn,
+        awaitMarkerFn: () => {
+          awaited += 1;
+          return "0";
+        },
+      }),
+    );
+    expect(awaited).toBe(0);
+    expect(outcomes()).toEqual([`${SID_A}:error-spawn`]);
+  });
+
+  it("retires a denied repo as skipped-denied-repo without spawning", () => {
+    recordRepoDecision(home, REPO, "deny", { gitExec });
+    queueReady(SID_A);
+    const { calls, spawn } = fakeSpawn();
+    drainPass(drainOpts({ spawn }));
+    expect(calls).toEqual([]);
+    expect(outcomes()).toEqual([`${SID_A}:skipped-denied-repo`]);
+  });
+
+  it("records an allow answer once and serves the entry in the same pass", () => {
+    queueReady(SID_A);
+    const { calls, spawn } = fakeSpawn("spawned");
+    const asked: string[] = [];
+    drainPass(
+      drainOpts({
+        interactive: true,
+        promptable: () => true,
+        ask: (key: string) => {
+          asked.push(key);
+          return "y";
+        },
+        spawn,
+        awaitMarkerFn: () => "0",
+      }),
+    );
+    expect(asked).toEqual([REPO]);
+    expect(calls).toEqual([SID_A]);
+    expect(readRepos(home)).toEqual({ [REPO]: "allow" });
+  });
+
+  // --- malformed entries (E-4 b) ------------------------------------------
+
+  it("retires an id-less line as error-malformed before any spawn", () => {
+    queueReady(undefined);
+    const { calls, spawn } = fakeSpawn();
+    drainPass(drainOpts({ spawn }));
+    expect(calls).toEqual([]);
+    expect(readDone(home).map((e) => e.outcome)).toEqual(["error-malformed"]);
+    expect(readQueue(home)).toEqual([]);
+  });
+
+  it("retires a cwd-less entry as error-malformed rather than keying the allowlist on ''", () => {
+    appendPending(home, {
+      session_id: SID_A,
+      transcript_path: null,
+      cwd: null,
+      ts: isoAgo(2 * IDLE_SECONDS * 1000),
+    });
+    const { calls, spawn } = fakeSpawn();
+    drainPass(drainOpts({ spawn }));
+    expect(calls).toEqual([]);
+    expect(outcomes()).toEqual([`${SID_A}:error-malformed`]);
+  });
+
+  it("retires a filename-safe but unspawnable id — the guard spawnRetro would throw on", () => {
+    // `abc_def` passes queue.ts's *filename* charset (classifyEntry says ok)
+    // and fails spawn.ts's UUID-shaped one. Without this second screen the
+    // drain throws on the head entry and re-throws after every restart.
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady("abc_def");
+    expect(classifyEntry({ session_id: "abc_def", cwd: REPO })).toBe("ok");
+    const { calls, spawn } = fakeSpawn();
+    expect(() => drainPass(drainOpts({ spawn }))).not.toThrow();
+    expect(calls).toEqual([]);
+    expect(outcomes()).toEqual(["abc_def:error-malformed"]);
+  });
+
+  // --- skip-don't-starve ---------------------------------------------------
+
+  it("walks past an unreviewed repo a non-interactive run can't ask about", () => {
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady(SID_B, "/repo/unreviewed");
+    queueReady(SID_A);
+    const { calls, spawn } = fakeSpawn("spawned");
+
+    const summary = drainPass(drainOpts({ spawn, awaitMarkerFn: () => "0" }));
+
+    expect(calls).toEqual([SID_A]); // the one behind it is not starved
+    expect(summary.skipped).toBe(1);
+    expect(printed.join("\n")).toContain("repo not reviewed");
+    // Skipped, not retired: the human can still decide later.
+    expect(readQueue(home).map((e) => e.session_id)).toEqual([SID_B]);
+  });
+
+  it("drops to non-interactive when the prompt can't be answered, leaving the entry pending", () => {
+    queueReady(SID_A);
+    const { calls, spawn } = fakeSpawn();
+    const summary = drainPass(
+      drainOpts({ interactive: true, promptable: () => true, ask: () => null, spawn }),
+    );
+    expect(calls).toEqual([]);
+    expect(summary.interactive).toBe(false);
+    expect(readQueue(home).map((e) => e.session_id)).toEqual([SID_A]);
+    expect(readRepos(home)).toEqual({});
+  });
+
+  it("leaves an entry pending when SIGINT lands mid-wait — that retro is still open", () => {
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady(SID_A);
+    const { spawn } = fakeSpawn("spawned");
+    let stop = false;
+    const summary = drainPass(
+      drainOpts({
+        spawn,
+        awaitMarkerFn: () => {
+          stop = true; // Ctrl-C arrived while the window was open
+          return null;
+        },
+        shouldStop: () => stop,
+      }),
+    );
+    // A `timeout` row here would be a fabricated outcome for a retro the human
+    // is probably still writing.
+    expect(summary.retired).toBe(0);
+    expect(readDone(home)).toEqual([]);
+    expect(readQueue(home).map((e) => e.session_id)).toEqual([SID_A]);
+    expect(printed.join("\n")).toContain("left pending");
+  });
+
+  it("stops between entries on SIGINT, leaving the rest of the queue pending", () => {
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady(SID_A);
+    queueReady(SID_B);
+    let served = 0;
+    const spawn: SpawnFn = () => {
+      served += 1;
+      return "spawned";
+    };
+    drainPass(drainOpts({ spawn, awaitMarkerFn: () => "0", shouldStop: () => served >= 1 }));
+    expect(served).toBe(1);
+    expect(readQueue(home).map((e) => e.session_id)).toEqual([SID_B]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runWatch — the singleton + the per-run sets (E-4 c, E-5, T4.3)
+// ---------------------------------------------------------------------------
+
+describe("runWatch", () => {
+  const REPO = "/repo/a";
+  const gitExec = () => null;
+  let printed: string[];
+
+  beforeEach(() => {
+    printed = [];
+  });
+
+  function watchOpts(extra: Record<string, unknown> = {}) {
+    return {
+      home,
+      interactive: false,
+      idleSeconds: IDLE_SECONDS,
+      now: () => NOW,
+      gitExec,
+      log: (line: string) => printed.push(line),
+      sleep: () => {},
+      maxPasses: 3,
+      ...extra,
+    };
+  }
+
+  function queueReady(sid: string, cwd: unknown = REPO): void {
+    appendPending(home, {
+      session_id: sid,
+      transcript_path: null,
+      cwd,
+      ts: isoAgo(2 * IDLE_SECONDS * 1000),
+    });
+  }
+
+  it("holds the watcher singleton for the run and releases it at the end", () => {
+    let heldDuringRun = false;
+    runWatch(
+      watchOpts({
+        maxPasses: 1,
+        shouldStop: () => {
+          try {
+            claimWatcherSingleton(home).release();
+          } catch {
+            heldDuringRun = true;
+          }
+          return false;
+        },
+      }),
+    );
+    expect(heldDuringRun).toBe(true);
+    // Released on the way out, so the next watcher starts without a --force.
+    expect(() => claimWatcherSingleton(home).release()).not.toThrow();
+  });
+
+  it("refuses to start while another watcher holds the lock, naming the lock path", () => {
+    const held = claimWatcherSingleton(home);
+    try {
+      expect(() => runWatch(watchOpts())).toThrow(PathLockHeldError);
+      expect(() => runWatch(watchOpts())).toThrow(watchLockPath(home));
+    } finally {
+      held.release();
+    }
+  });
+
+  it("releases the singleton even when a pass throws", () => {
+    queueReady(REAL_SID);
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    const boom: SpawnFn = () => {
+      throw new Error("seam exploded");
+    };
+    expect(() => runWatch(watchOpts({ spawn: boom }))).toThrow(/seam exploded/);
+    expect(() => claimWatcherSingleton(home).release()).not.toThrow();
+  });
+
+  it("dry-run takes no lock at all — it runs alongside a working watcher", () => {
+    queueReady(REAL_SID);
+    const held = claimWatcherSingleton(home);
+    try {
+      const summary = runWatch(watchOpts({ dryRun: true, maxPasses: 1 }));
+      expect(summary.printed).toBe(1);
+    } finally {
+      held.release();
+    }
+  });
+
+  it("carries the seen-set across passes so a dry-run doesn't reprint every scan", () => {
+    queueReady(REAL_SID);
+    const summary = runWatch(watchOpts({ dryRun: true, maxPasses: 3 }));
+    expect(summary.printed).toBe(1);
+    expect(printed.filter((l) => l.includes("[dry-run] would spawn")).length).toBe(1);
+  });
+
+  it("notes an unservable entry once per run, not once per scan", () => {
+    queueReady(REAL_SID, "/repo/unreviewed");
+    const summary = runWatch(watchOpts({ maxPasses: 3 }));
+    expect(printed.filter((l) => l.includes("repo not reviewed")).length).toBe(1);
+    expect(summary.skipped).toBe(1);
+  });
+
+  it("sleeps between passes but not after the last one", () => {
+    const slept: number[] = [];
+    runWatch(watchOpts({ maxPasses: 3, scanPollMs: 5_000, sleep: (ms: number) => slept.push(ms) }));
+    expect(slept).toEqual([5_000, 5_000]);
+  });
+
+  it("stops immediately when SIGINT arrives before the first pass", () => {
+    queueReady(REAL_SID);
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    const { calls, spawn } = (() => {
+      const calls: string[] = [];
+      const spawn: SpawnFn = (_h, entry) => {
+        calls.push(String(entry.session_id));
+        return "spawned";
+      };
+      return { calls, spawn };
+    })();
+    const summary = runWatch(watchOpts({ spawn, shouldStop: () => true }));
+    expect(calls).toEqual([]);
+    expect(summary.handled).toBe(0);
   });
 });

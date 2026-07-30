@@ -234,8 +234,13 @@ export function acquirePathLockBlocking(
 
 /** Synchronous sleep without burning CPU — Node permits Atomics.wait on the
  *  main thread (unlike browsers). The array value never changes, so the wait
- *  always runs to its timeout. */
-function sleepSync(ms: number): void {
+ *  always runs to its timeout.
+ *
+ *  Exported because the retro watcher's poll loops (`awaitMarker`, the drain
+ *  scan) are synchronous for the same reason this one is — one shared
+ *  implementation rather than a second `Atomics.wait` incantation to keep
+ *  right. */
+export function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 

@@ -1,7 +1,9 @@
-// The watcher's judgment, as pure functions: is this session over, may we
-// spawn a retro for this repo, and can we ask the human. No process spawning,
-// no drain loop, no terminal I/O beyond the seams declared here — those live in
-// `spawn.ts` / `learn-watch.ts` (Phase 4) and compose this file.
+// The watcher's judgment: is this session over, may we spawn a retro for this
+// repo, can we ask the human — and, since rtl104 (T4.3), the drain loop that
+// composes those answers with `spawn.ts`. What is NOT here is terminal I/O
+// beyond the seams declared below and any flag/exit-code handling: those live
+// in `commands/learn-watch.ts`, which stays thin passthrough (the `runLoop` /
+// `src/lib/loop/driver.ts` precedent).
 //
 // Everything that reads the clock, the filesystem, git, or the terminal takes
 // an injectable seam, because every one of these decisions has a failure mode
@@ -43,9 +45,20 @@ import {
   type LockHandle,
   PathLockHeldError,
   acquirePathLock,
+  sleepSync,
 } from "../manage/lock.js";
 import { writeAtomic } from "../supervisor-internal.js";
+import { LEARN_DEFAULTS } from "./config.js";
 import {
+  type RunFn,
+  type SpawnArm,
+  type SpawnResult,
+  type SpawnRetroOpts,
+  isSpawnableSessionId,
+  spawnRetro,
+} from "./spawn.js";
+import {
+  type LearnEnv,
   type QueueEntry,
   type TaggedEntry,
   appendDone,
@@ -435,13 +448,22 @@ export function repoDecision(
 // Entry classification + pickReady (T3.3)
 // ---------------------------------------------------------------------------
 
-/** The outcome vocabulary written to the done log (FR-3, verbatim upstream). */
+/**
+ * The outcome vocabulary written to the done log (FR-3, verbatim upstream).
+ *
+ * `manual` is the one outcome no marker can produce: on a machine with neither
+ * tmux nor Terminal.app the command is printed for the human and the entry is
+ * retired *immediately*. Filing it as anything else would either lie about a
+ * retro that may never run or (upstream's bug) hold the serial queue for the
+ * full retro timeout waiting on a marker only a human could trigger.
+ */
 export type Outcome =
   | "completed"
   | "completed-interrupted"
   | "error-cd"
   | "error-malformed"
   | "error-spawn"
+  | "manual"
   | "skipped-denied-repo"
   | "timeout"
   | `error-fork:${string}`;
@@ -681,4 +703,424 @@ export function claimWatcherSingleton(home: string, opts: AcquireExtra = {}): Lo
           `Lock: ${path}`,
       ),
   });
+}
+
+// ---------------------------------------------------------------------------
+// awaitMarker (T4.3)
+// ---------------------------------------------------------------------------
+
+/** Scan interval between drain passes. */
+export const DEFAULT_SCAN_POLL_MS = 5_000;
+/** Poll interval while waiting on a spawned retro's completion marker. */
+export const DEFAULT_MARKER_POLL_MS = 2_000;
+/** `learn.retro_timeout_minutes` (360) in ms — the SIGKILL/never-finished bound. */
+export const DEFAULT_RETRO_TIMEOUT_MS = LEARN_DEFAULTS.retroTimeoutMinutes * 60_000;
+
+export interface AwaitMarkerOpts {
+  /** Give up after this long and report `null` (→ `timeout`). */
+  timeoutMs?: number;
+  /** Poll interval. Injected so sequencing tests never sleep wall-clock. */
+  pollMs?: number;
+  /** Clock seam (epoch ms). */
+  now?: () => number;
+  /** Synchronous sleep seam. Default {@link sleepSync}. */
+  sleep?: (ms: number) => void;
+  /** Marker read seam: the file's text, or null when it isn't there yet. */
+  readMarker?: (path: string) => string | null;
+  /** SIGINT seam — abandon the wait (the entry stays pending, by design). */
+  shouldStop?: () => boolean;
+}
+
+function defaultReadMarker(path: string): string | null {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Block until the spawned retro's `<sid>.done` marker appears, and return its
+ * contents — or `null` when the bound expired or the watcher was interrupted.
+ *
+ * Polling a file is the *only* completion signal available: `tmux new-window`
+ * and `osascript … do script` both return as soon as the window exists, so the
+ * retro is not our child and there is nothing to `wait` on. The bound is what
+ * covers the one exit path the wrapper's trap cannot — SIGKILL, or a human who
+ * closes the laptop and never finishes — and `null` maps to `timeout` rather
+ * than to a fabricated status.
+ *
+ * Synchronous on purpose: the whole drain is serial, and an async poll here
+ * would buy nothing but an event loop to keep alive. Two bounds, not one: the
+ * deadline, plus a poll-count backstop so an injected clock that doesn't
+ * advance (a pinned test clock, a suspended VM's monotonic source) degrades to
+ * a timeout instead of spinning forever.
+ */
+export function awaitMarker(home: string, sid: string, opts: AwaitMarkerOpts = {}): string | null {
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_RETRO_TIMEOUT_MS;
+  const pollMs = Math.max(1, opts.pollMs ?? DEFAULT_MARKER_POLL_MS);
+  const now = opts.now ?? (() => Date.now());
+  const sleep = opts.sleep ?? sleepSync;
+  const read = opts.readMarker ?? defaultReadMarker;
+  const path = doneMarkerPath(home, sid);
+
+  const deadline = now() + timeoutMs;
+  const maxPolls = Math.ceil(timeoutMs / pollMs) * 2 + 4;
+  for (let poll = 0; poll < maxPolls; poll++) {
+    const marker = read(path);
+    if (marker !== null) return marker;
+    if (opts.shouldStop?.()) return null;
+    const left = deadline - now();
+    if (left <= 0) return null;
+    sleep(Math.min(pollMs, left));
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Drain loop (T4.3)
+// ---------------------------------------------------------------------------
+
+/** {@link spawnRetro}'s shape, as a seam — tests pass a fake so no suite ever
+ *  opens a window, and the CLI passes nothing. */
+export type SpawnFn = (
+  home: string,
+  entry: { session_id?: unknown; cwd?: unknown },
+  opts: SpawnRetroOpts,
+) => SpawnResult;
+
+export interface DrainPassOpts extends RepoOpts, PromptOpts {
+  /** Learn home — queue, done log, markers, locks. */
+  home: string;
+  /** Print-only: no spawn, no marker, no done-log row, no queue rewrite. */
+  dryRun?: boolean;
+  /** Did this run start attached to an answerable terminal? */
+  interactive: boolean;
+  /** Readiness window. Default {@link DEFAULT_IDLE_SECONDS}. */
+  idleSeconds?: number;
+  /** Clock seam (epoch ms) — readiness, `processed_ts`, and the marker bound. */
+  now?: () => number;
+  /** Line-buffered output seam. */
+  log?: (line: string) => void;
+  /**
+   * Keys ({@link skipKey}) this run has already dealt with. Lives for the whole
+   * run, not the pass: it is what keeps `--dry-run` from re-printing the head
+   * entry every 5s, and what keeps an unservable entry from starving the ones
+   * behind it. Created per-call when the caller doesn't own one.
+   */
+  seen?: Set<string>;
+  /** Keys whose status note has already been printed — once per session, not
+   *  once per pass, so a skipped entry doesn't scroll a note every scan. */
+  noted?: Set<string>;
+  /** Terminal read for the allow prompt. This module owns no terminal I/O, so
+   *  the default declines (→ `unknown` → the run drops to non-interactive). */
+  ask?: (key: string) => string | null;
+  /** {@link canPrompt} seam for the pre-prompt re-check. */
+  promptable?: () => boolean;
+  /** Readiness `stat` seam. */
+  mtimeMs?: (path: string) => number | null;
+  /** Forced spawn arm / arm-selection inputs, forwarded to {@link spawnRetro}. */
+  arm?: SpawnArm;
+  env?: LearnEnv;
+  platform?: NodeJS.Platform | string;
+  /** `tmux`/`osascript` seam, forwarded to {@link spawnRetro}. */
+  run?: RunFn;
+  /** {@link spawnRetro} seam. */
+  spawn?: SpawnFn;
+  /** {@link awaitMarker} seam (a fake completes instantly in tests). */
+  awaitMarkerFn?: (sid: string) => string | null;
+  /** Marker-wait bound + poll, forwarded to {@link awaitMarker}. */
+  retroTimeoutMs?: number;
+  markerPollMs?: number;
+  /** Synchronous sleep seam, forwarded to {@link awaitMarker}. */
+  sleep?: (ms: number) => void;
+  /** SIGINT seam: stop between entries and mid-marker-wait. */
+  shouldStop?: () => boolean;
+}
+
+export interface DrainSummary {
+  /** Entries this pass took a decision on (dry-run prints included). */
+  handled: number;
+  /** Entries retired into the done log. Always 0 under `--dry-run`. */
+  retired: number;
+  /** Spawn commands printed under `--dry-run`. */
+  printed: number;
+  /** Ready entries walked past (unreviewed repo, unanswerable prompt). */
+  skipped: number;
+  /** What was filed, in order — the pass's contribution to the done log. */
+  outcomes: Array<{ session_id: string | null; outcome: Outcome }>;
+  /** Interactivity as it stands *after* the pass: a prompt whose stdin
+   *  vanished drops the rest of the run to non-interactive. */
+  interactive: boolean;
+}
+
+/** How an entry reads in the log: session id (or its line) plus its cwd. */
+function entryLabel(entry: QueueEntry & TaggedEntry): string {
+  const sid = typeof entry.session_id === "string" && entry.session_id !== ""
+    ? entry.session_id
+    : `<line ${(entry.lineIndex ?? -1) + 1}>`;
+  const cwd = typeof entry.cwd === "string" && entry.cwd !== "" ? entry.cwd : "<no cwd>";
+  return `${sid} (${cwd})`;
+}
+
+/** The done-log identity of an entry, or null for an id-less (malformed) line. */
+function sessionIdOf(entry: QueueEntry): string | null {
+  return typeof entry.session_id === "string" && entry.session_id !== "" ? entry.session_id : null;
+}
+
+/**
+ * One drain pass: serve ready entries — one at a time, to completion — until
+ * nothing else is servable, then return.
+ *
+ * "Pass" is deliberately the whole queue rather than a single entry: the
+ * watcher's contract is serial, not one-per-scan, and a per-entry pass would
+ * make a 4-deep backlog take 4 scan intervals to clear (and would make
+ * `--dry-run` print only the head entry, which is the one thing a setup check
+ * must not do).
+ *
+ * The order of the guards is the contract:
+ *
+ *   1. **malformed first** — before any prompt or spawn. Two screens, not one:
+ *      `classifyEntry` uses queue.ts's *filename* charset, while a spawn also
+ *      puts the id in an argv and a shell string, so a hand-edited `abc_def`
+ *      classifies `ok` there and throws in `spawnRetro`. Screening with
+ *      {@link isSpawnableSessionId} here is what keeps that difference from
+ *      wedging the serial queue on the head entry after every restart.
+ *   2. **repo decision** — `deny` retires as `skipped-denied-repo`; `unknown`
+ *      (stdin vanished between the foreground check and the read) notes once
+ *      and drops the rest of the run to non-interactive rather than looping on
+ *      an unanswerable prompt.
+ *   3. **spawn** — and only the `spawned` arm reaches {@link awaitMarker}.
+ *      `manual` and `error-spawn` are terminal: the command was printed, so
+ *      the entry is retired immediately instead of holding the serial queue
+ *      for the full retro timeout on a marker nobody will write.
+ *
+ * `--dry-run` is non-destructive *by construction*, not by care: nothing on
+ * the dry path calls `finish`, `recordRepoDecision`, or a non-print spawn. It
+ * also asks `pickReady` to treat unreviewed repos as servable — a setup check
+ * that hides exactly the entries whose repo hasn't been decided yet would show
+ * an empty queue on the very first run, which is when it is run.
+ */
+export function drainPass(opts: DrainPassOpts): DrainSummary {
+  const { home } = opts;
+  const dryRun = opts.dryRun === true;
+  const log = opts.log ?? ((line: string) => process.stdout.write(`${line}\n`));
+  const seen = opts.seen ?? new Set<string>();
+  const noted = opts.noted ?? new Set<string>();
+  const now = opts.now ?? (() => Date.now());
+  const nowDate = () => new Date(now());
+  const spawn = opts.spawn ?? spawnRetro;
+  const await_ =
+    opts.awaitMarkerFn ??
+    ((sid: string) =>
+      awaitMarker(home, sid, {
+        timeoutMs: opts.retroTimeoutMs,
+        pollMs: opts.markerPollMs,
+        now,
+        sleep: opts.sleep,
+        shouldStop: opts.shouldStop,
+      }));
+
+  const summary: DrainSummary = {
+    handled: 0,
+    retired: 0,
+    printed: 0,
+    skipped: 0,
+    outcomes: [],
+    interactive: opts.interactive,
+  };
+
+  const note = (key: string, line: string): void => {
+    if (noted.has(key)) return;
+    noted.add(key);
+    log(line);
+  };
+
+  const retire = (entry: QueueEntry & TaggedEntry, outcome: Outcome): void => {
+    // The one write barrier: every done-log/queue mutation in the drain goes
+    // through here, so `--dry-run`'s "changes nothing" is a single condition
+    // rather than a promise repeated at six call sites.
+    if (dryRun) return;
+    finish(home, entry, outcome, { now: nowDate });
+    summary.retired++;
+    summary.outcomes.push({ session_id: sessionIdOf(entry), outcome });
+  };
+
+  for (;;) {
+    if (opts.shouldStop?.()) break;
+
+    const pick = pickReady(home, {
+      ...opts,
+      interactive: dryRun ? true : summary.interactive,
+      skip: seen,
+      now,
+    });
+
+    for (const passed of pick.unservable) {
+      const key = skipKey(passed);
+      seen.add(key);
+      summary.skipped++;
+      note(
+        key,
+        `  skip ${entryLabel(passed)} — repo not reviewed and this run can't ask; ` +
+          `run \`devx learn-watch\` in a foreground terminal to decide`,
+      );
+    }
+
+    const entry = pick.entry;
+    if (entry === null) break;
+
+    // Marked handled before anything can throw: a pass must never revisit an
+    // entry it has already taken a decision on, or a spawn that fails in a new
+    // way turns into an infinite loop on the head entry.
+    seen.add(skipKey(entry));
+    summary.handled++;
+
+    const sid = entry.session_id;
+    if (classifyEntry(entry) !== "ok" || !isSpawnableSessionId(sid)) {
+      log(`  ${entryLabel(entry)}: unusable queue entry — filing error-malformed`);
+      retire(entry, "error-malformed");
+      continue;
+    }
+
+    if (dryRun) {
+      // Never prompts and never writes `repos.json`, so only a *recorded*
+      // decision can be honored here; an unreviewed repo is reported as one.
+      const known = repoLookup(home, entry.cwd, opts);
+      if (known === "deny") {
+        log(`  [dry-run] would skip ${entryLabel(entry)} — repo denied`);
+        continue;
+      }
+      if (known === null) {
+        log(`  [dry-run] ${entryLabel(entry)} — repo not reviewed yet; a real run would ask first`);
+      }
+    } else {
+      const verdict = repoDecision(home, entry.cwd, {
+        ...opts,
+        interactive: summary.interactive,
+        ask: opts.ask ?? (() => null),
+      });
+      if (verdict === "deny") {
+        log(`  ${entryLabel(entry)}: repo denied — filing skipped-denied-repo`);
+        retire(entry, "skipped-denied-repo");
+        continue;
+      }
+      if (verdict === "unknown") {
+        note(
+          skipKey(entry),
+          `  skip ${entryLabel(entry)} — the allow prompt could not be answered; ` +
+            `continuing non-interactively`,
+        );
+        summary.skipped++;
+        summary.interactive = false;
+        continue;
+      }
+    }
+
+    if (!dryRun) log(`  retro for ${entryLabel(entry)} — opening a window`);
+    const result = spawn(home, entry, {
+      dryRun,
+      arm: opts.arm,
+      env: opts.env,
+      platform: opts.platform,
+      run: opts.run,
+      log,
+    });
+
+    if (result === "dry-run") {
+      summary.printed++;
+      continue;
+    }
+    if (result === "manual") {
+      retire(entry, "manual");
+      continue;
+    }
+    if (result === "error-spawn") {
+      retire(entry, "error-spawn");
+      continue;
+    }
+
+    const marker = await_(sid);
+    if (marker === null && opts.shouldStop?.() === true) {
+      // Interrupted, not timed out. The retro's window is very likely still
+      // open, so filing `timeout` here would put a fabricated row in the
+      // dataset the phase-2 debate rests on. Leave the entry pending instead —
+      // the queue is durable and the message says so.
+      log(
+        `  ${entryLabel(entry)}: interrupted while its retro was open — left pending ` +
+          `(finish it in that window, or requeue after it lands)`,
+      );
+      break;
+    }
+    const outcome = mapMarkerToOutcome(marker);
+    log(`  ${entryLabel(entry)}: ${outcome}`);
+    retire(entry, outcome);
+  }
+
+  return summary;
+}
+
+export interface RunWatchOpts extends Omit<DrainPassOpts, "seen" | "noted"> {
+  /** Wait between passes. Default {@link DEFAULT_SCAN_POLL_MS}. */
+  scanPollMs?: number;
+  /** Stop after this many passes — the bound tests run under. Unset = forever
+   *  (until `shouldStop`), which is what the CLI wants. */
+  maxPasses?: number;
+  /** Take the watcher singleton for the duration. Default: every run except
+   *  `--dry-run` (a read-only setup check must not demand killing a working
+   *  watcher — and must not take a lock a working watcher would then lose). */
+  claim?: boolean;
+  /** Singleton-claim tuning, forwarded to {@link claimWatcherSingleton}. */
+  claimOpts?: AcquireExtra;
+}
+
+/**
+ * The foreground watcher: claim the singleton, then drain-and-wait until
+ * interrupted.
+ *
+ * The `seen`/`noted` sets are created here and shared across every pass — they
+ * are per-*run* state (see {@link DrainPassOpts.seen}), and re-creating them
+ * per pass would make `--dry-run` reprint the whole queue every 5 seconds and
+ * a skipped entry re-note forever.
+ *
+ * `PathLockHeldError` propagates rather than being caught: the CLI turns it
+ * into exit 1 with the lock path in the message, and swallowing it here would
+ * mean two watchers draining one queue — two tabs for one session.
+ */
+export function runWatch(opts: RunWatchOpts): DrainSummary {
+  const claim = opts.claim ?? opts.dryRun !== true;
+  const handle = claim ? claimWatcherSingleton(opts.home, opts.claimOpts) : null;
+  const scanPollMs = Math.max(1, opts.scanPollMs ?? DEFAULT_SCAN_POLL_MS);
+  const sleep = opts.sleep ?? sleepSync;
+  const seen = new Set<string>();
+  const noted = new Set<string>();
+
+  const total: DrainSummary = {
+    handled: 0,
+    retired: 0,
+    printed: 0,
+    skipped: 0,
+    outcomes: [],
+    interactive: opts.interactive,
+  };
+
+  try {
+    for (let pass = 0; opts.maxPasses === undefined || pass < opts.maxPasses; pass++) {
+      if (opts.shouldStop?.()) break;
+      const one = drainPass({ ...opts, interactive: total.interactive, seen, noted });
+      total.handled += one.handled;
+      total.retired += one.retired;
+      total.printed += one.printed;
+      total.skipped += one.skipped;
+      total.outcomes.push(...one.outcomes);
+      total.interactive = one.interactive;
+      if (opts.shouldStop?.()) break;
+      if (opts.maxPasses !== undefined && pass === opts.maxPasses - 1) break;
+      sleep(scanPollMs);
+    }
+  } finally {
+    handle?.release();
+  }
+
+  return total;
 }

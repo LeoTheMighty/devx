@@ -256,7 +256,11 @@ export interface SpawnRetroOpts {
  */
 export function spawnRetro(
   home: string,
-  entry: { session_id: unknown; cwd: unknown },
+  // Optional rather than required, so a `QueueEntry` straight off the queue is
+  // assignable — both fields are `unknown` and asserted below anyway, and
+  // making the drain build a synthetic `{session_id, cwd}` object would only
+  // move the same two checks somewhere less obvious.
+  entry: { session_id?: unknown; cwd?: unknown },
   opts: SpawnRetroOpts = {},
 ): SpawnResult {
   const sid = entry.session_id;
