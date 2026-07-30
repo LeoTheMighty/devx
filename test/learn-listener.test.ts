@@ -14,11 +14,14 @@
 //
 // Spec: dev/dev-rtl101-2026-07-30T09:31-listener-nudge-pin.md (T1.5)
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { runLearnListen } from "../src/commands/learn-helper.js";
+import { type ListenerResult, handleHookPayload } from "../src/lib/learn/listener.js";
+import { collapseWhitespace } from "../src/lib/learn/nudge.js";
 import {
   LEARN_HOME_ENV,
   PathLockHeldError,
@@ -341,5 +344,339 @@ describe("rtl101 — withQueueLock", () => {
         expect((err as PathLockHeldError).path).toBe(queueLockPath(home));
       }
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The detection arms (T1.3) — E-1, E-2, E-10.
+// ---------------------------------------------------------------------------
+
+const MARKER = "<!-- nudge-canonical -->";
+
+/**
+ * The canonical sentence as shipped, read from the marker rather than restated
+ * — same extraction the evals use. A literal copy here would keep agreeing with
+ * itself while the shipped prose (and therefore every real wrap-up) drifted.
+ */
+function markerProse(): string {
+  const body = readFileSync(resolve(__dirname, "..", ".claude/commands/devx-learn.md"), "utf8");
+  return collapseWhitespace((body.split(MARKER)[1] ?? "").trim().split(/\n\n/)[0] ?? "");
+}
+
+const NUDGE = markerProse();
+
+const stop = (sid: string, message: string, over: Record<string, unknown> = {}) => ({
+  hook_event_name: "Stop",
+  session_id: sid,
+  transcript_path: `/tmp/${sid}.jsonl`,
+  cwd: "/repo",
+  last_assistant_message: message,
+  ...over,
+});
+
+const sessionEnd = (sid: string, over: Record<string, unknown> = {}) => ({
+  hook_event_name: "SessionEnd",
+  session_id: sid,
+  ...over,
+});
+
+const envFor = (h: string, over: Record<string, string> = {}) => ({
+  [LEARN_HOME_ENV]: h,
+  ...over,
+});
+
+describe("rtl101 E-1 — Stop arm: nudge detection + durable enqueue", () => {
+  it("appends exactly one entry carrying session_id, transcript_path, cwd, ts", () => {
+    const res = handleHookPayload(stop("aaaa-1111", `Wrap-up.\n\n${NUDGE}\n`), envFor(home));
+    expect(res.action).toBe("queued");
+    const got = readQueue(home);
+    expect(got).toHaveLength(1);
+    for (const field of ["session_id", "transcript_path", "cwd", "ts"] as const) {
+      expect(typeof got[0]?.[field]).toBe("string");
+      expect(got[0]?.[field]).not.toBe("");
+    }
+  });
+
+  it("detects a hard-wrapped copy of the sentence (wording, not bytes)", () => {
+    // What the transcript actually holds: the terminal wrapped the sentence
+    // across lines with continuation indents.
+    const wrapped = NUDGE.replace(/ /g, (m, i: number) => (i % 40 === 0 ? "\n  " : m));
+    expect(handleHookPayload(stop("bbbb-2222", `x\n${wrapped}`), envFor(home)).action).toBe(
+      "queued",
+    );
+    expect(readQueue(home)).toHaveLength(1);
+  });
+
+  it("does not enqueue a reworded sentence (emit and detect have drifted)", () => {
+    const reworded = NUDGE.replace("friction", "difficulty");
+    expect(handleHookPayload(stop("cccc-3333", reworded), envFor(home)).action).toBe("no-nudge");
+    expect(readQueue(home)).toEqual([]);
+  });
+
+  it("keeps one pending entry per session however many skills nudged", () => {
+    handleHookPayload(stop("aaaa-1111", NUDGE), envFor(home));
+    const second = handleHookPayload(stop("aaaa-1111", NUDGE), envFor(home));
+    expect(second.action).toBe("duplicate");
+    expect(readQueue(home)).toHaveLength(1);
+  });
+
+  it("re-queues a session whose earlier entry was already drained", () => {
+    handleHookPayload(stop("aaaa-1111", NUDGE), envFor(home));
+    removeFromQueue(home, readQueue(home)[0]!);
+    expect(handleHookPayload(stop("aaaa-1111", NUDGE), envFor(home)).action).toBe("queued");
+  });
+
+  it.each([
+    ["an unrecognized object", { nonsense: true }],
+    ["null", null],
+    ["undefined", undefined],
+    ["an array", [1, 2, 3]],
+    ["a bare string", "Stop"],
+    ["a payload with no session_id", { hook_event_name: "Stop", last_assistant_message: NUDGE }],
+    ["a non-string session_id", { hook_event_name: "Stop", session_id: 42 }],
+    ["an unknown event name", stop("aaaa-1111", NUDGE, { hook_event_name: "PreToolUse" })],
+    ["an absent event name", { session_id: "aaaa-1111", last_assistant_message: NUDGE }],
+  ])("ignores %s without throwing or writing", (_note, payload) => {
+    expect(() => handleHookPayload(payload, envFor(home))).not.toThrow();
+    expect(handleHookPayload(payload, envFor(home)).action).toBe("ignored");
+    expect(existsSync(queuePath(home))).toBe(false);
+  });
+
+  it.each([
+    ["a nullish message", undefined],
+    ["a non-string message", 42],
+    ["an empty message", ""],
+  ])("treats %s as a miss", (_note, message) => {
+    expect(
+      handleHookPayload(stop("aaaa-1111", "", { last_assistant_message: message }), envFor(home))
+        .action,
+    ).toBe("no-nudge");
+  });
+
+  it("writes nothing at all on the miss path — not even an empty queue file", () => {
+    // The path taken at ~every turn end in every hooked repo (G-3): a Stop that
+    // creates files would leave a `~/.claude/devx` behind on machines that
+    // never retro at all.
+    const fresh = join(home, "untouched");
+    expect(handleHookPayload(stop("dddd-4444", "plain wrap-up"), envFor(fresh)).action).toBe(
+      "no-nudge",
+    );
+    expect(existsSync(fresh)).toBe(false);
+  });
+
+  it("refuses a session id that could not be a marker filename", () => {
+    // Refused at the queue's entrance rather than tripping the watcher later.
+    expect(handleHookPayload(stop("../../etc/passwd", NUDGE), envFor(home)).action).toBe("ignored");
+    expect(existsSync(queuePath(home))).toBe(false);
+  });
+
+  it("stamps ts from the injected clock", () => {
+    handleHookPayload(stop("aaaa-1111", NUDGE), envFor(home), {
+      now: () => new Date("2026-07-30T09:31:00.123Z"),
+    });
+    expect(readQueue(home)[0]?.ts).toBe("2026-07-30T09:31:00.123Z");
+  });
+
+  it("carries a null transcript_path through rather than inventing one", () => {
+    handleHookPayload(stop("aaaa-1111", NUDGE, { transcript_path: undefined }), envFor(home));
+    expect(readQueue(home)[0]).toMatchObject({ transcript_path: null });
+  });
+
+  it("drops the detection when the queue lock is held past the deadline", () => {
+    // A wedged holder must cost one nudge, never a delayed turn.
+    withQueueLock(home, () => {
+      const res = handleHookPayload(stop("aaaa-1111", NUDGE), envFor(home), {
+        lockOpts: { timeoutMs: 30, pollMs: 5 },
+      });
+      expect(res.action).toBe("lock-contended");
+    });
+    expect(readQueue(home)).toEqual([]);
+  });
+});
+
+describe("rtl101 E-2 — DEVX_RETRO makes the listener inert", () => {
+  const guarded = () => envFor(home, { DEVX_RETRO: "1" });
+
+  it.each([
+    ["a nudge-bearing Stop", () => stop("ffff-9999", `retro quoting the sentence: ${NUDGE}`)],
+    ["a SessionEnd", () => sessionEnd("ffff-9999", { reason: "exit" })],
+    ["garbage", () => ({ garbage: true })],
+  ])("returns before touching anything for %s", (_note, build) => {
+    expect(handleHookPayload(build(), guarded()).action).toBe("retro-guard");
+  });
+
+  it("writes no queue entry and no marker across all three payload shapes", () => {
+    // The mechanical half of the retro-of-retro bound: each fork gets a fresh
+    // session id, so dedupe alone could never cap the depth.
+    appendPending(home, entry("ffff-9999"));
+    for (const payload of [
+      stop("ffff-9999", NUDGE),
+      stop("gggg-8888", NUDGE),
+      sessionEnd("ffff-9999", { reason: "exit" }),
+      { garbage: true },
+    ]) {
+      handleHookPayload(payload, guarded());
+    }
+    expect(readQueue(home)).toHaveLength(1);
+    expect(existsSync(markersDir(home))).toBe(false);
+  });
+
+  it("stays inert for any non-empty value, not just '1'", () => {
+    // A guard that fails closed is the safe direction for a loop bound.
+    for (const value of ["1", "0", "true", "no"]) {
+      expect(handleHookPayload(stop("ffff-9999", NUDGE), envFor(home, { DEVX_RETRO: value })).action).toBe(
+        "retro-guard",
+      );
+    }
+    expect(existsSync(queuePath(home))).toBe(false);
+  });
+
+  it("is not guarded by an empty DEVX_RETRO", () => {
+    expect(handleHookPayload(stop("ffff-9999", NUDGE), envFor(home, { DEVX_RETRO: "" })).action).toBe(
+      "queued",
+    );
+  });
+});
+
+describe("rtl101 E-10 — SessionEnd reason denylist gates the fast path", () => {
+  const sid = "aaaa-1111-bbbb-2222";
+
+  beforeEach(() => {
+    appendPending(home, entry(sid));
+  });
+
+  it.each([
+    ["clear (the user keeps working in that terminal)", "clear"],
+    ["resume", "resume"],
+    ["bypass_permissions_disabled", "bypass_permissions_disabled"],
+    ["logout (a spawn against an unauthenticated CLI can only fail)", "logout"],
+  ])("writes no .ended marker for %s", (_note, reason) => {
+    expect(handleHookPayload(sessionEnd(sid, { reason }), envFor(home)).action).toBe(
+      "reason-denied",
+    );
+    expect(existsSync(endedMarkerPath(home, sid))).toBe(false);
+  });
+
+  it.each([
+    ["an unknown reason (denylist, not allowlist)", { reason: "some_future_reason" }],
+    ["an absent reason", {}],
+    ["a non-string reason", { reason: 7 }],
+    ["the ordinary exit reason", { reason: "exit" }],
+  ])("writes the .ended marker for %s", (_note, over) => {
+    expect(handleHookPayload(sessionEnd(sid, over), envFor(home)).action).toBe("marked");
+    expect(existsSync(endedMarkerPath(home, sid))).toBe(true);
+  });
+
+  it("is idempotent across repeated SessionEnds", () => {
+    handleHookPayload(sessionEnd(sid, { reason: "exit" }), envFor(home));
+    writeFileSync(endedMarkerPath(home, sid), "prior", "utf8");
+    handleHookPayload(sessionEnd(sid, { reason: "exit" }), envFor(home));
+    expect(readFileSync(endedMarkerPath(home, sid), "utf8")).toBe("prior");
+  });
+
+  it("writes no marker for a session the queue is not waiting on", () => {
+    // The marker exists to let the watcher skip the idle window; one for an
+    // unqueued session is litter nothing ever collects.
+    expect(handleHookPayload(sessionEnd("not-queued-9999", { reason: "exit" }), envFor(home)).action).toBe(
+      "not-pending",
+    );
+    expect(existsSync(markersDir(home))).toBe(false);
+  });
+
+  it("writes no marker once the entry has been drained", () => {
+    removeFromQueue(home, readQueue(home)[0]!);
+    handleHookPayload(sessionEnd(sid, { reason: "exit" }), envFor(home));
+    expect(existsSync(markersDir(home))).toBe(false);
+  });
+
+  it("marks only the session the payload names", () => {
+    appendPending(home, entry("other-3333"));
+    handleHookPayload(sessionEnd(sid, { reason: "exit" }), envFor(home));
+    expect(readdirSync(markersDir(home))).toEqual([`${sid}.ended`]);
+  });
+});
+
+describe("rtl101 — `devx learn-helper listen` exits 0 on every path (T1.4)", () => {
+  const run = (input: string | (() => string), envOver: Record<string, string> = {}) => {
+    const results: ListenerResult[] = [];
+    const code = runLearnListen({
+      env: envFor(home, envOver),
+      readInput: typeof input === "string" ? () => input : input,
+      onResult: (r) => results.push(r),
+    });
+    return { code, results };
+  };
+
+  it("queues the session for a nudge-bearing Stop payload", () => {
+    const { code, results } = run(JSON.stringify(stop("aaaa-1111", NUDGE)));
+    expect(code).toBe(0);
+    expect(results[0]?.action).toBe("queued");
+    expect(readQueue(home)).toHaveLength(1);
+  });
+
+  it.each([
+    ["not JSON at all", "this is not json"],
+    ["empty stdin", ""],
+    ["whitespace only", "   \n"],
+    ["a truncated object", '{"hook_event_name":"Stop"'],
+    ["JSON null", "null"],
+    ["a JSON array", "[1,2,3]"],
+    ["a JSON scalar", '"Stop"'],
+    ["a JSON object of the wrong shape", '{"nonsense":true}'],
+  ])("exits 0 and writes nothing for %s", (_note, input) => {
+    expect(run(input).code).toBe(0);
+    expect(existsSync(queuePath(home))).toBe(false);
+  });
+
+  it("exits 0 when stdin cannot be read at all (a TTY with nothing to give)", () => {
+    // `readFileSync(0)` raises EAGAIN when the hook is invoked by hand from a
+    // terminal; that must look exactly like a miss.
+    const { code } = run(() => {
+      throw Object.assign(new Error("EAGAIN: resource temporarily unavailable, read"), {
+        code: "EAGAIN",
+      });
+    });
+    expect(code).toBe(0);
+    expect(existsSync(queuePath(home))).toBe(false);
+  });
+
+  it("never reads stdin under DEVX_RETRO (E-2's 'without reading the payload')", () => {
+    let reads = 0;
+    const code = runLearnListen({
+      env: envFor(home, { DEVX_RETRO: "1" }),
+      readInput: () => {
+        reads += 1;
+        return JSON.stringify(stop("ffff-9999", NUDGE));
+      },
+    });
+    expect(code).toBe(0);
+    expect(reads).toBe(0);
+    expect(existsSync(queuePath(home))).toBe(false);
+  });
+
+  it("writes the .ended marker for a pending session's SessionEnd", () => {
+    appendPending(home, entry("aaaa-1111"));
+    const { code, results } = run(JSON.stringify(sessionEnd("aaaa-1111", { reason: "exit" })));
+    expect(code).toBe(0);
+    expect(results[0]?.action).toBe("marked");
+    expect(existsSync(endedMarkerPath(home, "aaaa-1111"))).toBe(true);
+  });
+
+  it("exits 0 even when the learn home cannot be written", () => {
+    // An unwritable home (a file where the directory should be) is the one
+    // failure the core can actually hit; it must still be a silent no-op.
+    const blocked = join(home, "blocked");
+    writeFileSync(blocked, "not a directory", "utf8");
+    const seen: ListenerResult[] = [];
+    const code = runLearnListen({
+      env: { [LEARN_HOME_ENV]: blocked },
+      readInput: () => JSON.stringify(stop("aaaa-1111", NUDGE)),
+      // Collected, not asserted in the callback: a failing expect() inside the
+      // callback would be swallowed by the command's own catch and the test
+      // would pass for the wrong reason.
+      onResult: (r) => seen.push(r),
+    });
+    expect(code).toBe(0);
+    expect(seen.map((r) => r.action)).toEqual(["error"]);
   });
 });
