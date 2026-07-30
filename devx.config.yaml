@@ -350,6 +350,22 @@ loop:
   backoff_ms: [60000, 120000, 240000]
 
 # ---------------------------------------------------------------------------
+# 15c. Retro listener (rtl102 consumes; _devx/workstreams/retro-listener)
+#
+# Read by `devx learn-watch` (the retro drain loop) and the /devx-init hook
+# install step — NOT by the Stop/SessionEnd listener, which must resolve its
+# queue home without a config load to stay inside its <500ms hook-latency
+# budget (design.md §Constraints, G-3). Home precedence at runtime:
+# DEVX_LEARN_HOME env > `home` below > `~/.claude/devx`. Values here are the
+# defaults; malformed ones fall back per key rather than wedging the watcher.
+# ---------------------------------------------------------------------------
+
+learn:
+  idle_minutes: 15               # transcript quiet window = "session over"
+  retro_timeout_minutes: 360     # spawned retro past this retires as `timeout`
+  home: ~/.claude/devx           # user-global: one watcher serves many repos
+
+# ---------------------------------------------------------------------------
 # Stack — what /devx Phase 5 (local CI) runs.
 #
 # Layered shape: most Phase 0 epics produce a node CLI; Phase 8 (mobile) is a

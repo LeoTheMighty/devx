@@ -1010,6 +1010,28 @@
         }
       },
       "additionalProperties": false
+    },
+    "learn": {
+      "description": "Retro-listener knobs (rtl102) read by `devx learn-watch` and the /devx-init hook install step. NOT read by the Stop/SessionEnd listener \u2014 that path resolves its queue home from DEVX_LEARN_HOME + the built-in default only, to stay inside the <500ms hook-latency budget. Malformed values fall back per key (src/lib/learn/config.ts).",
+      "type": "object",
+      "properties": {
+        "idle_minutes": {
+          "description": "Transcript-mtime quiet window that reads as \"session over\", in minutes. Default 15.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "retro_timeout_minutes": {
+          "description": "How long a spawned retro may run before the watcher retires it with outcome `timeout`, in minutes. Default 360.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "home": {
+          "description": "Queue home (queue JSONL, done log, markers, locks, repos.json). User-global so one watcher serves many repos. A leading `~/` expands. Default `~/.claude/devx`; DEVX_LEARN_HOME overrides this at runtime.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

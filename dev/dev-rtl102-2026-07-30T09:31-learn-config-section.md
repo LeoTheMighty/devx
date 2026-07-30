@@ -40,6 +40,16 @@ safe with rtl101 (no shared files).
 
 - 2026-07-30T09:31 — emitted by /devx-plan RED stage (workstream 620c74).
 - 2026-07-30T10:58:48-06:00 — claimed by /devx in session /devx-loop-2026-07-30T16-02-29-879-60783
+- 2026-07-30T17:14:29.094Z — loop iteration 1: Implemented the `learn:` config section for the retro watcher — `src/lib/learn/config.ts` (typed defaults, total per-key fallback reader, `DEVX_LEARN_HOME` > config > default home resolution), plus schema, yaml, fixture, docs, and a 186-line test file — with the full `npm test` verification run still unlanded.
+  - Change: Added `src/lib/learn/config.ts`: `LearnConfig` type, `LEARN_DEFAULTS` (idleMinutes 15, retroTimeoutMinutes 360, home `~/.claude/devx`), total `learnConfigFrom(merged)` that degrades per-key to defaults on any garbage input shape (missing block, array, scalar, non-finite or non-positive numbers, blank strings), following the `loopConfigFrom` pattern (AC 1).
+  - Change: Added `resolveLearnHome(merged, env)` implementing the documented precedence `DEVX_LEARN_HOME` > config `learn.home` > `~/.claude/devx`, delegating the env arm verbatim to `learnHome` from `src/lib/learn/queue.ts` so the watcher and the config-free listener resolve to the same directory; `~`/`~/` expansion handled on the config and default arms only, `~user` left untouched (AC 3).
+  - Change: Extended `_devx/config-schema.json` with an `additionalProperties: false` `learn:` properties block, added a commented `learn:` section with defaults to `devx.config.yaml`, and mirrored the section into `test/fixtures/sample-config-full.yaml` (AC 2).
+  - Change: Documented the `learn:` knobs and the home-resolution precedence in `docs/CONFIG.md`, including the G-3 constraint that the listener path never loads config (AC 3).
+  - Change: Added `test/learn-config.test.ts` (186 lines) covering defaults, per-key clamping, garbage-input fallback, and env/config/default precedence (AC 4, run not yet confirmed end-to-end).
+  - Learning: The listener and the watcher need two different home resolvers by design (G-3: the listener runs at every turn end under a <500ms p95 budget and must not load config), and the only safe way to keep them pointing at the same queue directory is to have the watcher's resolver delegate its env arm verbatim to the listener's `learnHome` rather than re-implement the same precedence.
+  - Learning: A raw `~` inside `DEVX_LEARN_HOME` must deliberately NOT be tilde-expanded — a shell expands it before the process sees it, so any surviving literal `~` is an explicit operator choice, and rewriting it would silently diverge from the listener's behavior.
+  - Learning: Zero is not a benign value for either minutes knob: `idle_minutes: 0` makes every session read as 'always idle' and `retro_timeout_minutes: 0` retires every retro instantly, so the clamp rejects non-positive as well as non-finite; fractional minutes are kept legal because sub-minute windows are genuinely useful in tests.
+  - Learning: The full `npm test` chain here (schema smoke → config-io → config-validate → build → typecheck → vitest) runs well past 10 minutes in this worktree, so the verification tail needs its own iteration budget rather than being tacked onto the end of an implementation pass.
 
 ## Links
 

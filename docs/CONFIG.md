@@ -456,6 +456,42 @@ flagged with `~` in the report.
 
 ---
 
+## 15c. Retro listener
+
+```yaml
+learn:
+  idle_minutes: 15               # transcript quiet window = "session over"
+  retro_timeout_minutes: 360     # spawned retro past this retires as `timeout`
+  home: ~/.claude/devx           # queue home (user-global, one per human)
+```
+
+Consumed by `devx learn-watch` (rtl102) and the `/devx-init` hook install
+step; see `_devx/workstreams/retro-listener/design.md` §Interfaces.
+
+`idle_minutes` is how long the session transcript must go unmodified before
+the watcher treats the session as over and spawns its retro; `retro_timeout_minutes`
+bounds a spawned retro that never writes its done marker (the SIGKILL case the
+wrapper's signal trap can't cover) — past it the entry retires with outcome
+`timeout`. Non-positive / non-finite / wrong-typed values fall back to the
+default **per key**: a half-typed edit degrades the watcher, it doesn't wedge
+it.
+
+**Home precedence — `DEVX_LEARN_HOME` env > `learn.home` > `~/.claude/devx`.**
+The env var wins everywhere and is what tests and hook installs use to redirect
+the queue. A leading `~/` in `learn.home` expands against the current home
+directory; an env value is honored verbatim (the shell has already expanded
+it). The Stop/SessionEnd listener (`devx learn-helper listen`) **never loads
+config at all** — it runs at every turn end in every hooked repo under a
+<500ms p95 budget, so it resolves the env var and the built-in default only.
+Which means a non-default `learn.home` reaches the listener the one way a
+config value can reach a config-free process: the hook install step reads it
+and materializes it as `DEVX_LEARN_HOME` in the registration it writes. Until
+that step runs (or if you register the hook by hand), a custom `learn.home`
+moves the watcher and leaves the listener on the default — so when you
+relocate the queue, set the env var too.
+
+---
+
 ## What `/devx-init` actually asks
 
 Out of all the above, the interview only asks where a sensible default can't be inferred. The rest are written with defaults and surfaced in `devx.config.yaml` as commented blocks the user can uncomment to override.
