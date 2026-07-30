@@ -57,6 +57,8 @@ abandoned-while-done class.
 
 - [x] `plan/plan-e0a67e-2026-07-28T12:15-mid-story-split.md` — Mid-story split: split primitive + carried-forward context contract, loop split paths + `split` outcome, Handoff Snippet retirement + skills/docs sweep, state-hygiene invariants. Status: executing (all 4 gates passed 2026-07-28; RED artifacts observed right-reason; emitted mss101–mss104 + mssret to DEV.md). Blocked-by: —. Related: mlc103 (spec-lock lifecycle), db36af (doctor), lpf101 (preflight).
 
+- [x] `plan/plan-620c74-2026-07-29T11:56-retro-listener.md` — Retro listener: auto-spawn `/devx-learn` from the friction nudge (port of `mycase/8am-harness` PR #36 — Stop/SessionEnd listener hook, serial `devx learn-watch` drainer with tmux/Terminal fork-spawn, wire-protocol pin, `/devx-init` hook distribution, five-outlet routing rework; phase-2 unattended retros out of scope). Status: executing (all 4 gates passed 2026-07-30; RED artifacts observed right-reason; emitted rtl101–rtl106 + rtlret to DEV.md). Blocked-by: —. Related: eac479 (harness fold-in — the nudge + /devx-learn this listens for).
+
 ## Cross-cutting plans
 
 Independent of phase sequencing — pick up once their named blockers clear.

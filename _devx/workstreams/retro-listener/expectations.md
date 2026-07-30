@@ -22,7 +22,7 @@
   exit 0 on every input including garbage stdin.
 - **Threshold:** 100% of the enumerated cases pass; the garbage-stdin case
   exits 0 with an unchanged queue.
-- **Verified by:** `test/learn-listener.test.ts`
+- **Verified by:** `_devx/workstreams/retro-listener/evals/E-1_listener-enqueue.ts`
 
 ## E-2: The listener is inert inside a retro
 
@@ -36,7 +36,7 @@
 - **Threshold:** 0 queue writes and 0 marker writes under the guard, across
   100% of payload shapes exercised (nudge-bearing Stop, SessionEnd,
   garbage).
-- **Verified by:** `test/learn-listener.test.ts`
+- **Verified by:** `_devx/workstreams/retro-listener/evals/E-2_retro-guard.ts`
 
 ## E-3: Session-over readiness fails safe
 
@@ -53,7 +53,7 @@
   missing-transcript, undatable) produce the specified verdict; the
   missing-transcript case reports not-ready for the full idle window (0
   early spawns).
-- **Verified by:** `test/learn-watch.test.ts`
+- **Verified by:** `_devx/workstreams/retro-listener/evals/E-3_readiness-failsafe.ts`
 
 ## E-4: Serial watcher — singleton, outcomes, malformed entries
 
@@ -76,7 +76,7 @@
   original `ts`.
 - **Threshold:** 100% of enumerated outcome mappings correct; the malformed
   entries never reach the spawn or allow-prompt code paths.
-- **Verified by:** `test/learn-watch.test.ts`
+- **Verified by:** `_devx/workstreams/retro-listener/evals/E-4_watch-serial-outcomes.ts`
 
 ## E-5: `--dry-run` is non-destructive
 
@@ -90,7 +90,7 @@
   refused by a held singleton lock.
 - **Threshold:** byte-identical before/after comparison of queue + done log
   + markers; exit 0 under a held lock.
-- **Verified by:** `test/learn-watch.test.ts`
+- **Verified by:** `_devx/workstreams/retro-listener/evals/E-5_dry-run.ts`
 
 ## E-6: Wire-protocol pin — reword fails CI
 
@@ -106,7 +106,7 @@
 - **Threshold:** 100% pass against the current marker and 100% fail rate on
   the mutated-marker negative case (≥2 mutations exercised in-memory: a
   reworded verb and a deleted clause).
-- **Verified by:** `test/learn-nudge-pin.test.ts`
+- **Verified by:** `_devx/workstreams/retro-listener/evals/E-6_nudge-pin.ts`
 
 ## E-7: Hook overhead per Stop event
 
@@ -135,7 +135,7 @@
   signature on the entries it wrote.
 - **Threshold:** run-twice diff is 0 bytes; 100% of pre-existing user hook
   entries survive byte-intact (0 removed, 0 reordered).
-- **Verified by:** `test/learn-hook-install.test.ts`
+- **Verified by:** `_devx/workstreams/retro-listener/evals/E-8_hook-install.ts`
 
 ## E-9: The spawn wrapper exports the retro guard
 
@@ -150,7 +150,7 @@
 - **Threshold:** 100% of generated wrapper commands contain the export
   before the `claude` token (asserted for the tmux, darwin, and manual
   arms — 3/3).
-- **Verified by:** `test/learn-watch.test.ts`
+- **Verified by:** `_devx/workstreams/retro-listener/evals/E-9_wrapper-guard.ts`
 
 ## E-10: SessionEnd denylist gates the fast path
 
@@ -164,4 +164,4 @@
   unknown or absent the system SHALL write one (denylist, not allowlist).
 - **Threshold:** 100% of the 6 enumerated reason cases (4 denylisted + 1
   unknown + 1 absent) produce the specified marker behavior.
-- **Verified by:** `test/learn-listener.test.ts`
+- **Verified by:** `_devx/workstreams/retro-listener/evals/E-10_sessionend-denylist.ts`

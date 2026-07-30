@@ -204,3 +204,17 @@ mgrret (above) is the final BMAD invocation. One item ≈ one phase ≈ one PR
 - [x] `dev/dev-v2d101-2026-07-05T13:05-universal-dispatcher.md` — V2.4 universal /devx dispatcher + debug loop + init v2. Status: done. Blocked-by: v2x101. PR: https://github.com/LeoTheMighty/devx/pull/66 (merged 66a7ccd). V2.4 closed.
 - [x] `dev/dev-v2l101-2026-07-05T13:06-overnight-loop.md` — V2.5 overnight loop (gnhf fold-in: iteration contract, failure ladder, budgets, morning report). Status: done. Blocked-by: v2d101, roc101. PR: https://github.com/LeoTheMighty/devx/pull/67 (merged b4423a8). V2.5 closed; S-3 supervised night filed as MANUAL.md MV2.1.
 - [x] `dev/dev-v2o101-2026-07-05T13:07-outcome-loop.md` — V2.6 outcome loop + migration retro. Status: done. Blocked-by: v2l101. PR: https://github.com/LeoTheMighty/devx/pull/68 (merged d5caf94). V2.6 closed — Phase V2 complete 8/8 (+ roc101 + mgrret); retro: _devx/retros/v2-migration-2026-07-05.md.
+
+### Epic — retro-listener (plan: 620c74)
+
+Port of the 8am-harness retro listener (mycase/8am-harness PR #36): auto-spawn
+`/devx-learn` when a session prints the friction nudge. Workstream artifacts:
+`_devx/workstreams/retro-listener/`; RED report at `evals/RED-report.md`.
+
+- [ ] `dev/dev-rtl101-2026-07-30T09:31-listener-nudge-pin.md` — Listener — nudge pattern, queue store, `learn-helper listen`, wire-protocol pin (E-1, E-2, E-6, E-10, E-7). Status: ready. From: epic-retro-listener.
+- [ ] `dev/dev-rtl102-2026-07-30T09:31-learn-config-section.md` — `learn:` config section (idle window, retro timeout, home). Status: ready. Parallel-safe with rtl101 (no shared files).
+- [ ] `dev/dev-rtl103-2026-07-30T09:31-watcher-core.md` — Watcher core — readiness, allowlist, outcomes, queue ops (E-3, E-4 core). Status: ready. Blocked-by: rtl101.
+- [ ] `dev/dev-rtl104-2026-07-30T09:31-watcher-cli-spawn.md` — Watcher CLI — spawn arms, drain loop, `devx learn-watch` (E-4, E-5, E-9). Status: ready. Blocked-by: rtl102, rtl103.
+- [ ] `dev/dev-rtl105-2026-07-30T09:31-init-hook-distribution.md` — Hook registration template + `/devx-init` distribution (E-8). Status: ready. Blocked-by: rtl101. Parallel-safe with rtl103/rtl104.
+- [ ] `dev/dev-rtl106-2026-07-30T09:31-outlet-routing-rework.md` — `/devx-learn` outlet routing rework (ordered five-outlet first-match). Status: ready. Parallel-safe with rtl101–rtl105 (prose + tests only; marker byte-preserved).
+- [ ] `dev/dev-rtlret-2026-07-30T09:33-retro-retro-listener.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: rtl101, rtl102, rtl103, rtl104, rtl105, rtl106.

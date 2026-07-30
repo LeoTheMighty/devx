@@ -19,8 +19,14 @@
 - [x] Gate: coverage(design)
 - [x] Stage: Plan
 - [x] Gate: coverage(plan)
-- [ ] Stage: RED
-- [ ] Gate: evals
+- [x] Stage: RED
+- [x] Gate: evals
 - [ ] Stage: Execute
+  - [ ] Phase 1: Listener — nudge pattern, queue store, `learn-helper listen`, wire-protocol pin → rtl101
+  - [ ] Phase 2: `learn:` config section → rtl102
+  - [ ] Phase 3: Watcher core — readiness, allowlist, outcomes, queue ops → rtl103
+  - [ ] Phase 4: Watcher CLI — spawn arms, drain loop, `devx learn-watch` → rtl104
+  - [ ] Phase 5: Hook registration template + `/devx-init` distribution → rtl105
+  - [ ] Phase 6: `/devx-learn` outlet routing rework → rtl106
 - [ ] Stage: Retro
 - [ ] Stage: Outcome

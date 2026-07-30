@@ -47,16 +47,16 @@
 
 | E-id | Priority | Verified in phase | Validation type | Eval artifact | Coverage |
 |---|---|---|---|---|---|
-| E-1 | P0 | 1 | tests-first | `test/learn-listener.test.ts` | full |
-| E-2 | P0 | 1 | tests-first | `test/learn-listener.test.ts` | full |
-| E-3 | P1 | 3 | tests-first | `test/learn-watch.test.ts` | full |
-| E-4 | P0 | 3 (outcome mapping, malformed, requeue) + 4 (singleton, drain) | tests-first | `test/learn-watch.test.ts` | full |
-| E-5 | P1 | 4 | tests-first | `test/learn-watch.test.ts` | full |
-| E-6 | P0 | 1 | tests-first | `test/learn-nudge-pin.test.ts` | full |
-| E-7 | P1 | 1 (authored + measured post-build, in-phase) | eval script (tests-after) | `_devx/workstreams/retro-listener/evals/E-7_hook-latency.ts` | full |
-| E-8 | P1 | 5 | tests-first | `test/learn-hook-install.test.ts` | full |
-| E-9 | P0 | 4 | tests-first | `test/learn-watch.test.ts` | full |
-| E-10 | P1 | 1 | tests-first | `test/learn-listener.test.ts` | full |
+| E-1 | P0 | 1 | tests-first | `_devx/workstreams/retro-listener/evals/E-1_listener-enqueue.ts` | full |
+| E-2 | P0 | 1 | tests-first | `_devx/workstreams/retro-listener/evals/E-2_retro-guard.ts` | full |
+| E-3 | P1 | 3 | tests-first | `_devx/workstreams/retro-listener/evals/E-3_readiness-failsafe.ts` | full |
+| E-4 | P0 | 3 + 4 | tests-first | `_devx/workstreams/retro-listener/evals/E-4_watch-serial-outcomes.ts` | full |
+| E-5 | P1 | 4 | tests-first | `_devx/workstreams/retro-listener/evals/E-5_dry-run.ts` | full |
+| E-6 | P0 | 1 | tests-first | `_devx/workstreams/retro-listener/evals/E-6_nudge-pin.ts` | full |
+| E-7 | P1 | 1 (authored + measured post-build, in-phase) | tests-after | `_devx/workstreams/retro-listener/evals/E-7_hook-latency.ts` | full |
+| E-8 | P1 | 5 | tests-first | `_devx/workstreams/retro-listener/evals/E-8_hook-install.ts` | full |
+| E-9 | P0 | 4 | tests-first | `_devx/workstreams/retro-listener/evals/E-9_wrapper-guard.ts` | full |
+| E-10 | P1 | 1 | tests-first | `_devx/workstreams/retro-listener/evals/E-10_sessionend-denylist.ts` | full |
 
 ## Phase checklist
 
