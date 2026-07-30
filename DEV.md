@@ -211,7 +211,7 @@ Port of the 8am-harness retro listener (mycase/8am-harness PR #36): auto-spawn
 `/devx-learn` when a session prints the friction nudge. Workstream artifacts:
 `_devx/workstreams/retro-listener/`; RED report at `evals/RED-report.md`.
 
-- [ ] `dev/dev-rtl101-2026-07-30T09:31-listener-nudge-pin.md` — Listener — nudge pattern, queue store, `learn-helper listen`, wire-protocol pin (E-1, E-2, E-6, E-10, E-7). Status: ready. From: epic-retro-listener.
+- [/] `dev/dev-rtl101-2026-07-30T09:31-listener-nudge-pin.md` — Listener — nudge pattern, queue store, `learn-helper listen`, wire-protocol pin (E-1, E-2, E-6, E-10, E-7). Status: in-progress. From: epic-retro-listener.
 - [ ] `dev/dev-rtl102-2026-07-30T09:31-learn-config-section.md` — `learn:` config section (idle window, retro timeout, home). Status: ready. Parallel-safe with rtl101 (no shared files).
 - [ ] `dev/dev-rtl103-2026-07-30T09:31-watcher-core.md` — Watcher core — readiness, allowlist, outcomes, queue ops (E-3, E-4 core). Status: ready. Blocked-by: rtl101.
 - [ ] `dev/dev-rtl104-2026-07-30T09:31-watcher-cli-spawn.md` — Watcher CLI — spawn arms, drain loop, `devx learn-watch` (E-4, E-5, E-9). Status: ready. Blocked-by: rtl102, rtl103.
