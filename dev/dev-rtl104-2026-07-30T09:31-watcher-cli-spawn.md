@@ -4,6 +4,7 @@ type: dev
 created: 2026-07-30T09:31:00-06:00
 title: "Watcher CLI — spawn arms, drain loop, `devx learn-watch`"
 from: plan/plan-620c74-2026-07-29T11:56-retro-listener.md
+spawned: [9946f9]
 plan: _devx/workstreams/retro-listener
 phase: 4
 status: in-progress
@@ -71,6 +72,7 @@ must flip green.
 
 - 2026-07-30T09:31 — emitted by /devx-plan RED stage (workstream 620c74).
 - 2026-07-30T12:12:57-06:00 — claimed by /devx in session /devx-loop-2026-07-30T16-02-29-879-60783
+- 2026-07-30T14:07:29-06:00 — split (merge-first): emitted follow-up 9946f9 → `dev/dev-9946f9-2026-07-30T14:07-human-smoke-of-the-devx-learn-watch-terminal-app-s.md` via devx split
 
 ## Links
 
