@@ -174,8 +174,17 @@ describe("listener path stays config-free (G-3)", () => {
   // timing one: a future edit that imports the config reader (directly or
   // through this module) into the hook path fails here, in the PR that does
   // it, rather than as a latency regression nobody measures.
-  const listenerPath = ["lib/learn/listener.ts", "lib/learn/queue.ts", "lib/learn/nudge.ts"];
-  const banned = /from\s+"[^"]*(config-validate|learn\/config|\.\/config)\.js"/;
+  const listenerPath = [
+    "lib/learn/listener.ts",
+    "lib/learn/queue.ts",
+    "lib/learn/nudge.ts",
+  ];
+  // Static `from "…"` and dynamic `import("…")` both count. `config-io` is on
+  // the list because it is the YAML loader itself — the cheapest-looking and
+  // therefore likeliest accidental import on this path, and the one that would
+  // actually blow the latency budget.
+  const banned =
+    /(?:from|import\()\s*"[^"]*(config-io|config-validate|learn\/config|\.\/config)\.js"/;
 
   for (const rel of listenerPath) {
     it(`${rel} imports no config reader`, () => {
@@ -183,4 +192,25 @@ describe("listener path stays config-free (G-3)", () => {
       expect(src).not.toMatch(banned);
     });
   }
+
+  // Positive control. A "must not match" guard passes vacuously if the pattern
+  // can't match anything, and that failure is invisible: the suite stays green
+  // while the guard protects nothing. Pin what it catches AND what it lets by.
+  it("the ban pattern matches every config import it claims to catch", () => {
+    for (const line of [
+      'import { loadMerged } from "../config-io.js";',
+      'import { loadValidatedConfig } from "../config-validate.js";',
+      'import { learnConfigFrom } from "./config.js";',
+      'import { learnConfigFrom } from "../learn/config.js";',
+      'const { loadMerged } = await import("../config-io.js");',
+    ]) {
+      expect(line).toMatch(banned);
+    }
+    for (const line of [
+      'import { containsNudge } from "./nudge.js";',
+      'import { writeAtomic } from "../supervisor-internal.js";',
+    ]) {
+      expect(line).not.toMatch(banned);
+    }
+  });
 });
