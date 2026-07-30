@@ -6,7 +6,7 @@ title: "`learn:` config section (idle window, retro timeout, home)"
 from: plan/plan-620c74-2026-07-29T11:56-retro-listener.md
 plan: _devx/workstreams/retro-listener
 phase: 2
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-30T16-02-29-879-60783
 blocked_by: []
 branch: feat/dev-rtl102
@@ -57,6 +57,8 @@ safe with rtl101 (no shared files).
   - Learning: The full chain takes 936s (~15.6 min) in this worktree, and nearly all of it is one slow tail: the git-fixture suites (claim-contention, loop review-fix) run sequential clone/push/rebase fixtures with single tests taking 9–18s. The log goes quiet except for `warning: You appear to have cloned an empty repository.` for minutes at a stretch — that quiet is normal progress, not a hang; confirm liveness with a growing line count rather than a changing tail.
   - Learning: A `expect(src).not.toMatch(banned)` structural guard has an invisible failure mode: if the regex stops matching anything, every assertion still passes and the suite stays green while the guard protects nothing. Any not-toMatch guard needs a positive control asserting the pattern still catches known-bad input.
   - Learning: The original ban pattern anchored each alternative directly against `\.js"`, which silently excluded `../config-io.js` — the `./config` alternative only matches when `config` is immediately followed by `.js`, so any hyphenated sibling module slips through. Worth checking whenever a path-suffix regex is used as a guard.
+- 2026-07-30T17:34:26.506Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-07-30T17:34:26.506Z — merged via devx loop — PR https://github.com/LeoTheMighty/devx/pull/105
 
 ## Links
 
