@@ -6,7 +6,7 @@ title: "Watcher core — readiness, allowlist, outcomes, queue ops"
 from: plan/plan-620c74-2026-07-29T11:56-retro-listener.md
 plan: _devx/workstreams/retro-listener
 phase: 3
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-30T16-02-29-879-60783
 blocked_by: [rtl101]
 branch: feat/dev-rtl103
@@ -87,6 +87,8 @@ green.
   - Learning: `repoDecision` must re-check `canPrompt` at the moment of the read rather than trusting the value captured at watcher start. A process backgrounded after launch leaves the terminal's foreground group; reading stdin there does not throw, it delivers SIGTTIN and stops the process, so no try/catch can recover it — two extra syscalls versus a permanently wedged watcher.
   - Learning: An empty marker file means `completed`, not `timeout`: the marker existing at all proves the wrapper reached its write, so emptiness is a pre-`rc=$?` wrapper rather than an absent completion. Only a genuinely missing marker is the bounded-await giving up.
   - Learning: The full `npm test` suite was never observed to finish in the prior iteration (it ran >10 min and the session ended first), so the green claim here rests on the targeted file, both evals, and typecheck. That is defensible because `grep -rl learn/watch test src` shows no consumer of the module outside its own test and the eval artifacts — but the loop's CI tail is what actually closes it.
+- 2026-07-30T18:12:55.257Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-07-30T18:12:55.257Z — merged via devx loop — PR https://github.com/LeoTheMighty/devx/pull/106
 
 ## Links
 
