@@ -1086,6 +1086,13 @@ export interface RunWatchOpts extends Omit<DrainPassOpts, "seen" | "noted"> {
  * `PathLockHeldError` propagates rather than being caught: the CLI turns it
  * into exit 1 with the lock path in the message, and swallowing it here would
  * mean two watchers draining one queue — two tabs for one session.
+ *
+ * Synchronous on purpose, and therefore NOT what `devx learn-watch` runs: the
+ * inter-pass `sleepSync` blocks node's event loop, so a JS signal handler
+ * installed over this loop can never be called (measured at rtl104 T4.4) and
+ * Ctrl-C would do nothing. The command drives {@link drainPass} itself with an
+ * awaited timer between passes for exactly that reason; this driver is for
+ * embedders and tests, which pass their own `shouldStop`/`maxPasses`.
  */
 export function runWatch(opts: RunWatchOpts): DrainSummary {
   const claim = opts.claim ?? opts.dryRun !== true;

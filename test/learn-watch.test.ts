@@ -69,8 +69,16 @@ import {
   terminalArgv,
   tmuxArgv,
 } from "../src/lib/learn/spawn.js";
+import { buildProgram } from "../src/cli.js";
+import {
+  resolveLearnEnv,
+  runLearnWatch,
+  runLearnWatchList,
+  runLearnWatchRequeue,
+} from "../src/commands/learn-watch.js";
 import {
   DEFAULT_IDLE_SECONDS,
+  type DrainSummary,
   type SpawnFn,
   awaitMarker,
   canPrompt,
@@ -1861,5 +1869,431 @@ describe("runWatch", () => {
     const summary = runWatch(watchOpts({ spawn, shouldStop: () => true }));
     expect(calls).toEqual([]);
     expect(summary.handled).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// devx learn-watch — the CLI surface (T4.4): flags, exit codes, list, requeue
+//
+// The command's own job is wiring, so these cases mostly assert what it hands
+// the lib and what it does with what comes back: the drain itself is stubbed
+// (`drainPassFn`) wherever the case isn't about draining, which is also what
+// keeps the CLI suite from opening a window or waiting 5 real seconds.
+// ---------------------------------------------------------------------------
+
+/** A no-op pass result — the shape `drainPass` returns, nothing handled. */
+function drainSummaryStub(extra: Partial<DrainSummary> = {}): DrainSummary {
+  return {
+    handled: 0,
+    retired: 0,
+    printed: 0,
+    skipped: 0,
+    outcomes: [],
+    interactive: true,
+    ...extra,
+  };
+}
+
+describe("resolveLearnEnv", () => {
+  it("derives the readiness window and the retro bound from learn: minutes", () => {
+    const env = resolveLearnEnv({ merged: { learn: { idle_minutes: 2, retro_timeout_minutes: 90 } } });
+    expect(env.idleSeconds).toBe(120);
+    expect(env.retroTimeoutMs).toBe(90 * 60_000);
+  });
+
+  it("falls back to the design defaults for a config with no learn: block", () => {
+    const env = resolveLearnEnv({ merged: {} });
+    expect(env.idleSeconds).toBe(DEFAULT_IDLE_SECONDS);
+    expect(env.retroTimeoutMs).toBe(360 * 60_000);
+  });
+
+  it("prefers DEVX_LEARN_HOME over learn.home — the listener has no config to read", () => {
+    const env = resolveLearnEnv({
+      merged: { learn: { home: "/from/config" } },
+      env: { DEVX_LEARN_HOME: "/from/env" },
+    });
+    expect(env.home).toBe("/from/env");
+  });
+});
+
+describe("runLearnWatch", () => {
+  const REPO = "/repo/a";
+  let out: string[];
+  let err: string[];
+
+  beforeEach(() => {
+    out = [];
+    err = [];
+  });
+
+  function cliOpts(extra: Record<string, unknown> = {}) {
+    return {
+      home,
+      merged: {},
+      installSignals: false,
+      maxPasses: 1,
+      delay: async () => {},
+      canPromptFn: () => false,
+      out: (s: string) => out.push(s),
+      err: (s: string) => err.push(s),
+      ...extra,
+    };
+  }
+
+  function queueReady(sid: string, cwd: unknown = REPO): void {
+    appendPending(home, {
+      session_id: sid,
+      transcript_path: null,
+      cwd,
+      ts: isoAgo(2 * IDLE_SECONDS * 1000),
+    });
+  }
+
+  /** Queue + done log + repos + markers, as one comparable blob. */
+  function snapshot(): string {
+    const parts: string[] = [];
+    for (const path of [queuePath(home), donePath(home), reposPath(home)]) {
+      parts.push(existsSync(path) ? readFileSync(path, "utf8") : "<absent>");
+    }
+    parts.push(
+      existsSync(markersDir(home)) ? readdirSync(markersDir(home)).sort().join(",") : "<absent>",
+    );
+    return parts.join("\n---\n");
+  }
+
+  const text = () => out.join("");
+
+  it("prints the pending count, the queue path, and the serial hint", async () => {
+    queueReady(REAL_SID);
+    const code = await runLearnWatch(cliOpts({ drainPassFn: () => drainSummaryStub() }));
+    expect(code).toBe(0);
+    expect(text()).toContain("devx learn-watch: 1 pending");
+    expect(text()).toContain(queuePath(home));
+    expect(text()).toContain("retros spawn one at a time");
+  });
+
+  it("hands the drain the home and the two learn: knobs, not its own defaults", async () => {
+    let passOpts: Record<string, unknown> = {};
+    await runLearnWatch(
+      cliOpts({
+        merged: { learn: { idle_minutes: 3, retro_timeout_minutes: 45 } },
+        dryRun: true,
+        drainPassFn: (o: Record<string, unknown>) => {
+          passOpts = o;
+          return drainSummaryStub();
+        },
+      }),
+    );
+    expect(passOpts.home).toBe(home);
+    expect(passOpts.idleSeconds).toBe(180);
+    expect(passOpts.retroTimeoutMs).toBe(45 * 60_000);
+    expect(passOpts.dryRun).toBe(true);
+    // Per-run state, created once and handed to every pass.
+    expect(passOpts.seen).toBeInstanceOf(Set);
+    expect(passOpts.noted).toBeInstanceOf(Set);
+  });
+
+  it("every line it writes carries its own newline — the log is readable while it runs", async () => {
+    queueReady(REAL_SID);
+    await runLearnWatch(cliOpts({ drainPassFn: () => drainSummaryStub() }));
+    for (const chunk of out) expect(chunk.endsWith("\n")).toBe(true);
+  });
+
+  it("exits 1 naming the lock path when another watcher holds the singleton", async () => {
+    const held = claimWatcherSingleton(home);
+    try {
+      let drained = false;
+      const code = await runLearnWatch(
+        cliOpts({
+          drainPassFn: () => {
+            drained = true;
+            return drainSummaryStub();
+          },
+        }),
+      );
+      expect(code).toBe(1);
+      expect(err.join("")).toContain(watchLockPath(home));
+      // Refused BEFORE the header, so a refusal never reads like a start.
+      expect(drained).toBe(false);
+      expect(text()).toBe("");
+    } finally {
+      held.release();
+    }
+  });
+
+  it("holds the singleton for the run and releases it on the way out", async () => {
+    let heldDuringRun = false;
+    await runLearnWatch(
+      cliOpts({
+        drainPassFn: () => {
+          try {
+            claimWatcherSingleton(home).release();
+          } catch {
+            heldDuringRun = true;
+          }
+          return drainSummaryStub();
+        },
+      }),
+    );
+    expect(heldDuringRun).toBe(true);
+    expect(() => claimWatcherSingleton(home).release()).not.toThrow();
+  });
+
+  it("releases the singleton even when a pass throws", async () => {
+    await expect(
+      runLearnWatch(
+        cliOpts({
+          drainPassFn: () => {
+            throw new Error("seam exploded");
+          },
+        }),
+      ),
+    ).rejects.toThrow(/seam exploded/);
+    expect(() => claimWatcherSingleton(home).release()).not.toThrow();
+  });
+
+  it("--dry-run takes no lock and changes nothing, alongside a working watcher", async () => {
+    queueReady(REAL_SID);
+    const before = snapshot();
+    const held = claimWatcherSingleton(home);
+    try {
+      const code = await runLearnWatch(cliOpts({ dryRun: true }));
+      expect(code).toBe(0);
+      expect(text()).toContain("--dry-run: printing spawn commands only");
+      expect(text()).toContain("[dry-run] would spawn");
+      expect(text()).toContain(REAL_SID);
+    } finally {
+      held.release();
+    }
+    expect(snapshot()).toBe(before);
+  });
+
+  it("carries the seen-set across passes so --dry-run doesn't reprint every scan", async () => {
+    queueReady(REAL_SID);
+    await runLearnWatch(cliOpts({ dryRun: true, maxPasses: 3 }));
+    expect(text().split("[dry-run] would spawn").length - 1).toBe(1);
+  });
+
+  it("waits between passes but not after the last one", async () => {
+    const waited: number[] = [];
+    await runLearnWatch(
+      cliOpts({
+        maxPasses: 3,
+        scanPollMs: 4_000,
+        delay: async (ms: number) => {
+          waited.push(ms);
+        },
+        drainPassFn: () => drainSummaryStub(),
+      }),
+    );
+    expect(waited).toEqual([4_000, 4_000]);
+  });
+
+  it("a pass that loses stdin downgrades every later pass to non-interactive", async () => {
+    const seenInteractive: boolean[] = [];
+    await runLearnWatch(
+      cliOpts({
+        canPromptFn: () => true,
+        maxPasses: 3,
+        drainPassFn: (passOpts: { interactive: boolean }) => {
+          seenInteractive.push(passOpts.interactive);
+          return drainSummaryStub({ interactive: false });
+        },
+      }),
+    );
+    expect(seenInteractive).toEqual([true, false, false]);
+  });
+
+  it("asks the human through the terminal seam and hands the raw answer back", async () => {
+    let answer: string | null = "nothing asked";
+    await runLearnWatch(
+      cliOpts({
+        readLine: () => "y",
+        drainPassFn: (passOpts: { ask: (key: string) => string | null }) => {
+          answer = passOpts.ask("/repo/a");
+          return drainSummaryStub();
+        },
+      }),
+    );
+    expect(answer).toBe("y");
+    expect(text()).toContain("allow retros for /repo/a? [y/N]");
+  });
+
+  it("installs SIGINT/SIGTERM handlers for the run and removes them after", async () => {
+    const before = { int: process.listenerCount("SIGINT"), term: process.listenerCount("SIGTERM") };
+    let during = { int: 0, term: 0 };
+    await runLearnWatch(
+      cliOpts({
+        installSignals: true,
+        drainPassFn: () => {
+          during = { int: process.listenerCount("SIGINT"), term: process.listenerCount("SIGTERM") };
+          return drainSummaryStub();
+        },
+      }),
+    );
+    expect(during.int).toBe(before.int + 1);
+    expect(during.term).toBe(before.term + 1);
+    expect(process.listenerCount("SIGINT")).toBe(before.int);
+    expect(process.listenerCount("SIGTERM")).toBe(before.term);
+  });
+
+  it("stops after the current pass when its SIGINT handler fires, and exits 0 clean", async () => {
+    const baseline = process.listeners("SIGINT");
+    let passes = 0;
+    const code = await runLearnWatch(
+      cliOpts({
+        installSignals: true,
+        maxPasses: 5,
+        drainPassFn: () => {
+          passes += 1;
+          // Call the handler this run just installed — a real `process.emit`
+          // would also fire vitest's own SIGINT teardown.
+          for (const l of process.listeners("SIGINT")) {
+            if (!baseline.includes(l)) (l as () => void)();
+          }
+          return drainSummaryStub();
+        },
+      }),
+    );
+    expect(code).toBe(0);
+    expect(passes).toBe(1);
+    expect(text()).toContain("stopped — queue is durable; restart me anytime");
+  });
+
+  it("says nothing about stopping when it simply ran out of passes", async () => {
+    await runLearnWatch(cliOpts({ drainPassFn: () => drainSummaryStub() }));
+    expect(text()).not.toContain("stopped —");
+  });
+});
+
+describe("runLearnWatchList", () => {
+  let out: string[];
+
+  beforeEach(() => {
+    out = [];
+  });
+
+  const text = () => out.join("");
+
+  function listOpts(extra: Record<string, unknown> = {}) {
+    return { home, merged: {}, now: () => NOW, out: (s: string) => out.push(s), ...extra };
+  }
+
+  it("marks an aged-out entry ready and a fresh one still active", async () => {
+    appendPending(home, {
+      session_id: REAL_SID,
+      transcript_path: null,
+      cwd: "/repo/a",
+      ts: isoAgo(2 * IDLE_SECONDS * 1000),
+    });
+    appendPending(home, {
+      session_id: "1b2c3d4e-5f60-4712-8394-a5b6c7d8e9f0",
+      transcript_path: null,
+      cwd: "/repo/b",
+      ts: isoAgo(1_000),
+    });
+    expect(runLearnWatchList(listOpts())).toBe(0);
+    const lines = text().trimEnd().split("\n");
+    expect(lines[0]).toContain("pending (2)");
+    expect(lines[0]).toContain(queuePath(home));
+    expect(lines[1]).toContain(REAL_SID);
+    expect(lines[1]).toContain("/repo/a");
+    expect(lines[1]).toContain("[ready]");
+    expect(lines[2]).toContain("[session still active]");
+  });
+
+  it("shows the tail of the done log with its outcomes, newest last", () => {
+    for (let i = 0; i < 7; i++) {
+      appendDone(
+        home,
+        { session_id: `sid-${i}`, transcript_path: null, cwd: "/repo/a", ts: isoAgo(0) },
+        i === 6 ? "timeout" : "completed",
+      );
+    }
+    runLearnWatchList(listOpts());
+    expect(text()).toContain("processed (last 5 of 7)");
+    expect(text()).toContain(donePath(home));
+    expect(text()).not.toContain("sid-1"); // trimmed off the front
+    expect(text()).toContain("sid-6");
+    expect(text()).toContain("timeout");
+  });
+
+  it("renders a hand-edited line's missing fields as ? rather than undefined", () => {
+    appendPending(home, { cwd: "/repo/a", transcript_path: null, ts: isoAgo(0) });
+    runLearnWatchList(listOpts());
+    expect(text()).toContain("  ?  ");
+    expect(text()).not.toContain("undefined");
+  });
+
+  it("is read-only — an empty home stays empty", () => {
+    runLearnWatchList(listOpts());
+    expect(text()).toContain("pending (0)");
+    expect(existsSync(queuePath(home))).toBe(false);
+    expect(existsSync(donePath(home))).toBe(false);
+  });
+});
+
+describe("runLearnWatchRequeue", () => {
+  let out: string[];
+  let err: string[];
+
+  beforeEach(() => {
+    out = [];
+    err = [];
+  });
+
+  function reqOpts(extra: Record<string, unknown> = {}) {
+    return {
+      home,
+      merged: {},
+      out: (s: string) => out.push(s),
+      err: (s: string) => err.push(s),
+      ...extra,
+    };
+  }
+
+  it("puts a processed session back on the queue and says so", () => {
+    appendDone(
+      home,
+      { session_id: REAL_SID, transcript_path: null, cwd: "/repo/a", ts: isoAgo(0) },
+      "timeout",
+    );
+    expect(runLearnWatchRequeue(REAL_SID, reqOpts())).toBe(0);
+    expect(readQueue(home).map((e) => e.session_id)).toEqual([REAL_SID]);
+    expect(out.join("")).toContain("requeued");
+  });
+
+  it("exits 1 when no processed entry matches — a typo must not look like a success", () => {
+    expect(runLearnWatchRequeue(REAL_SID, reqOpts())).toBe(1);
+    expect(err.join("")).toContain("no processed entry");
+    expect(readQueue(home)).toEqual([]);
+  });
+
+  it("exits 1 rather than queueing a duplicate for an already-pending session", () => {
+    appendDone(
+      home,
+      { session_id: REAL_SID, transcript_path: null, cwd: "/repo/a", ts: isoAgo(0) },
+      "timeout",
+    );
+    runLearnWatchRequeue(REAL_SID, reqOpts());
+    expect(runLearnWatchRequeue(REAL_SID, reqOpts())).toBe(1);
+    expect(err.join("")).toContain("already pending");
+    expect(readQueue(home).length).toBe(1);
+  });
+
+  it("exits 2 with a usage line for a missing session id", () => {
+    expect(runLearnWatchRequeue(undefined, reqOpts())).toBe(2);
+    expect(runLearnWatchRequeue("   ", reqOpts())).toBe(2);
+    expect(err.join("")).toContain("usage: devx learn-watch requeue <session-id>");
+  });
+});
+
+describe("learn-watch registration", () => {
+  it("is registered on the program with its list + requeue subcommands", () => {
+    const program = buildProgram();
+    const cmd = program.commands.find((c) => c.name() === "learn-watch");
+    expect(cmd, "devx learn-watch must be wired into src/cli.ts").toBeDefined();
+    expect(cmd?.commands.map((c) => c.name()).sort()).toEqual(["list", "requeue"]);
+    expect(cmd?.options.some((o) => o.long === "--dry-run")).toBe(true);
   });
 });
