@@ -6,7 +6,8 @@ title: "Watcher core — readiness, allowlist, outcomes, queue ops"
 from: plan/plan-620c74-2026-07-29T11:56-retro-listener.md
 plan: _devx/workstreams/retro-listener
 phase: 3
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-30T16-02-29-879-60783
 blocked_by: [rtl101]
 branch: feat/dev-rtl103
 ---
@@ -66,6 +67,7 @@ green.
 ## Status log
 
 - 2026-07-30T09:31 — emitted by /devx-plan RED stage (workstream 620c74).
+- 2026-07-30T11:34:28-06:00 — claimed by /devx in session /devx-loop-2026-07-30T16-02-29-879-60783
 
 ## Links
 
