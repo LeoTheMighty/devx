@@ -168,3 +168,27 @@ step↔threshold table + results record:
     `devx outcome score 20eb6f` when it comes due.
   - Spec: `dev/dev-mlcret-2026-07-28T09:04-retro-multi-loop-concurrency.md`
     (retro E7); eval: `evals/E-7_live-overnight.md`.
+
+## For retro-listener — day-one ownership of the last hop (filed by rtl105)
+
+- [ ] **MV-rtl105.1 — Start `devx learn-watch` in a spare terminal.**
+  - Why: the listener half is now automatic — this repo's committed
+    `.claude/settings.json` (rtl101) and every repo `/devx-init` touches
+    (rtl105) register `devx learn-helper listen` on Stop + SessionEnd, so
+    nudged sessions enqueue themselves. **The watcher that drains that queue
+    is opt-in and nobody starts it for you.** With no watcher running the
+    queue grows silently and no retro ever spawns — detection without a
+    drain is a no-op with extra steps.
+  - How: in a terminal you keep open (one watcher serves every repo — the
+    queue lives under `~/.claude/devx/`), run `devx learn-watch`. It is a
+    foreground drain loop; Ctrl-C is safe at any moment (the queue is
+    durable, restart anytime). `devx learn-watch list` shows what is pending
+    plus the last few processed sessions and their outcomes. Requires
+    `rtl104` merged + a rebuilt/global `devx` (`npm run install:global`).
+  - Follow-up option (deferred, no owner): surface the pending count in
+    `devx status` / `devx next` so a stopped watcher is visible from the
+    normal loop instead of only from `learn-watch list`. If you want that,
+    file it as a dev spec — it is not in the retro-listener workstream's
+    scope.
+  - Spec: `dev/dev-rtl105-2026-07-30T09:31-init-hook-distribution.md` (T5.4);
+    workstream: `_devx/workstreams/retro-listener/`.

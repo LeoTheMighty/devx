@@ -26,6 +26,7 @@ import { execFileSync } from "node:child_process";
 import {
   cpSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -82,6 +83,17 @@ function gitInit(repoRoot: string, withCommit: boolean): void {
  *  gh-not-auth degraded path. The first call is `gh auth status`. */
 function unauthGh(): GhExec {
   return () => ({ exitCode: 1, stdout: "", stderr: "gh: not authenticated\n" });
+}
+
+/** Stub gh that reports authenticated and shrugs at everything else — the
+ *  green path used by tests that care about a non-GitHub surface. */
+function okGh(): GhExec {
+  return ((args) => {
+    if (args[0] === "auth" && args[1] === "status") {
+      return { exitCode: 0, stdout: "", stderr: "" };
+    }
+    return { exitCode: 0, stdout: "{}", stderr: "" };
+  }) as GhExec;
 }
 
 /** Stub git that pretends there's no `origin` remote. */
@@ -533,6 +545,81 @@ describe("ini508 — empty fixture", () => {
     expect(second.upgrade?.summary?.added).toBe(0);
     expect(second.upgrade?.summary?.migrated).toBe(0);
     expect(second.upgrade?.summary?.kept).toBeGreaterThan(0);
+  });
+
+  // -- rtl105: retro-listener hook registration -----------------------------
+
+  it("registers the retro-listener hooks in .claude/settings.json (rtl105)", async () => {
+    const result = await runInit({
+      repoRoot: repo,
+      ask: scriptedAsk(SCRIPTED_ANSWERS_BASE),
+      git: noRemoteGit(repo),
+      gh: okGh(),
+      skipSupervisor: true,
+    });
+    expect(result.status).toBe("completed");
+
+    expect(result.fresh?.hooks.action).toBe("created");
+    expect([...(result.fresh?.hooks.added ?? [])].sort()).toEqual(["SessionEnd", "Stop"]);
+
+    const settings = JSON.parse(
+      readFileSync(join(repo, ".claude", "settings.json"), "utf8"),
+    ) as { hooks: Record<string, unknown> };
+    for (const event of ["Stop", "SessionEnd"]) {
+      expect(JSON.stringify(settings.hooks[event])).toContain("devx learn-helper listen");
+    }
+  });
+
+  it("merges into a user's existing settings without disturbing it (rtl105)", async () => {
+    const settingsPath = join(repo, ".claude", "settings.json");
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    const user = {
+      hooks: { Stop: [{ hooks: [{ type: "command", command: "echo mine" }] }] },
+      permissions: { allow: ["Bash(ls:*)"] },
+    };
+    writeFileSync(settingsPath, JSON.stringify(user, null, 2) + "\n");
+
+    const result = await runInit({
+      repoRoot: repo,
+      ask: scriptedAsk(SCRIPTED_ANSWERS_BASE),
+      git: noRemoteGit(repo),
+      gh: okGh(),
+      skipSupervisor: true,
+    });
+
+    expect(result.fresh?.hooks.action).toBe("merged");
+    const merged = JSON.parse(readFileSync(settingsPath, "utf8")) as {
+      hooks: { Stop: unknown[] };
+      permissions: unknown;
+    };
+    expect(JSON.stringify(merged.hooks.Stop[0])).toBe(JSON.stringify(user.hooks.Stop[0]));
+    expect(merged.permissions).toEqual(user.permissions);
+  });
+
+  it("an unparseable settings.json becomes a MANUAL item, not an aborted init (rtl105)", async () => {
+    const settingsPath = join(repo, ".claude", "settings.json");
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(settingsPath, "{ // a comment JSON can't hold\n");
+
+    const result = await runInit({
+      repoRoot: repo,
+      ask: scriptedAsk(SCRIPTED_ANSWERS_BASE),
+      git: noRemoteGit(repo),
+      gh: okGh(),
+      skipSupervisor: true,
+    });
+
+    // The run completes; the hook step degrades.
+    expect(result.status).toBe("completed");
+    expect(result.fresh?.hooks.action).toBe("skipped");
+    expect(result.fresh?.hooks.reason).toMatch(/not valid JSON/);
+    expect(result.fresh?.hooks.manualAppended).toBe(true);
+
+    // ...and the user's file is untouched.
+    expect(readFileSync(settingsPath, "utf8")).toBe("{ // a comment JSON can't hold\n");
+    expect(readFileSync(join(repo, "MANUAL.md"), "utf8")).toContain(
+      "Retro-listener hooks were not registered",
+    );
   });
 });
 
