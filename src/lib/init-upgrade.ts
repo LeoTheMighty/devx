@@ -49,6 +49,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Document, isMap, isScalar, parseDocument } from "yaml";
 
+import { installHooks, installHooksOrFileManual } from "./init-hooks.js";
 import {
   defaultDevxHome,
   readPackageVersion,
@@ -67,6 +68,7 @@ export type RepairSurface =
   | "ci-workflow"
   | "pr-template"
   | "engine-templates"
+  | "listener-hooks"
   | "personas"
   | "interview-seed";
 
@@ -364,6 +366,7 @@ export async function runInitUpgrade(
     "pr-template": opts.detect?.["pr-template"] ?? defaultDetectPrTemplate,
     "engine-templates":
       opts.detect?.["engine-templates"] ?? defaultDetectEngineTemplates,
+    "listener-hooks": opts.detect?.["listener-hooks"] ?? defaultDetectListenerHooks,
     personas: opts.detect?.personas ?? defaultDetectPersonas,
     "interview-seed": opts.detect?.["interview-seed"] ?? defaultDetectInterviewSeed,
   };
@@ -375,6 +378,7 @@ export async function runInitUpgrade(
     "pr-template": opts.repair?.["pr-template"] ?? defaultRepairPrTemplate,
     "engine-templates":
       opts.repair?.["engine-templates"] ?? defaultRepairEngineTemplates,
+    "listener-hooks": opts.repair?.["listener-hooks"] ?? defaultRepairListenerHooks,
     personas: opts.repair?.personas ?? defaultRepairPersonas,
     "interview-seed": opts.repair?.["interview-seed"] ?? defaultRepairInterviewSeed,
   };
@@ -390,6 +394,7 @@ export async function runInitUpgrade(
     "ci-workflow",
     "pr-template",
     "engine-templates",
+    "listener-hooks",
     "personas",
     "interview-seed",
   ];
@@ -587,6 +592,20 @@ function defaultDetectEngineTemplates(ctx: SurfaceContext): boolean {
   }
 }
 
+// rtl105: an already-initialized repo never runs the fresh-init phases, so
+// without this surface the retro listener would only ever reach repos created
+// after rtl105 shipped — which is nobody's repo, including this one. Detection
+// is the installer's own dry run: "unchanged" is exactly the definition of
+// present (a devx registration is already on every hook event). A settings
+// file we can't classify throws here; safeDetect's assume-missing bias then
+// routes to the repairer, which re-raises the same refusal and degrades to
+// MANUAL.md rather than clobbering the user's file.
+function defaultDetectListenerHooks(ctx: SurfaceContext): boolean {
+  return (
+    installHooks({ repoRoot: ctx.repoRoot, dryRun: true }).action === "unchanged"
+  );
+}
+
 function defaultDetectPersonas(ctx: SurfaceContext): boolean {
   const dir = join(ctx.repoRoot, "focus-group", "personas");
   if (!existsSync(dir)) return false;
@@ -688,6 +707,15 @@ async function defaultRepairEngineTemplates(
   const { writeEngineTemplates } = await import("./init-write.js");
   const result = writeEngineTemplates(ctx.repoRoot);
   return result.written.length > 0;
+}
+
+// rtl105: same installer the fresh path calls, same degrade-to-MANUAL policy.
+// `skipped` (a settings file devx refuses to rewrite) is an honest repair
+// failure — the summary must not claim a surface it did not touch — but it is
+// never an aborted upgrade: the MANUAL bullet carries the fix.
+function defaultRepairListenerHooks(ctx: SurfaceContext): boolean {
+  const step = installHooksOrFileManual({ repoRoot: ctx.repoRoot });
+  return step.action === "created" || step.action === "merged";
 }
 
 async function defaultRepairPersonas(ctx: SurfaceContext): Promise<boolean> {

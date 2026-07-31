@@ -24,6 +24,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
+import { appendManualEntry } from "./init-failure.js";
 import { writeAtomic } from "./supervisor-internal.js";
 
 // ---------------------------------------------------------------------------
@@ -126,6 +127,75 @@ export function installHooks(opts: InstallHooksOpts): HookInstallOutcome {
   const content = render(settings, existingRaw);
   if (!opts.dryRun) writeAtomic(path, content);
   return { path, action: "merged", added };
+}
+
+// ---------------------------------------------------------------------------
+// Degrade-to-MANUAL wrapper (shared by every `/devx-init` entry point)
+// ---------------------------------------------------------------------------
+
+/** Outcome of the hook-registration *step* — `installHooks` plus the
+ *  never-abort policy around it. A settings file devx cannot classify becomes
+ *  a MANUAL.md item, the same MANUAL-as-designed-signal discipline
+ *  init-skills uses for user-owned skill files. */
+export interface HookInstallStep {
+  action: HookInstallAction | "skipped";
+  /** Settings path acted on (or that would have been). */
+  path: string;
+  /** Events a registration was appended to. Empty unless action is
+   *  `created`/`merged`. */
+  added: HookEvent[];
+  /** Set only when action is `skipped`: why installHooks refused. */
+  reason?: string;
+  /** Set only when action is `skipped`: whether a NEW MANUAL.md bullet was
+   *  filed (false when the entry already existed — idempotent). */
+  manualAppended?: boolean;
+}
+
+export interface InstallHooksStepOpts extends InstallHooksOpts {
+  /** Override MANUAL.md. Defaults to `<repoRoot>/MANUAL.md`. */
+  manualPath?: string;
+  /** Inject the clock so the MANUAL bullet's timestamp is reproducible. */
+  now?: () => Date;
+}
+
+/** Run `installHooks` and, when it refuses, file the MANUAL.md follow-up
+ *  instead of throwing. Both `/devx-init` entry points call this — the
+ *  fresh-init orchestrator step and the upgrade path's `listener-hooks`
+ *  repair — so a consumer repo inherits the listener whether it is being
+ *  initialized or upgraded, with identical failure copy either way. */
+export function installHooksOrFileManual(
+  opts: InstallHooksStepOpts,
+): HookInstallStep {
+  const path =
+    opts.settingsPath ?? join(opts.repoRoot, ".claude", "settings.json");
+  try {
+    const outcome = installHooks(opts);
+    return { action: outcome.action, path: outcome.path, added: outcome.added };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    const appended = appendManualEntry({
+      manualPath: opts.manualPath ?? join(opts.repoRoot, "MANUAL.md"),
+      kind: `hook-install-${path}`,
+      title: "Retro-listener hooks were not registered — settings.json needs a human",
+      body: [
+        `devx could not merge its Stop/SessionEnd registrations into`,
+        `\`${path}\`: ${reason}`,
+        ``,
+        `Fix (or move aside) that file and re-run \`/devx-init\`, or paste the`,
+        `fragment from the devx package's`,
+        `\`_devx/templates/init/claude-settings-hooks.json\` in by hand. Until`,
+        `then \`/devx-learn\` nudges are never queued.`,
+      ].join("\n"),
+      now: (opts.now ?? (() => new Date()))(),
+    });
+    return {
+      action: "skipped",
+      path,
+      added: [],
+      reason,
+      manualAppended: appended.appended,
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------

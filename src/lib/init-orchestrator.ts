@@ -32,14 +32,11 @@
 // Epic: _bmad-output/planning-artifacts/epic-init-skill.md
 // Builds on: every ini5xx module — wraps, never duplicates business logic.
 
-import { join } from "node:path";
-
-import { appendManualEntry, handleGhNotAuth, handleNoRemote } from "./init-failure.js";
+import { handleGhNotAuth, handleNoRemote } from "./init-failure.js";
 import type { GhExec, InitGhResult, ManualEntry } from "./init-gh.js";
 import {
-  type HookEvent,
-  type HookInstallAction,
-  installHooks,
+  type HookInstallStep,
+  installHooksOrFileManual,
 } from "./init-hooks.js";
 import { writeInitGh } from "./init-gh.js";
 import { seedInterview, type SeedInterviewResult } from "./init-interview.js";
@@ -125,23 +122,11 @@ export interface FreshInitOutcome {
   }>;
 }
 
-/** Outcome of the hook-registration step (rtl105). A settings file devx
- *  cannot classify never aborts the run — it becomes a MANUAL.md item, the
- *  same MANUAL-as-designed-signal discipline init-skills uses for user-owned
- *  skill files. */
-export interface HookInstallStep {
-  action: HookInstallAction | "skipped";
-  /** Settings path acted on (or that would have been). */
-  path: string;
-  /** Events a registration was appended to. Empty unless action is
-   *  `created`/`merged`. */
-  added: HookEvent[];
-  /** Set only when action is `skipped`: why installHooks refused. */
-  reason?: string;
-  /** Set only when action is `skipped`: whether a NEW MANUAL.md bullet was
-   *  filed (false when the entry already existed — idempotent). */
-  manualAppended?: boolean;
-}
+/** Re-exported for callers that pattern-match on `fresh.hooks` (rtl105). The
+ *  type + the degrade-to-MANUAL policy live with the installer in
+ *  init-hooks.ts, because the upgrade path's `listener-hooks` repair shares
+ *  them. */
+export type { HookInstallStep };
 
 export interface OrchestratorResult {
   mode: OrchestratorMode;
@@ -317,7 +302,7 @@ export async function runInit(opts: RunInitOpts): Promise<OrchestratorResult> {
   //     cannot answer (memory `project_skill_perms_block_subagents.md`), and
   //     `/devx-init` is a foreground flow by construction. A settings file
   //     devx can't classify is a MANUAL item, never an aborted init.
-  const hooks = runHookInstall({
+  const hooks = installHooksOrFileManual({
     repoRoot: opts.repoRoot,
     ...(opts.now ? { now: opts.now } : {}),
   });
@@ -414,42 +399,6 @@ export async function runInit(opts: RunInitOpts): Promise<OrchestratorResult> {
       failureBookkeeping,
     },
   };
-}
-
-// ---------------------------------------------------------------------------
-// Hook registration (rtl105)
-// ---------------------------------------------------------------------------
-
-function runHookInstall(opts: { repoRoot: string; now?: () => Date }): HookInstallStep {
-  const settingsPath = join(opts.repoRoot, ".claude", "settings.json");
-  try {
-    const outcome = installHooks({ repoRoot: opts.repoRoot });
-    return { action: outcome.action, path: outcome.path, added: outcome.added };
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    const appended = appendManualEntry({
-      manualPath: join(opts.repoRoot, "MANUAL.md"),
-      kind: `hook-install-${settingsPath}`,
-      title: "Retro-listener hooks were not registered — settings.json needs a human",
-      body: [
-        `devx could not merge its Stop/SessionEnd registrations into`,
-        `\`${settingsPath}\`: ${reason}`,
-        ``,
-        `Fix (or move aside) that file and re-run \`/devx-init\`, or paste the`,
-        `fragment from the devx package's`,
-        `\`_devx/templates/init/claude-settings-hooks.json\` in by hand. Until`,
-        `then \`/devx-learn\` nudges are never queued.`,
-      ].join("\n"),
-      now: (opts.now ?? (() => new Date()))(),
-    });
-    return {
-      action: "skipped",
-      path: settingsPath,
-      added: [],
-      reason,
-      manualAppended: appended.appended,
-    };
-  }
 }
 
 // ---------------------------------------------------------------------------

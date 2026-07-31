@@ -247,8 +247,12 @@ mechanical:
   identify devx-owned entries by their command string
   (`devx learn-helper listen`), idempotent by construction, `writeAtomic`
   output. Template fragment under `_devx/templates/init/` (already in
-  `package.json → files`); wired into `src/lib/init-orchestrator.ts`. This
-  repo's own `.claude/settings.json` is committed directly.
+  `package.json → files`); wired into `src/lib/init-orchestrator.ts` on the
+  fresh path AND as a `listener-hooks` repair surface in
+  `src/lib/init-upgrade.ts` — an already-initialized repo skips the fresh
+  phases entirely, so without the upgrade arm no existing repo would ever
+  inherit the registration. This repo's own `.claude/settings.json` is
+  committed directly.
 
 ### Interfaces
 

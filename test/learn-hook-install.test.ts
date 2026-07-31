@@ -21,6 +21,7 @@ import {
   HOOK_EVENTS,
   hookFragment,
   installHooks,
+  installHooksOrFileManual,
 } from "../src/lib/init-hooks.js";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -323,5 +324,51 @@ describe("rtl105 — shipped fragment agreement", () => {
 
     expect(installHooks({ repoRoot: sandbox }).action).toBe("unchanged");
     expect(readFileSync(path, "utf8")).toBe(raw);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// degrade-to-MANUAL wrapper — the policy both /devx-init entry points share
+// ---------------------------------------------------------------------------
+
+describe("rtl105 — installHooksOrFileManual", () => {
+  const manualPathOf = (root: string) => join(root, "MANUAL.md");
+
+  it("passes the installer's outcome through on the happy path", () => {
+    const step = installHooksOrFileManual({ repoRoot: sandbox });
+
+    expect(step.action).toBe("created");
+    expect([...step.added].sort()).toEqual(["SessionEnd", "Stop"]);
+    expect(step.reason).toBeUndefined();
+    // Nothing to defer to a human, so MANUAL.md is never created.
+    expect(existsSync(manualPathOf(sandbox))).toBe(false);
+  });
+
+  it("files a MANUAL entry instead of throwing when the file is unclassifiable", () => {
+    const path = writeSettings(sandbox, "{ not json\n");
+
+    const step = installHooksOrFileManual({ repoRoot: sandbox });
+
+    expect(step.action).toBe("skipped");
+    expect(step.reason).toMatch(/not valid JSON/);
+    expect(step.manualAppended).toBe(true);
+    expect(step.added).toEqual([]);
+    // The refusal is total: the user's bytes are exactly as they were.
+    expect(readFileSync(path, "utf8")).toBe("{ not json\n");
+    expect(readFileSync(manualPathOf(sandbox), "utf8")).toContain(
+      "Retro-listener hooks were not registered",
+    );
+  });
+
+  it("is idempotent on the MANUAL side — a re-run does not double-file", () => {
+    writeSettings(sandbox, "{ not json\n");
+
+    const first = installHooksOrFileManual({ repoRoot: sandbox });
+    const afterFirst = readFileSync(manualPathOf(sandbox), "utf8");
+    const second = installHooksOrFileManual({ repoRoot: sandbox });
+
+    expect(first.manualAppended).toBe(true);
+    expect(second.manualAppended).toBe(false);
+    expect(readFileSync(manualPathOf(sandbox), "utf8")).toBe(afterFirst);
   });
 });
