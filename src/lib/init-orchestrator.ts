@@ -34,6 +34,10 @@
 
 import { handleGhNotAuth, handleNoRemote } from "./init-failure.js";
 import type { GhExec, InitGhResult, ManualEntry } from "./init-gh.js";
+import {
+  type HookInstallStep,
+  installHooksOrFileManual,
+} from "./init-hooks.js";
 import { writeInitGh } from "./init-gh.js";
 import { seedInterview, type SeedInterviewResult } from "./init-interview.js";
 import {
@@ -101,6 +105,10 @@ export interface FreshInitOutcome {
   /** Engine stage-template scaffold outcome (v2x101). Populated alongside
    *  prTemplate — both ship from the same packaged `_devx/templates/` root. */
   engineTemplates: EngineTemplatesResult;
+  /** Retro-listener hook registration outcome (rtl105). `skipped` when the
+   *  repo's existing `.claude/settings.json` could not be classified — the
+   *  reason is filed to MANUAL.md and init continues. */
+  hooks: HookInstallStep;
   githubWrites: InitGhResult;
   personas: SeedPersonasResult;
   interview: SeedInterviewResult;
@@ -113,6 +121,12 @@ export interface FreshInitOutcome {
     manualAppended: boolean;
   }>;
 }
+
+/** Re-exported for callers that pattern-match on `fresh.hooks` (rtl105). The
+ *  type + the degrade-to-MANUAL policy live with the installer in
+ *  init-hooks.ts, because the upgrade path's `listener-hooks` repair shares
+ *  them. */
+export type { HookInstallStep };
 
 export interface OrchestratorResult {
   mode: OrchestratorMode;
@@ -281,6 +295,18 @@ export async function runInit(opts: RunInitOpts): Promise<OrchestratorResult> {
     ...(prTemplateRoot ? { templatesRoot: prTemplateRoot } : {}),
   });
 
+  // 2c. Retro-listener hook registration (rtl105). Runs here — after the
+  //     local writes, before anything network-shaped — so the consumer repo
+  //     inherits detection with zero per-repo setup. USER-FOREGROUND ONLY:
+  //     settings edits are gated by a harness confirmation prompt a subagent
+  //     cannot answer (memory `project_skill_perms_block_subagents.md`), and
+  //     `/devx-init` is a foreground flow by construction. A settings file
+  //     devx can't classify is a MANUAL item, never an aborted init.
+  const hooks = installHooksOrFileManual({
+    repoRoot: opts.repoRoot,
+    ...(opts.now ? { now: opts.now } : {}),
+  });
+
   // 3. GitHub-side writes (workflows + branch ops; PR template handled above)
   const githubWrites = writeInitGh({
     repoRoot: opts.repoRoot,
@@ -365,6 +391,7 @@ export async function runInit(opts: RunInitOpts): Promise<OrchestratorResult> {
       localWrites,
       prTemplate,
       engineTemplates,
+      hooks,
       githubWrites,
       personas,
       interview,

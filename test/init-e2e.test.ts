@@ -26,6 +26,7 @@ import { execFileSync } from "node:child_process";
 import {
   cpSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -44,6 +45,7 @@ import {
 } from "../src/lib/init-orchestrator.js";
 import type { GhExec } from "../src/lib/init-gh.js";
 import type { GitExec, GitResult } from "../src/lib/init-state.js";
+import type { RepairSurface } from "../src/lib/init-upgrade.js";
 import { runNext } from "../src/commands/next.js";
 
 // ---------------------------------------------------------------------------
@@ -82,6 +84,17 @@ function gitInit(repoRoot: string, withCommit: boolean): void {
  *  gh-not-auth degraded path. The first call is `gh auth status`. */
 function unauthGh(): GhExec {
   return () => ({ exitCode: 1, stdout: "", stderr: "gh: not authenticated\n" });
+}
+
+/** Stub gh that reports authenticated and shrugs at everything else — the
+ *  green path used by tests that care about a non-GitHub surface. */
+function okGh(): GhExec {
+  return ((args) => {
+    if (args[0] === "auth" && args[1] === "status") {
+      return { exitCode: 0, stdout: "", stderr: "" };
+    }
+    return { exitCode: 0, stdout: "{}", stderr: "" };
+  }) as GhExec;
 }
 
 /** Stub git that pretends there's no `origin` remote. */
@@ -534,6 +547,81 @@ describe("ini508 — empty fixture", () => {
     expect(second.upgrade?.summary?.migrated).toBe(0);
     expect(second.upgrade?.summary?.kept).toBeGreaterThan(0);
   });
+
+  // -- rtl105: retro-listener hook registration -----------------------------
+
+  it("registers the retro-listener hooks in .claude/settings.json (rtl105)", async () => {
+    const result = await runInit({
+      repoRoot: repo,
+      ask: scriptedAsk(SCRIPTED_ANSWERS_BASE),
+      git: noRemoteGit(repo),
+      gh: okGh(),
+      skipSupervisor: true,
+    });
+    expect(result.status).toBe("completed");
+
+    expect(result.fresh?.hooks.action).toBe("created");
+    expect([...(result.fresh?.hooks.added ?? [])].sort()).toEqual(["SessionEnd", "Stop"]);
+
+    const settings = JSON.parse(
+      readFileSync(join(repo, ".claude", "settings.json"), "utf8"),
+    ) as { hooks: Record<string, unknown> };
+    for (const event of ["Stop", "SessionEnd"]) {
+      expect(JSON.stringify(settings.hooks[event])).toContain("devx learn-helper listen");
+    }
+  });
+
+  it("merges into a user's existing settings without disturbing it (rtl105)", async () => {
+    const settingsPath = join(repo, ".claude", "settings.json");
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    const user = {
+      hooks: { Stop: [{ hooks: [{ type: "command", command: "echo mine" }] }] },
+      permissions: { allow: ["Bash(ls:*)"] },
+    };
+    writeFileSync(settingsPath, JSON.stringify(user, null, 2) + "\n");
+
+    const result = await runInit({
+      repoRoot: repo,
+      ask: scriptedAsk(SCRIPTED_ANSWERS_BASE),
+      git: noRemoteGit(repo),
+      gh: okGh(),
+      skipSupervisor: true,
+    });
+
+    expect(result.fresh?.hooks.action).toBe("merged");
+    const merged = JSON.parse(readFileSync(settingsPath, "utf8")) as {
+      hooks: { Stop: unknown[] };
+      permissions: unknown;
+    };
+    expect(JSON.stringify(merged.hooks.Stop[0])).toBe(JSON.stringify(user.hooks.Stop[0]));
+    expect(merged.permissions).toEqual(user.permissions);
+  });
+
+  it("an unparseable settings.json becomes a MANUAL item, not an aborted init (rtl105)", async () => {
+    const settingsPath = join(repo, ".claude", "settings.json");
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(settingsPath, "{ // a comment JSON can't hold\n");
+
+    const result = await runInit({
+      repoRoot: repo,
+      ask: scriptedAsk(SCRIPTED_ANSWERS_BASE),
+      git: noRemoteGit(repo),
+      gh: okGh(),
+      skipSupervisor: true,
+    });
+
+    // The run completes; the hook step degrades.
+    expect(result.status).toBe("completed");
+    expect(result.fresh?.hooks.action).toBe("skipped");
+    expect(result.fresh?.hooks.reason).toMatch(/not valid JSON/);
+    expect(result.fresh?.hooks.manualAppended).toBe(true);
+
+    // ...and the user's file is untouched.
+    expect(readFileSync(settingsPath, "utf8")).toBe("{ // a comment JSON can't hold\n");
+    expect(readFileSync(join(repo, "MANUAL.md"), "utf8")).toContain(
+      "Retro-listener hooks were not registered",
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -590,6 +678,27 @@ describe("ini508 — existing-no-ci fixture", () => {
 // ---------------------------------------------------------------------------
 // partial-on-devx fixture
 // ---------------------------------------------------------------------------
+
+/** Force every upgrade surface EXCEPT `listener-hooks` to "present", so the
+ *  rtl105 tests exercise the real detector/repairer pair in isolation. */
+function upgradeStubsExceptHooks(): {
+  detect: Partial<Record<RepairSurface, () => boolean>>;
+  repair: Partial<Record<RepairSurface, () => boolean>>;
+} {
+  const surfaces: ReadonlyArray<RepairSurface> = [
+    "claude-md-markers",
+    "supervisor-units",
+    "ci-workflow",
+    "pr-template",
+    "engine-templates",
+    "personas",
+    "interview-seed",
+  ];
+  return {
+    detect: Object.fromEntries(surfaces.map((s) => [s, () => true])),
+    repair: Object.fromEntries(surfaces.map((s) => [s, () => true])),
+  };
+}
 
 describe("ini508 — partial-on-devx fixture", () => {
   let repo: string;
@@ -648,14 +757,93 @@ describe("ini508 — partial-on-devx fixture", () => {
     expect(result.status).toBe("completed");
     expect(claudeRepairs).toBe(1);
     expect(personasRepairs).toBe(1);
-    // 3 = claude-md-markers + personas (stubbed) + engine-templates (the
-    // v2x101 surface, left un-stubbed so the DEFAULT detect/repair pair runs
-    // for real — the fixture predates the engine, so the upgrade must ship
-    // the stage templates into the repo).
-    expect(result.upgrade?.summary?.added).toBe(3);
+    // 4 = claude-md-markers + personas (stubbed) + engine-templates +
+    // listener-hooks (the v2x101 and rtl105 surfaces, left un-stubbed so the
+    // DEFAULT detect/repair pairs run for real — the fixture predates both,
+    // so the upgrade must ship the stage templates AND register the retro
+    // listener into the repo).
+    expect(result.upgrade?.summary?.added).toBe(4);
     expect(
       existsSync(join(repo, "_devx", "templates", "engine", "prd.md")),
     ).toBe(true);
+  });
+
+  // -- rtl105: the upgrade path is how already-initialized repos inherit the
+  //    listener. Without this surface the registration would only ever reach
+  //    repos created after rtl105 shipped.
+  it("upgrade-mode registers the retro-listener hooks (rtl105)", async () => {
+    const settingsPath = join(repo, ".claude", "settings.json");
+    expect(existsSync(settingsPath)).toBe(false);
+
+    const first = await runInit({
+      repoRoot: repo,
+      ask: () => {
+        throw new Error("ask must not be invoked on the upgrade path");
+      },
+      upgradeOpts: { currentVersion: "0.1.0", ...upgradeStubsExceptHooks() },
+    });
+
+    expect(first.mode).toBe("upgrade");
+    expect(first.status).toBe("completed");
+    const hookRepair = first.upgrade?.summary?.repairs.find(
+      (r) => r.surface === "listener-hooks",
+    );
+    expect(hookRepair?.detected).toBe("missing");
+    expect(hookRepair?.repaired).toBe(true);
+
+    const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as {
+      hooks: Record<string, unknown>;
+    };
+    for (const event of ["Stop", "SessionEnd"]) {
+      expect(JSON.stringify(settings.hooks[event])).toContain(
+        "devx learn-helper listen",
+      );
+    }
+
+    // Re-running the upgrade is a no-op on this surface: the detector sees the
+    // registration and the file is not rewritten (0-byte diff).
+    const before = readFileSync(settingsPath, "utf8");
+    const second = await runInit({
+      repoRoot: repo,
+      ask: () => {
+        throw new Error("ask must not be invoked on the upgrade path");
+      },
+      upgradeOpts: { currentVersion: "0.1.0", ...upgradeStubsExceptHooks() },
+    });
+    expect(
+      second.upgrade?.summary?.repairs.find(
+        (r) => r.surface === "listener-hooks",
+      )?.detected,
+    ).toBe("present");
+    expect(readFileSync(settingsPath, "utf8")).toBe(before);
+  });
+
+  it("upgrade-mode degrades an unclassifiable settings.json to MANUAL (rtl105)", async () => {
+    const settingsPath = join(repo, ".claude", "settings.json");
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(settingsPath, '{"hooks": "not-an-object"}\n');
+
+    const result = await runInit({
+      repoRoot: repo,
+      ask: () => {
+        throw new Error("ask must not be invoked on the upgrade path");
+      },
+      upgradeOpts: { currentVersion: "0.1.0", ...upgradeStubsExceptHooks() },
+    });
+
+    // The upgrade completes; the surface reports an honest repair failure.
+    expect(result.status).toBe("completed");
+    const hookRepair = result.upgrade?.summary?.repairs.find(
+      (r) => r.surface === "listener-hooks",
+    );
+    expect(hookRepair?.detected).toBe("missing");
+    expect(hookRepair?.repaired).toBe(false);
+
+    // The user's file is untouched, and the fix is filed for a human.
+    expect(readFileSync(settingsPath, "utf8")).toBe('{"hooks": "not-an-object"}\n');
+    expect(readFileSync(join(repo, "MANUAL.md"), "utf8")).toContain(
+      "Retro-listener hooks were not registered",
+    );
   });
 });
 

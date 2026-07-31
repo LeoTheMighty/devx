@@ -51,6 +51,7 @@ const ALL_SURFACES: ReadonlyArray<RepairSurface> = [
   "ci-workflow",
   "pr-template",
   "engine-templates",
+  "listener-hooks",
   "personas",
   "interview-seed",
 ];
