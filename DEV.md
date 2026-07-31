@@ -217,5 +217,5 @@ Port of the 8am-harness retro listener (mycase/8am-harness PR #36): auto-spawn
 - [/] `dev/dev-rtl104-2026-07-30T09:31-watcher-cli-spawn.md` — Watcher CLI — spawn arms, drain loop, `devx learn-watch` (E-4, E-5, E-9). Status: in-progress. Blocked-by: rtl102, rtl103.
 - [ ] `dev/dev-9946f9-2026-07-30T14:07-human-smoke-of-the-devx-learn-watch-terminal-app-s.md` — Human smoke of the devx learn-watch Terminal.app spawn arm. Status: ready. Blocked-by: rtl104.
 - [x] `dev/dev-rtl105-2026-07-30T09:31-init-hook-distribution.md` — Hook registration template + `/devx-init` distribution (E-8). Status: done. Blocked-by: rtl101. Parallel-safe with rtl103/rtl104. PR: https://github.com/LeoTheMighty/devx/pull/108
-- [ ] `dev/dev-rtl106-2026-07-30T09:31-outlet-routing-rework.md` — `/devx-learn` outlet routing rework (ordered five-outlet first-match). Status: ready. Parallel-safe with rtl101–rtl105 (prose + tests only; marker byte-preserved).
+- [/] `dev/dev-rtl106-2026-07-30T09:31-outlet-routing-rework.md` — `/devx-learn` outlet routing rework (ordered five-outlet first-match). Status: in-progress. Parallel-safe with rtl101–rtl105 (prose + tests only; marker byte-preserved).
 - [ ] `dev/dev-rtlret-2026-07-30T09:33-retro-retro-listener.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: rtl101, rtl102, rtl103, rtl104, rtl105, rtl106.
