@@ -30,20 +30,54 @@ or kept each row:
 
 - **learning** — one sentence, the lesson itself.
 - **evidence** — where in this session it showed up (the moment, not a vibe).
-- **bucket** — one of the four below.
+- **bucket** — the outlet the routing procedure below lands it in.
 - **proposed change** — the concrete edit/file/knob this would become.
 
 Rows the user strikes are dropped. Rows the user keeps proceed to their
 bucket's destination, one at a time.
 
-## Buckets
+## Routing
 
-| bucket | destination |
-|---|---|
-| **framework fix** | skill/template/doc edit in the devx machinery — routed per the repo predicate below |
-| **project preference** | proposed `devx.config.yaml` change (proposal, not a silent edit) |
-| **product/workstream lesson** | LEARN.md candidate line for the next retro to promote |
-| **one-off** | dropped; stays noted in the table, nothing written |
+Every kept row goes to **exactly one** outlet. Walk the five in order and
+stop at the **first match** — the walk is the decision, not a menu, so the
+same judgment is never asked twice. The order runs widest blast radius
+first, each step down affecting fewer people, so a row lands at the widest
+outlet its evidence actually reaches and no wider.
+
+1. **Framework fix** — the devx machinery itself is wrong or missing a
+   guard, and the fix holds for anyone running devx. Destination: a
+   skill/template/doc edit in the machinery, routed per the repo predicate
+   below.
+2. **Project preference** — the machinery is right; this repo wants it
+   dialed differently. Destination: a proposed `devx.config.yaml` change
+   (a proposal, never a silent edit).
+3. **Product/workstream lesson** — true about the thing being built, not
+   about the tool that built it. Destination: a LEARN.md candidate line for
+   the next retro to promote.
+4. **Personal preference** — how *this one person* likes to work; nobody
+   else's run changes. Destination: a `~/.claude/` snippet **presented to
+   the user to paste themselves, and NEVER committed** — it touches no file
+   in the repo, opens no branch, and leaves no trace in git.
+5. **Dropped** — nothing above matched. It stays noted in the evidence
+   table; nothing is written anywhere.
+
+Three rules keep the routing checkable:
+
+- **Name the question that decided the bucket.** Each row states the
+  question its outlet answered — "would another repo running devx hit
+  this?", "is this true of the product or of the tool?", "does anyone but
+  me want this?" A bucket with no question behind it is a guess, and the
+  user cannot prune a guess.
+- **Promotion to framework fix is an evidence claim, not a plausibility
+  claim.** Outlet 1 requires this session showing the machinery actually
+  failing. "This could bite someone else" is speculation — it routes to a
+  narrower outlet and waits for a second occurrence to promote it.
+- **A coin flip takes the narrower outlet and records the ambiguity.** A
+  genuine tie is not a first match: when two outlets fit equally well, the
+  later one wins and the row says which two it was torn between. A personal
+  snippet that turns out to be a framework fix is cheap to re-route; a
+  framework edit that turns out to be one person's taste has already
+  shipped.
 
 ## Repo predicate
 

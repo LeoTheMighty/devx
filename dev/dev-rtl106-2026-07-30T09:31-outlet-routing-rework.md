@@ -45,6 +45,15 @@ retro-listener.
 
 - 2026-07-30T09:31 — emitted by /devx-plan RED stage (workstream 620c74).
 - 2026-07-31T09:43:41-06:00 — claimed by /devx in session /devx-loop-2026-07-30T16-02-29-879-60783
+- 2026-07-31T15:57:42.610Z — loop iteration 1: Replaced /devx-learn's four-bucket table with an ordered five-outlet first-match routing procedure plus three checkability rules, mirrored to skills/, and extended the structural guard test to pin outlet order and framing.
+  - Change: Rewrote the `## Buckets` table in `.claude/commands/devx-learn.md` as a `## Routing` section: five outlets walked in widest-blast-radius-first order (framework fix · project preference · product/workstream lesson · personal preference · dropped), stopping at first match so the same judgment is never asked twice, with the personal-preference outlet explicitly presented-not-committed (`~/.claude/` snippet, never touches the repo).
+  - Change: Added the three checkability rules to the same section: name the question that decided the bucket; promotion to framework fix is an evidence claim, not a plausibility claim; a coin flip takes the narrower outlet and records the ambiguity.
+  - Change: Regenerated the `skills/devx-learn.md` mirror via `npm run sync:skills` (byte-identical to the command file; `sync:skills -- --check` clean), leaving the repo predicate and the `nudge-canonical` marker paragraph byte-preserved.
+  - Change: Extended `test/learn-skill-guards.test.ts`: replaced the four-bucket assertion with six tests over a sliced `ROUTING` region — Routing section present and Buckets gone, first-match/exactly-one/in-order framing, the five outlets asserted in positional order (not as an unordered set), each outlet's destination, the personal outlet's presented-and-NEVER-committed constraint, and the three rules.
+  - Learning: Asserting the five outlets as a set would let any permutation pass while routing nothing deterministically — the order is the contract, so the test walks a cursor through positional indexes rather than matching five independent regexes.
+  - Learning: Slicing the body between `## Routing` and `## Repo predicate` before asserting keeps the new pins from accidentally matching identical prose elsewhere in the skill body (e.g. `LEARN.md` and `devx.config.yaml` appear in several sections).
+  - Learning: The skill body hard-wraps, so phrase-level pins spanning a line break need `\s*\n?\s*` between words — a plain literal regex silently fails on reflowed prose.
+  - Learning: The full `npm test` gate (schema smoke → tsx config tests → build → typecheck → vitest) runs well past 10 minutes on this worktree; build and typecheck clear early, so the targeted trio plus `sync:skills --check` is the fast signal and the full suite is best left to remote CI.
 
 ## Links
 

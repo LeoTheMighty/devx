@@ -13,8 +13,11 @@
 //      mining-scope refusals, the repo predicate, the foreground-only note,
 //      and exactly one <!-- nudge-canonical --> marker (E-7's single-source
 //      contract reads it from here). The skills/ mirror is byte-identical.
+//      rtl106 extends this layer with the ordered five-outlet first-match
+//      routing procedure and its three checkability rules.
 //
 // Spec: dev/dev-hfi104-2026-07-24T10:41-devx-learn-skill.md (T4.5)
+//       dev/dev-rtl106-2026-07-30T09:31-outlet-routing-rework.md (T6.3)
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -150,12 +153,68 @@ describe("hfi104 — /devx-learn skill body carries the pinned sections (static)
     expect(body).toMatch(/write nothing until the\s*\n?user prunes/i);
   });
 
-  it("pins the four buckets with destinations", () => {
-    expect(body).toMatch(/^## Buckets$/m);
-    expect(body).toMatch(/framework fix/i);
-    expect(body).toMatch(/project preference/i);
-    expect(body).toMatch(/product\/workstream lesson/i);
-    expect(body).toMatch(/one-off/i);
+  // rtl106 — the four-bucket table asked the same judgment twice and had no
+  // outlet for one-person preferences. It is now an ordered first-match walk
+  // over five outlets plus three checkability rules; these assert the *order*
+  // (a set of five in any order routes nothing deterministically) and the
+  // first-match framing, not just the words.
+  const ROUTING = body.slice(
+    body.indexOf("\n## Routing\n"),
+    body.indexOf("\n## Repo predicate\n"),
+  );
+
+  it("replaces the bucket table with a Routing section ahead of the repo predicate", () => {
+    expect(body).toMatch(/^## Routing$/m);
+    expect(body).not.toMatch(/^## Buckets$/m);
+    expect(ROUTING).not.toBe("");
+  });
+
+  it("pins first-match, single-outlet framing", () => {
+    expect(ROUTING).toMatch(/first match/i);
+    expect(ROUTING).toMatch(/exactly one/i);
+    expect(ROUTING).toMatch(/in order/i);
+  });
+
+  it("pins the five outlets in order", () => {
+    const outlets = [
+      /^1\. \*\*Framework fix\*\*/m,
+      /^2\. \*\*Project preference\*\*/m,
+      /^3\. \*\*Product\/workstream lesson\*\*/m,
+      /^4\. \*\*Personal preference\*\*/m,
+      /^5\. \*\*Dropped\*\*/m,
+    ];
+    let cursor = -1;
+    for (const outlet of outlets) {
+      const match = ROUTING.match(outlet);
+      expect(match, String(outlet)).not.toBeNull();
+      const at = ROUTING.indexOf(match![0]);
+      expect(at, String(outlet)).toBeGreaterThan(cursor);
+      cursor = at;
+    }
+  });
+
+  it("pins each outlet's destination", () => {
+    expect(ROUTING).toMatch(/repo predicate/i); // framework fix
+    expect(ROUTING).toMatch(/`devx\.config\.yaml`/); // project preference
+    expect(ROUTING).toMatch(/LEARN\.md/); // product/workstream lesson
+    expect(ROUTING).toMatch(/`~\/\.claude\/`/); // personal preference
+    expect(ROUTING).toMatch(/nothing is written/i); // dropped
+  });
+
+  it("keeps the personal-preference outlet uncommittable", () => {
+    // The one outlet that must never touch the repo — presented, not applied.
+    const personal = ROUTING.slice(
+      ROUTING.indexOf("4. **Personal preference**"),
+      ROUTING.indexOf("5. **Dropped**"),
+    );
+    expect(personal).toMatch(/presented to\s*\n?\s*the user/i);
+    expect(personal).toMatch(/NEVER committed/);
+  });
+
+  it("pins the three checkability rules", () => {
+    expect(ROUTING).toMatch(/name the question that decided the bucket/i);
+    expect(ROUTING).toMatch(/evidence claim, not a plausibility\s*\n?\s*claim/i);
+    expect(ROUTING).toMatch(/coin flip takes the narrower outlet and records the\s*\n?\s*ambiguity/i);
   });
 
   it("pins the repo predicate: @devx/cli → fw/learn PR, else docs/updates", () => {
