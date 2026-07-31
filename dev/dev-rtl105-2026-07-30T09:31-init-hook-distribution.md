@@ -6,7 +6,7 @@ title: "Hook registration template + `/devx-init` distribution"
 from: plan/plan-620c74-2026-07-29T11:56-retro-listener.md
 plan: _devx/workstreams/retro-listener
 phase: 5
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-30T16-02-29-879-60783
 blocked_by: [rtl101]
 branch: feat/dev-rtl105
@@ -74,6 +74,8 @@ the contract and must flip green.
   - Learning: The upgrade path's safeDetect/safeRepair pair composes correctly with a throwing installer for free: an unparseable settings.json throws in the detector, safeDetect's assume-missing bias routes to the repairer, which re-raises the same refusal and degrades to MANUAL.md — so `repaired: false` is an honest summary entry, never a clobbered user file. No special-casing was needed.
   - Learning: A tight `until <cond>; do :; done` busy-wait as a gate waiter is actively harmful — it competes with vitest for CPU on the same box. The harness also blocks bare `sleep N &&` chains; the working shape is a background `until ...; do sleep 20; done` or a Monitor.
   - Learning: The engine prose-budget canary (S-1, 60KB) measures only `_devx/templates/engine/*.md` plus the stage skill sections — workstream artifacts like design.md are not counted, so editing them for accuracy is budget-free.
+- 2026-07-31T15:43:39.944Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-07-31T15:43:39.944Z — merged via devx loop — PR https://github.com/LeoTheMighty/devx/pull/108
 
 ## Links
 
