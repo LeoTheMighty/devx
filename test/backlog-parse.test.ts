@@ -10,6 +10,7 @@ import {
   parseDevMd,
   parseInterviewMd,
   parseManualMd,
+  splitHashes,
 } from "../src/lib/backlog/parse.js";
 
 // ─── DEV.md ─────────────────────────────────────────────────────────────
@@ -151,6 +152,178 @@ some text
       "- [ ] `dev/dev-mxc001-2026-04-26T19:35-x.md` — X. Status: ready. Blocked-by: dev-MGR101.";
     const rows = parseDevMd(md);
     expect(rows[0].blocked_by).toEqual(["mgr101"]);
+  });
+});
+
+// ─── splitHashes hardening (sgr101 / T1.1, AC 1) ────────────────────────
+//
+// Every fixture below is a shape lifted from a REAL backlog — this repo's
+// DEV.md or the friend-finder-mesh / palateful audit
+// (_devx/workstreams/story-graph/research/2026-08-02-external-repos-audit.md).
+// Before sgr101 the markup-wrapped ones silently produced zero edges while
+// the prose ones produced phantoms.
+
+describe("splitHashes — markup + punctuation hardening (AC 1)", () => {
+  it("recovers a hash wrapped in strike-through markup", () => {
+    expect(splitHashes("~~rsh101~~")).toEqual(["rsh101"]);
+  });
+
+  it("recovers a prefixed hash wrapped in bold with a trailing colon", () => {
+    // palateful: `Blocked-by: ~~rsh101~~ (superseded), **now debug-rshrd1**: rerun.`
+    // `now` + `rerun` are prose that happens to be hash-SHAPED. splitHashes
+    // is a tokenizer, not a validator — dropping them needs the known-hash
+    // set, which is buildGraphModel's job (sgr102). What matters here is
+    // that BOTH real hashes are recovered, which they were not before.
+    expect(splitHashes("~~rsh101~~ (superseded), **now debug-rshrd1**: rerun")).toEqual([
+      "rsh101",
+      "now",
+      "rshrd1",
+      "rerun",
+    ]);
+  });
+
+  it("strips trailing sentence punctuation before matching", () => {
+    expect(splitHashes("mgr101, mgr102; mgr103.")).toEqual([
+      "mgr101",
+      "mgr102",
+      "mgr103",
+    ]);
+  });
+
+  it("resolves a spec-path blocker, including cross-type", () => {
+    expect(
+      splitHashes("`debug/debug-e2edwds-2026-07-27T19:00-dwds-attach.md`."),
+    ).toEqual(["e2edwds"]);
+  });
+
+  it("does not split a spec path on its own directory slash", () => {
+    // The `/`-splitting branch below must never fire on a real path — a
+    // naive split would yield the bare type word `dev` as a phantom.
+    expect(splitHashes("dev/dev-mgr101-2026-04-28T19:30-scaffold.md")).toEqual([
+      "mgr101",
+    ]);
+  });
+
+  it("splits a slash-separated hash list (the dominant Parallel-safe shape)", () => {
+    expect(splitHashes("bqa101/bqa102")).toEqual(["bqa101", "bqa102"]);
+    expect(splitHashes("sgr104/sgr105/sgr107")).toEqual([
+      "sgr104",
+      "sgr105",
+      "sgr107",
+    ]);
+  });
+
+  it("drops a leading spec-type word when splitting a non-path slash token", () => {
+    expect(splitHashes("dev/abc123")).toEqual(["abc123"]);
+  });
+
+  it("treats an en/em dash as a separator, yielding range ENDPOINTS only", () => {
+    // `rtl101–rtl105` means "through", but enumerating rtl102..rtl104 would
+    // invent edges the text never wrote. Under-report, never fabricate.
+    expect(splitHashes("rtl101–rtl105")).toEqual(["rtl101", "rtl105"]);
+    expect(splitHashes("—")).toEqual([]);
+  });
+
+  it("ignores parenthetical rationale — it is never part of the hash list", () => {
+    expect(splitHashes("hfi101, hfi102 (both done)")).toEqual([
+      "hfi101",
+      "hfi102",
+    ]);
+    expect(
+      splitHashes("dc7514 (shared abandon-path predicate; both touch loop driver)"),
+    ).toEqual(["dc7514"]);
+    expect(splitHashes("aam24 (+ 7-day soak)")).toEqual(["aam24"]);
+  });
+
+  it("drops an UNBALANCED trailing parenthetical to end-of-fragment", () => {
+    // The capture regex truncates at the first sentence period, which can
+    // cut a parenthetical in half and leave a dangling `(`.
+    expect(splitHashes("ifh3, ifh4 (consumes their records")).toEqual([
+      "ifh3",
+      "ifh4",
+    ]);
+  });
+
+  it("keeps interior punctuation, so prose is not mistaken for a hash", () => {
+    // Only the EDGES of a token are stripped, never the interior — so
+    // `attempt_count` stays whole and fails every hash shape.
+    // `abandon-path` additionally proves the prefixed form is spec-type
+    // gated: before sgr101 it matched `^[a-z]+-(…)$` and yielded `path`.
+    expect(splitHashes("abandon-path attempt_count")).toEqual([]);
+  });
+
+  it("only accepts a real spec type as the `<type>-<hash>` prefix", () => {
+    expect(splitHashes("dev-mgr101 debug-rshrd1 plan-62bcd1")).toEqual([
+      "mgr101",
+      "rshrd1",
+      "62bcd1",
+    ]);
+    expect(splitHashes("byte-preserved sync-in-async")).toEqual([]);
+  });
+
+  it("still rejects pure-digit tokens after trimming", () => {
+    expect(splitHashes("(12345), mgr101.")).toEqual(["mgr101"]);
+  });
+
+  it("deduplicates repeated hashes across shape variants", () => {
+    expect(splitHashes("mgr101, dev-mgr101, `mgr101`.")).toEqual(["mgr101"]);
+  });
+});
+
+// ─── Parallel-safe annotation (sgr101 / T1.2, AC 2) ─────────────────────
+
+describe("parseDevMd — parallel_with (AC 2)", () => {
+  const rowWith = (hash: string, rest: string): string =>
+    `- [ ] \`dev/dev-${hash}-2026-07-28T08:00-x.md\` — Item ${hash}. Status: ready.${rest}`;
+
+  it("parses `Parallel-safe with` into parallel_with", () => {
+    const rows = parseDevMd(rowWith("par001", " Parallel-safe with mss103."));
+    expect(rows[0].parallel_with).toEqual(["mss103"]);
+  });
+
+  it("parses the slash-separated list form", () => {
+    const rows = parseDevMd(
+      rowWith("par002", " Parallel-safe with hfi101/hfi102/hfi103 (no shared files)."),
+    );
+    expect(rows[0].parallel_with).toEqual(["hfi101", "hfi102", "hfi103"]);
+  });
+
+  it("parses the `Parallel-with:` colon spelling", () => {
+    const rows = parseDevMd(rowWith("par003", " Parallel-with: rtl103, rtl104."));
+    expect(rows[0].parallel_with).toEqual(["rtl103", "rtl104"]);
+  });
+
+  it("yields range endpoints and drops the trailing rationale", () => {
+    const rows = parseDevMd(
+      rowWith(
+        "par004",
+        " Parallel-safe with rtl101–rtl105 (prose + tests only; marker byte-preserved).",
+      ),
+    );
+    expect(rows[0].parallel_with).toEqual(["rtl101", "rtl105"]);
+  });
+
+  it("is [] when the row carries no annotation", () => {
+    const rows = parseDevMd(rowWith("par005", ""));
+    expect(rows[0].parallel_with).toEqual([]);
+  });
+
+  it("coexists with Blocked-by: on the same row without cross-contamination", () => {
+    const rows = parseDevMd(
+      rowWith("par006", " Blocked-by: sgr103. Parallel-safe with sgr104/sgr105."),
+    );
+    expect(rows[0].blocked_by).toEqual(["sgr103"]);
+    expect(rows[0].parallel_with).toEqual(["sgr104", "sgr105"]);
+  });
+
+  it("stops at the sentence period, so a following PR link never leaks in", () => {
+    const rows = parseDevMd(
+      rowWith(
+        "par007",
+        " Parallel-safe with bqa101/bqa102. PR: https://github.com/o/r/pull/3 (merged 46336bd)",
+      ),
+    );
+    expect(rows[0].parallel_with).toEqual(["bqa101", "bqa102"]);
   });
 });
 
@@ -306,5 +479,22 @@ describe("parseBacklogSnapshot", () => {
     expect(snap.dev).toHaveLength(1);
     expect(snap.interview).toHaveLength(1);
     expect(snap.manual).toHaveLength(1);
+  });
+});
+
+describe("Parallel annotation requires the hyphen (sgr101 self-review F1)", () => {
+  it("does not match ordinary prose that says 'in parallel with'", () => {
+    const md =
+      "- [ ] `dev/dev-prs001-2026-07-28T08:00-x.md` — Runs in parallel with the loop driver. Status: ready.";
+    expect(parseDevMd(md)[0].parallel_with).toEqual([]);
+  });
+
+  it("still matches both hyphenated spellings", () => {
+    const safe =
+      "- [ ] `dev/dev-prs002-2026-07-28T08:00-x.md` — X. Status: ready. Parallel-safe with mss103.";
+    const colon =
+      "- [ ] `dev/dev-prs003-2026-07-28T08:00-x.md` — X. Status: ready. Parallel-with: mss103.";
+    expect(parseDevMd(safe)[0].parallel_with).toEqual(["mss103"]);
+    expect(parseDevMd(colon)[0].parallel_with).toEqual(["mss103"]);
   });
 });
