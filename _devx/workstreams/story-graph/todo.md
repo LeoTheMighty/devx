@@ -19,8 +19,11 @@
   - [x] Research folded in (state-encoding audit; friend-finder-mesh + palateful drift audit)
   - [x] expectations.md E-blocks promoted
 - [x] Gate: prd
-- [ ] Stage: Design
-- [ ] Gate: coverage(design)
+- [x] Stage: Design
+  - [x] Code grounding (Explore ×2: parser surface; CLI/flow-helper surface)
+  - [x] design.md authored (architecture, interfaces, data, migration, regen hooks incl. new `mark-done` helper)
+  - [x] Coverage gate run: CONCERNS — FR-4 (emission commit pathspec) + FR-6 (downstream skill distribution) partials fixed in design.md post-verdict
+- [x] Gate: coverage(design)
 - [ ] Stage: Plan
 - [ ] Gate: coverage(plan)
 - [ ] Stage: RED
