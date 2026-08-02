@@ -293,3 +293,155 @@ describe("parseEpicHeadings (review EC#8)", () => {
     expect(parseEpicHeadings(md)).toHaveLength(1);
   });
 });
+
+// ─── Heading tolerance (sgr101 / T1.3, AC 3) ────────────────────────────
+//
+// Shapes lifted from the downstream audit
+// (_devx/workstreams/story-graph/research/2026-08-02-external-repos-audit.md):
+// friend-finder-mesh writes `### <slug> (workstream <hash>)` with no
+// `Epic — ` prefix at all — which returned [] before sgr101 — and palateful
+// mixes `##`/`###` depth with the same `workstream` linkage form.
+
+describe("heading tolerance — workstream linkage (sgr101 AC 3)", () => {
+  it("accepts a heading with NO `Epic — ` prefix when it carries a workstream hash", () => {
+    // friend-finder-mesh DEV.md, verbatim.
+    const md = [
+      "### friend-finder-mesh-features (workstream ba7c7a)",
+      "",
+      row("ffm101"),
+    ].join("\n");
+    const r = byHash(md).get("ffm101");
+    expect(r?.epicSlug).toBe("friend-finder-mesh-features");
+    expect(r?.epicPlanHash).toBe("ba7c7a");
+    expect(parseEpicHeadings(md)).toEqual([
+      { slug: "friend-finder-mesh-features", planHash: "ba7c7a" },
+    ]);
+  });
+
+  it("reads `workstream <hash>` as the plan hash on an `Epic — ` heading too", () => {
+    // palateful DEV.md, verbatim — prose after the hash inside the parens.
+    const md = [
+      "### Epic — browser-qa-agent (workstream 41ee13; RED gate passed 2026-07-27)",
+      "",
+      row("bqa101"),
+    ].join("\n");
+    const r = byHash(md).get("bqa101");
+    expect(r?.epicSlug).toBe("browser-qa-agent");
+    expect(r?.epicPlanHash).toBe("41ee13");
+  });
+
+  it("prefers `plan:` over `workstream` when a heading carries both", () => {
+    const md = [
+      "### Epic — alpha (plan: ab12cd, workstream ef34gh)",
+      "",
+      row("aa1101"),
+    ].join("\n");
+    expect(byHash(md).get("aa1101")?.epicPlanHash).toBe("ab12cd");
+  });
+
+  it("stamps rows under a `##`-depth epic heading", () => {
+    // palateful writes `## Epic — …` and `### Epic — …` in the same file.
+    const md = [
+      "## Epic — import-flow-hardening (active; ifh-1/2 already on main)",
+      "",
+      row("ifh3"),
+      "",
+      "### Epic — browser-qa-agent (workstream 41ee13)",
+      "",
+      row("bqa101"),
+    ].join("\n");
+    const rows = byHash(md);
+    expect(rows.get("ifh3")?.epicSlug).toBe("import-flow-hardening");
+    expect(rows.get("ifh3")?.epicPlanHash).toBeNull();
+    expect(rows.get("bqa101")?.epicSlug).toBe("browser-qa-agent");
+  });
+
+  it("drops prose that follows the linkage parenthetical", () => {
+    const md = [
+      "### Epic — alpha (plan: ab12cd) — Track 2, resumed",
+      "",
+      row("aa1101"),
+    ].join("\n");
+    const r = byHash(md).get("aa1101");
+    expect(r?.epicSlug).toBe("alpha");
+    expect(r?.epicPlanHash).toBe("ab12cd");
+  });
+
+  it("does NOT promote a container heading that merely cites a plan", () => {
+    // This repo's own DEV.md: `## Phase 0 — Foundation (plan: plan-a01000)`
+    // holds several `### Epic` sections and is not an epic itself.
+    // Promoting it would invent an `--epic phase-0-foundation` key.
+    const md = [
+      "## Phase 0 — Foundation (plan: plan-a01000)",
+      "",
+      row("aa1101"),
+      "",
+      "### Epic 1 — BMAD audit",
+      "",
+      row("aud101"),
+    ].join("\n");
+    const rows = byHash(md);
+    expect(rows.get("aa1101")?.epicSlug).toBeNull();
+    expect(rows.get("aud101")?.epicSlug).toBe("bmad-audit");
+    expect(parseEpicHeadings(md)).toEqual([{ slug: "bmad-audit", planHash: null }]);
+  });
+
+  it("does NOT promote a plain non-epic heading", () => {
+    // palateful: `## Loose ends from executed epics (independent, parallel-safe)`
+    const md = [
+      "## Loose ends from executed epics (independent, parallel-safe)",
+      "",
+      row("aa1101"),
+    ].join("\n");
+    expect(byHash(md).get("aa1101")?.epicSlug).toBeNull();
+    expect(parseEpicHeadings(md)).toEqual([]);
+  });
+
+  it("ends a workstream-linked section at a sibling-depth heading", () => {
+    const md = [
+      "### friend-finder-mesh-features (workstream ba7c7a)",
+      "",
+      row("ffm101"),
+      "",
+      "### Notes",
+      "",
+      row("aa1101"),
+    ].join("\n");
+    const rows = byHash(md);
+    expect(rows.get("ffm101")?.epicSlug).toBe("friend-finder-mesh-features");
+    expect(rows.get("aa1101")?.epicSlug).toBeNull();
+  });
+
+  it("range-checks a workstream hash the same way it range-checks plan:", () => {
+    const md = [
+      "### alpha (workstream abcdefghijklm)",
+      "",
+      row("aa1101"),
+    ].join("\n");
+    const r = byHash(md).get("aa1101");
+    expect(r?.epicSlug).toBe("alpha");
+    expect(r?.epicPlanHash).toBeNull();
+  });
+});
+
+describe("linkage detection is hash-exact (sgr101 self-review F3)", () => {
+  it("keeps an inline parenthetical that merely says 'workstreams'", () => {
+    // Matching on the bare WORD would cut the name at `(workstreams
+    // overview)` and collapse this onto the `devx` key — the EC#7 bug,
+    // reintroduced through the new linkage path.
+    const md = [
+      "### Epic — devx (workstreams overview) engine (plan: ab12cd)",
+      "",
+      row("aa1101"),
+    ].join("\n");
+    const r = byHash(md).get("aa1101");
+    expect(r?.epicSlug).toBe("devx-workstreams-overview-engine");
+    expect(r?.epicPlanHash).toBe("ab12cd");
+  });
+
+  it("a paren naming a workstream with no hash does not make an epic", () => {
+    const md = ["### notes on the workstream layout", "", row("aa1101")].join("\n");
+    expect(byHash(md).get("aa1101")?.epicSlug).toBeNull();
+    expect(parseEpicHeadings(md)).toEqual([]);
+  });
+});
