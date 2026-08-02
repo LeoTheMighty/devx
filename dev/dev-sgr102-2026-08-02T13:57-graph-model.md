@@ -6,7 +6,8 @@ title: "Graph model — buildGraphModel nodes/edges/groups/warnings"
 from: plan/plan-62bcd1-2026-08-02T09:00-story-graph.md
 plan: _devx/workstreams/story-graph
 phase: 2
-status: ready
+status: in-progress
+owner: /devx-2026-08-02T1444-58225
 blocked_by: [sgr101]
 branch: feat/dev-sgr102
 ---
@@ -69,3 +70,4 @@ four warning codes `unknown-blocker` / `edge-drift` / `hyphen-key` /
 ## Status log
 
 - 2026-08-02T13:57 — emitted by /devx-plan RED stage (workstream 62bcd1).
+- 2026-08-02T14:44:12-06:00 — claimed by /devx in session /devx-2026-08-02T1444-58225
