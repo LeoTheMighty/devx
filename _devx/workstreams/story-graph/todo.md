@@ -24,8 +24,12 @@
   - [x] design.md authored (architecture, interfaces, data, migration, regen hooks incl. new `mark-done` helper)
   - [x] Coverage gate run: CONCERNS — FR-4 (emission commit pathspec) + FR-6 (downstream skill distribution) partials fixed in design.md post-verdict
 - [x] Gate: coverage(design)
-- [ ] Stage: Plan
-- [ ] Gate: coverage(plan)
+- [x] Stage: Plan
+  - [x] User phase breakdown locked (6 phases: parser → model → CLI → hooks → backfill → portability)
+  - [x] plan.md authored (coverage table E-1..E-7, dependency + attended-step notes; 7 phases post-critique)
+  - [x] Critique pass (lenses: pm, architect, dev, qa — 2 HIGH + ~12 MED + ~10 LOW applied; phase 4 split → 7 phases)
+  - [x] Coverage gate run: PASS (judge 7/7 ✅, 10 extras flagged)
+- [x] Gate: coverage(plan)
 - [ ] Stage: RED
 - [ ] Gate: evals
 - [ ] Stage: Execute

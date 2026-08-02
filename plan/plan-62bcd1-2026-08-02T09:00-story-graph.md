@@ -4,12 +4,12 @@ type: plan
 created: 2026-08-02T09:00:15-06:00
 title: Story Graph
 status: in-progress
-stage: plan
+stage: red
 entered_at: prd
 gate_status:
   prd_validated: true
   design_verified: true
-  plan_verified: false
+  plan_verified: true
   evals_red: false
 outcome:
   status: null
@@ -18,6 +18,7 @@ workstream: _devx/workstreams/story-graph
 gate_verdicts:
   prd: PASS
   design: CONCERNS
+  plan: PASS
 ---
 
 ## Goal
@@ -49,3 +50,14 @@ Workstream 'Story Graph' — PRD stage next. Artifacts live in `_devx/workstream
   downstream skill distribution; 4 extras flagged for product approval);
   both partials fixed in design.md post-verdict; stage → plan. Artifact:
   design.md; decisions/2026-08-02-design-verify.md.
+- 2026-08-02T~16:30 — Plan stage: user locked the 6-phase cut at interview
+  (parser → model → CLI → hooks → backfill → portability). Critique ran
+  (send-it but ≥2 surfaces; lenses pm/architect/dev/qa, all grounded):
+  2 HIGH (nonexistent `devx next --format json` criterion; E-7's
+  0-outside-reads had no mechanism) + ~12 MED + ~10 LOW, all applied —
+  including splitting the oversized hooks phase per D-12, so the final
+  plan is 7 phases (4 = claim+emission regen, 5 = mark-done + Phase-8
+  rewrite). Coverage judge: 7/7 ✅, 10 extras flagged. Ran `devx gate
+  coverage 62bcd1` (plan mode): PASS; plan_verified; stage → red.
+  Artifacts: plan.md; decisions/2026-08-02-plan-critique.md;
+  decisions/2026-08-02-plan-verify.md.
