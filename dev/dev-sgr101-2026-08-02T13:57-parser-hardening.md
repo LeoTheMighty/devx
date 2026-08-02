@@ -6,7 +6,8 @@ title: "Parser completion + hardening (splitHashes, parallel-safe, heading toler
 from: plan/plan-62bcd1-2026-08-02T09:00-story-graph.md
 plan: _devx/workstreams/story-graph
 phase: 1
-status: ready
+status: in-progress
+owner: /devx-2026-08-02T1414-83162
 blocked_by: []
 branch: feat/dev-sgr101
 ---
@@ -59,3 +60,4 @@ The RED evals E-3/E-4 assert this tokenization end-to-end through the Phase
 ## Status log
 
 - 2026-08-02T13:57 — emitted by /devx-plan RED stage (workstream 62bcd1).
+- 2026-08-02T14:14:56-06:00 — claimed by /devx in session /devx-2026-08-02T1414-83162
