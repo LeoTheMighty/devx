@@ -37,7 +37,7 @@
   - [x] sgr101–sgr107 + sgrret emitted; DEV.md epic section; validate-emit ok
 - [x] Gate: evals
 - [ ] Stage: Execute
-  - [ ] Phase 1: Parser completion + hardening → sgr101
+  - [x] Phase 1: Parser completion + hardening → sgr101
   - [ ] Phase 2: Graph model → sgr102
   - [ ] Phase 3: Renderer + `devx graph` CLI → sgr103
   - [ ] Phase 4: Regen hooks (claim + emission) → sgr104

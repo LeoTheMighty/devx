@@ -230,7 +230,7 @@ Phases 6+7 are parallel-safe with 4/5 and each other modulo GRAPH.md +
 backlog surfaces — on a GRAPH.md rebase conflict, never merge by hand,
 re-run `devx graph`.
 
-- [/] `dev/dev-sgr101-2026-08-02T13:57-parser-hardening.md` — Parser completion + hardening (splitHashes, parallel-safe, heading tolerance). Status: in-progress.
+- [x] `dev/dev-sgr101-2026-08-02T13:57-parser-hardening.md` — Parser completion + hardening (splitHashes, parallel-safe, heading tolerance). Status: done. PR: https://github.com/LeoTheMighty/devx/pull/110 (merged 93b0aa4)
 - [ ] `dev/dev-sgr102-2026-08-02T13:57-graph-model.md` — Graph model — buildGraphModel nodes/edges/groups/warnings. Status: ready. Blocked-by: sgr101.
 - [ ] `dev/dev-sgr103-2026-08-02T13:57-graph-render-cli.md` — Renderer + devx graph CLI (E-1..E-4 go green, initial GRAPH.md). Attended-only: loop must `--exclude`. Status: ready. Blocked-by: sgr102.
 - [ ] `dev/dev-sgr104-2026-08-02T13:57-regen-hooks-claim-emission.md` — Regen hooks — claim + RED emission keep GRAPH.md fresh. Status: ready. Blocked-by: sgr103.
