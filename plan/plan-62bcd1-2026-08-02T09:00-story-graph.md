@@ -4,13 +4,13 @@ type: plan
 created: 2026-08-02T09:00:15-06:00
 title: Story Graph
 status: in-progress
-stage: red
+stage: executing
 entered_at: prd
 gate_status:
   prd_validated: true
   design_verified: true
   plan_verified: true
-  evals_red: false
+  evals_red: true
 outcome:
   status: null
   measure_by: null
@@ -19,6 +19,7 @@ gate_verdicts:
   prd: PASS
   design: CONCERNS
   plan: PASS
+  evals: PASS
 ---
 
 ## Goal
@@ -61,3 +62,13 @@ Workstream 'Story Graph' — PRD stage next. Artifacts live in `_devx/workstream
   coverage 62bcd1` (plan mode): PASS; plan_verified; stage → red.
   Artifacts: plan.md; decisions/2026-08-02-plan-critique.md;
   decisions/2026-08-02-plan-verify.md.
+- 2026-08-02T14:05 — RED stage: 7 eval artifacts authored at the exact
+  Verified-by paths (+ shared `evals/_fixture.ts`, mlc precedent); each run
+  standalone first and confirmed failing for the stated missing-feature
+  reason (`error: unknown command 'graph'` — never harness breakage).
+  `devx gate evals 62bcd1` PASS — 7/7 right-reason RED, 0 deferred;
+  evals_red flipped, stage → executing. Emitted sgr101–sgr107 (one per
+  plan phase; sgr103 + sgr106 carry the attended-only `--exclude` note)
+  + sgrret (emit-retro-story), DEV.md § Epic — story-graph in dependency
+  order, todo.md Stage: Execute pointers, PLAN.md checkbox flipped;
+  validate-emit story-graph ok.

@@ -30,8 +30,19 @@
   - [x] Critique pass (lenses: pm, architect, dev, qa — 2 HIGH + ~12 MED + ~10 LOW applied; phase 4 split → 7 phases)
   - [x] Coverage gate run: PASS (judge 7/7 ✅, 10 extras flagged)
 - [x] Gate: coverage(plan)
-- [ ] Stage: RED
-- [ ] Gate: evals
+- [x] Stage: RED
+  - [x] 7 eval artifacts authored at Verified-by paths (+ shared `_fixture.ts`)
+  - [x] All 7 confirmed right-reason RED standalone (unknown command 'graph')
+  - [x] `devx gate evals 62bcd1` PASS — evals_red flipped, stage → executing
+  - [x] sgr101–sgr107 + sgrret emitted; DEV.md epic section; validate-emit ok
+- [x] Gate: evals
 - [ ] Stage: Execute
+  - [ ] Phase 1: Parser completion + hardening → sgr101
+  - [ ] Phase 2: Graph model → sgr102
+  - [ ] Phase 3: Renderer + `devx graph` CLI → sgr103
+  - [ ] Phase 4: Regen hooks (claim + emission) → sgr104
+  - [ ] Phase 5: `mark-done` helper + Phase-8 rewrite → sgr105
+  - [ ] Phase 6: Backfill → sgr106
+  - [ ] Phase 7: Downstream portability → sgr107
 - [ ] Stage: Retro
 - [ ] Stage: Outcome

@@ -59,7 +59,7 @@ abandoned-while-done class.
 
 - [x] `plan/plan-620c74-2026-07-29T11:56-retro-listener.md` — Retro listener: auto-spawn `/devx-learn` from the friction nudge (port of `mycase/8am-harness` PR #36 — Stop/SessionEnd listener hook, serial `devx learn-watch` drainer with tmux/Terminal fork-spawn, wire-protocol pin, `/devx-init` hook distribution, five-outlet routing rework; phase-2 unattended retros out of scope). Status: executing (all 4 gates passed 2026-07-30; RED artifacts observed right-reason; emitted rtl101–rtl106 + rtlret to DEV.md). Blocked-by: —. Related: eac479 (harness fold-in — the nudge + /devx-learn this listens for).
 
-- [/] `plan/plan-62bcd1-2026-08-02T09:00-story-graph.md` — Story Graph: auto-generated GRAPH.md (Mermaid DAG of all specs grouped by workstream/epic), edge-source union + tokenizer hardening, loop regeneration hooks, assisted backfill porting friend-finder-mesh + palateful. Status: in-progress (PRD gate PASS 2026-08-02; stage design). Blocked-by: —. Related: db36af (doctor owns drift *fixing*; graph only warns).
+- [x] `plan/plan-62bcd1-2026-08-02T09:00-story-graph.md` — Story Graph: auto-generated GRAPH.md (Mermaid DAG of all specs grouped by workstream/epic), edge-source union + tokenizer hardening, loop regeneration hooks, assisted backfill porting friend-finder-mesh + palateful. Status: in-progress (planning complete — gates prd PASS / design CONCERNS-resolved / plan PASS / evals PASS 2026-08-02; stage executing; emitted sgr101–sgr107 + sgrret to `DEV.md § Epic — story-graph`). Blocked-by: —. Related: db36af (doctor owns drift *fixing*; graph only warns).
 
 ## Cross-cutting plans
 
