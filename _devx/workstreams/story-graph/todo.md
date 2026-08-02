@@ -38,7 +38,7 @@
 - [x] Gate: evals
 - [ ] Stage: Execute
   - [x] Phase 1: Parser completion + hardening → sgr101
-  - [ ] Phase 2: Graph model → sgr102
+  - [x] Phase 2: Graph model → sgr102
   - [ ] Phase 3: Renderer + `devx graph` CLI → sgr103
   - [ ] Phase 4: Regen hooks (claim + emission) → sgr104
   - [ ] Phase 5: `mark-done` helper + Phase-8 rewrite → sgr105
