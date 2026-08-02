@@ -508,7 +508,14 @@ function checkboxToStatus(state: string | undefined): SpecStatus | null {
   }
 }
 
-function normalizeStatus(text: string): SpecStatus | null {
+/**
+ * Coerce a free-text status token to a `SpecStatus`, or null when it isn't
+ * one. Exported since sgr102 so the graph model's frontmatter read shares
+ * the row parser's vocabulary instead of forking a second status table —
+ * `status: Done` in a hand-edited spec must normalize the same way here as
+ * it does in a `Status: done.` row annotation.
+ */
+export function normalizeStatus(text: string): SpecStatus | null {
   const t = text.toLowerCase().trim();
   if (
     t === "ready" ||
