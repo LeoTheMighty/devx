@@ -1,3 +1,13 @@
+---
+hash: 97f6d8
+type: test
+created: 2026-08-03T09:50:00-06:00
+title: "QA walkthrough — devx graph renderer + CLI (sgr103)"
+from: dev/dev-sgr103-2026-08-02T13:57-graph-render-cli.md
+status: ready
+owner: null
+branch: null
+---
 # QA walkthrough — Story `sgr103`
 
 > Adds the `devx graph` CLI and the deterministic Mermaid renderer behind it,
