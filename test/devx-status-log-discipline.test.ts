@@ -20,10 +20,35 @@
 //      hashes to the grandfather list to "fix" a CI failure — fix the
 //      missing line in the spec instead.
 //
+// TIMING (sgr103, PR #112 — the reason the trigger is not `status: done`
+// alone). `status: done` is set by the merge-tail commit, which /devx pushes
+// DIRECTLY to main after the PR has already merged. So a spec missing its
+// `phase 4:` line produced a GREEN pull request and then reddened `main` on
+// the bookkeeping commit — main sat red through three consecutive runs on
+// 2026-08-03 (rtl106 14:57, rtl104 15:00) before anyone noticed, and every
+// open PR inherited it via the merge commit.
+//
+// The fix is to trigger on evidence the spec reached the ship stage, which
+// lands on the BRANCH and therefore fails the PR's own CI:
+//   - `phase 5:` (local gate ran) or `phase 7:` (PR opened) — both are
+//     written before the PR exists, so an attended story that skips its
+//     review line now fails its own PR;
+//   - `merged via PR` or `status: done` — the original post-merge triggers,
+//     kept so nothing that used to be caught stops being caught.
+//
+// Known remaining gap (filed as `debug/debug-3b9e07`): a `devx loop` story
+// writes neither `phase 5:` nor `phase 7:` — it logs `loop iteration N:` —
+// so loop-shipped specs still cannot be caught before their merge-tail
+// commit. Closing that half requires the loop's merge tail to emit the line
+// itself; it cannot be done from this test.
+//
 // Spec: dev/dev-dvx103-2026-04-28T19:30-devx-self-review-discipline.md
+// Spec: dev/dev-sgr103-2026-08-02T13:57-graph-render-cli.md (timing widening)
 // Epic: _bmad-output/planning-artifacts/epic-devx-skill.md
 // Reaffirms: LEARN.md `[high] [code]` self-review-non-skippable cross-epic
-// pattern (every retro since audret reaffirmed value at story-ship time).
+// pattern (every retro since audret reaffirmed value at story-ship time), and
+// the `[high]` cross-epic pattern "attended-era contracts break on first
+// unattended contact" — this is that pattern recurring on the audit trail.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -57,6 +82,10 @@ interface SpecMeta {
   status: string | null;
   isRetro: boolean;
   hasPhase4Line: boolean;
+  /** The spec reached the ship stage, by any of the four signals above.
+   *  Two of them (`phase 5:`, `phase 7:`) land on the feature branch, so the
+   *  assertion can fail a PR instead of only failing main afterwards. */
+  reachedShipStage: boolean;
 }
 
 function parseSpec(absPath: string): SpecMeta {
@@ -83,12 +112,22 @@ function parseSpec(absPath: string): SpecMeta {
   // does not count.
   const hasPhase4Line = /^- .*\bphase 4:/m.test(statusLogBody);
 
+  // Ship-stage evidence. `phase 5:`/`phase 7:` are written on the feature
+  // branch BEFORE the PR opens, so requiring the review line once either is
+  // present makes this fail the PR rather than main (see TIMING above).
+  const reachedShipStage =
+    status === "done" ||
+    /^- .*\bphase 5:/m.test(statusLogBody) ||
+    /^- .*\bphase 7:/m.test(statusLogBody) ||
+    /merged via PR/.test(statusLogBody);
+
   return {
     path: absPath,
     hash,
     status,
     isRetro: hash.endsWith("ret"),
     hasPhase4Line,
+    reachedShipStage,
   };
 }
 
@@ -105,7 +144,7 @@ describe("Phase 4 status-log discipline (dvx103)", () => {
 
     const violations = specs.filter(
       (s) =>
-        s.status === "done" &&
+        s.reachedShipStage &&
         !s.isRetro &&
         !PRE_DISCIPLINE_GRANDFATHER.has(s.hash) &&
         !s.hasPhase4Line,
@@ -119,8 +158,10 @@ describe("Phase 4 status-log discipline (dvx103)", () => {
         [
           `Phase 4 status-log discipline violated: ${violations.length} spec(s) missing the mandatory \`phase 4:\` line.`,
           "",
-          "Each shipped non-retro non-grandfathered dev spec must include a `phase 4:` line in its `## Status log` section",
-          "(see `.claude/commands/devx.md` Phase 4 step 6 for the canonical zero-issue + non-zero forms).",
+          "Each non-retro non-grandfathered dev spec that has reached the ship stage must include a `phase 4:` line",
+          "in its `## Status log` section (see `.claude/commands/devx.md` Phase 4 step 6 for the canonical",
+          "zero-issue + non-zero forms). Ship stage = `status: done`, `merged via PR`, or a `phase 5:`/`phase 7:`",
+          "line — the last two land on the feature branch, which is why this can now fail your PR rather than main.",
           "",
           "Offenders:",
           ...lines,
@@ -131,14 +172,30 @@ describe("Phase 4 status-log discipline (dvx103)", () => {
     }
 
     // Even with no violations, prove the assertion is wired to real data:
-    // at least one done non-retro spec must have been checked.
+    // at least one ship-stage non-retro spec must have been checked.
     const checked = specs.filter(
       (s) =>
-        s.status === "done" &&
+        s.reachedShipStage &&
         !s.isRetro &&
         !PRE_DISCIPLINE_GRANDFATHER.has(s.hash),
     );
     expect(checked.length).toBeGreaterThan(0);
+  });
+
+  it("the branch-visible triggers catch a spec BEFORE it is marked done", () => {
+    // The regression this pins is the timing bug itself, not the rule: under
+    // the old `status: done`-only trigger, an in-progress spec carrying a
+    // `phase 7:` line (PR open) was invisible, so the violation could only
+    // ever surface on main after the merge-tail commit.
+    const inFlightWithShipEvidence = loadDevSpecs().filter(
+      (s) => s.status !== "done" && s.reachedShipStage,
+    );
+    for (const s of inFlightWithShipEvidence) {
+      expect(
+        s.hasPhase4Line,
+        `${s.path.replace(`${REPO_ROOT}/`, "")} reached the ship stage while still in-flight but has no \`phase 4:\` line`,
+      ).toBe(true);
+    }
   });
 
   it("grandfather list contains only hashes that exist on disk and are shipped", () => {

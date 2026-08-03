@@ -119,6 +119,7 @@ must flip green.
 - 2026-07-30T14:07:29-06:00 — split (merge-first): emitted follow-up 9946f9 → `dev/dev-9946f9-2026-07-30T14:07-human-smoke-of-the-devx-learn-watch-terminal-app-s.md` via devx split
 
 - 2026-08-03T10:35 — merged interactively after the owning loop died (PID 60783): union-merged main into the branch (status-log-only conflict), fresh CI green end-to-end → squash-merged PR https://github.com/LeoTheMighty/devx/pull/107 (56a00d87). Stale spec lock reaped, worktree removed. AC 6's Terminal.app half lives on as split follow-up 9946f9.
+- 2026-08-03T10:05 — phase 4: adversarial review DID run — this line is a format backfill, not a new claim. Reconstructed from this spec's own status log, which records a cross-seam adversarial review of the full rtl104 diff (fixed a skip-set aliasing bug that silently stranded malformed queue entries) plus per-iteration self-review fixes (per-arm stdio so osascript's window-object echo can't interleave into the drain log; SIGINT during a marker wait leaves the entry pending instead of writing a fabricated `timeout` row). ALL findings were fixed in-place at the time. The line was missing because `devx loop` writes `loop iteration N:` + Change/Learning bullets and never emits the `phase 4:` token `test/devx-status-log-discipline.test.ts` mandates — appended by sgr103 (PR #112) to un-red `main`; root cause filed as `debug/debug-3b9e07`.
 
 ## Links
 
