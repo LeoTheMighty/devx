@@ -26,6 +26,7 @@ import * as configCommand from "./commands/config.js";
 import * as devxHelperCommand from "./commands/devx-helper.js";
 import * as ejectCommand from "./commands/eject.js";
 import * as gateCommand from "./commands/gate.js";
+import * as graphCommand from "./commands/graph.js";
 import * as initCommand from "./commands/init.js";
 import * as killCommand from "./commands/kill.js";
 import * as learnHelperCommand from "./commands/learn-helper.js";
@@ -62,6 +63,7 @@ const commands: CommandModule[] = [
   devxHelperCommand,
   ejectCommand,
   gateCommand,
+  graphCommand,
   initCommand,
   killCommand,
   learnHelperCommand,

@@ -29,6 +29,7 @@
 // Spec: dev/dev-dvx101-2026-04-28T19:30-devx-claim-atomic.md (added `devx-helper`)
 // Spec: dev/dev-mgr101-2026-04-28T19:30-manage-scaffold.md (added `manage`)
 // Spec: dev/dev-v2e101-2026-07-05T13:01-engine-cli-primitives.md (added `gate`, `next`, `revise`, `workstream`)
+// Spec: dev/dev-sgr103-2026-08-02T13:57-graph-render-cli.md (added `graph`)
 
 import { describe, expect, it } from "vitest";
 
@@ -66,6 +67,7 @@ const expectedOrder = [
   "init",
   "devx-helper",
   "gate",
+  "graph",
   "manage",
   "merge-gate",
   "next",
@@ -193,6 +195,11 @@ describe("cli303 — devx --help command listing", () => {
                                      (mechanical PRD checks); coverage = Gates 2/3
                                      (two-mode tri-state verify); evals = Gate 4 (RED
                                      runner). Exit 0 pass / 1 fail / 2 error.
+        graph [options]              Render the board's dependency graph to GRAPH.md
+                                     (deterministic Mermaid). --stdout prints instead
+                                     of writing; --format json emits the GraphModel;
+                                     --check fails on drift; --epic/--workstream
+                                     scope what is printed.
         learn-helper                 Helpers invoked by the /devx-learn skill body.
                                      Subcommand-driven; mirrors \`devx plan-helper\`'s
                                      passthrough pattern.
