@@ -232,7 +232,7 @@ re-run `devx graph`.
 
 - [x] `dev/dev-sgr101-2026-08-02T13:57-parser-hardening.md` — Parser completion + hardening (splitHashes, parallel-safe, heading tolerance). Status: done. PR: https://github.com/LeoTheMighty/devx/pull/110 (merged 93b0aa4)
 - [x] `dev/dev-sgr102-2026-08-02T13:57-graph-model.md` — Graph model — buildGraphModel nodes/edges/groups/warnings. Status: done. Blocked-by: sgr101. PR: https://github.com/LeoTheMighty/devx/pull/111 (merged dea72c1)
-- [ ] `dev/dev-sgr103-2026-08-02T13:57-graph-render-cli.md` — Renderer + devx graph CLI (E-1..E-4 go green, initial GRAPH.md). Attended-only: loop must `--exclude`. Status: ready. Blocked-by: sgr102.
+- [/] `dev/dev-sgr103-2026-08-02T13:57-graph-render-cli.md` — Renderer + devx graph CLI (E-1..E-4 go green, initial GRAPH.md). Attended-only: loop must `--exclude`. Status: in-progress. Blocked-by: sgr102.
 - [ ] `dev/dev-sgr104-2026-08-02T13:57-regen-hooks-claim-emission.md` — Regen hooks — claim + RED emission keep GRAPH.md fresh. Status: ready. Blocked-by: sgr103.
 - [ ] `dev/dev-sgr105-2026-08-02T13:57-mark-done-phase8.md` — mark-done helper + Phase-8 rewrite (E-5 goes green). Status: ready. Blocked-by: sgr104.
 - [ ] `dev/dev-sgr106-2026-08-02T13:57-graph-backfill.md` — Backfill — adds-only idempotent edge completion + attended devx-repo run (E-6). Attended-only: loop must `--exclude`. Status: ready. Blocked-by: sgr103. Parallel-safe with sgr104/sgr105/sgr107.

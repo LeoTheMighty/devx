@@ -6,7 +6,8 @@ title: "Renderer + devx graph CLI (write/stdout/check/json/scoping) + initial GR
 from: plan/plan-62bcd1-2026-08-02T09:00-story-graph.md
 plan: _devx/workstreams/story-graph
 phase: 3
-status: ready
+status: in-progress
+owner: /devx-2026-08-03T0855-68612
 blocked_by: [sgr102]
 branch: feat/dev-sgr103
 ---
@@ -81,3 +82,4 @@ the PR.
 ## Status log
 
 - 2026-08-02T13:57 — emitted by /devx-plan RED stage (workstream 62bcd1).
+- 2026-08-03T08:55:15-06:00 — claimed by /devx in session /devx-2026-08-03T0855-68612
