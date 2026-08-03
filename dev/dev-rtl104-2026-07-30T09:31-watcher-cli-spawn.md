@@ -4,6 +4,7 @@ type: dev
 created: 2026-07-30T09:31:00-06:00
 title: "Watcher CLI — spawn arms, drain loop, `devx learn-watch`"
 from: plan/plan-620c74-2026-07-29T11:56-retro-listener.md
+spawned: [9946f9]
 plan: _devx/workstreams/retro-listener
 phase: 4
 status: in-progress
@@ -115,6 +116,7 @@ must flip green.
   - Learning: The Terminal arm's AppleScript escaping IS verifiable unattended: bind the literal with `osascript -e 'set c to "<escaped>"' -e 'return c'` instead of running `do script`. Same parser, no window, no automation-permission prompt. Only the actual GUI spawn needs a human.
   - Learning: Per-story self-review does not cover cross-story seams. Both defects here live in code each earlier iteration reviewed and passed — one is a lib/CLI interaction, the other an rtl103 helper meeting rtl104's new caller. A whole-diff pass at the end of a multi-iteration spec is worth its iteration.
   - Learning: The full suite took ~25 minutes this run rather than the ~16 in the status log — another session's vitest was running concurrently on this machine. Budget the whole iteration for it and expect contention.
+- 2026-07-30T14:07:29-06:00 — split (merge-first): emitted follow-up 9946f9 → `dev/dev-9946f9-2026-07-30T14:07-human-smoke-of-the-devx-learn-watch-terminal-app-s.md` via devx split
 
 ## Links
 

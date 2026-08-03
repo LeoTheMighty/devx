@@ -215,6 +215,26 @@ Port of the 8am-harness retro listener (mycase/8am-harness PR #36): auto-spawn
 - [x] `dev/dev-rtl102-2026-07-30T09:31-learn-config-section.md` — `learn:` config section (idle window, retro timeout, home). Status: done. Parallel-safe with rtl101 (no shared files). PR: https://github.com/LeoTheMighty/devx/pull/105
 - [x] `dev/dev-rtl103-2026-07-30T09:31-watcher-core.md` — Watcher core — readiness, allowlist, outcomes, queue ops (E-3, E-4 core). Status: done. Blocked-by: rtl101. PR: https://github.com/LeoTheMighty/devx/pull/106
 - [/] `dev/dev-rtl104-2026-07-30T09:31-watcher-cli-spawn.md` — Watcher CLI — spawn arms, drain loop, `devx learn-watch` (E-4, E-5, E-9). Status: in-progress. Blocked-by: rtl102, rtl103.
-- [ ] `dev/dev-rtl105-2026-07-30T09:31-init-hook-distribution.md` — Hook registration template + `/devx-init` distribution (E-8). Status: ready. Blocked-by: rtl101. Parallel-safe with rtl103/rtl104.
-- [ ] `dev/dev-rtl106-2026-07-30T09:31-outlet-routing-rework.md` — `/devx-learn` outlet routing rework (ordered five-outlet first-match). Status: ready. Parallel-safe with rtl101–rtl105 (prose + tests only; marker byte-preserved).
+- [ ] `dev/dev-9946f9-2026-07-30T14:07-human-smoke-of-the-devx-learn-watch-terminal-app-s.md` — Human smoke of the devx learn-watch Terminal.app spawn arm. Status: ready. Blocked-by: rtl104.
+- [x] `dev/dev-rtl105-2026-07-30T09:31-init-hook-distribution.md` — Hook registration template + `/devx-init` distribution (E-8). Status: done. Blocked-by: rtl101. Parallel-safe with rtl103/rtl104. PR: https://github.com/LeoTheMighty/devx/pull/108
+- [/] `dev/dev-rtl106-2026-07-30T09:31-outlet-routing-rework.md` — `/devx-learn` outlet routing rework (ordered five-outlet first-match). Status: in-progress. Parallel-safe with rtl101–rtl105 (prose + tests only; marker byte-preserved).
 - [ ] `dev/dev-rtlret-2026-07-30T09:33-retro-retro-listener.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: rtl101, rtl102, rtl103, rtl104, rtl105, rtl106.
+
+### Epic — story-graph (plan: 62bcd1)
+
+Auto-generated GRAPH.md at the repo root: Mermaid DAG of all specs grouped
+by workstream/epic, edge-source union + tokenizer hardening, regen hooks on
+claim/emission/merge-cleanup, assisted backfill. Workstream artifacts:
+`_devx/workstreams/story-graph/`; RED report at `evals/RED-report.md`.
+Phases 6+7 are parallel-safe with 4/5 and each other modulo GRAPH.md +
+backlog surfaces — on a GRAPH.md rebase conflict, never merge by hand,
+re-run `devx graph`.
+
+- [x] `dev/dev-sgr101-2026-08-02T13:57-parser-hardening.md` — Parser completion + hardening (splitHashes, parallel-safe, heading tolerance). Status: done. PR: https://github.com/LeoTheMighty/devx/pull/110 (merged 93b0aa4)
+- [x] `dev/dev-sgr102-2026-08-02T13:57-graph-model.md` — Graph model — buildGraphModel nodes/edges/groups/warnings. Status: done. Blocked-by: sgr101. PR: https://github.com/LeoTheMighty/devx/pull/111 (merged dea72c1)
+- [/] `dev/dev-sgr103-2026-08-02T13:57-graph-render-cli.md` — Renderer + devx graph CLI (E-1..E-4 go green, initial GRAPH.md). Attended-only: loop must `--exclude`. Status: in-progress. Blocked-by: sgr102.
+- [ ] `dev/dev-sgr104-2026-08-02T13:57-regen-hooks-claim-emission.md` — Regen hooks — claim + RED emission keep GRAPH.md fresh. Status: ready. Blocked-by: sgr103.
+- [ ] `dev/dev-sgr105-2026-08-02T13:57-mark-done-phase8.md` — mark-done helper + Phase-8 rewrite (E-5 goes green). Status: ready. Blocked-by: sgr104.
+- [ ] `dev/dev-sgr106-2026-08-02T13:57-graph-backfill.md` — Backfill — adds-only idempotent edge completion + attended devx-repo run (E-6). Attended-only: loop must `--exclude`. Status: ready. Blocked-by: sgr103. Parallel-safe with sgr104/sgr105/sgr107.
+- [ ] `dev/dev-sgr107-2026-08-02T13:57-downstream-portability.md` — Downstream portability — packaged CLI proof + MANUAL.md handoff (E-7). Status: ready. Blocked-by: sgr103. Parallel-safe with sgr104/sgr105/sgr106.
+- [ ] `dev/dev-sgrret-2026-08-02T14:00-retro-story-graph.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: sgr101, sgr102, sgr103, sgr104, sgr105, sgr106, sgr107.
