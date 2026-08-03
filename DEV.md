@@ -214,10 +214,10 @@ Port of the 8am-harness retro listener (mycase/8am-harness PR #36): auto-spawn
 - [x] `dev/dev-rtl101-2026-07-30T09:31-listener-nudge-pin.md` — Listener — nudge pattern, queue store, `learn-helper listen`, wire-protocol pin (E-1, E-2, E-6, E-10, E-7). Status: done. From: epic-retro-listener. PR: https://github.com/LeoTheMighty/devx/pull/104
 - [x] `dev/dev-rtl102-2026-07-30T09:31-learn-config-section.md` — `learn:` config section (idle window, retro timeout, home). Status: done. Parallel-safe with rtl101 (no shared files). PR: https://github.com/LeoTheMighty/devx/pull/105
 - [x] `dev/dev-rtl103-2026-07-30T09:31-watcher-core.md` — Watcher core — readiness, allowlist, outcomes, queue ops (E-3, E-4 core). Status: done. Blocked-by: rtl101. PR: https://github.com/LeoTheMighty/devx/pull/106
-- [/] `dev/dev-rtl104-2026-07-30T09:31-watcher-cli-spawn.md` — Watcher CLI — spawn arms, drain loop, `devx learn-watch` (E-4, E-5, E-9). Status: in-progress. Blocked-by: rtl102, rtl103.
+- [x] `dev/dev-rtl104-2026-07-30T09:31-watcher-cli-spawn.md` — Watcher CLI — spawn arms, drain loop, `devx learn-watch` (E-4, E-5, E-9). Status: done. Blocked-by: rtl102, rtl103. PR: https://github.com/LeoTheMighty/devx/pull/107 (merged 56a00d87).
 - [ ] `dev/dev-9946f9-2026-07-30T14:07-human-smoke-of-the-devx-learn-watch-terminal-app-s.md` — Human smoke of the devx learn-watch Terminal.app spawn arm. Status: ready. Blocked-by: rtl104.
 - [x] `dev/dev-rtl105-2026-07-30T09:31-init-hook-distribution.md` — Hook registration template + `/devx-init` distribution (E-8). Status: done. Blocked-by: rtl101. Parallel-safe with rtl103/rtl104. PR: https://github.com/LeoTheMighty/devx/pull/108
-- [/] `dev/dev-rtl106-2026-07-30T09:31-outlet-routing-rework.md` — `/devx-learn` outlet routing rework (ordered five-outlet first-match). Status: in-progress. Parallel-safe with rtl101–rtl105 (prose + tests only; marker byte-preserved).
+- [x] `dev/dev-rtl106-2026-07-30T09:31-outlet-routing-rework.md` — `/devx-learn` outlet routing rework (ordered five-outlet first-match). Status: done. Parallel-safe with rtl101–rtl105 (prose + tests only; marker byte-preserved). PR: https://github.com/LeoTheMighty/devx/pull/109 (merged 48ab09df).
 - [ ] `dev/dev-rtlret-2026-07-30T09:33-retro-retro-listener.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: rtl101, rtl102, rtl103, rtl104, rtl105, rtl106.
 
 ### Epic — story-graph (plan: 62bcd1)

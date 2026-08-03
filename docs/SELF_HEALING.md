@@ -139,6 +139,71 @@ Self-healing is **two agents, two cadences, two purposes** — a deliberate slow
 - **The user can read retros directly.** They're a useful artifact in their own right (project journal, retrospective, blameless post-mortem).
 - **`devx eject` keeps retros.** Even if you leave devx, you keep the per-story journal.
 
+## Retro listener (`devx learn-watch`)
+
+`/devx-learn` only helps if somebody runs it. The retro listener closes that
+gap: Claude Code's `Stop` / `SessionEnd` hooks (`devx learn-helper listen`)
+append every session that ended with the canonical wrap-up nudge to a
+user-global queue at `~/.claude/devx/learn-queue.jsonl`, and a **watcher**
+drains that queue by spawning the retro for you.
+
+```
+devx learn-watch              # drain the queue, one retro at a time, until Ctrl-C
+devx learn-watch --dry-run    # print the spawn commands; changes nothing
+devx learn-watch list         # pending + readiness · last 5 processed + outcomes
+devx learn-watch requeue <sid>  # put a processed session back on the queue
+```
+
+Run it in a spare terminal. Each ready session gets one `claude --resume <sid>
+--fork-session "/devx-learn"` in a new tmux window (inside tmux) or Terminal.app
+tab (macOS); with neither, the command is printed for you to paste. Retros are
+**serial** — a singleton lock means a second watcher refuses to start (exit 1,
+naming the lock) rather than opening two tabs for one session. End a retro with
+`/exit`, Ctrl-D, or by closing its tab, and the next one follows.
+
+A session is only served once it looks **over**: its `SessionEnd` marker landed,
+or its transcript has been quiet for `learn.idle_minutes` (default 15) — and
+with no transcript to stat, the entry ages against its own queue timestamp
+instead. Readiness fails *safe*: an unknown never counts as "over", because the
+cost of guessing wrong is a retro tab stealing focus mid-session. Repos are
+allow-listed on first sight — the watcher asks once per checkout and remembers
+the answer in `~/.claude/devx/repos.json`. A watcher with no answerable terminal
+(`nohup … < /dev/null &`) skips unreviewed repos instead of blocking on them.
+
+Every retirement is written to `learn-queue.done.jsonl` with one of these
+outcomes — the evidence trail for "is this loop worth keeping?":
+
+| Outcome | Means |
+|---|---|
+| `completed` | the retro fork ran and exited cleanly |
+| `completed-interrupted` | it exited on a signal (Ctrl-C in the retro's own tab) |
+| `timeout` | no completion marker within `learn.retro_timeout_minutes` (default 360) |
+| `manual` | no tmux and no Terminal.app: the command was printed for you |
+| `skipped-denied-repo` | that repo is `deny` in `repos.json` |
+| `error-cd` | the session's `cwd` no longer exists |
+| `error-fork:<status>` | `claude --resume` itself failed with that exit status |
+| `error-spawn` | the tmux/osascript spawn failed |
+| `error-malformed` | a queue line with no usable `session_id` / `cwd` (hand-edited) |
+
+Anything that didn't actually produce a retro — `timeout`, `manual`, any
+`error-*` — is recoverable: `devx learn-watch requeue <sid>` moves the done-log
+row back onto the pending queue keeping its **original** `ts`, so it is instantly
+ready rather than serving a fresh idle window you already waited out. Requeue
+refuses (exit 1) if that session is already pending; the queue is durable, so
+Ctrl-C on the watcher itself loses nothing.
+
+One wrinkle worth knowing: Ctrl-C is honored *between* retros, not during one.
+While a retro is open the watcher is blocked polling for its completion marker,
+so the stop takes effect when that window closes (or the timeout expires) —
+finish or close the retro's own tab and the watcher exits. To stop it sooner,
+`kill <pid>` from another terminal; the entry simply stays pending.
+
+Knobs live under `learn:` in `devx.config.yaml` (`idle_minutes`,
+`retro_timeout_minutes`, `home`); `DEVX_LEARN_HOME` overrides the home for both
+the hook and the watcher. Design: `_devx/workstreams/retro-listener/design.md`.
+
+---
+
 ## LearnAgent — the writer
 
 `/devx-learn` is the slash command. LearnAgent's scan cadence is mode-derived ([`MODES.md`](./MODES.md)):
