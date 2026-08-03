@@ -4,7 +4,7 @@
 
 # Story graph
 
-175 specs across 22 groups — 12 blocked · 113 done · 5 in-progress · 45 ready; 378 edges.
+178 specs across 22 groups — 12 blocked · 114 done · 4 in-progress · 48 ready; 381 edges.
 
 ## Legend
 
@@ -144,10 +144,12 @@ flowchart TD
   end
   subgraph sg_standalone["standalone — no workstream or epic"]
     357d0c["357d0c Loop instance registry: crash-orphan-thro…"]
+    3b9e07["3b9e07 `devx loop` never emits the mandatory `ph…"]
     494590["494590 Loop token accounting implausibly low — b…"]
     6a913f["6a913f hash→spec resolution hardcodes dev/ acros…"]
     74632d["74632d loop-driver fixture teardown races on mac…"]
     7a2d1f["7a2d1f Mobile companion v0.1 through real-time s…"]
+    97f6d8["97f6d8 QA walkthrough — devx graph renderer + CL…"]
     9b9be5["9b9be5 devx gate evals lacks mid-flight state-aw…"]
     9c4e21["9c4e21 appendManualEntry read-check-write race c…"]
     a01000["a01000 Phase 0 — Foundation: /devx-init + config…"]
@@ -170,6 +172,7 @@ flowchart TD
     e02000["e02000 Phase 10 — Polish + dogfood"]
     e3f1c2["e3f1c2 install:global produces non-executable de…"]
     e5a9c0["e5a9c0 Vision-gap Track 3 — Interim blocker push…"]
+    ea4f41["ea4f41 QA-walkthrough naming `test/test-story-ha…"]
     eac611["eac611 Integration: manage tick writes state in…"]
     f01000["f01000 Phase 5 — Test, debug, retro, learn"]
     f02000["f02000 Cross-cutting — thoroughness axis wiring"]
@@ -371,6 +374,9 @@ flowchart TD
   rtlret --> rtl105
   rtlret --> rtl106
   sgr102 --> sgr101
+  sgr103 -.-> 3b9e07
+  sgr103 -.-> 97f6d8
+  sgr103 -.-> ea4f41
   sgr103 --> sgr102
   sgr104 --> sgr103
   sgr104 --- |par| sgr106
@@ -441,7 +447,7 @@ flowchart TD
   class 62bcd1 wip
   class sgr101 done
   class sgr102 done
-  class sgr103 wip
+  class sgr103 done
   class sgr104 ready
   class sgr105 ready
   class sgr106 ready
@@ -485,10 +491,12 @@ flowchart TD
   class d40007 ready
   class d40ret ready
   class 357d0c ready
+  class 3b9e07 ready
   class 494590 done
   class 6a913f done
   class 74632d ready
   class 7a2d1f wip
+  class 97f6d8 ready
   class 9b9be5 done
   class 9c4e21 done
   class a01000 done
@@ -511,6 +519,7 @@ flowchart TD
   class e02000 blocked
   class e3f1c2 done
   class e5a9c0 ready
+  class ea4f41 ready
   class eac611 ready
   class f01000 blocked
   class f02000 blocked
