@@ -55,6 +55,7 @@ retro-listener.
   - Learning: Slicing the body between `## Routing` and `## Repo predicate` before asserting keeps the new pins from accidentally matching identical prose elsewhere in the skill body (e.g. `LEARN.md` and `devx.config.yaml` appear in several sections).
   - Learning: The skill body hard-wraps, so phrase-level pins spanning a line break need `\s*\n?\s*` between words — a plain literal regex silently fails on reflowed prose.
   - Learning: The full `npm test` gate (schema smoke → tsx config tests → build → typecheck → vitest) runs well past 10 minutes on this worktree; build and typecheck clear early, so the targeted trio plus `sync:skills --check` is the fast signal and the full suite is best left to remote CI.
+- 2026-08-03T10:05 — phase 4: NO separate adversarial-review pass is recorded for this spec. Stated plainly rather than papered over: the status log's single loop iteration records Changes and Learnings but no review step, and the interactive merge note covers CI triage only — so unlike [rtl104], there is no evidence to reformat. This line is a gate-compliance backfill appended by sgr103 (PR #112) to un-red `main`; it asserts nothing about review having happened. The surface was skill prose + its guard test (`.claude/commands/devx-learn.md` routing rework), which limits the blast radius, but a re-read of PR #109's diff is the honest follow-up. Root cause — `devx loop` never emits the `phase 4:` token — filed as `debug/debug-3b9e07`.
 
 ## Links
 
