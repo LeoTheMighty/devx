@@ -196,6 +196,11 @@ describe("cli303 — devx --help command listing", () => {
         learn-helper                 Helpers invoked by the /devx-learn skill body.
                                      Subcommand-driven; mirrors \`devx plan-helper\`'s
                                      passthrough pattern.
+        learn-watch [options]        Serial retro watcher: drain the queued sessions
+                                     the /devx-learn hooks recorded, spawning one
+                                     \`claude --resume … /devx-learn\` at a time.
+                                     Foreground; Ctrl-C is safe (the queue is
+                                     durable).
         manage [options]             Run the /devx-manage scheduler loop (Phase 1
                                      minimal: hard cap N=1; reconcile + spawn wired)
         merge-gate [options] <hash>  Compute the mode-derived merge decision for a

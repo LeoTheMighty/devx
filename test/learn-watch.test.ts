@@ -2,22 +2,34 @@
 // prompt-ability (T3.2), pickReady + malformed classification (T3.3), outcome
 // mapping + finish + requeue + singleton (T3.4).
 //
+// rtl104 extends it with the spawn half (T4.1, T4.2): session-id validation,
+// the wrapper command's trap shape, arm selection, and the osascript/tmux
+// argv builders.
+//
 // Acceptance: _devx/workstreams/retro-listener/evals/E-3_readiness-failsafe.ts
-// (the four readiness cases + the strict-ISO pin) and the phase-3 half of
-// E-4_watch-serial-outcomes.ts. Case names below name the trap they pin, so
-// a failure reads as the failure mode rather than as "expected true, got false".
+// (the four readiness cases + the strict-ISO pin), E-4_watch-serial-outcomes.ts
+// and E-9_wrapper-guard.ts. Case names below name the trap they pin, so a
+// failure reads as the failure mode rather than as "expected true, got false".
 //
 // Every case runs against a tmpdir learn home and injected seams — no real
 // clock, no real git, no real terminal — so nothing here can touch
-// `~/.claude/devx`, fork a subprocess, or take a real SIGTTIN.
+// `~/.claude/devx`, open a window, or take a real SIGTTIN. The single
+// exception is the wrapper-execution pair, which runs the built command under
+// `sh` with a stub `claude` on PATH: the trap/quoting/marker semantics are the
+// whole point of the file, and asserting them on the *string* alone is how
+// upstream shipped three of the bugs these cases pin.
 //
-// Spec: dev/dev-rtl103-2026-07-30T09:31-watcher-core.md (T3.5)
+// Spec: dev/dev-rtl103-2026-07-30T09:31-watcher-core.md (T3.5),
+//       dev/dev-rtl104-2026-07-30T09:31-watcher-cli-spawn.md (T4.5)
 
+import { spawnSync } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   utimesSync,
   writeFileSync,
@@ -29,6 +41,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   type QueueEntry,
   type TaggedEntry,
+  PathLockHeldError,
   appendDone,
   appendPending,
   doneMarkerPath,
@@ -36,17 +49,43 @@ import {
   endedMarkerPath,
   markersDir,
   queueLockPath,
+  queuePath,
   readDone,
   readQueue,
+  removeFromQueue,
   reposPath,
   watchLockPath,
   withQueueLock,
 } from "../src/lib/learn/queue.js";
 import {
+  type RunFn,
+  type SpawnResult,
+  TMUX_WINDOW_NAME,
+  buildWrapperCommand,
+  escapeAppleScript,
+  isSpawnableSessionId,
+  selectSpawnArm,
+  shellQuote,
+  spawnRetro,
+  terminalArgv,
+  tmuxArgv,
+} from "../src/lib/learn/spawn.js";
+import { buildProgram } from "../src/cli.js";
+import {
+  resolveLearnEnv,
+  runLearnWatch,
+  runLearnWatchList,
+  runLearnWatchRequeue,
+} from "../src/commands/learn-watch.js";
+import {
   DEFAULT_IDLE_SECONDS,
+  type DrainSummary,
+  type SpawnFn,
+  awaitMarker,
   canPrompt,
   claimWatcherSingleton,
   classifyEntry,
+  drainPass,
   finish,
   mapMarkerToOutcome,
   pickReady,
@@ -58,6 +97,7 @@ import {
   repoLookup,
   requeueFromDone,
   resetRepoKeyCache,
+  runWatch,
   sessionOver,
   skipKey,
 } from "../src/lib/learn/watch.js";
@@ -612,8 +652,23 @@ describe("pickReady", () => {
     queued({ cwd: null });
     const first = pick().entry;
     expect(first).not.toBeNull();
-    expect(skipKey(first as TaggedEntry)).toBe("#line:0");
+    expect(skipKey(first as TaggedEntry)).toMatch(/^#line:/);
     expect(pick({ skip: new Set([skipKey(first as TaggedEntry)]) }).entry).toBeNull();
+  });
+
+  it("keys an id-less line by its content, so a queue rewrite can't alias two of them", () => {
+    // `finish` cuts lines while the run's skip-set lives on: an index-keyed
+    // entry would let the survivor inherit the retired line's key.
+    queued({ cwd: "/repo/a" });
+    queued({ cwd: "/repo/b" });
+    const [one, two] = readQueue(home) as TaggedEntry[];
+    expect(skipKey(one as TaggedEntry)).not.toBe(skipKey(two as TaggedEntry));
+    // The second line's key must not change when it slides up to index 0.
+    const keyBefore = skipKey(two as TaggedEntry);
+    removeFromQueue(home, one as TaggedEntry);
+    const [shifted] = readQueue(home) as TaggedEntry[];
+    expect(shifted?.lineIndex).toBe(0);
+    expect(skipKey(shifted as TaggedEntry)).toBe(keyBefore);
   });
 
   it("routes readiness at the same home it read the queue from (.ended fast path)", () => {
@@ -846,5 +901,1457 @@ describe("claimWatcherSingleton", () => {
     } finally {
       held.release();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Session-id validation — before argv/command construction (E-9 e, T4.1)
+// ---------------------------------------------------------------------------
+
+const REAL_SID = "0f3a1c9e-2b7d-4a10-9c55-6e8b1d2f3a44";
+
+describe("isSpawnableSessionId", () => {
+  it("accepts the UUID Claude Code actually writes into the hook payload", () => {
+    expect(isSpawnableSessionId(REAL_SID)).toBe(true);
+  });
+
+  it("rejects every shell metacharacter that could reach a command string", () => {
+    for (const sid of [
+      "$(rm -rf /)",
+      "`id`",
+      "a; rm -rf /",
+      "a b",
+      "a\nb",
+      "a'b",
+      'a"b',
+      "a|b",
+      "../../etc/passwd",
+      "a$b",
+    ]) {
+      expect(isSpawnableSessionId(sid), sid).toBe(false);
+    }
+  });
+
+  it("rejects non-strings, the empty string, and an over-long id", () => {
+    for (const sid of [null, undefined, 42, {}, "", "abc", "a".repeat(65)]) {
+      expect(isSpawnableSessionId(sid)).toBe(false);
+    }
+  });
+
+  it("is narrower than the queue's filename guard — this id reaches a shell", () => {
+    // `abc_def.log` is a legal marker filename but not a legal spawn id: the
+    // spawn guard refuses rather than sanitizes, so there is no "quoted it,
+    // probably fine" path to reason about.
+    expect(isSpawnableSessionId("abc_def.log")).toBe(false);
+  });
+
+  it("refuses to build a command for an unsafe id", () => {
+    expect(() => buildWrapperCommand("$(rm -rf /)", "/tmp", "/tmp/m.done")).toThrow(
+      /unsafe session id/,
+    );
+  });
+
+  it("refuses to spawn for an unsafe id — before the run seam is reached", () => {
+    let calls = 0;
+    const run: RunFn = () => {
+      calls += 1;
+      return 0;
+    };
+    expect(() =>
+      spawnRetro(home, { session_id: "a; rm -rf /", cwd: "/tmp" }, { arm: "tmux", run }),
+    ).toThrow(/unsafe session id/);
+    expect(calls).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// shellQuote — the cwd/marker embedding (T4.1)
+// ---------------------------------------------------------------------------
+
+describe("shellQuote", () => {
+  it("leaves an ordinary path bare, like shlex.quote", () => {
+    expect(shellQuote("/Users/x/code/devx")).toBe("/Users/x/code/devx");
+  });
+
+  it("quotes a path with a space", () => {
+    expect(shellQuote("/tmp/some repo")).toBe("'/tmp/some repo'");
+  });
+
+  it("quotes a path containing a single quote by close-escape-reopen", () => {
+    expect(shellQuote("/tmp/leo's repo")).toBe(`'/tmp/leo'\\''s repo'`);
+  });
+
+  it("quotes the empty string to '' — a bare empty word would make `cd` a no-op", () => {
+    expect(shellQuote("")).toBe("''");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildWrapperCommand — the trap inventory (E-9 a–d, T4.1)
+// ---------------------------------------------------------------------------
+
+describe("buildWrapperCommand", () => {
+  const MARKER = "/tmp/devx-markers/x.done";
+  const cmd = (cwd = "/repo/a") => buildWrapperCommand(REAL_SID, cwd, MARKER);
+
+  it("exports DEVX_RETRO=1 ahead of claude — the fork must inherit the guard", () => {
+    const c = cmd();
+    expect(c).toContain("DEVX_RETRO=1");
+    // Anchored on `claude --resume`, not on the substring "claude": the default
+    // learn home is `~/.claude/devx`, so the marker path earlier in the command
+    // contains "claude" on every real machine.
+    expect(c.indexOf("DEVX_RETRO=1")).toBeLessThan(c.indexOf("claude --resume"));
+  });
+
+  it("keeps the guard ahead of the fork even when the home path contains 'claude'", () => {
+    const c = buildWrapperCommand(REAL_SID, "/repo/a", "/Users/x/.claude/devx/markers/x.done");
+    expect(c.indexOf("DEVX_RETRO=1")).toBeLessThan(c.indexOf("claude --resume"));
+  });
+
+  it("resumes the session as a fork running /devx-learn", () => {
+    expect(cmd()).toContain(`claude --resume ${REAL_SID} --fork-session "/devx-learn"`);
+  });
+
+  it("traps HUP INT TERM — a closed tab (SIGHUP) would otherwise wedge the queue", () => {
+    expect(cmd()).toMatch(/trap '[^']*'\s+HUP INT TERM/);
+  });
+
+  it("installs NO EXIT trap — bash defers traps, so both firing would race", () => {
+    expect(cmd()).not.toMatch(/trap '[^']*'[^\n]*EXIT/);
+  });
+
+  it("reads $? in the trap instead of asserting an outcome (absorbed Ctrl-C exits 0)", () => {
+    expect(cmd()).toContain("rc=$?");
+    expect(cmd()).not.toContain("w signal");
+  });
+
+  it("writes the marker via tmp+rename so a poller never reads a torn status", () => {
+    expect(cmd()).toContain('> "$M.tmp" && mv "$M.tmp" "$M"');
+  });
+
+  it("guards the cd and files error-cd — a moved project dir must not read as success", () => {
+    expect(cmd()).toContain("|| { w error-cd; exit 1; }");
+  });
+
+  it("quotes a cwd with a space and one with a quote in it", () => {
+    expect(cmd("/tmp/some repo")).toContain("cd '/tmp/some repo' ||");
+    expect(cmd("/tmp/leo's repo")).toContain(`cd '/tmp/leo'\\''s repo' ||`);
+  });
+
+  it("keeps the trap body free of single quotes — it lives inside a quoted word", () => {
+    const body = /trap '([^']*)'/.exec(cmd())?.[1] ?? "";
+    expect(body).not.toBe("");
+    expect(body).not.toContain("'");
+  });
+
+  it("is syntactically valid sh even with a hostile-looking cwd", () => {
+    for (const cwd of ["/repo/a", "/tmp/some repo", "/tmp/leo's repo", `/tmp/a"b`, "/tmp/a\\b"]) {
+      const check = spawnSync("sh", ["-n"], { input: cmd(cwd), encoding: "utf8" });
+      expect(check.status, `sh -n rejected cwd ${cwd}: ${check.stderr}`).toBe(0);
+    }
+  });
+
+  it("rejects a missing marker path rather than writing to a bare $M", () => {
+    expect(() => buildWrapperCommand(REAL_SID, "/tmp", "")).toThrow(/markerPath/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The wrapper, actually run (T4.1) — string assertions can't catch a quoting
+// bug that only shows up when `sh` reads it.
+// ---------------------------------------------------------------------------
+
+describe("the wrapper under sh", () => {
+  /** A `claude` on PATH that exits with `code`, so the marker records a status
+   *  we chose rather than whatever the real CLI would do. */
+  function stubClaude(code: number): string {
+    const bin = join(home, "bin");
+    mkdirSync(bin, { recursive: true });
+    const path = join(bin, "claude");
+    writeFileSync(path, `#!/bin/sh\nexit ${code}\n`);
+    chmodSync(path, 0o755);
+    return bin;
+  }
+
+  function runWrapper(cwd: string, code: number): { status: number | null; marker: string | null } {
+    const bin = stubClaude(code);
+    const marker = join(home, "markers", "x.done");
+    mkdirSync(join(home, "markers"), { recursive: true });
+    const result = spawnSync("sh", ["-c", buildWrapperCommand(REAL_SID, cwd, marker)], {
+      encoding: "utf8",
+      // Stub dir first so it shadows a real `claude`; the rest of PATH stays
+      // because the wrapper's marker write needs `mv`.
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}` },
+    });
+    return {
+      status: result.status,
+      marker: existsSync(marker) ? readFileSync(marker, "utf8") : null,
+    };
+  }
+
+  it("records claude's exit status in the marker — a failed fork is not a success", () => {
+    const workdir = join(home, "work with space");
+    mkdirSync(workdir, { recursive: true });
+    expect(runWrapper(workdir, 3).marker).toBe("3");
+    expect(runWrapper(workdir, 0).marker).toBe("0");
+  });
+
+  it("files error-cd and exits nonzero when the project dir is gone", () => {
+    const gone = join(home, "moved-away");
+    const { status, marker } = runWrapper(gone, 0);
+    expect(marker).toBe("error-cd");
+    expect(status).toBe(1);
+  });
+
+  it("leaves no .tmp file behind — the rename is a move, not a copy", () => {
+    const workdir = join(home, "work");
+    mkdirSync(workdir, { recursive: true });
+    runWrapper(workdir, 0);
+    expect(existsSync(join(home, "markers", "x.done.tmp"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Arm selection (E-4 e, T4.2)
+// ---------------------------------------------------------------------------
+
+describe("selectSpawnArm", () => {
+  it("prefers tmux when $TMUX is set — it works over ssh, where Terminal.app doesn't", () => {
+    expect(selectSpawnArm({ TMUX: "/tmp/tmux-501/default,123,0" }, "darwin")).toBe("tmux");
+    expect(selectSpawnArm({ TMUX: "/tmp/tmux-501/default,123,0" }, "linux")).toBe("tmux");
+  });
+
+  it("falls back to Terminal.app on darwin", () => {
+    expect(selectSpawnArm({}, "darwin")).toBe("terminal");
+  });
+
+  it("reports manual on every other platform — nothing here can open a window", () => {
+    expect(selectSpawnArm({}, "linux")).toBe("manual");
+    expect(selectSpawnArm({}, "win32")).toBe("manual");
+  });
+
+  it("treats an empty $TMUX as absent — a cleared var is not a tmux session", () => {
+    expect(selectSpawnArm({ TMUX: "" }, "linux")).toBe("manual");
+    expect(selectSpawnArm({ TMUX: undefined }, "linux")).toBe("manual");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// argv builders + AppleScript escaping (T4.2)
+// ---------------------------------------------------------------------------
+
+/** Undo an AppleScript string-literal escape, one character at a time — the
+ *  only honest way to assert the escape round-trips. */
+function unescapeAppleScript(literal: string): string {
+  let out = "";
+  for (let i = 0; i < literal.length; i += 1) {
+    if (literal[i] === "\\" && i + 1 < literal.length) {
+      out += literal[i + 1];
+      i += 1;
+    } else {
+      out += literal[i];
+    }
+  }
+  return out;
+}
+
+describe("tmuxArgv", () => {
+  it("passes the whole wrapper as one argv element, so tmux never re-splits it", () => {
+    const cmd = buildWrapperCommand(REAL_SID, "/tmp/some repo", "/tmp/x.done");
+    const [bin, args] = tmuxArgv(cmd);
+    expect(bin).toBe("tmux");
+    expect(args).toEqual(["new-window", "-n", TMUX_WINDOW_NAME, cmd]);
+    expect(args.filter((a) => a === cmd)).toHaveLength(1);
+  });
+});
+
+describe("terminalArgv / escapeAppleScript", () => {
+  it("round-trips a wrapper carrying both quotes and backslashes", () => {
+    // The real wrapper always contains `"` (printf "%s", "$rc"); a cwd with a
+    // backslash in it is the other half. Escaping in the wrong order —
+    // quotes before backslashes — double-escapes and breaks the command.
+    const cmd = buildWrapperCommand(REAL_SID, `/tmp/a"b\\c`, "/tmp/x.done");
+    expect(cmd).toContain('"');
+    expect(cmd).toContain("\\");
+    expect(unescapeAppleScript(escapeAppleScript(cmd))).toBe(cmd);
+  });
+
+  it("emits the do-script and activate pair around the escaped literal", () => {
+    const cmd = buildWrapperCommand(REAL_SID, "/repo/a", "/tmp/x.done");
+    const [bin, args] = terminalArgv(cmd);
+    expect(bin).toBe("osascript");
+    expect(args[0]).toBe("-e");
+    expect(args[1]).toBe(`tell application "Terminal" to do script "${escapeAppleScript(cmd)}"`);
+    expect(args[2]).toBe("-e");
+    expect(args[3]).toBe('tell application "Terminal" to activate');
+  });
+
+  // Every other assertion here checks the escape against `unescapeAppleScript`
+  // above — a *model* of the parser, written by the same hand as the escaper,
+  // so the two agree on any mistake they share. This one hands the literal to
+  // the real `osascript` and compares what comes back. It binds the string
+  // instead of running `do script`, so it exercises the identical parse without
+  // opening a Terminal window (the half of AC 6 that needs a human) or asking
+  // for automation permission. Darwin-only: this arm only exists there.
+  it.skipIf(process.platform !== "darwin")(
+    "survives the real AppleScript parser byte-for-byte, quotes and backslashes included",
+    () => {
+      for (const cwd of ["/repo/a", `/tmp/we"ird\\path/it's here`]) {
+        const cmd = buildWrapperCommand(REAL_SID, cwd, "/tmp/x.done");
+        const [, args] = terminalArgv(cmd);
+        const literal = String(args[1]).slice(
+          String(args[1]).indexOf("do script ") + "do script ".length,
+        );
+        const r = spawnSync("osascript", ["-e", `set c to ${literal}`, "-e", "return c"], {
+          encoding: "utf8",
+        });
+        expect(r.status, `osascript rejected the literal for ${cwd}: ${r.stderr}`).toBe(0);
+        expect(String(r.stdout).replace(/\n$/, "")).toBe(cmd);
+      }
+    },
+  );
+
+  it("leaves no unescaped double quote to terminate the literal early", () => {
+    const cmd = buildWrapperCommand(REAL_SID, "/repo/a", "/tmp/x.done");
+    const body = escapeAppleScript(cmd);
+    // Every `"` in the escaped body must be preceded by an odd-length backslash run.
+    for (let i = 0; i < body.length; i += 1) {
+      if (body[i] !== '"') continue;
+      let backslashes = 0;
+      for (let j = i - 1; j >= 0 && body[j] === "\\"; j -= 1) backslashes += 1;
+      expect(backslashes % 2, `unescaped quote at ${i}`).toBe(1);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// spawnRetro — dry-run, manual, and the run seam (E-4 e, E-5, T4.2)
+// ---------------------------------------------------------------------------
+
+describe("spawnRetro", () => {
+  const entry = { session_id: REAL_SID, cwd: "/repo/a" };
+
+  /** A run seam that records what it was asked to do and never runs it. */
+  function recorder(status: number | null = 0) {
+    const calls: Array<[string, readonly string[]]> = [];
+    const run: RunFn = (bin, args) => {
+      calls.push([bin, args]);
+      return status;
+    };
+    return { calls, run };
+  }
+
+  it("dry-run prints the command and touches nothing at all", () => {
+    const printed: string[] = [];
+    const { calls, run } = recorder();
+    expect(spawnRetro(home, entry, { dryRun: true, run, log: (l) => printed.push(l) })).toBe(
+      "dry-run",
+    );
+    expect(printed).toHaveLength(1);
+    expect(printed[0]).toContain("[dry-run] would spawn:");
+    expect(printed[0]).toContain(REAL_SID);
+    expect(calls).toEqual([]);
+    // Not even the markers directory: --dry-run is byte-identical by
+    // construction, not by a later cleanup.
+    expect(existsSync(markersDir(home))).toBe(false);
+  });
+
+  it("dry-run wins over the arm — a tmux session must not open a window", () => {
+    const { calls, run } = recorder();
+    expect(
+      spawnRetro(home, entry, { dryRun: true, arm: "tmux", run, log: () => {} }),
+    ).toBe("dry-run");
+    expect(calls).toEqual([]);
+  });
+
+  it("dry-run leaves a stale marker in place rather than unlinking it", () => {
+    mkdirSync(markersDir(home), { recursive: true });
+    writeFileSync(doneMarkerPath(home, REAL_SID), "0");
+    spawnRetro(home, entry, { dryRun: true, log: () => {} });
+    expect(readFileSync(doneMarkerPath(home, REAL_SID), "utf8")).toBe("0");
+  });
+
+  it("the manual arm prints the command and opens nothing — never awaited", () => {
+    const printed: string[] = [];
+    const { calls, run } = recorder();
+    expect(
+      spawnRetro(home, entry, { env: {}, platform: "linux", run, log: (l) => printed.push(l) }),
+    ).toBe("manual");
+    expect(printed.join("\n")).toContain("run this yourself in another terminal");
+    expect(printed.join("\n")).toContain("DEVX_RETRO=1 claude --resume");
+    expect(calls).toEqual([]);
+  });
+
+  it("opens a tmux window when $TMUX is set and reports spawned on exit 0", () => {
+    const { calls, run } = recorder(0);
+    expect(
+      spawnRetro(home, entry, { env: { TMUX: "/tmp/tmux-1" }, platform: "linux", run }),
+    ).toBe("spawned");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0]).toBe("tmux");
+    expect(calls[0]?.[1]?.slice(0, 3)).toEqual(["new-window", "-n", TMUX_WINDOW_NAME]);
+  });
+
+  it("uses osascript on darwin without tmux", () => {
+    const { calls, run } = recorder(0);
+    expect(spawnRetro(home, entry, { env: {}, platform: "darwin", run })).toBe("spawned");
+    expect(calls[0]?.[0]).toBe("osascript");
+  });
+
+  it("reports error-spawn on a nonzero status and on a seam that couldn't start", () => {
+    const log = () => {};
+    expect(spawnRetro(home, entry, { arm: "tmux", run: () => 1, log })).toBe("error-spawn");
+    expect(spawnRetro(home, entry, { arm: "tmux", run: () => null, log })).toBe("error-spawn");
+  });
+
+  it("prints the command on a failed spawn — error-spawn is otherwise a dead end", () => {
+    const printed: string[] = [];
+    spawnRetro(home, entry, { arm: "terminal", run: () => 1, log: (l) => printed.push(l) });
+    expect(printed.join("\n")).toContain("spawn failed (terminal arm, status 1)");
+    expect(printed.join("\n")).toContain("DEVX_RETRO=1 claude --resume");
+  });
+
+  it("names a seam that never started as not-started rather than as status null", () => {
+    const printed: string[] = [];
+    spawnRetro(home, entry, { arm: "tmux", run: () => null, log: (l) => printed.push(l) });
+    expect(printed.join("\n")).toContain("status not-started");
+  });
+
+  it("clears a stale .done marker before spawning — it would insta-complete", () => {
+    mkdirSync(markersDir(home), { recursive: true });
+    writeFileSync(doneMarkerPath(home, REAL_SID), "0");
+    const { run } = recorder(0);
+    expect(spawnRetro(home, entry, { arm: "tmux", run })).toBe("spawned");
+    expect(existsSync(doneMarkerPath(home, REAL_SID))).toBe(false);
+  });
+
+  it("points the wrapper at this home's marker for this session", () => {
+    const { calls, run } = recorder(0);
+    spawnRetro(home, entry, { arm: "tmux", run });
+    expect(calls[0]?.[1]?.[3]).toContain(shellQuote(doneMarkerPath(home, REAL_SID)));
+  });
+
+  it("throws for a cwd-less entry — the drain retires those as error-malformed first", () => {
+    const { calls, run } = recorder(0);
+    expect(() => spawnRetro(home, { session_id: REAL_SID, cwd: "" }, { arm: "tmux", run })).toThrow(
+      /no cwd/,
+    );
+    expect(calls).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// awaitMarker — the only completion signal there is (T4.3)
+// ---------------------------------------------------------------------------
+
+describe("awaitMarker", () => {
+  /** A clock the injected sleep advances, so nothing here waits wall-clock. */
+  function fakeClock(start = NOW) {
+    let t = start;
+    return { now: () => t, sleep: (ms: number) => void (t += ms) };
+  }
+
+  it("returns the marker's contents as soon as the wrapper writes it", () => {
+    const clock = fakeClock();
+    let polls = 0;
+    const marker = awaitMarker(home, REAL_SID, {
+      ...clock,
+      pollMs: 2_000,
+      timeoutMs: 60_000,
+      readMarker: () => (++polls >= 3 ? "129\n" : null),
+    });
+    expect(marker).toBe("129\n");
+    expect(polls).toBe(3);
+  });
+
+  it("reads the real marker file through the default seam", () => {
+    mkdirSync(markersDir(home), { recursive: true });
+    writeFileSync(doneMarkerPath(home, REAL_SID), "0");
+    expect(awaitMarker(home, REAL_SID, { timeoutMs: 1, pollMs: 1 })).toBe("0");
+  });
+
+  it("gives up at the bound and reports null — the SIGKILL case maps to timeout", () => {
+    const clock = fakeClock();
+    const marker = awaitMarker(home, REAL_SID, {
+      ...clock,
+      pollMs: 2_000,
+      timeoutMs: 10_000,
+      readMarker: () => null,
+    });
+    expect(marker).toBeNull();
+    expect(mapMarkerToOutcome(marker)).toBe("timeout");
+  });
+
+  it("never overshoots the deadline — the last sleep is trimmed to what is left", () => {
+    const clock = fakeClock();
+    const slept: number[] = [];
+    awaitMarker(home, REAL_SID, {
+      now: clock.now,
+      sleep: (ms) => {
+        slept.push(ms);
+        clock.sleep(ms);
+      },
+      pollMs: 3_000,
+      timeoutMs: 7_000,
+      readMarker: () => null,
+    });
+    expect(slept).toEqual([3_000, 3_000, 1_000]);
+  });
+
+  it("abandons the wait on SIGINT rather than holding the queue to the bound", () => {
+    let stop = false;
+    let polls = 0;
+    const marker = awaitMarker(home, REAL_SID, {
+      now: () => NOW,
+      sleep: () => {},
+      pollMs: 1,
+      timeoutMs: 60_000,
+      readMarker: () => {
+        polls += 1;
+        stop = true;
+        return null;
+      },
+      shouldStop: () => stop,
+    });
+    expect(marker).toBeNull();
+    expect(polls).toBe(1);
+  });
+
+  it("degrades to a timeout on a clock that never advances, instead of spinning", () => {
+    // A pinned clock (or a suspended VM's) would make the deadline unreachable;
+    // the poll-count backstop is what keeps that a timeout rather than a hang.
+    let polls = 0;
+    const marker = awaitMarker(home, REAL_SID, {
+      now: () => NOW,
+      sleep: () => {},
+      pollMs: 1_000,
+      timeoutMs: 10_000,
+      readMarker: () => {
+        polls += 1;
+        return null;
+      },
+    });
+    expect(marker).toBeNull();
+    expect(polls).toBeLessThanOrEqual(30);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// drainPass — serial serve, outcomes, and the dry-run promise (E-4, E-5, T4.3)
+// ---------------------------------------------------------------------------
+
+describe("drainPass", () => {
+  const SID_A = REAL_SID;
+  const SID_B = "1b2c3d4e-5f60-4712-8394-a5b6c7d8e9f0";
+  const REPO = "/repo/a";
+  /** git is never forked in these tests: the cwd is its own allowlist key. */
+  const gitExec = () => null;
+
+  let printed: string[];
+
+  beforeEach(() => {
+    printed = [];
+  });
+
+  /** Queue an entry old enough to be ready by age (no transcript to stat). */
+  function queueReady(sid: string | undefined, cwd: unknown = REPO): void {
+    const entry: QueueEntry = { transcript_path: null, cwd, ts: isoAgo(2 * IDLE_SECONDS * 1000) };
+    if (sid !== undefined) entry.session_id = sid;
+    appendPending(home, entry);
+  }
+
+  function drainOpts(extra: Record<string, unknown> = {}) {
+    return {
+      home,
+      interactive: false,
+      idleSeconds: IDLE_SECONDS,
+      now: () => NOW,
+      gitExec,
+      log: (line: string) => printed.push(line),
+      ...extra,
+    };
+  }
+
+  /** A spawn seam that records who it was asked to open and opens nothing. */
+  function fakeSpawn(result: SpawnResult = "spawned") {
+    const calls: string[] = [];
+    const spawn: SpawnFn = (_home, entry) => {
+      calls.push(String(entry.session_id));
+      return result;
+    };
+    return { calls, spawn };
+  }
+
+  /** Queue + done log + marker listing, as one comparable blob (E-5's check). */
+  function snapshot(): string {
+    const parts: string[] = [];
+    for (const path of [queuePath(home), donePath(home), reposPath(home)]) {
+      parts.push(existsSync(path) ? readFileSync(path, "utf8") : "<absent>");
+    }
+    parts.push(existsSync(markersDir(home)) ? readdirSync(markersDir(home)).sort().join(",") : "<absent>");
+    return parts.join("\n---\n");
+  }
+
+  const outcomes = () => readDone(home).map((e) => `${String(e.session_id)}:${String(e.outcome)}`);
+
+  // --- dry-run (E-5) ------------------------------------------------------
+
+  it("dry-run prints one spawn command per ready entry and changes nothing", () => {
+    queueReady(SID_A);
+    queueReady(SID_B);
+    const before = snapshot();
+
+    const summary = drainPass(drainOpts({ dryRun: true }));
+
+    expect(summary.printed).toBe(2);
+    expect(summary.retired).toBe(0);
+    expect(printed.filter((l) => l.includes("[dry-run] would spawn")).length).toBe(2);
+    expect(printed.join("\n")).toContain(SID_A);
+    expect(printed.join("\n")).toContain(SID_B);
+    expect(snapshot()).toBe(before);
+  });
+
+  it("dry-run drains the whole queue in one pass — a setup check must not show only the head", () => {
+    queueReady(SID_A);
+    queueReady(SID_B);
+    drainPass(drainOpts({ dryRun: true }));
+    expect(printed.filter((l) => l.includes(SID_B)).length).toBeGreaterThan(0);
+  });
+
+  it("dry-run runs under a held singleton — a read-only check must not demand a kill", () => {
+    queueReady(SID_A);
+    const held = claimWatcherSingleton(home);
+    try {
+      expect(() => drainPass(drainOpts({ dryRun: true }))).not.toThrow();
+      expect(printed.join("\n")).toContain("[dry-run] would spawn");
+    } finally {
+      held.release();
+    }
+  });
+
+  it("the per-run seen-set keeps a second pass from reprinting the same entry", () => {
+    queueReady(SID_A);
+    const seen = new Set<string>();
+    drainPass(drainOpts({ dryRun: true, seen }));
+    drainPass(drainOpts({ dryRun: true, seen }));
+    expect(printed.filter((l) => l.includes("[dry-run] would spawn")).length).toBe(1);
+  });
+
+  it("dry-run shows an unreviewed repo rather than hiding it behind the prompt gate", () => {
+    // The first run is exactly when no repo has been reviewed; a dry-run that
+    // reported an empty queue there would be useless as a setup check.
+    queueReady(SID_A);
+    drainPass(drainOpts({ dryRun: true }));
+    expect(printed.join("\n")).toContain("repo not reviewed yet");
+    expect(printed.join("\n")).toContain("[dry-run] would spawn");
+  });
+
+  it("dry-run honors a recorded deny without writing repos.json", () => {
+    recordRepoDecision(home, REPO, "deny", { gitExec });
+    queueReady(SID_A);
+    const before = snapshot();
+    const summary = drainPass(drainOpts({ dryRun: true }));
+    expect(summary.printed).toBe(0);
+    expect(printed.join("\n")).toContain("would skip");
+    expect(snapshot()).toBe(before);
+  });
+
+  it("dry-run never files a malformed entry — nothing at all is written", () => {
+    queueReady(undefined);
+    const before = snapshot();
+    const summary = drainPass(drainOpts({ dryRun: true }));
+    expect(summary.handled).toBe(1);
+    expect(summary.retired).toBe(0);
+    expect(snapshot()).toBe(before);
+  });
+
+  // --- serving (E-4) ------------------------------------------------------
+
+  it("serves an allowed repo end to end: spawn, marker, done row, queue cut", () => {
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady(SID_A);
+    const { calls, spawn } = fakeSpawn("spawned");
+
+    const summary = drainPass(drainOpts({ spawn, awaitMarkerFn: () => "0\n" }));
+
+    expect(calls).toEqual([SID_A]);
+    expect(summary.retired).toBe(1);
+    expect(outcomes()).toEqual([`${SID_A}:completed`]);
+    expect(readQueue(home)).toEqual([]);
+  });
+
+  it("serves entries one at a time, in queue order", () => {
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady(SID_A);
+    queueReady(SID_B);
+    const order: string[] = [];
+    const spawn: SpawnFn = (_h, entry) => {
+      order.push(`spawn:${String(entry.session_id)}`);
+      return "spawned";
+    };
+    drainPass(
+      drainOpts({
+        spawn,
+        awaitMarkerFn: (sid: string) => {
+          order.push(`await:${sid}`);
+          return "0";
+        },
+      }),
+    );
+    expect(order).toEqual([`spawn:${SID_A}`, `await:${SID_A}`, `spawn:${SID_B}`, `await:${SID_B}`]);
+  });
+
+  it("maps a missing marker to timeout rather than to a fabricated status", () => {
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady(SID_A);
+    const { spawn } = fakeSpawn("spawned");
+    drainPass(drainOpts({ spawn, awaitMarkerFn: () => null }));
+    expect(outcomes()).toEqual([`${SID_A}:timeout`]);
+  });
+
+  it("maps a nonzero wrapper status to error-fork:<status>", () => {
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady(SID_A);
+    const { spawn } = fakeSpawn("spawned");
+    drainPass(drainOpts({ spawn, awaitMarkerFn: () => "3" }));
+    expect(outcomes()).toEqual([`${SID_A}:error-fork:3`]);
+  });
+
+  it("files the manual arm immediately and never awaits a marker only a human could write", () => {
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady(SID_A);
+    const { calls, spawn } = fakeSpawn("manual");
+    let awaited = 0;
+    drainPass(
+      drainOpts({
+        spawn,
+        awaitMarkerFn: () => {
+          awaited += 1;
+          return "0";
+        },
+      }),
+    );
+    expect(calls).toEqual([SID_A]);
+    expect(awaited).toBe(0); // upstream held the serial queue 6h per entry here
+    expect(outcomes()).toEqual([`${SID_A}:manual`]);
+    expect(readQueue(home)).toEqual([]);
+  });
+
+  it("files a failed spawn as error-spawn without awaiting a marker", () => {
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady(SID_A);
+    const { spawn } = fakeSpawn("error-spawn");
+    let awaited = 0;
+    drainPass(
+      drainOpts({
+        spawn,
+        awaitMarkerFn: () => {
+          awaited += 1;
+          return "0";
+        },
+      }),
+    );
+    expect(awaited).toBe(0);
+    expect(outcomes()).toEqual([`${SID_A}:error-spawn`]);
+  });
+
+  it("retires a denied repo as skipped-denied-repo without spawning", () => {
+    recordRepoDecision(home, REPO, "deny", { gitExec });
+    queueReady(SID_A);
+    const { calls, spawn } = fakeSpawn();
+    drainPass(drainOpts({ spawn }));
+    expect(calls).toEqual([]);
+    expect(outcomes()).toEqual([`${SID_A}:skipped-denied-repo`]);
+  });
+
+  it("records an allow answer once and serves the entry in the same pass", () => {
+    queueReady(SID_A);
+    const { calls, spawn } = fakeSpawn("spawned");
+    const asked: string[] = [];
+    drainPass(
+      drainOpts({
+        interactive: true,
+        promptable: () => true,
+        ask: (key: string) => {
+          asked.push(key);
+          return "y";
+        },
+        spawn,
+        awaitMarkerFn: () => "0",
+      }),
+    );
+    expect(asked).toEqual([REPO]);
+    expect(calls).toEqual([SID_A]);
+    expect(readRepos(home)).toEqual({ [REPO]: "allow" });
+  });
+
+  // --- malformed entries (E-4 b) ------------------------------------------
+
+  it("retires an id-less line as error-malformed before any spawn", () => {
+    queueReady(undefined);
+    const { calls, spawn } = fakeSpawn();
+    drainPass(drainOpts({ spawn }));
+    expect(calls).toEqual([]);
+    expect(readDone(home).map((e) => e.outcome)).toEqual(["error-malformed"]);
+    expect(readQueue(home)).toEqual([]);
+  });
+
+  it("retires BOTH id-less lines in one pass — retiring the first reindexes the second", () => {
+    // Regression: the skip-set outlives the queue rewrite `finish` performs, so
+    // an index-keyed id-less entry inherits the key of the line just cut from
+    // under it. The survivor then reads as "already handled" for the whole run
+    // and sits in the queue as a permanently ready row nothing ever serves.
+    queueReady(undefined, "/repo/a");
+    queueReady(undefined, "/repo/b");
+    const { calls, spawn } = fakeSpawn();
+
+    const summary = drainPass(drainOpts({ spawn }));
+
+    expect(calls).toEqual([]);
+    expect(summary.retired).toBe(2);
+    expect(readDone(home).map((e) => e.outcome)).toEqual(["error-malformed", "error-malformed"]);
+    expect(readQueue(home)).toEqual([]);
+  });
+
+  it("retires a cwd-less entry as error-malformed rather than keying the allowlist on ''", () => {
+    appendPending(home, {
+      session_id: SID_A,
+      transcript_path: null,
+      cwd: null,
+      ts: isoAgo(2 * IDLE_SECONDS * 1000),
+    });
+    const { calls, spawn } = fakeSpawn();
+    drainPass(drainOpts({ spawn }));
+    expect(calls).toEqual([]);
+    expect(outcomes()).toEqual([`${SID_A}:error-malformed`]);
+  });
+
+  it("retires a filename-safe but unspawnable id — the guard spawnRetro would throw on", () => {
+    // `abc_def` passes queue.ts's *filename* charset (classifyEntry says ok)
+    // and fails spawn.ts's UUID-shaped one. Without this second screen the
+    // drain throws on the head entry and re-throws after every restart.
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady("abc_def");
+    expect(classifyEntry({ session_id: "abc_def", cwd: REPO })).toBe("ok");
+    const { calls, spawn } = fakeSpawn();
+    expect(() => drainPass(drainOpts({ spawn }))).not.toThrow();
+    expect(calls).toEqual([]);
+    expect(outcomes()).toEqual(["abc_def:error-malformed"]);
+  });
+
+  // --- skip-don't-starve ---------------------------------------------------
+
+  it("walks past an unreviewed repo a non-interactive run can't ask about", () => {
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady(SID_B, "/repo/unreviewed");
+    queueReady(SID_A);
+    const { calls, spawn } = fakeSpawn("spawned");
+
+    const summary = drainPass(drainOpts({ spawn, awaitMarkerFn: () => "0" }));
+
+    expect(calls).toEqual([SID_A]); // the one behind it is not starved
+    expect(summary.skipped).toBe(1);
+    expect(printed.join("\n")).toContain("repo not reviewed");
+    // Skipped, not retired: the human can still decide later.
+    expect(readQueue(home).map((e) => e.session_id)).toEqual([SID_B]);
+  });
+
+  it("drops to non-interactive when the prompt can't be answered, leaving the entry pending", () => {
+    queueReady(SID_A);
+    const { calls, spawn } = fakeSpawn();
+    const summary = drainPass(
+      drainOpts({ interactive: true, promptable: () => true, ask: () => null, spawn }),
+    );
+    expect(calls).toEqual([]);
+    expect(summary.interactive).toBe(false);
+    expect(readQueue(home).map((e) => e.session_id)).toEqual([SID_A]);
+    expect(readRepos(home)).toEqual({});
+  });
+
+  it("leaves an entry pending when SIGINT lands mid-wait — that retro is still open", () => {
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady(SID_A);
+    const { spawn } = fakeSpawn("spawned");
+    let stop = false;
+    const summary = drainPass(
+      drainOpts({
+        spawn,
+        awaitMarkerFn: () => {
+          stop = true; // Ctrl-C arrived while the window was open
+          return null;
+        },
+        shouldStop: () => stop,
+      }),
+    );
+    // A `timeout` row here would be a fabricated outcome for a retro the human
+    // is probably still writing.
+    expect(summary.retired).toBe(0);
+    expect(readDone(home)).toEqual([]);
+    expect(readQueue(home).map((e) => e.session_id)).toEqual([SID_A]);
+    expect(printed.join("\n")).toContain("left pending");
+  });
+
+  it("stops between entries on SIGINT, leaving the rest of the queue pending", () => {
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    queueReady(SID_A);
+    queueReady(SID_B);
+    let served = 0;
+    const spawn: SpawnFn = () => {
+      served += 1;
+      return "spawned";
+    };
+    drainPass(drainOpts({ spawn, awaitMarkerFn: () => "0", shouldStop: () => served >= 1 }));
+    expect(served).toBe(1);
+    expect(readQueue(home).map((e) => e.session_id)).toEqual([SID_B]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runWatch — the singleton + the per-run sets (E-4 c, E-5, T4.3)
+// ---------------------------------------------------------------------------
+
+describe("runWatch", () => {
+  const REPO = "/repo/a";
+  const gitExec = () => null;
+  let printed: string[];
+
+  beforeEach(() => {
+    printed = [];
+  });
+
+  function watchOpts(extra: Record<string, unknown> = {}) {
+    return {
+      home,
+      interactive: false,
+      idleSeconds: IDLE_SECONDS,
+      now: () => NOW,
+      gitExec,
+      log: (line: string) => printed.push(line),
+      sleep: () => {},
+      maxPasses: 3,
+      ...extra,
+    };
+  }
+
+  function queueReady(sid: string, cwd: unknown = REPO): void {
+    appendPending(home, {
+      session_id: sid,
+      transcript_path: null,
+      cwd,
+      ts: isoAgo(2 * IDLE_SECONDS * 1000),
+    });
+  }
+
+  it("holds the watcher singleton for the run and releases it at the end", () => {
+    let heldDuringRun = false;
+    runWatch(
+      watchOpts({
+        maxPasses: 1,
+        shouldStop: () => {
+          try {
+            claimWatcherSingleton(home).release();
+          } catch {
+            heldDuringRun = true;
+          }
+          return false;
+        },
+      }),
+    );
+    expect(heldDuringRun).toBe(true);
+    // Released on the way out, so the next watcher starts without a --force.
+    expect(() => claimWatcherSingleton(home).release()).not.toThrow();
+  });
+
+  it("refuses to start while another watcher holds the lock, naming the lock path", () => {
+    const held = claimWatcherSingleton(home);
+    try {
+      expect(() => runWatch(watchOpts())).toThrow(PathLockHeldError);
+      expect(() => runWatch(watchOpts())).toThrow(watchLockPath(home));
+    } finally {
+      held.release();
+    }
+  });
+
+  it("releases the singleton even when a pass throws", () => {
+    queueReady(REAL_SID);
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    const boom: SpawnFn = () => {
+      throw new Error("seam exploded");
+    };
+    expect(() => runWatch(watchOpts({ spawn: boom }))).toThrow(/seam exploded/);
+    expect(() => claimWatcherSingleton(home).release()).not.toThrow();
+  });
+
+  it("dry-run takes no lock at all — it runs alongside a working watcher", () => {
+    queueReady(REAL_SID);
+    const held = claimWatcherSingleton(home);
+    try {
+      const summary = runWatch(watchOpts({ dryRun: true, maxPasses: 1 }));
+      expect(summary.printed).toBe(1);
+    } finally {
+      held.release();
+    }
+  });
+
+  it("carries the seen-set across passes so a dry-run doesn't reprint every scan", () => {
+    queueReady(REAL_SID);
+    const summary = runWatch(watchOpts({ dryRun: true, maxPasses: 3 }));
+    expect(summary.printed).toBe(1);
+    expect(printed.filter((l) => l.includes("[dry-run] would spawn")).length).toBe(1);
+  });
+
+  it("notes an unservable entry once per run, not once per scan", () => {
+    queueReady(REAL_SID, "/repo/unreviewed");
+    const summary = runWatch(watchOpts({ maxPasses: 3 }));
+    expect(printed.filter((l) => l.includes("repo not reviewed")).length).toBe(1);
+    expect(summary.skipped).toBe(1);
+  });
+
+  it("sleeps between passes but not after the last one", () => {
+    const slept: number[] = [];
+    runWatch(watchOpts({ maxPasses: 3, scanPollMs: 5_000, sleep: (ms: number) => slept.push(ms) }));
+    expect(slept).toEqual([5_000, 5_000]);
+  });
+
+  it("stops immediately when SIGINT arrives before the first pass", () => {
+    queueReady(REAL_SID);
+    recordRepoDecision(home, REPO, "allow", { gitExec });
+    const { calls, spawn } = (() => {
+      const calls: string[] = [];
+      const spawn: SpawnFn = (_h, entry) => {
+        calls.push(String(entry.session_id));
+        return "spawned";
+      };
+      return { calls, spawn };
+    })();
+    const summary = runWatch(watchOpts({ spawn, shouldStop: () => true }));
+    expect(calls).toEqual([]);
+    expect(summary.handled).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// devx learn-watch — the CLI surface (T4.4): flags, exit codes, list, requeue
+//
+// The command's own job is wiring, so these cases mostly assert what it hands
+// the lib and what it does with what comes back: the drain itself is stubbed
+// (`drainPassFn`) wherever the case isn't about draining, which is also what
+// keeps the CLI suite from opening a window or waiting 5 real seconds.
+// ---------------------------------------------------------------------------
+
+/** A no-op pass result — the shape `drainPass` returns, nothing handled. */
+function drainSummaryStub(extra: Partial<DrainSummary> = {}): DrainSummary {
+  return {
+    handled: 0,
+    retired: 0,
+    printed: 0,
+    skipped: 0,
+    outcomes: [],
+    interactive: true,
+    ...extra,
+  };
+}
+
+describe("resolveLearnEnv", () => {
+  it("derives the readiness window and the retro bound from learn: minutes", () => {
+    const env = resolveLearnEnv({ merged: { learn: { idle_minutes: 2, retro_timeout_minutes: 90 } } });
+    expect(env.idleSeconds).toBe(120);
+    expect(env.retroTimeoutMs).toBe(90 * 60_000);
+  });
+
+  it("falls back to the design defaults for a config with no learn: block", () => {
+    const env = resolveLearnEnv({ merged: {} });
+    expect(env.idleSeconds).toBe(DEFAULT_IDLE_SECONDS);
+    expect(env.retroTimeoutMs).toBe(360 * 60_000);
+  });
+
+  it("prefers DEVX_LEARN_HOME over learn.home — the listener has no config to read", () => {
+    const env = resolveLearnEnv({
+      merged: { learn: { home: "/from/config" } },
+      env: { DEVX_LEARN_HOME: "/from/env" },
+    });
+    expect(env.home).toBe("/from/env");
+  });
+});
+
+describe("runLearnWatch", () => {
+  const REPO = "/repo/a";
+  let out: string[];
+  let err: string[];
+
+  beforeEach(() => {
+    out = [];
+    err = [];
+  });
+
+  function cliOpts(extra: Record<string, unknown> = {}) {
+    return {
+      home,
+      merged: {},
+      installSignals: false,
+      maxPasses: 1,
+      delay: async () => {},
+      canPromptFn: () => false,
+      out: (s: string) => out.push(s),
+      err: (s: string) => err.push(s),
+      ...extra,
+    };
+  }
+
+  function queueReady(sid: string, cwd: unknown = REPO): void {
+    appendPending(home, {
+      session_id: sid,
+      transcript_path: null,
+      cwd,
+      ts: isoAgo(2 * IDLE_SECONDS * 1000),
+    });
+  }
+
+  /** Queue + done log + repos + markers, as one comparable blob. */
+  function snapshot(): string {
+    const parts: string[] = [];
+    for (const path of [queuePath(home), donePath(home), reposPath(home)]) {
+      parts.push(existsSync(path) ? readFileSync(path, "utf8") : "<absent>");
+    }
+    parts.push(
+      existsSync(markersDir(home)) ? readdirSync(markersDir(home)).sort().join(",") : "<absent>",
+    );
+    return parts.join("\n---\n");
+  }
+
+  const text = () => out.join("");
+
+  it("prints the pending count, the queue path, and the serial hint", async () => {
+    queueReady(REAL_SID);
+    const code = await runLearnWatch(cliOpts({ drainPassFn: () => drainSummaryStub() }));
+    expect(code).toBe(0);
+    expect(text()).toContain("devx learn-watch: 1 pending");
+    expect(text()).toContain(queuePath(home));
+    expect(text()).toContain("retros spawn one at a time");
+  });
+
+  it("hands the drain the home and the two learn: knobs, not its own defaults", async () => {
+    let passOpts: Record<string, unknown> = {};
+    await runLearnWatch(
+      cliOpts({
+        merged: { learn: { idle_minutes: 3, retro_timeout_minutes: 45 } },
+        dryRun: true,
+        drainPassFn: (o: Record<string, unknown>) => {
+          passOpts = o;
+          return drainSummaryStub();
+        },
+      }),
+    );
+    expect(passOpts.home).toBe(home);
+    expect(passOpts.idleSeconds).toBe(180);
+    expect(passOpts.retroTimeoutMs).toBe(45 * 60_000);
+    expect(passOpts.dryRun).toBe(true);
+    // Per-run state, created once and handed to every pass.
+    expect(passOpts.seen).toBeInstanceOf(Set);
+    expect(passOpts.noted).toBeInstanceOf(Set);
+  });
+
+  it("every line it writes carries its own newline — the log is readable while it runs", async () => {
+    queueReady(REAL_SID);
+    await runLearnWatch(cliOpts({ drainPassFn: () => drainSummaryStub() }));
+    for (const chunk of out) expect(chunk.endsWith("\n")).toBe(true);
+  });
+
+  it("exits 1 naming the lock path when another watcher holds the singleton", async () => {
+    const held = claimWatcherSingleton(home);
+    try {
+      let drained = false;
+      const code = await runLearnWatch(
+        cliOpts({
+          drainPassFn: () => {
+            drained = true;
+            return drainSummaryStub();
+          },
+        }),
+      );
+      expect(code).toBe(1);
+      expect(err.join("")).toContain(watchLockPath(home));
+      // Refused BEFORE the header, so a refusal never reads like a start.
+      expect(drained).toBe(false);
+      expect(text()).toBe("");
+    } finally {
+      held.release();
+    }
+  });
+
+  it("holds the singleton for the run and releases it on the way out", async () => {
+    let heldDuringRun = false;
+    await runLearnWatch(
+      cliOpts({
+        drainPassFn: () => {
+          try {
+            claimWatcherSingleton(home).release();
+          } catch {
+            heldDuringRun = true;
+          }
+          return drainSummaryStub();
+        },
+      }),
+    );
+    expect(heldDuringRun).toBe(true);
+    expect(() => claimWatcherSingleton(home).release()).not.toThrow();
+  });
+
+  it("releases the singleton even when a pass throws", async () => {
+    await expect(
+      runLearnWatch(
+        cliOpts({
+          drainPassFn: () => {
+            throw new Error("seam exploded");
+          },
+        }),
+      ),
+    ).rejects.toThrow(/seam exploded/);
+    expect(() => claimWatcherSingleton(home).release()).not.toThrow();
+  });
+
+  it("--dry-run takes no lock and changes nothing, alongside a working watcher", async () => {
+    queueReady(REAL_SID);
+    const before = snapshot();
+    const held = claimWatcherSingleton(home);
+    try {
+      const code = await runLearnWatch(cliOpts({ dryRun: true }));
+      expect(code).toBe(0);
+      expect(text()).toContain("--dry-run: printing spawn commands only");
+      expect(text()).toContain("[dry-run] would spawn");
+      expect(text()).toContain(REAL_SID);
+    } finally {
+      held.release();
+    }
+    expect(snapshot()).toBe(before);
+  });
+
+  it("carries the seen-set across passes so --dry-run doesn't reprint every scan", async () => {
+    queueReady(REAL_SID);
+    await runLearnWatch(cliOpts({ dryRun: true, maxPasses: 3 }));
+    expect(text().split("[dry-run] would spawn").length - 1).toBe(1);
+  });
+
+  it("waits between passes but not after the last one", async () => {
+    const waited: number[] = [];
+    await runLearnWatch(
+      cliOpts({
+        maxPasses: 3,
+        scanPollMs: 4_000,
+        delay: async (ms: number) => {
+          waited.push(ms);
+        },
+        drainPassFn: () => drainSummaryStub(),
+      }),
+    );
+    expect(waited).toEqual([4_000, 4_000]);
+  });
+
+  it("a pass that loses stdin downgrades every later pass to non-interactive", async () => {
+    const seenInteractive: boolean[] = [];
+    await runLearnWatch(
+      cliOpts({
+        canPromptFn: () => true,
+        maxPasses: 3,
+        drainPassFn: (passOpts: { interactive: boolean }) => {
+          seenInteractive.push(passOpts.interactive);
+          return drainSummaryStub({ interactive: false });
+        },
+      }),
+    );
+    expect(seenInteractive).toEqual([true, false, false]);
+  });
+
+  it("asks the human through the terminal seam and hands the raw answer back", async () => {
+    let answer: string | null = "nothing asked";
+    await runLearnWatch(
+      cliOpts({
+        readLine: () => "y",
+        drainPassFn: (passOpts: { ask: (key: string) => string | null }) => {
+          answer = passOpts.ask("/repo/a");
+          return drainSummaryStub();
+        },
+      }),
+    );
+    expect(answer).toBe("y");
+    expect(text()).toContain("allow retros for /repo/a? [y/N]");
+  });
+
+  it("installs SIGINT/SIGTERM handlers for the run and removes them after", async () => {
+    const before = { int: process.listenerCount("SIGINT"), term: process.listenerCount("SIGTERM") };
+    let during = { int: 0, term: 0 };
+    await runLearnWatch(
+      cliOpts({
+        installSignals: true,
+        drainPassFn: () => {
+          during = { int: process.listenerCount("SIGINT"), term: process.listenerCount("SIGTERM") };
+          return drainSummaryStub();
+        },
+      }),
+    );
+    expect(during.int).toBe(before.int + 1);
+    expect(during.term).toBe(before.term + 1);
+    expect(process.listenerCount("SIGINT")).toBe(before.int);
+    expect(process.listenerCount("SIGTERM")).toBe(before.term);
+  });
+
+  it("stops after the current pass when its SIGINT handler fires, and exits 0 clean", async () => {
+    const baseline = process.listeners("SIGINT");
+    let passes = 0;
+    const code = await runLearnWatch(
+      cliOpts({
+        installSignals: true,
+        maxPasses: 5,
+        drainPassFn: () => {
+          passes += 1;
+          // Call the handler this run just installed — a real `process.emit`
+          // would also fire vitest's own SIGINT teardown.
+          for (const l of process.listeners("SIGINT")) {
+            if (!baseline.includes(l)) (l as () => void)();
+          }
+          return drainSummaryStub();
+        },
+      }),
+    );
+    expect(code).toBe(0);
+    expect(passes).toBe(1);
+    expect(text()).toContain("stopped — queue is durable; restart me anytime");
+  });
+
+  it("says nothing about stopping when it simply ran out of passes", async () => {
+    await runLearnWatch(cliOpts({ drainPassFn: () => drainSummaryStub() }));
+    expect(text()).not.toContain("stopped —");
+  });
+});
+
+describe("runLearnWatchList", () => {
+  let out: string[];
+
+  beforeEach(() => {
+    out = [];
+  });
+
+  const text = () => out.join("");
+
+  function listOpts(extra: Record<string, unknown> = {}) {
+    return { home, merged: {}, now: () => NOW, out: (s: string) => out.push(s), ...extra };
+  }
+
+  it("marks an aged-out entry ready and a fresh one still active", async () => {
+    appendPending(home, {
+      session_id: REAL_SID,
+      transcript_path: null,
+      cwd: "/repo/a",
+      ts: isoAgo(2 * IDLE_SECONDS * 1000),
+    });
+    appendPending(home, {
+      session_id: "1b2c3d4e-5f60-4712-8394-a5b6c7d8e9f0",
+      transcript_path: null,
+      cwd: "/repo/b",
+      ts: isoAgo(1_000),
+    });
+    expect(runLearnWatchList(listOpts())).toBe(0);
+    const lines = text().trimEnd().split("\n");
+    expect(lines[0]).toContain("pending (2)");
+    expect(lines[0]).toContain(queuePath(home));
+    expect(lines[1]).toContain(REAL_SID);
+    expect(lines[1]).toContain("/repo/a");
+    expect(lines[1]).toContain("[ready]");
+    expect(lines[2]).toContain("[session still active]");
+  });
+
+  it("shows the tail of the done log with its outcomes, newest last", () => {
+    for (let i = 0; i < 7; i++) {
+      appendDone(
+        home,
+        { session_id: `sid-${i}`, transcript_path: null, cwd: "/repo/a", ts: isoAgo(0) },
+        i === 6 ? "timeout" : "completed",
+      );
+    }
+    runLearnWatchList(listOpts());
+    expect(text()).toContain("processed (last 5 of 7)");
+    expect(text()).toContain(donePath(home));
+    expect(text()).not.toContain("sid-1"); // trimmed off the front
+    expect(text()).toContain("sid-6");
+    expect(text()).toContain("timeout");
+  });
+
+  it("renders a hand-edited line's missing fields as ? rather than undefined", () => {
+    appendPending(home, { cwd: "/repo/a", transcript_path: null, ts: isoAgo(0) });
+    runLearnWatchList(listOpts());
+    expect(text()).toContain("  ?  ");
+    expect(text()).not.toContain("undefined");
+  });
+
+  it("is read-only — an empty home stays empty", () => {
+    runLearnWatchList(listOpts());
+    expect(text()).toContain("pending (0)");
+    expect(existsSync(queuePath(home))).toBe(false);
+    expect(existsSync(donePath(home))).toBe(false);
+  });
+});
+
+describe("runLearnWatchRequeue", () => {
+  let out: string[];
+  let err: string[];
+
+  beforeEach(() => {
+    out = [];
+    err = [];
+  });
+
+  function reqOpts(extra: Record<string, unknown> = {}) {
+    return {
+      home,
+      merged: {},
+      out: (s: string) => out.push(s),
+      err: (s: string) => err.push(s),
+      ...extra,
+    };
+  }
+
+  it("puts a processed session back on the queue and says so", () => {
+    appendDone(
+      home,
+      { session_id: REAL_SID, transcript_path: null, cwd: "/repo/a", ts: isoAgo(0) },
+      "timeout",
+    );
+    expect(runLearnWatchRequeue(REAL_SID, reqOpts())).toBe(0);
+    expect(readQueue(home).map((e) => e.session_id)).toEqual([REAL_SID]);
+    expect(out.join("")).toContain("requeued");
+  });
+
+  it("exits 1 when no processed entry matches — a typo must not look like a success", () => {
+    expect(runLearnWatchRequeue(REAL_SID, reqOpts())).toBe(1);
+    expect(err.join("")).toContain("no processed entry");
+    expect(readQueue(home)).toEqual([]);
+  });
+
+  it("exits 1 rather than queueing a duplicate for an already-pending session", () => {
+    appendDone(
+      home,
+      { session_id: REAL_SID, transcript_path: null, cwd: "/repo/a", ts: isoAgo(0) },
+      "timeout",
+    );
+    runLearnWatchRequeue(REAL_SID, reqOpts());
+    expect(runLearnWatchRequeue(REAL_SID, reqOpts())).toBe(1);
+    expect(err.join("")).toContain("already pending");
+    expect(readQueue(home).length).toBe(1);
+  });
+
+  it("exits 2 with a usage line for a missing session id", () => {
+    expect(runLearnWatchRequeue(undefined, reqOpts())).toBe(2);
+    expect(runLearnWatchRequeue("   ", reqOpts())).toBe(2);
+    expect(err.join("")).toContain("usage: devx learn-watch requeue <session-id>");
+  });
+});
+
+describe("learn-watch registration", () => {
+  it("is registered on the program with its list + requeue subcommands", () => {
+    const program = buildProgram();
+    const cmd = program.commands.find((c) => c.name() === "learn-watch");
+    expect(cmd, "devx learn-watch must be wired into src/cli.ts").toBeDefined();
+    expect(cmd?.commands.map((c) => c.name()).sort()).toEqual(["list", "requeue"]);
+    expect(cmd?.options.some((o) => o.long === "--dry-run")).toBe(true);
   });
 });
