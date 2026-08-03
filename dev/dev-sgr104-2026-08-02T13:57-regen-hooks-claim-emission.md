@@ -6,7 +6,8 @@ title: "Regen hooks — claim + RED emission keep GRAPH.md fresh"
 from: plan/plan-62bcd1-2026-08-02T09:00-story-graph.md
 plan: _devx/workstreams/story-graph
 phase: 4
-status: ready
+status: in-progress
+owner: /devx-2026-08-03T1400-29997
 blocked_by: [sgr103]
 branch: feat/dev-sgr104
 ---
@@ -60,3 +61,4 @@ phase — it needs all three hooks and goes green in phase 5.
 ## Status log
 
 - 2026-08-02T13:57 — emitted by /devx-plan RED stage (workstream 62bcd1).
+- 2026-08-03T14:00:13-06:00 — claimed by /devx in session /devx-2026-08-03T1400-29997
