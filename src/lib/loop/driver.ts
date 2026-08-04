@@ -1691,10 +1691,70 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     }
   };
 
-  /** Discard a bookkeeping-only worktree + its local branch (the claim never
-   *  pushed the feature branch; iteration commits are local). Returns true
-   *  only when the worktree is actually gone — callers fall back to the
-   *  preserve path on failure. */
+  /** Attach-mode counterpart to `branch -D` (b41f7c): move the inherited
+   *  branch back to the tip the claim attached to, dropping only the commits
+   *  this run added. Skipped — with an operator-facing WARN — whenever that
+   *  can't be proven safe (no base SHA, tip no longer a descendant), because
+   *  leaving a stale branch is recoverable and deleting handed-off work is
+   *  not. */
+  const rewindInheritedBranch = (): void => {
+    const branch = args.claim.branch;
+    const leaveIntact = (why: string): void => {
+      event("item:inherited-branch-rewind-skipped", { branch, reason: why });
+      itemWarnings.push(
+        `inherited branch ${branch} kept as-is (${why}) — it still carries this run's bookkeeping commits on top of the handed-off work, and the next claim of ${pick.hash} will attach to it and adopt them; inspect with \`git log ${branch}\``,
+      );
+    };
+    if (baseSha === null) {
+      leaveIntact("the claim's base SHA was never readable");
+      return;
+    }
+    const tip = exec("git", ["rev-parse", "--verify", `${branch}^{commit}`], {
+      cwd: repoRoot,
+      env: { GIT_TERMINAL_PROMPT: "0" },
+    });
+    if (tip.exitCode !== 0) {
+      leaveIntact(`its tip could not be read: ${tip.stderr.trim()}`);
+      return;
+    }
+    if (tip.stdout.trim() === baseSha) {
+      // Nothing was added on top — the inherited branch is already exactly
+      // what the claim attached to.
+      event("item:inherited-branch-preserved", { branch, sha: baseSha });
+      return;
+    }
+    const descends = exec(
+      "git",
+      ["merge-base", "--is-ancestor", baseSha, branch],
+      { cwd: repoRoot, env: { GIT_TERMINAL_PROMPT: "0" } },
+    );
+    if (descends.exitCode !== 0) {
+      leaveIntact(`its tip no longer descends from the claim's base ${baseSha}`);
+      return;
+    }
+    const reset = exec("git", ["branch", "-f", branch, baseSha], {
+      cwd: repoRoot,
+      env: { GIT_TERMINAL_PROMPT: "0" },
+    });
+    if (reset.exitCode !== 0) {
+      leaveIntact(`rewinding it to ${baseSha} failed: ${reset.stderr.trim()}`);
+      return;
+    }
+    event("item:inherited-branch-preserved", { branch, sha: baseSha, rewound: true });
+  };
+
+  /** Discard a bookkeeping-only worktree plus whatever the CLAIM put on its
+   *  branch. On the derive path (`claim.attached === false`) the branch is
+   *  the claim's own creation and nothing was ever pushed, so it is deleted
+   *  outright. On the mss102 ATTACH path the branch pre-existed and carries
+   *  a parent run's handed-off commits below `baseSha` —
+   *  `isBookkeepingOnlyWorktree` can't see them, so `branch -D` would
+   *  destroy the only remaining copy when origin's is gone (b41f7c). There
+   *  the branch is REWOUND to the inherited tip instead: this run's
+   *  bookkeeping commits go, the inheritance stays, and the next claim
+   *  re-attaches to exactly what it was handed. Returns true only when the
+   *  worktree is actually gone — callers fall back to the preserve path on
+   *  failure. */
   const discardWorktree = (): boolean => {
     try {
       const r = exec("git", ["worktree", "remove", "--force", worktree], {
@@ -1709,17 +1769,25 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       event("item:worktree-discard-failed", { error: serializeError(e) });
       return false;
     }
+    if (args.claim.attached) {
+      rewindInheritedBranch();
+      return true;
+    }
     const b = exec("git", ["branch", "-D", args.claim.branch], {
       cwd: repoRoot,
       env: { GIT_TERMINAL_PROMPT: "0" },
     });
     if (b.exitCode !== 0 && !/not found/i.test(b.stderr)) {
-      // The worktree is already gone (can't fall back to preserving it) but
-      // a stale local branch makes the NEXT claim's `worktree add -b` fail —
-      // that must reach the morning report, not just the JSONL (EC-HIGH-3).
+      // The worktree is already gone (can't fall back to preserving it), so
+      // the surviving branch is now debris the NEXT claim of this hash walks
+      // into — either failing loudly at `worktree add -b` or, when the spec
+      // records a `branch:` that names it, silently ATTACHING and carrying
+      // this dead run's commits into the follow-up's PR (b41f7c AC 3; the
+      // pre-mss102 wording promised only the failure). Must reach the
+      // morning report, not just the JSONL (EC-HIGH-3).
       event("item:branch-delete-failed", { stderr: b.stderr.trim() });
       itemWarnings.push(
-        `stale local branch ${args.claim.branch} could not be deleted — \`git branch -D ${args.claim.branch}\` by hand or the next claim of ${pick.hash} will fail`,
+        `stale local branch ${args.claim.branch} could not be deleted — \`git branch -D ${args.claim.branch}\` by hand; left in place it either fails the next claim of ${pick.hash} at \`worktree add -b\` or gets silently adopted by it, carrying this dead run's commits`,
       );
     }
     return true;

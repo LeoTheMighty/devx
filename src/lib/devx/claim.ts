@@ -260,6 +260,15 @@ export interface ClaimSpecResult {
    *  create — consumers that dispose of the branch must account for that
    *  (see `debug/debug-b41f7c-…-attach-branch-loop-hazards.md`). */
   branch: string;
+  /** True ⇒ attach mode (b41f7c): `branch` PRE-EXISTED and was inherited
+   *  from the spec's `branch:` frontmatter, so it may carry a parent run's
+   *  handed-off commits BELOW the claim's base SHA. The claim did not
+   *  create it and disposal paths must not delete it — the loop's
+   *  `discardWorktree` rewinds it to the inherited tip instead of running
+   *  `git branch -D`. False ⇒ derive mode: the claim created `branch` with
+   *  `worktree add -b`, so it holds nothing the claim didn't put there and
+   *  is disposable. */
+  attached: boolean;
   /** Absolute path to the `.devx-cache/locks/spec-<hash>.lock` sentinel. */
   lockPath: string;
   /** SHA of the `chore: claim <hash> for /devx` commit on `main`. */
@@ -1391,7 +1400,7 @@ export async function claimSpec(
     // Phase 8 cleanup is responsible for releasing it after merge. (The
     // lock release on cleanup is dvx107's responsibility; here we only
     // ensure the file is left in place.)
-    return { branch, lockPath, claimSha };
+    return { branch, attached: attachBranch !== null, lockPath, claimSha };
   });
 }
 

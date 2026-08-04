@@ -68,6 +68,16 @@ attach time. This spec covers only the loop's two wrong assumptions.
   (Blind Hunter findings #3 partial + #4). Blocked-by mss103 to avoid
   colliding with the in-flight loop-integration edits to the same file.
 - 2026-08-04T14:19:59-06:00 — claimed by /devx in session /devx-loop-2026-08-04T19-52-58-179-34486
+- 2026-08-04T21:16:32.342Z — loop iteration 1: Made the loop attach-mode aware: claimSpec now reports whether it attached or derived, and the abandon path rewinds an inherited branch to its handed-off tip instead of force-deleting it, with the stale-branch warning reworded to name silent adoption.
+  - Change: ClaimSpecResult gained `attached: boolean` (true ⇒ mss102 attach mode), so consumers can tell an inherited branch from one the claim created without re-deriving the name; the devx-helper claim JSON contract and the /devx skill body (plus its skills/ mirror) document the new field.
+  - Change: src/lib/loop/driver.ts discardWorktree no longer `git branch -D`s an inherited branch: attach mode routes to a new rewindInheritedBranch() that resets the branch to the claim's baseSha (dropping only this run's bookkeeping commits) and leaves it wholly untouched with an operator WARN whenever the rewind can't be proven safe (no baseSha, unreadable tip, tip not a descendant, branch -f failure).
+  - Change: Reworded the stale-branch warning: instead of promising the next claim will fail, it names both real hazards — failing at `worktree add -b` or being silently adopted with this dead run's commits.
+  - Change: Tests: 4 new loop-driver cases (inherited branch survives + rewound, derived branch still deleted, reworded WARN, rewind-failure fallback), `attached` assertions across the mss102 claim paths in devx-split/devx-claim, and a `branch:` frontmatter option in the shared loop git fixture.
+  - Change: Re-synced skills/devx.md via `npm run sync:skills` to satisfy the pin101 mirror drift guard.
+  - Learning: The pre-fix repro was verified by temporarily neutering the guard: the loop really did delete a handoff branch carrying a commit below baseSha, confirming isBookkeepingOnlyWorktree cannot see inherited work.
+  - Learning: Editing .claude/commands/*.md requires `npm run sync:skills` or test/skills-sync.test.ts (pin101 drift guard) goes red — the mirror under skills/ must be byte-identical.
+  - Learning: Attach mode only triggers when the spec's recorded `branch:` DIFFERS from the derived `<prefix><type>-<hash>` name, so any attach fixture needs a parent-shaped branch name, not the item's own.
+  - Learning: Four child-process-spawn test files (loop-worker, manage-spawn, manage-crash-restart-loop, manage-spawn-integration) time out under machine load during a full `npm test` on this box but pass 61/61 in isolation in ~1s — treat their timeouts as environmental, and re-run them alone before believing a full-suite red.
 
 ## Links
 
