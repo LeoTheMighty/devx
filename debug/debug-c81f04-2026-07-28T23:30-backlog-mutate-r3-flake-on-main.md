@@ -3,10 +3,10 @@ hash: c81f04
 type: debug
 created: 2026-07-28T23:30:00-06:00
 title: "backlog-mutate R3 concurrency test is flaky on CI (reds main intermittently)"
-status: ready
+status: in-progress
 from: dev/dev-mss103-2026-07-28T13:43-loop-split-integration.md
 branch: feat/debug-c81f04
-owner: null
+owner: /devx-loop-2026-08-04T19-52-58-179-34486
 ---
 
 ## Goal
@@ -73,6 +73,7 @@ accounting during claims, not lost updates.
   was `CONFLICTING`, and reviewing main's recent runs to establish a
   baseline surfaced 2 failures in the last 4 main runs, both this test.
   Not filed anywhere else at time of writing (grepped DEBUG.md + debug/).
+- 2026-08-04T15:19:50-06:00 — claimed by /devx in session /devx-loop-2026-08-04T19-52-58-179-34486
 
 ## Links
 
