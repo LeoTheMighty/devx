@@ -4,7 +4,7 @@
 
 # Story graph
 
-178 specs across 22 groups — 12 blocked · 114 done · 4 in-progress · 48 ready; 381 edges.
+181 specs across 22 groups — 12 blocked · 115 done · 4 in-progress · 50 ready; 384 edges.
 
 ## Legend
 
@@ -146,9 +146,12 @@ flowchart TD
     357d0c["357d0c Loop instance registry: crash-orphan-thro…"]
     3b9e07["3b9e07 `devx loop` never emits the mandatory `ph…"]
     494590["494590 Loop token accounting implausibly low — b…"]
+    4d9c1a["4d9c1a QA walkthrough — sgr104 regen hooks (clai…"]
+    5c8b21["5c8b21 loop-concurrency G-1 test sits ~1.3x unde…"]
     6a913f["6a913f hash→spec resolution hardcodes dev/ acros…"]
     74632d["74632d loop-driver fixture teardown races on mac…"]
     7a2d1f["7a2d1f Mobile companion v0.1 through real-time s…"]
+    7e2b56["7e2b56 emit-retro-story writes its artifacts to…"]
     97f6d8["97f6d8 QA walkthrough — devx graph renderer + CL…"]
     9b9be5["9b9be5 devx gate evals lacks mid-flight state-aw…"]
     9c4e21["9c4e21 appendManualEntry read-check-write race c…"]
@@ -378,6 +381,9 @@ flowchart TD
   sgr103 -.-> 97f6d8
   sgr103 -.-> ea4f41
   sgr103 --> sgr102
+  sgr104 -.-> 4d9c1a
+  sgr104 -.-> 5c8b21
+  sgr104 -.-> 7e2b56
   sgr104 --> sgr103
   sgr104 --- |par| sgr106
   sgr104 --- |par| sgr107
@@ -448,7 +454,7 @@ flowchart TD
   class sgr101 done
   class sgr102 done
   class sgr103 done
-  class sgr104 ready
+  class sgr104 done
   class sgr105 ready
   class sgr106 ready
   class sgr107 ready
@@ -493,9 +499,12 @@ flowchart TD
   class 357d0c ready
   class 3b9e07 ready
   class 494590 done
+  class 4d9c1a ready
+  class 5c8b21 ready
   class 6a913f done
   class 74632d ready
   class 7a2d1f wip
+  class 7e2b56 ready
   class 97f6d8 ready
   class 9b9be5 done
   class 9c4e21 done
