@@ -140,6 +140,28 @@ for `hold-check` / `next` / `loop` and is rehomed, not deleted.
   that costs 6,085s of test time locally costs 57s on a runner, so the
   contention-deadlock reading is unlikely and the spec was updated with
   that evidence.
+- 2026-08-04T11:3x — phase 4: 1-agent single-pass adversarial review; 2
+  findings (0 HIGH, 2 MED, 0 LOW); ALL fixed in-place — the load-bearing
+  one: `_devx/templates/tour/tour-template.html` (42KB, the vendored
+  single-file tour UI) survived the entire rip-out and was still being
+  shipped in the npm package via the `files: ["_devx/templates"]` glob,
+  with zero remaining code references now that the renderer is deleted.
+  Second: `src/lib/devx/hold-check.ts`'s header pointed at the deleted
+  `v2/03-review-tour.md`; repointed at D-5, which is where the surviving
+  contract actually lives. Re-review clean.
+  Also verified (no change needed): `writePrTemplate` returns `skipped`
+  whenever the idempotency marker is present, so an existing repo's
+  `.github/pull_request_template.md` is NEVER upgraded in place — which
+  promotes the legacy-tour-section strip in `renderPrBody` from a defensive
+  nicety to the only thing preventing a dead heading in those repos' PR
+  bodies permanently. `next/decide.ts` emits no tour rows; `tsc --noEmit`
+  clean; `dist/` carries no tour module.
+  Process note: this line exists because CI's own Phase 4 discipline test
+  (dvx103) failed the PR and caught that I had reached ship stage without
+  running the review — the gate worked on its author. Single-pass rather
+  than the 3-agent parallel shape the >500-line threshold calls for,
+  because subagents were out of scope for this session; recorded here as a
+  known reduction in review depth, not an omission.
 - 2026-08-04T11:2x — local full-suite re-run after the two fixes: 133
   files / 3,061 passed / 0 failed in 915s. `loop-concurrency` passed this
   run on a less-loaded machine, which is itself confirmation of the
