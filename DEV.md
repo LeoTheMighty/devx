@@ -20,7 +20,7 @@ planned; this section outranks the paused mobile backlog below.
 ## Cross-cutting plans
 
 ### Review tour retirement
-- [/] `dev/dev-tur101-2026-08-04T10:00-retire-review-tour.md` — Retire the review tour: rip out `src/lib/tour/` + `devx tour` CLI + `/devx` Phase 7.5 + the `## 🗺 Review tour` PR-body section + `v2/03-review-tour.md`; rehome the shared exec seam; drop `diff2html` + `marked` deps. `/devx address` and the `devx: hold` gate survive. Status: in-progress. Owner call 2026-08-04.
+- [x] `dev/dev-tur101-2026-08-04T10:00-retire-review-tour.md` — Retire the review tour: rip out `src/lib/tour/` + `devx tour` CLI + `/devx` Phase 7.5 + the `## 🗺 Review tour` PR-body section + `v2/03-review-tour.md`; rehome the shared exec seam; drop `diff2html` + `marked` deps. `/devx address` and the `devx: hold` gate survive. Status: done. Owner call 2026-08-04. PR: https://github.com/LeoTheMighty/devx/pull/113 (merged 8fc3a72).
 
 ### Self-healing state reconciliation (from loop-2026-07-24 post-mortem)
 - [ ] `dev/dev-db36af-2026-07-25T08:55-devx-doctor-reconcile.md` — `devx doctor` — mechanical state reconciliation (stale locks, dead owners, mirror drift, bookkeeping-only abandonments), `--fix` for the mechanical class, wired into `devx next` drift rows + loop start. Status: ready. Blocked-by: dc7514 (shared abandon-path predicate; both touch loop driver). From: debug-dc7514.

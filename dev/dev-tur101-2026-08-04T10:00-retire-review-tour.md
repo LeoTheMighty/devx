@@ -5,7 +5,7 @@ created: 2026-08-04T10:00:00-06:00
 title: Retire the review tour — rip out `devx tour`, PR-body section, and Phase 7.5
 from: null
 spawned: []
-status: in-progress
+status: done
 owner: null
 branch: feat/dev-tur101
 pr: 113
@@ -175,6 +175,14 @@ for `hold-check` / `next` / `loop` and is rehomed, not deleted.
   run on a less-loaded machine, which is itself confirmation of the
   load-flake reading in debug-7c1e93 rather than a real defect. Both
   gates (local + remote CI) green on the same content.
+
+- 2026-08-04T11:10 — merged via PR #113 (squash → 8fc3a72). All gates
+  green on the final SHA 51d0bff: remote CI on macos + ubuntu, local full
+  suite (133 files / 3,061 passed), `check-hold` `{"hold":false}`,
+  `devx merge-gate tur101` `{"merge":true}`. Merge verified with
+  `gh pr view` (state=MERGED) rather than the merge command's exit code.
+  Open for the user: MANUAL.md MV-tur101.1 (orphan `devx-tours` branch)
+  and `debug/debug-7c1e93` (local suite ~30 min vs. CI ~30 s).
 
 ## Links
 
