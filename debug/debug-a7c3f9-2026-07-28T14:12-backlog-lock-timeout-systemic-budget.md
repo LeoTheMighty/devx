@@ -3,7 +3,7 @@ hash: a7c3f9
 type: debug
 created: 2026-07-28T14:12:00-06:00
 title: "Backlog-lock timeouts count toward the systemic claim-failure budget"
-status: in-progress
+status: done
 from: dev/dev-mlc104-2026-07-28T09:02-claim-contention-harness.md
 branch: null
 owner: /devx-loop-2026-08-04T19-52-58-179-34486
@@ -61,6 +61,8 @@ reduce peer pressure on the lock).
   - Learning: A backlog-lock timeout with an unreadable holder pid is only reachable via an EMPTY lock body — dead-pid and unparseable bodies are reaped by acquirePathLock before any deadline, and empty bodies are the one shape classifyExistingLock conservatively calls 'held'. That makes the empty-body case the natural test fixture for 'not provably live'.
   - Learning: BacklogLockTimeoutError's message hardcodes BACKLOG_LOCK_TIMEOUT_MS (30000ms) even when the acquire ran with a shorter opts.timeoutMs, so test-seam timeouts render a misleading duration. Cosmetic and test-only today (production never overrides the constant), but it would misreport if the timeout ever becomes configurable.
   - Learning: The full suite is flaky under its own load on this box: running it while other work competes for CPU timed out 25 real-child-process tests in loop-worker/manage-spawn/manage-crash-restart-loop/manage-spawn-integration (loop-worker alone took 117s). All 61 pass isolated on an idle machine — check for this signature before treating a red suite as a regression.
+- 2026-08-04T20:19:56.925Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-08-04T20:19:56.926Z — merged via devx loop — PR https://github.com/LeoTheMighty/devx/pull/115
 
 ## Links
 
