@@ -355,8 +355,10 @@ describe("devx plan-helper emit-retro-story — happy path", () => {
     );
     expect(code).toBe(0);
     expect(cap.io.stderr).toBe("");
+    // sgr104 appended the `graph=` key — present because the regen
+    // succeeded. Key ORDER is part of the contract the skill body greps.
     expect(cap.io.stdout).toMatch(
-      /^spec=dev\/dev-mrgret-\d{4}-\d{2}-\d{2}T\d{2}:\d{2}-retro-merge-gate-modes\.md dev_md=DEV\.md\n$/,
+      /^spec=dev\/dev-mrgret-\d{4}-\d{2}-\d{2}T\d{2}:\d{2}-retro-merge-gate-modes\.md dev_md=DEV\.md graph=GRAPH\.md\n$/,
     );
     // No sprint_status= field in the summary line (D-7).
     expect(cap.io.stdout).not.toContain("sprint_status=");

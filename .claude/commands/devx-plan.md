@@ -192,6 +192,29 @@ free-nested sub-items (contract in Stage: PRD).
    it from the template, do not paraphrase; Concierge and the mobile relay
    parse this block downstream.
 
+   **Commit pathspec.** Stage by explicit path — never `git add -A`; `main`
+   is the tree every concurrent session shares. The set is: every emitted
+   `dev/dev-*.md`, `DEV.md`, `PLAN.md`, the plan spec, the workstream's
+   `todo.md` + `evals/`, **plus `GRAPH.md` iff `emit-retro-story` printed a
+   `graph=` key** (sgr104). That helper's stdout is one greppable key=value
+   line — `spec=… dev_md=… [graph=…] [partial=…]`, not JSON — and `graph=`
+   is present exactly when its GRAPH.md regen succeeded:
+
+   ```
+   EMIT_LINE=$(devx plan-helper emit-retro-story --epic-slug <slug> --parents <h1,h2> --plan <path>)
+   GRAPH_PATH=$(printf '%s' "$EMIT_LINE" | tr ' ' '\n' | sed -n 's/^graph=//p')
+   git add -- <emitted specs> DEV.md PLAN.md <plan spec> <todo+evals> ${GRAPH_PATH}
+   ```
+
+   Leave `${GRAPH_PATH}` **unquoted** — that is what makes it vanish when the
+   key is absent. Quoting it passes `git add` an empty string, which is
+   `fatal: empty string is not a valid pathspec` and stages nothing at all.
+
+   An absent `graph=` is **not** a failure to chase: the regen already
+   WARNed on stderr and left GRAPH.md untouched (on a first emission it may
+   not exist at all), so naming it would fail the whole `git add` over a
+   derived file. `devx graph --check` is what catches the stale board.
+
 ## Hand-off to /devx
 
 Final summary's "Next command(s)" block is the bridge from `/devx-plan` to `/devx`. The format is **pinned** (pln106) so Concierge (Phase 2) can parse it via `devx ask "what should I run next?"` without LLM reasoning, and so future regression tests can grep the rendered block byte-stably.

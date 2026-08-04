@@ -32,12 +32,13 @@
 //   dev/dev-pln103-2026-04-28T19:30-plan-validate-emit.md  (validate-emit)
 // Epic: _bmad-output/planning-artifacts/epic-devx-plan-skill.md
 
-import { dirname } from "node:path";
+import { dirname, relative } from "node:path";
 import process from "node:process";
 
 import type { Command } from "commander";
 
 import { findProjectConfig, loadMerged } from "../lib/config-io.js";
+import { engineConfigFrom } from "../lib/engine/config.js";
 import { attachPhase } from "../lib/help.js";
 import {
   type DeriveBranchConfig,
@@ -144,6 +145,10 @@ export interface RunEmitRetroStoryOpts {
   now?: () => Date;
   /** Test seam: partial fs override forwarded into writeRetroAtomically. */
   fsOverride?: Parameters<typeof writeRetroAtomically>[1]["fs"];
+  /** Test seam: the GRAPH.md regen hook (sgr104), forwarded into
+   *  writeRetroAtomically. Injecting a failing one is how the `graph=`
+   *  key's conditionality gets pinned. */
+  regen?: Parameters<typeof writeRetroAtomically>[1]["regen"];
 }
 
 export interface ParsedEmitArgs {
@@ -235,11 +240,16 @@ export function runEmitRetroStory(
     project?: { shape?: string };
     thoroughness?: string;
   };
+  // Kept unnarrowed alongside `merged`: engineConfigFrom reads the snake_case
+  // `engine:` block, which the DeriveBranchConfig narrowing above doesn't
+  // model. Re-casting `merged` back to unknown would work but reads as a
+  // mistake; naming the raw blob says what it is.
+  let rawMerged: unknown;
   try {
-    const raw = loadMerged({ projectPath: projectConfigPath });
+    rawMerged = loadMerged({ projectPath: projectConfigPath });
     merged =
-      raw && typeof raw === "object"
-        ? (raw as typeof merged)
+      rawMerged && typeof rawMerged === "object"
+        ? (rawMerged as typeof merged)
         : ({} as typeof merged);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -277,6 +287,8 @@ export function runEmitRetroStory(
       repoRoot,
       err,
       fs: opts.fsOverride,
+      engine: engineConfigFrom(rawMerged),
+      regen: opts.regen,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -285,22 +297,31 @@ export function runEmitRetroStory(
   }
 
   // Single-line stdout summary so the skill body can grep it. Format:
-  //   spec=<path> dev_md=<path> [partial=<csv>]
+  //   spec=<path> dev_md=<path> [graph=<path>] [partial=<csv>]
   // All paths are repo-relative (the same canonical paths writeRetroAtomically
   // defaulted to). Skill body splits on whitespace + `=` to consume.
   // (v2x101 D-7: the sprint_status= field is gone — sprint-status.yaml is
   // retired and never written again.)
+  //
+  // NB (sgr104): this line is key=value, NOT JSON — a consumer greps it.
+  // `graph=` is present exactly when the regen succeeded, which is what lets
+  // the RED-stage commit pathspec in `.claude/commands/devx-plan.md` add
+  // GRAPH.md only when there is a fresh one to add.
+  // `path.relative`, not a prefix strip: a `repoRoot` with a trailing slash
+  // makes `startsWith(repoRoot + "/")` false and leaks an ABSOLUTE path onto
+  // a line the skill body pastes straight into a `git add`.
+  const relFromRepo = (p: string): string => relative(repoRoot, p);
   const lineParts = [
     `spec=${emit.specPath}`,
     `dev_md=DEV.md`,
   ];
+  if (result.graphPath !== undefined) {
+    lineParts.push(`graph=${relFromRepo(result.graphPath)}`);
+  }
   if (!result.fullSuccess && result.partial) {
     // Strip the repoRoot prefix so the partial: list mirrors the other
     // fields (repo-relative paths).
-    const partialRel = result.partial.map((p) =>
-      p.startsWith(repoRoot + "/") ? p.slice(repoRoot.length + 1) : p,
-    );
-    lineParts.push(`partial=${partialRel.join(",")}`);
+    lineParts.push(`partial=${result.partial.map(relFromRepo).join(",")}`);
   }
   out(`${lineParts.join(" ")}\n`);
 

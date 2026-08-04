@@ -49,6 +49,7 @@ import {
   type GraphModel,
   buildGraphModel,
 } from "../lib/graph/model.js";
+import { GRAPH_FILENAME } from "../lib/graph/regen.js";
 import { REGEN_COMMAND, renderStoryGraph } from "../lib/graph/render.js";
 import { attachPhase } from "../lib/help.js";
 import {
@@ -58,8 +59,11 @@ import {
 } from "../lib/repo-root.js";
 import { writeAtomic } from "../lib/supervisor-internal.js";
 
-/** Basename of the generated board, at the canonical repo root. */
-export const GRAPH_FILENAME = "GRAPH.md";
+// Re-exported (not re-declared) so the CLI and the hook-side regen can never
+// disagree about the board's filename. sgr104 moved the definition into
+// lib/graph/regen.ts — the hosts import from lib/, and lib/ must not depend
+// on commands/.
+export { GRAPH_FILENAME } from "../lib/graph/regen.js";
 
 export type GraphFormat = "mermaid" | "json";
 
