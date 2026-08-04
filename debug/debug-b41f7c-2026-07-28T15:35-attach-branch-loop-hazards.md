@@ -3,7 +3,7 @@ hash: b41f7c
 type: debug
 created: 2026-07-28T15:35:00-06:00
 title: "Loop discardWorktree force-deletes an inherited (attach-mode) claim branch"
-status: in-progress
+status: done
 from: dev/dev-mss102-2026-07-28T13:43-claim-branch-inheritance.md
 blocked_by: [mss103]
 branch: feat/debug-b41f7c
@@ -78,6 +78,8 @@ attach time. This spec covers only the loop's two wrong assumptions.
   - Learning: Editing .claude/commands/*.md requires `npm run sync:skills` or test/skills-sync.test.ts (pin101 drift guard) goes red — the mirror under skills/ must be byte-identical.
   - Learning: Attach mode only triggers when the spec's recorded `branch:` DIFFERS from the derived `<prefix><type>-<hash>` name, so any attach fixture needs a parent-shaped branch name, not the item's own.
   - Learning: Four child-process-spawn test files (loop-worker, manage-spawn, manage-crash-restart-loop, manage-spawn-integration) time out under machine load during a full `npm test` on this box but pass 61/61 in isolation in ~1s — treat their timeouts as environmental, and re-run them alone before believing a full-suite red.
+- 2026-08-04T21:19:48.667Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-08-04T21:19:48.667Z — merged via devx loop — PR https://github.com/LeoTheMighty/devx/pull/116
 
 ## Links
 
