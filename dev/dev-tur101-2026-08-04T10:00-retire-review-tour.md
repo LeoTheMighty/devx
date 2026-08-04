@@ -29,28 +29,28 @@ for `hold-check` / `next` / `loop` and is rehomed, not deleted.
 
 ### Code removal
 
-- [ ] `src/lib/tour/{gather,render,publish,schema}.ts` and
+- [x] `src/lib/tour/{gather,render,publish,schema}.ts` and
       `src/commands/tour.ts` deleted; `devx tour` unregistered from
       `src/cli.ts`.
-- [ ] `src/lib/tour/exec.ts` rehomed to `src/lib/exec.ts` with its header
+- [x] `src/lib/tour/exec.ts` rehomed to `src/lib/exec.ts` with its header
       rewritten to describe the general seam; all four importers
       (`devx/hold-check.ts`, `next/gather.ts`, `loop/git-tx.ts`,
       `commands/next.ts`) plus the three test importers repointed.
-- [ ] `diff2html` and `marked` removed from `package.json` dependencies —
+- [x] `diff2html` and `marked` removed from `package.json` dependencies —
       the tour renderer was their only consumer.
-- [ ] `npx tsc --noEmit` clean.
+- [x] `npx tsc --noEmit` clean.
 
 ### PR body
 
-- [ ] The `## 🗺 Review tour` section removed from
+- [x] The `## 🗺 Review tour` section removed from
       `_devx/templates/pull_request_template.md` and from
       `BUILTIN_TEMPLATE` in `src/lib/pr-body.ts`.
-- [ ] `TOUR_PLACEHOLDER`, `TourSectionData`, `TourStopSummary`,
+- [x] `TOUR_PLACEHOLDER`, `TourSectionData`, `TourStopSummary`,
       `renderTourSection`, the `tour` render option and the
       `tourSectionSkipped` result field all deleted; `--tour-url` /
       `--tour-orientation` / `--tour-unavailable` removed from
       `devx pr-body`.
-- [ ] **Stale on-disk templates render clean**: a repo that ran
+- [x] **Stale on-disk templates render clean**: a repo that ran
       `/devx-init` between v2t101 and tur101 still carries the section in
       `.github/pull_request_template.md`. `renderPrBody` strips the
       canonical heading+placeholder pair so no PR body ever shows a dead
@@ -60,39 +60,39 @@ for `hold-check` / `next` / `loop` and is rehomed, not deleted.
 
 ### Skills
 
-- [ ] `/devx` Phase 7.5 deleted outright; the `review` stage word dropped
+- [x] `/devx` Phase 7.5 deleted outright; the `review` stage word dropped
       from the dispatch list (review-shaped input routes to Address); the
       Debug arm and Address stage no longer reference tours; frontmatter
       description updated.
-- [ ] `/devx-plan` D-12 line reads `one phase ≙ one dev spec ≙ one PR`.
-- [ ] `skills/` mirror re-synced byte-identical (`npm run sync:skills`).
+- [x] `/devx-plan` D-12 line reads `one phase ≙ one dev spec ≙ one PR`.
+- [x] `skills/` mirror re-synced byte-identical (`npm run sync:skills`).
 
 ### Tests
 
-- [ ] All six `test/tour-*.test.ts` files, `test/devx-skill-tour-discipline.test.ts`
+- [x] All six `test/tour-*.test.ts` files, `test/devx-skill-tour-discipline.test.ts`
       and `test/fixtures/tour-fixture.ts` deleted.
-- [ ] `test/spec-resolve-any-type.test.ts` keeps its merge-gate and
+- [x] `test/spec-resolve-any-type.test.ts` keeps its merge-gate and
       `findSpecForHashAnyType` halves (the non-dev resolution contract
       debug-6a913f was filed for) and drops only the tour-gather half.
-- [ ] `help.test.ts`, `devx-pr-body-substitution.test.ts` and
+- [x] `help.test.ts`, `devx-pr-body-substitution.test.ts` and
       `loop-report.test.ts` assertions updated; loop report no longer
       emits a `Tour:` line.
-- [ ] New regression coverage for the stale-template strip.
-- [ ] Full `npm test` green.
+- [x] New regression coverage for the stale-template strip.
+- [x] Full `npm test` green.
 
 ### Docs
 
-- [ ] `v2/03-review-tour.md` deleted; `v2/README.md` index row marks it
+- [x] `v2/03-review-tour.md` deleted; `v2/README.md` index row marks it
       deleted and points at what survived.
-- [ ] `v2/07-decisions.md`: D-4 marked RETIRED, D-12 amended, O-1/O-2
+- [x] `v2/07-decisions.md`: D-4 marked RETIRED, D-12 amended, O-1/O-2
       closed, D-5 annotated as surviving. Ledger entries are annotated,
       not erased — the record of what was decided and why stays readable.
-- [ ] `v2/00-vision.md`, `02-engine.md`, `04-overnight-loop.md`,
+- [x] `v2/00-vision.md`, `02-engine.md`, `04-overnight-loop.md`,
       `05-dispatcher.md`, `06-phases.md`, `docs/HOW_TO_USE.md`,
       `docs/ROADMAP.md`, `CLAUDE.md` updated. Historical records (S-2,
       the V2.3 phase section, the shipped-PR table) are annotated as
       shipped-then-retired rather than rewritten.
-- [ ] `MANUAL.md` row filed for the orphan `devx-tours` branch (deleting
+- [x] `MANUAL.md` row filed for the orphan `devx-tours` branch (deleting
       a remote branch is the user's call, not an agent's).
 
 ## Technical notes
@@ -112,6 +112,32 @@ for `hold-check` / `next` / `loop` and is rehomed, not deleted.
 - 2026-08-04T10:00 — filed. Owner call: retire the tour, full rip-out.
   Scope confirmed as full subsystem removal (not skills-only) and
   single-PR-on-top-of-in-flight-work.
+- 2026-08-04T10:05 — implementation: 64 files, +1,445/−4,847. `git mv` for
+  the exec seam so the rename stays visible in history.
+- 2026-08-04T10:40 — phase 5: full local suite surfaced 2 failures.
+  (1) REAL REGRESSION — `test/devx-dispatcher-discipline.test.ts` pinned
+  `review` in the stage-word list; the file contains no occurrence of
+  "tour" so no grep found it. Fixed, and added a test pinning the word's
+  ABSENCE so a stage word with no stage can't come back.
+  (2) NOT MINE — `test/loop-concurrency.test.ts` G-1 harness timed out at
+  600s; passes in 95s in isolation at the same commit; my only change to
+  that file is an import-path rename. Filed as `debug/debug-7c1e93`
+  rather than expanding scope. Targeted re-run of all 7 affected files
+  green (99 tests).
+- 2026-08-04T10:50 — self-review catch: I had written into debug-7c1e93
+  that `npm test` exits 0 over a red summary. Verified before shipping —
+  `npm run test:vitest -- <nonexistent>` exits 1, so npm propagates
+  correctly and the exit-0 was the agent harness's background-task
+  wrapper. Corrected the spec rather than filing a non-existent bug.
+- 2026-08-04T11:00 — phase 7: PR #113 opened, body rendered by
+  `devx pr-body` (zero unresolved placeholders, no tour section) — the
+  command this PR modified rendering its own PR body.
+- 2026-08-04T11:05 — phase 8: remote CI green on both runners
+  (run 30930591409, macos + ubuntu, 133 files / 3,060 tests / 1 skipped
+  in 27.87s). The CI numbers also narrowed debug-7c1e93: the same suite
+  that costs 6,085s of test time locally costs 57s on a runner, so the
+  contention-deadlock reading is unlikely and the spec was updated with
+  that evidence.
 
 ## Links
 

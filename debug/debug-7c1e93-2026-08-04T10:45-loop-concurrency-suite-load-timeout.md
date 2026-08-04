@@ -45,7 +45,27 @@ in 1,779s of wall clock (~3.4 workers saturated); this test spawns real
 overlapping in-process loops driving real `git` subprocesses, so it is the
 most CPU-contended file in the suite and the first to blow a timeout.
 
-## Root cause (hypothesis, not yet confirmed)
+## Evidence added at PR-open (narrows this considerably)
+
+Remote CI ran the **same commit, same `npm test`, same 133 files / 3,060
+tests** on ubuntu-latest and macos-latest:
+
+```
+Test Files  133 passed (133)
+     Tests  3060 passed | 1 skipped (3061)
+  Duration  27.87s (tests 56.81s)
+```
+
+57s of test time in CI vs. **6,085s locally** — ~100×. Nothing relevant is
+skipped (the single skip is the Windows-only postinstall block). The G-1
+harness therefore completes comfortably on a Linux runner.
+
+This makes the deadlock reading unlikely and points at local process-spawn
+cost: the harness's runtime is dominated by real `git` subprocesses, which
+are far more expensive on macOS than on Linux. The isolated local run took
+147s for this one file — more than CI needed for the entire suite.
+
+## Root cause (hypothesis, narrowed by the CI evidence above)
 
 The 600s timeout was sized against an unloaded machine. The harness's cost
 is dominated by real `git` process spawns inside two concurrent loops; when
@@ -63,10 +83,11 @@ the file passes in isolation at the same commit.
 - [ ] Repro captured as a runnable command (e.g. run the full suite with
       the same worker count on an otherwise-idle machine and confirm
       the G-1 test's wall-clock).
-- [ ] Root cause documented with evidence — starvation vs. an actual
-      contention deadlock that only manifests under load. **If it is the
-      latter, that is a real `devx loop` concurrency bug and outranks
-      this file's timeout.**
+- [ ] Root cause documented with evidence — macOS spawn cost + worker
+      starvation (the leading hypothesis, supported by the CI numbers)
+      vs. an actual contention deadlock. The deadlock reading is now
+      unlikely but not formally excluded; if it were true it would be a
+      real `devx loop` bug outranking this file's timeout.
 - [ ] Fix + regression: either isolate the harness (`test.concurrent`
       exclusion / its own vitest project / `poolOptions` pinning) or
       raise its timeout with a comment justifying the number. Do NOT
@@ -90,6 +111,12 @@ the file passes in isolation at the same commit.
 - 2026-08-04T10:45 — filed from tur101's local gate. Reproduced the
   pass-in-isolation / fail-under-load split at the same commit; ruled out
   tur101's import-path rename as the cause.
+- 2026-08-04T11:0x — CI on PR #113 ran the identical suite green in 27.87s
+  wall / 56.81s test time on both ubuntu and macos runners (vs. 1,779s /
+  6,085s locally). Deadlock hypothesis substantially weakened; reframed as
+  local spawn-cost starvation. Worth noting separately: the local `npm
+  test` gate costs ~30 min on this machine for work CI does in ~30s, which
+  is a developer-experience problem in its own right.
 
 ## Links
 
