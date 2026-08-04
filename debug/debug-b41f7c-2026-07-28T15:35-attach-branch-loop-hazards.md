@@ -3,11 +3,11 @@ hash: b41f7c
 type: debug
 created: 2026-07-28T15:35:00-06:00
 title: "Loop discardWorktree force-deletes an inherited (attach-mode) claim branch"
-status: ready
+status: in-progress
 from: dev/dev-mss102-2026-07-28T13:43-claim-branch-inheritance.md
 blocked_by: [mss103]
 branch: feat/debug-b41f7c
-owner: null
+owner: /devx-loop-2026-08-04T19-52-58-179-34486
 ---
 
 ## Goal
@@ -67,6 +67,7 @@ attach time. This spec covers only the loop's two wrong assumptions.
 - 2026-07-28T15:35 — filed by /devx during mss102 Phase 4 self-review
   (Blind Hunter findings #3 partial + #4). Blocked-by mss103 to avoid
   colliding with the in-flight loop-integration edits to the same file.
+- 2026-08-04T14:19:59-06:00 — claimed by /devx in session /devx-loop-2026-08-04T19-52-58-179-34486
 
 ## Links
 
