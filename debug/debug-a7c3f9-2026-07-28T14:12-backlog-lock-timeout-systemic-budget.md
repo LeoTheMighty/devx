@@ -53,6 +53,14 @@ reduce peer pressure on the lock).
   exist on feat/debug-a7c3f9. Row, frontmatter, worktree, branch and spec
   lock all reverted; the item is untouched and free to claim.
 - 2026-08-04T13:52:58-06:00 — claimed by /devx in session /devx-loop-2026-08-04T19-52-58-179-34486
+- 2026-08-04T20:17:41.309Z — loop iteration 1: Live-holder backlog-lock timeouts during a loop claim now route as contention on their own bounded rail instead of counting toward the systemic claim-failure budget, with wedged/unreadable holders still surfacing.
+  - Change: driver.ts claim catch: BacklogLockTimeoutError against a provably-live holder routes like claim-contended (mask + pick next, consecutiveClaimFailures untouched) and emits item:claim-lock-timeout; 3 such timeouts with no successful claim in between stop the run on a separate rail whose stop reason names the holder pid and lock path. Not-provably-live holders (unreadable pid) still fall through to claim-failed + the systemic budget.
+  - Change: report.ts: claim-contended label, next-steps advice and summary counter no longer assert 'a peer won the push race' as the only cause — the per-item Detail line distinguishes lock-hold from push-race.
+  - Change: test/loop-concurrency.test.ts: three driver-level tests over the real lock machinery (peer lock file with a live pid + real withBacklogLock acquire inside the claim seam) pinning contention routing, the untouched item budget, and the unreadable-holder systemic path — plus the AC 2 root-cause writeup as the block header.
+  - Learning: The repro cannot park the lock before runLoop: the driver's mlc105 admission section (`loop-admission`) takes the same backlog lock at startup, so a pre-parked hold refuses the run with exit 1 instead of reaching the claim. The hold has to be taken inside the claim seam.
+  - Learning: A backlog-lock timeout with an unreadable holder pid is only reachable via an EMPTY lock body — dead-pid and unparseable bodies are reaped by acquirePathLock before any deadline, and empty bodies are the one shape classifyExistingLock conservatively calls 'held'. That makes the empty-body case the natural test fixture for 'not provably live'.
+  - Learning: BacklogLockTimeoutError's message hardcodes BACKLOG_LOCK_TIMEOUT_MS (30000ms) even when the acquire ran with a shorter opts.timeoutMs, so test-seam timeouts render a misleading duration. Cosmetic and test-only today (production never overrides the constant), but it would misreport if the timeout ever becomes configurable.
+  - Learning: The full suite is flaky under its own load on this box: running it while other work competes for CPU timed out 25 real-child-process tests in loop-worker/manage-spawn/manage-crash-restart-loop/manage-spawn-integration (loop-worker alone took 117s). All 61 pass isolated on an idle machine — check for this signature before treating a red suite as a regression.
 
 ## Links
 

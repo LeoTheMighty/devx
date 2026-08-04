@@ -25,9 +25,9 @@
 // Spec: dev/dev-mlc104-2026-07-28T09:02-claim-contention-harness.md
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runLoop } from "../src/lib/loop/driver.js";
@@ -35,7 +35,12 @@ import { readEvents } from "../src/lib/loop/state.js";
 import { type WorkerRunFn } from "../src/lib/loop/worker.js";
 import { type TailFn } from "../src/lib/loop/tail.js";
 import { type Exec, realExec } from "../src/lib/exec.js";
-import { ClaimContendedError, claimSpec } from "../src/lib/devx/claim.js";
+import { backlogLockPath, withBacklogLock } from "../src/lib/backlog/mutate.js";
+import {
+  ClaimContendedError,
+  type ClaimSpecResult,
+  claimSpec,
+} from "../src/lib/devx/claim.js";
 import { type RunSummary } from "../src/lib/loop/report.js";
 
 // ---------------------------------------------------------------------------
@@ -393,5 +398,135 @@ describe("finalizeMerged pull --ff-only retry", () => {
     const r = await runLoop(loopOpts(fx, "pull-retry-fail-test", mulberry32(9), { exec }));
     const events = readEvents(fx.cacheDir, r.summary!.runId).map((e) => e.event);
     expect(events).toContain("item:pull-ff-failed");
+  }, 60_000);
+});
+
+// ---------------------------------------------------------------------------
+// Backlog-lock timeout during claim (debug-a7c3f9 — mlc104 review EC-8)
+// ---------------------------------------------------------------------------
+//
+// Root cause (AC 2): mlc102 made the whole claim transaction one section
+// under `locks/backlog.lock` (claim.ts's `backlogLock` seam), and chose
+// "held is retryable contention" semantics AT THE CLI — `devx devx-helper
+// claim` maps BacklogLockTimeoutError to exit 1 `{error: "backlog lock
+// held"}` (devx-helper.ts:239, documented in the /devx skill body). The
+// IN-PROCESS driver disagreed: its claim catch (driver.ts) had exactly two
+// branches — ClaimContendedError → `claim-contended` (budget untouched) and
+// everything else → `claim-failed` + `consecutiveClaimFailures++`. A
+// BacklogLockTimeoutError fell into "everything else", so a live peer
+// holding the lock past 30s counted toward MAX_CONSECUTIVE_CLAIM_FAILURES
+// (3) and three waiting picks in a row stopped the night as a "systemic
+// claim problem". mlc104 widened the locked section from 1 push to up to 5
+// network ops (3 pushes + 2 rebase-pulls), so a slow remote × N loops makes
+// 30s reachable with nothing broken — healthy contention, misdiagnosed.
+//
+// The fixtures below drive the REAL machinery: a peer's lock file (live pid
+// ⇒ classifyExistingLock says held, no stale reap) parked before the claim,
+// a real `withBacklogLock` acquire inside the claim seam, so the driver sees
+// the genuine error the acquire path constructs — holder pid and all. The
+// hold is taken INSIDE the claim seam because the driver's own admission
+// section (`loop-admission`) runs under the same lock at startup.
+
+/** A peer's lock body: our own pid is unambiguously live, and acquired_at
+ *  = now can't trip the PID-recycling cross-check (this process started
+ *  earlier), so the acquire classifies it "held" for the full deadline. */
+function livePeerLockBody(): string {
+  return JSON.stringify({ pid: process.pid, acquired_at: new Date().toISOString() }) + "\n";
+}
+
+function holdBacklogLock(fx: Fixture, body: string): void {
+  const path = backlogLockPath(fx.cacheDir);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, body, "utf8");
+}
+
+/** Claim seam that parks a peer's hold and then takes the real lock with a
+ *  short deadline — every claim raises a genuine BacklogLockTimeoutError. */
+function lockBlockedClaim(
+  fx: Fixture,
+  body: string,
+): (hash: string, type: string) => Promise<ClaimSpecResult> {
+  return async (hash, type) => {
+    holdBacklogLock(fx, body);
+    return withBacklogLock(
+      fx.cacheDir,
+      `claim-${hash}`,
+      () =>
+        claimSpec(hash, {
+          sessionId: "lock-timeout-test",
+          repoRoot: fx.repoRoot,
+          config: { git: MERGED.git },
+          type,
+        }),
+      { timeoutMs: 60, pollMs: 10 },
+    );
+  };
+}
+
+describe("driver backlog-lock-timeout routing", () => {
+  it("a live holder's timeout routes like contention — never the systemic claim rail", async () => {
+    // 4 rows: pre-fix this produced 3 claim-failed in a row and stopped on
+    // "systemic claim problem" under PURE contention (the AC 1 repro).
+    const fx = track(makeFixture(["aa1101", "bb2202", "cc3303", "dd4404"]));
+    const r = await runLoop(
+      loopOpts(fx, "lock-timeout-live", mulberry32(11), {
+        claim: lockBlockedClaim(fx, livePeerLockBody()),
+      }),
+    );
+    expect(r.exitCode).toBe(0);
+    const items = r.summary?.items ?? [];
+    expect(items.filter((i) => i.outcome === "claim-failed")).toEqual([]);
+    expect(items.map((i) => i.outcome)).toEqual([
+      "claim-contended",
+      "claim-contended",
+      "claim-contended",
+    ]);
+    expect(r.summary?.stopReason ?? "").not.toMatch(/systemic claim problem/);
+    // …but a holder that never lets go is still surfaced, on its OWN rail,
+    // naming the pid to `ps` (AC 3's "without masking wedged holders").
+    expect(r.summary?.stopReason ?? "").toMatch(/backlog-lock timeouts/);
+    expect(r.summary?.stopReason ?? "").toMatch(new RegExp(`pid ${process.pid}\\b`));
+    expect(items[0]?.detail ?? "").toMatch(/backlog lock timeout/);
+
+    const events = readEvents(fx.cacheDir, r.summary!.runId).map((e) => e.event);
+    expect(events).toContain("item:claim-lock-timeout");
+    expect(events).not.toContain("item:claim-failed");
+  }, 60_000);
+
+  it("live-holder timeouts don't burn the item budget — the loop keeps walking rows", async () => {
+    const fx = track(makeFixture(["aa1101", "bb2202"]));
+    // maxItems 1: a lock-timeout pick is not an attempt, so the loop must
+    // walk BOTH rows (masking each) instead of stopping after the first.
+    const r = await runLoop(
+      loopOpts(fx, "lock-timeout-budget", mulberry32(12), {
+        claim: lockBlockedClaim(fx, livePeerLockBody()),
+        flags: { maxItems: 1 },
+      }),
+    );
+    expect(r.exitCode).toBe(0);
+    expect(r.summary?.abortReason ?? null).toBeNull();
+    expect((r.summary?.items ?? []).map((i) => i.outcome)).toEqual([
+      "claim-contended",
+      "claim-contended",
+    ]);
+    expect(r.summary?.stopReason).toMatch(/no eligible backlog items/);
+  }, 60_000);
+
+  it("a holder that isn't provably live still counts toward the systemic budget", async () => {
+    // Empty body = a peer's mid-write window OR a corrupt lock: the
+    // classifier conservatively calls it held (never reaps it), and the
+    // holder pid is unreadable. Not provably live ⇒ no masking (design
+    // §Risks: masking only applies to live-held locks) ⇒ the systemic rail.
+    const fx = track(makeFixture(["aa1101", "bb2202", "cc3303", "dd4404"]));
+    const r = await runLoop(
+      loopOpts(fx, "lock-timeout-unreadable", mulberry32(13), {
+        claim: lockBlockedClaim(fx, ""),
+      }),
+    );
+    const items = r.summary?.items ?? [];
+    expect(items.filter((i) => i.outcome === "claim-failed")).toHaveLength(3);
+    expect(r.summary?.stopReason).toMatch(/systemic claim problem/);
+    const events = readEvents(fx.cacheDir, r.summary!.runId).map((e) => e.event);
+    expect(events).not.toContain("item:claim-lock-timeout");
   }, 60_000);
 });
