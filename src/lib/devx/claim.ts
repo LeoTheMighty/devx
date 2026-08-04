@@ -21,8 +21,19 @@
 //   • Steps 2/3 fail (DEV.md/spec composition + tmp-rename). The .tmp
 //     files are unlinked; no real file changed. Lock released. Throws
 //     ClaimError (exit 2).
+//   • Step 3.5 (sgr104) regenerates GRAPH.md after the rename batch so the
+//     claim commit ships a board that agrees with the row it just flipped.
+//     A regen failure WARNs and the claim continues (a derived file never
+//     aborts a state flip); so does a `git add` that refuses the board, and
+//     an unreadable pre-claim copy skips the regen outright so there is
+//     nothing un-rollback-able. A failure in any LATER step rolls GRAPH.md
+//     back by restoring the pre-claim bytes — or unlinking it, when this
+//     claim's regen is what created it. On a race-shaped push rejection the
+//     board leaves the commit before the rebase (its repo-wide summary line
+//     conflicts with every peer's), so contention never costs the claim.
 //   • Step 4 fails (commit). Working-tree edits are reverted via
-//     `git checkout -- DEV.md <spec>`. Lock released. Throws (exit 2).
+//     `git checkout -- DEV.md <spec>` (+ the GRAPH.md restore-or-unlink).
+//     Lock released. Throws (exit 2).
 //   • Step 5 fails (push). Race-shaped rejections (non-fast-forward — a
 //     peer pushed first) first rebase-retry in place, ≤2 rounds (mlc104);
 //     still-lost rolls back and throws ClaimContendedError (exit 1 —
@@ -62,6 +73,12 @@ import {
   BacklogLockTimeoutError,
   withBacklogLock,
 } from "../backlog/mutate.js";
+import { engineConfigFrom } from "../engine/config.js";
+import {
+  GRAPH_FILENAME,
+  type RegenFn,
+  regenerateGraph,
+} from "../graph/regen.js";
 import { REV_PARSE_ARGS, interpretRevParse } from "../repo-root.js";
 import {
   SpecLockHeldError,
@@ -200,9 +217,19 @@ export interface ClaimSpecOpts {
   sessionId: string;
   /** Project repo root. Defaults to the directory of devx.config.yaml. */
   repoRoot: string;
-  /** Pre-loaded config — used for deriveBranch + git.default_branch lookup. */
+  /** Pre-loaded config — used for deriveBranch + git.default_branch lookup,
+   *  and (sgr104) narrowed by `engineConfigFrom` for the GRAPH.md regen.
+   *
+   *  `engine` is named explicitly even though `engineConfigFrom` takes
+   *  `unknown`: without it the type invites callers to pass a hand-built
+   *  `{git: {...}}` that compiles clean and silently renders the board with
+   *  ENGINE_DEFAULTS. On a project with a non-default
+   *  `engine.workstreams_root` that means the claim's board groups by epic
+   *  while `devx graph`'s groups by workstream — `devx graph --check` red on
+   *  a clean tree, with nothing to point at. Pass the whole merged blob. */
   config: DeriveBranchConfig & {
     git?: { default_branch?: string };
+    engine?: unknown;
   };
   /** Test seam — defaults to wall-clock; tests inject a fixed Date. */
   now?: () => Date;
@@ -219,6 +246,11 @@ export interface ClaimSpecOpts {
    *  `(label, fn) => fn()` (their `/repo` root has no real `.devx-cache`
    *  to lock in); production callers leave it unset. */
   lock?: BacklogLockFn;
+  /** Test seam — the GRAPH.md regen hook (sgr104). Defaults to the real
+   *  `regenerateGraph`, whose write is a real-disk `writeAtomic`; fake-fs
+   *  tests inject one that writes through their fake (and one that fails,
+   *  to pin the warn-and-continue posture). */
+  regen?: RegenFn;
 }
 
 export interface ClaimSpecResult {
@@ -533,6 +565,7 @@ export async function claimSpec(
 
   const fs: ClaimFs = { ...realFs, ...(opts.fs ?? {}) };
   const exec = opts.exec ?? realExec;
+  const regen: RegenFn = opts.regen ?? regenerateGraph;
   const now = (opts.now ?? (() => new Date()))();
   const type = opts.type ?? "dev";
   if (!isClaimableType(type)) {
@@ -864,6 +897,102 @@ export async function claimSpec(
       throw new ClaimError("rename", errMessage(e));
     }
 
+    // Repo-relative pathspecs for every git call below. Declared here rather
+    // than at Step 4 because the regen's rollback needs to sit next to the
+    // other two artifacts' rollback.
+    const relativeDevMd = relativeFromRepo(devMdAbs, opts.repoRoot);
+    const relativeSpec = relativeFromRepo(specPath, opts.repoRoot);
+
+    // ---- Step 3.5: regenerate GRAPH.md (sgr104 T4.2) ----
+    // AFTER the rename batch, on purpose: renamePlan's contents are composed
+    // from in-memory strings, so a disk-reading regen scheduled before it
+    // would render the PRE-flip board and ship a GRAPH.md that disagrees
+    // with the DEV.md row in the same commit.
+    //
+    // Warn-and-continue: a broken render never aborts a state flip (plan
+    // Phase 4 §Context). `devx graph --check` (E-2) is the backstop.
+    //
+    // NB the board is rendered from the WORKING TREE, so uncommitted spec
+    // edits in the main checkout are baked into the commit this claim
+    // pushes. That is the same contract `devx graph` has always had (it too
+    // renders what is on disk), and rendering the index instead would make
+    // the hook disagree with the operator's own CLI — but it does mean an
+    // overnight claim taken while the user has a half-written spec open
+    // ships a board naming it. Accepted; `devx graph` re-run after the WIP
+    // lands corrects it.
+    const graphPath = join(opts.repoRoot, GRAPH_FILENAME);
+    const relativeGraph = relativeFromRepo(graphPath, opts.repoRoot);
+    // What rollback must put back: the pre-claim bytes, or `absent` when
+    // this claim's regen is what created the file (rollback = unlink).
+    let graphRestore: "absent" | { body: string } = "absent";
+    // An unreadable pre-image means we could not roll back what we are about
+    // to overwrite, so we do not overwrite it: skipping the regen keeps the
+    // "a rolled-back claim leaves NO trace" contract intact. Rendering
+    // anyway and warning at rollback time (the shape this replaced) left a
+    // board asserting a claim that never happened, one WARN deep in the log.
+    let graphReadable = true;
+    try {
+      if (fs.exists(graphPath)) {
+        graphRestore = { body: fs.readFile(graphPath) };
+      }
+    } catch (e) {
+      graphReadable = false;
+      process.stderr.write(
+        `devx claim: WARN — ${graphPath} is unreadable (${errMessage(e)}); skipping the regen so the claim stays rollback-clean — run \`devx graph\` once the file is readable\n`,
+      );
+    }
+    // The `regen` seam is public (ClaimSpecOpts.regen), and only the DEFAULT
+    // implementation carries the never-throws guarantee — the type can't
+    // enforce it on an injected one. An escape here would skip both
+    // releaseLock() and revertWorkingTree(), leaking the spec lock with
+    // DEV.md already flipped, so the contract is enforced structurally.
+    let regenResult: ReturnType<RegenFn> = {
+      ok: false,
+      warning: `${GRAPH_FILENAME} not regenerated: pre-claim copy unreadable`,
+    };
+    if (graphReadable) {
+      try {
+        regenResult = regen(fs, opts.repoRoot, engineConfigFrom(opts.config));
+      } catch (e) {
+        regenResult = {
+          ok: false,
+          warning: `${GRAPH_FILENAME} not regenerated: the regen hook threw (${errMessage(e)})`,
+        };
+      }
+      if (!regenResult.ok) {
+        process.stderr.write(`devx claim: WARN — ${regenResult.warning}\n`);
+      }
+    }
+    // Did THIS claim write the board? Gates every rollback. Cleared once the
+    // board has been put back by hand (see the contention drop below), so a
+    // later rollback doesn't undo the restore a second time.
+    let graphWritten = regenResult.ok;
+    // Is the board part of the commit? A separate flag from `graphWritten`
+    // because `git add` can refuse a path the regen wrote perfectly well
+    // (a project that gitignores its generated board) — the claim survives
+    // that; only the pathspec changes.
+    let graphInCommit = false;
+    // Restore-or-unlink (the derived file's rollback differs from the
+    // authored artifacts': it may legitimately not have existed before this
+    // claim, in which case "restore" means removing the orphan).
+    const revertGraph = () => {
+      if (!graphWritten) return;
+      try {
+        if (graphRestore === "absent") fs.unlink(graphPath);
+        else fs.writeFile(graphPath, graphRestore.body);
+      } catch (e) {
+        process.stderr.write(
+          `devx claim: WARN — failed to roll back ${graphPath}: ${errMessage(e)}; ` +
+            `it may be stale — run \`devx graph\` to refresh it\n`,
+        );
+      }
+    };
+    /** Every git pathspec below, in fixed order. */
+    const claimPaths = (): string[] =>
+      graphInCommit
+        ? [relativeDevMd, relativeSpec, relativeGraph]
+        : [relativeDevMd, relativeSpec];
+
     // From here, the working tree has the claim edits but they are NOT
     // committed yet. A failure must restore the originals to the working
     // tree (the .tmp files have already been renamed away — there's no
@@ -887,29 +1016,55 @@ export async function claimSpec(
             `working tree is dirty, recover via \`git checkout -- ${relativeFromRepo(specPath, opts.repoRoot)}\`\n`,
         );
       }
+      revertGraph();
     };
 
     // ---- Step 4: claim commit on the base branch ----
     // We deliberately do NOT touch the lock file — it lives under
     // .devx-cache/ which is in .gitignore. Same applies for any other
-    // .tmp.* files that may linger. `git add` is scoped to the two
+    // .tmp.* files that may linger. `git add` is scoped to the claim's
     // explicit paths to avoid `git add -A` footguns (CLAUDE.md working
     // agreement: "git add <specific files>; never `git add -A`").
-    const relativeDevMd = relativeFromRepo(devMdAbs, opts.repoRoot);
-    const relativeSpec = relativeFromRepo(specPath, opts.repoRoot);
     const commitMessage = `chore: claim ${hash} for /devx`;
+    // The two AUTHORED artifacts. Their staging failing is a real claim
+    // failure. `git add` stages what it can before reporting a non-zero exit,
+    // so un-stage before rolling back the working tree — otherwise the index
+    // keeps a `[/]` flip whose working-tree copy says `ready`, and the next
+    // bare `git commit` in this checkout sweeps a phantom claim to origin.
     const addResult = exec(
       "git",
       ["add", "--", relativeDevMd, relativeSpec],
       { cwd: opts.repoRoot },
     );
     if (addResult.exitCode !== 0) {
+      exec("git", ["restore", "--staged", "--", relativeDevMd, relativeSpec], {
+        cwd: opts.repoRoot,
+      });
       revertWorkingTree();
       releaseLock();
       throw new ClaimError(
         "git-add",
         `git add failed (exit ${addResult.exitCode}): ${addResult.stderr.trim()}`,
       );
+    }
+    // The DERIVED board, staged separately and best-effort. `git add` refuses
+    // an ignored path (exit 1) — and a project gitignoring its generated
+    // board is an ordinary choice — so bundling GRAPH.md into the pathspec
+    // above would make every claim in such a repo fail permanently over a
+    // file the claim doesn't need. Warn-and-continue, same posture as the
+    // regen itself: the board simply doesn't ride along this time.
+    if (graphWritten) {
+      const addGraph = exec("git", ["add", "--", relativeGraph], {
+        cwd: opts.repoRoot,
+      });
+      if (addGraph.exitCode === 0) {
+        graphInCommit = true;
+      } else {
+        process.stderr.write(
+          `devx claim: WARN — git add ${relativeGraph} failed (exit ${addGraph.exitCode}): ${addGraph.stderr.trim()}; ` +
+            `the claim commit ships without the board — run \`devx graph\` and commit it separately\n`,
+        );
+      }
     }
     // Pathspec-limited commit (v2l101 BH-MED-5 follow-through): a bare
     // `git commit -m` commits the ENTIRE staged index — anything the user
@@ -919,14 +1074,14 @@ export async function claimSpec(
     // files are committed regardless of index state.
     const commitResult = exec(
       "git",
-      ["commit", "-m", commitMessage, "--", relativeDevMd, relativeSpec],
+      ["commit", "-m", commitMessage, "--", ...claimPaths()],
       { cwd: opts.repoRoot },
     );
     if (commitResult.exitCode !== 0) {
       // Best-effort un-stage. We don't care about the exit status — even if
       // it fails we still revertWorkingTree() and release the lock; operator
       // sees a clean(er) working tree.
-      exec("git", ["restore", "--staged", "--", relativeDevMd, relativeSpec], {
+      exec("git", ["restore", "--staged", "--", ...claimPaths()], {
         cwd: opts.repoRoot,
       });
       revertWorkingTree();
@@ -967,6 +1122,82 @@ export async function claimSpec(
     // BH-3: the constant would misreport "after 2 retries" on a
     // conflicted-rebase exit where zero re-pushes ran).
     let retriesUsed = 0;
+    // sgr104: the derived board leaves the claim commit the moment we know
+    // we are contended, BEFORE the first rebase.
+    //
+    // Two reasons, both fatal to the retry if we keep it. (a) GRAPH.md
+    // carries a repo-wide summary banner that EVERY status transition
+    // rewrites, so our commit and any peer commit that also flipped
+    // something change the same line from the same ancestor — `pull
+    // --rebase` conflicts, the abort below classifies contended with ZERO
+    // retries used, and mlc104's rebase-retry is silently disabled for any
+    // peer that touched the board. (b) Even a clean rebase would re-push a
+    // board rendered against a tip that no longer exists, publishing the
+    // exact drift this hook exists to prevent.
+    //
+    // The plan's own rule for this file (plan.md §Phase dependencies): "On
+    // rebase conflict in GRAPH.md, never merge by hand — re-run `devx
+    // graph`." Dropping it here is that rule, applied structurally: the
+    // contended claim lands without a board, `devx graph --check` flags the
+    // staleness, and the next regen (this claim's worktree work, or any
+    // later flow's hook) refreshes it.
+    if (
+      graphInCommit &&
+      pushResult.exitCode !== 0 &&
+      isRejectedPush(pushResult.stderr)
+    ) {
+      const soft = exec("git", ["reset", "--soft", "HEAD~1"], {
+        cwd: opts.repoRoot,
+      });
+      if (soft.exitCode !== 0) {
+        // Couldn't rewrite the commit — leave it as it is and let the rebase
+        // try anyway. Worst case is the conflict this was meant to avoid,
+        // which the existing abort path already handles.
+        process.stderr.write(
+          `devx claim: WARN — could not drop ${relativeGraph} from the contended claim commit (git reset --soft exit ${soft.exitCode}): ${soft.stderr.trim()}; ` +
+            `the rebase may conflict on the board — resolve by re-running \`devx graph\`\n`,
+        );
+      } else {
+        exec("git", ["restore", "--staged", "--", relativeGraph], {
+          cwd: opts.repoRoot,
+        });
+        // `pull --rebase` refuses a dirty tracked file, so the board has to
+        // go back to HEAD's copy (or away entirely, on a first claim that
+        // minted it) before we rebase.
+        const restored = exec("git", ["checkout", "HEAD", "--", relativeGraph], {
+          cwd: opts.repoRoot,
+        });
+        if (restored.exitCode !== 0) {
+          // Not at HEAD — either this claim minted it, or the operator kept
+          // the board untracked. `revertGraph` distinguishes those from the
+          // pre-claim capture; a bare unlink here would delete an untracked
+          // board the operator was keeping.
+          revertGraph();
+        }
+        graphInCommit = false;
+        // The board is already back to its pre-claim state — a later
+        // rollback must not "restore" it a second time.
+        graphWritten = false;
+        const recommit = exec(
+          "git",
+          ["commit", "-m", commitMessage, "--", relativeDevMd, relativeSpec],
+          { cwd: opts.repoRoot },
+        );
+        if (recommit.exitCode !== 0) {
+          exec(
+            "git",
+            ["restore", "--staged", "--", relativeDevMd, relativeSpec],
+            { cwd: opts.repoRoot },
+          );
+          revertWorkingTree();
+          releaseLock();
+          throw new ClaimError(
+            "git-commit",
+            `re-commit without ${relativeGraph} failed (exit ${recommit.exitCode}): ${recommit.stderr.trim()}`,
+          );
+        }
+      }
+    }
     for (
       let retry = 0;
       retry < CLAIM_PUSH_MAX_RETRIES &&
@@ -1017,11 +1248,13 @@ export async function claimSpec(
       // v2l101 review HIGH finding: this rollback used `reset --hard HEAD~1`,
       // which reverts the ENTIRE working tree — an overnight `devx loop`
       // claim hitting a failing push would destroy the user's uncommitted
-      // WIP repo-wide. The claim only ever touched two files, so the
-      // rollback must be scoped to exactly those: `--soft` moves HEAD back
-      // without touching index or working tree, then the claim's two files
-      // are un-staged and restored to their captured pre-claim content via
-      // revertWorkingTree(). Everything else in the tree stays untouched.
+      // WIP repo-wide. The claim only ever touched DEV.md, the spec, and
+      // (sgr104) the derived GRAPH.md, so the rollback must be scoped to
+      // exactly those: `--soft` moves HEAD back without touching index or
+      // working tree, then the claim's files are un-staged and restored to
+      // their captured pre-claim content via revertWorkingTree() — which
+      // unlinks GRAPH.md instead of restoring it when this claim's regen was
+      // what created it. Everything else in the tree stays untouched.
       const resetResult = exec("git", ["reset", "--soft", "HEAD~1"], {
         cwd: opts.repoRoot,
       });
@@ -1042,7 +1275,7 @@ export async function claimSpec(
         // state), then restore their pre-claim working-tree content.
         // Best-effort on the restore-staged — even if it fails, the content
         // rewrite below is what the next claim reads.
-        exec("git", ["restore", "--staged", "--", relativeDevMd, relativeSpec], {
+        exec("git", ["restore", "--staged", "--", ...claimPaths()], {
           cwd: opts.repoRoot,
         });
         if (pulledRebase) {
@@ -1066,6 +1299,20 @@ export async function claimSpec(
                 `(exit ${checkoutResult.exitCode}): ${checkoutResult.stderr.trim()}; ` +
                 `working tree may still carry this claim's flips — recover via \`git checkout HEAD -- ${relativeDevMd} ${relativeSpec}\`\n`,
             );
+          }
+          // GRAPH.md is checked out SEPARATELY (sgr104): after a rebase it may
+          // not exist at HEAD at all — a first-claim regen minted it, or the
+          // peer's tip predates the board — and bundling it into the pathspec
+          // above would fail that checkout for BOTH authored artifacts over a
+          // derived file. Prefer HEAD (post-rebase truth, possibly the peer's
+          // copy); fall back to the pre-claim capture when HEAD has none.
+          if (graphWritten) {
+            const graphCheckout = exec(
+              "git",
+              ["checkout", "HEAD", "--", relativeGraph],
+              { cwd: opts.repoRoot },
+            );
+            if (graphCheckout.exitCode !== 0) revertGraph();
           }
         } else {
           revertWorkingTree();

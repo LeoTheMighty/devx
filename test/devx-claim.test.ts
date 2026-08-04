@@ -43,6 +43,11 @@ import {
   flipDevMdRow,
   updateSpecForClaim,
 } from "../src/lib/devx/claim.js";
+import {
+  GRAPH_FILENAME,
+  type RegenFn,
+  regenerateGraph,
+} from "../src/lib/graph/regen.js";
 
 // ---------------------------------------------------------------------------
 // Layer 1 — pure splicers
@@ -379,10 +384,30 @@ const STD_CONFIG = {
   git: { default_branch: "main", branch_prefix: "feat/", integration_branch: null },
 };
 
+/**
+ * sgr104: the claim's GRAPH.md regen, rebound onto the fake fs.
+ *
+ * The real `regenerateGraph` reads through the seam it is handed but writes
+ * with `writeAtomic` — real disk. Every fixture below lives at the imaginary
+ * `/repo`, so without this the hook would try to mkdir `/repo` on the host
+ * for real (and then warn its way past the failure, silently un-testing the
+ * hook). Reads AND writes go through the fake here, so the assertions about
+ * GRAPH.md's contents, its rollback, and the commit pathspec are honest.
+ */
+function fakeRegen(fs: ClaimFs): RegenFn {
+  return (readSeam, repoRoot, engine) =>
+    regenerateGraph(readSeam, repoRoot, engine, {
+      write: (p, c) => fs.writeFile(p, c),
+    });
+}
+
 function makeFixture(): {
   fs: ClaimFs;
   state: FakeFsState;
-  baseOpts: Pick<ClaimSpecOpts, "sessionId" | "repoRoot" | "config" | "now" | "lock">;
+  baseOpts: Pick<
+    ClaimSpecOpts,
+    "sessionId" | "repoRoot" | "config" | "now" | "lock" | "regen"
+  >;
 } {
   const initial: Record<string, string> = {
     [`${REPO}/DEV.md`]: SAMPLE_DEV_MD,
@@ -399,6 +424,7 @@ function makeFixture(): {
     // .devx-cache to take the cross-process backlog lock in. The real-git
     // integration tests below leave the default (real) lock in place.
     lock: <T,>(_label: string, fn: () => T): T => fn(),
+    regen: fakeRegen(fs),
   };
   return { fs, state, baseOpts };
 }
@@ -781,6 +807,11 @@ describe("claimSpec — rollback paths", () => {
       expect(readFileSync(join(repoRoot, "scratch.txt"), "utf8")).toBe("untracked scratch\n");
       // Nothing left staged from the claim.
       expect(g("diff", "--cached", "--name-only")).toBe("");
+      // sgr104: this repo had no committed GRAPH.md, so the claim's regen
+      // MINTED one — rollback has to unlink it, not restore bytes that never
+      // existed. An orphan here would be an untracked board asserting a claim
+      // that got rolled back.
+      expect(existsSync(join(repoRoot, GRAPH_FILENAME))).toBe(false);
       // Lock released.
       expect(
         existsSync(join(repoRoot, ".devx-cache", "locks", "spec-abc123.lock")),
@@ -992,7 +1023,10 @@ describe("claimSpec — debug type (v2d101)", () => {
   function makeDebugFixture(): {
     fs: ClaimFs;
     state: FakeFsState;
-    baseOpts: Pick<ClaimSpecOpts, "sessionId" | "repoRoot" | "config" | "now" | "lock">;
+    baseOpts: Pick<
+      ClaimSpecOpts,
+      "sessionId" | "repoRoot" | "config" | "now" | "lock" | "regen"
+    >;
   } {
     const initial: Record<string, string> = {
       [`${REPO}/DEBUG.md`]: SAMPLE_DEBUG_MD,
@@ -1010,6 +1044,7 @@ describe("claimSpec — debug type (v2d101)", () => {
         now: () => new Date(2026, 6, 5, 12, 0, 0),
         // Identity lock — same rationale as makeFixture (fake /repo root).
         lock: <T,>(_label: string, fn: () => T): T => fn(),
+        regen: fakeRegen(fs),
       },
     };
   }

@@ -34,12 +34,19 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   renameSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
+
+import {
+  type EngineConfig,
+  ENGINE_DEFAULTS,
+} from "../engine/config.js";
+import { type RegenFn, regenerateGraph } from "../graph/regen.js";
 
 // Slug shape: lowercase alphanum + dashes, 1-80 chars. Mirrors the kebab-case
 // convention for every existing epic-<slug>.md filename. Anything else
@@ -256,6 +263,14 @@ export interface AtomicEmitFs {
   exists(path: string): boolean;
   mkdirRecursive(path: string): void;
   unlink(path: string): void;
+  /** sgr104: the GRAPH.md regen READS the spec dirs through this seam.
+   *  Its WRITE does not — `regenerateGraph` owns its own `writeAtomic`
+   *  against the real disk, deliberately (the board's tmp+rename must not
+   *  inherit this module's plain writeFileSync). A caller faking the disk at
+   *  a synthetic root therefore has to override `AtomicEmitOpts.regen`, not
+   *  just `fs`, or the render will attempt a real write at
+   *  `<repoRoot>/GRAPH.md` and warn its way past the failure. */
+  readdir(path: string): string[];
 }
 
 const realFs: AtomicEmitFs = {
@@ -271,6 +286,7 @@ const realFs: AtomicEmitFs = {
       /* swallow: best-effort cleanup */
     }
   },
+  readdir: (p) => readdirSync(p),
 };
 
 export interface AtomicEmitOpts {
@@ -282,6 +298,12 @@ export interface AtomicEmitOpts {
   fs?: Partial<AtomicEmitFs>;
   /** Test seam for stderr capture. */
   err?: (s: string) => void;
+  /** Engine knobs the GRAPH.md regen needs (workstreams root). Defaults to
+   *  ENGINE_DEFAULTS — the CLI passes the project's real config. */
+  engine?: EngineConfig;
+  /** Test seam — the GRAPH.md regen hook (sgr104). Defaults to the real
+   *  `regenerateGraph`. */
+  regen?: RegenFn;
 }
 
 export interface AtomicEmitResult {
@@ -291,6 +313,11 @@ export interface AtomicEmitResult {
   partial?: string[];
   /** True iff both artifacts landed. */
   fullSuccess: boolean;
+  /** Absolute path of the regenerated GRAPH.md — present ONLY when the
+   *  regen succeeded (sgr104). Its absence is what makes the CLI's
+   *  `graph=` stdout key conditional, which is what makes the skill body's
+   *  commit pathspec conditional. */
+  graphPath?: string;
 }
 
 const DEFAULT_DEV_MD = "DEV.md";
@@ -314,6 +341,9 @@ const DEFAULT_DEV_MD = "DEV.md";
  *      AtomicEmitResult{partial: [...]}. The pln102 spec explicitly
  *      accepts this trade-off (party-mode locked decision #7 — see
  *      _bmad-output/planning-artifacts/epic-devx-plan-skill.md).
+ *   4. Regenerate GRAPH.md from the now-current disk (sgr104), reporting
+ *      the path on `graphPath`. Warn-and-continue: a derived board never
+ *      fails an emission that already landed.
  */
 export function writeRetroAtomically(
   emit: EmitRetroStoryResult,
@@ -321,6 +351,7 @@ export function writeRetroAtomically(
 ): AtomicEmitResult {
   const fs: AtomicEmitFs = { ...realFs, ...(opts.fs ?? {}) };
   const err = opts.err ?? ((s: string) => process.stderr.write(s));
+  const regen: RegenFn = opts.regen ?? regenerateGraph;
   const devMdRel = opts.devMdPath ?? DEFAULT_DEV_MD;
 
   const specAbs = join(opts.repoRoot, emit.specPath);
@@ -403,6 +434,24 @@ export function writeRetroAtomically(
     }
   }
 
+  // ---- 4) Regenerate GRAPH.md (sgr104 T4.3) ----
+  // After the rename batch for the same reason the claim hook waits: the new
+  // spec and the spliced DEV.md exist only as in-memory strings until the
+  // renames land, so an earlier regen would render the pre-emission board.
+  //
+  // Deliberately NOT a member of renamePlan. That batch's partial contract
+  // ("prior renames are committed, leftovers stay on disk for the operator")
+  // is about the two AUTHORED artifacts; GRAPH.md is derived, gets its own
+  // tmp+rename inside regenerateGraph, and — being derived — is regenerable
+  // at will, so a failure here is a warning rather than partial state.
+  //
+  // It runs on the partial path too: the render reports what is on disk, and
+  // after a partial emission what is on disk is exactly what the operator
+  // needs the board to show.
+  const regenResult = regen(fs, opts.repoRoot, opts.engine ?? ENGINE_DEFAULTS);
+  const graphPath = regenResult.ok ? regenResult.path : undefined;
+  if (!regenResult.ok) err(`WARN: ${regenResult.warning}\n`);
+
   if (firstFailure !== null) {
     // List the actual paths (not just labels like "spec") so the operator
     // doesn't have to grep to find which file to verify. Mirrors the
@@ -423,10 +472,11 @@ export function writeRetroAtomically(
       written: writtenAbs,
       partial: partialAbs,
       fullSuccess: false,
+      graphPath,
     };
   }
 
-  return { written: writtenAbs, fullSuccess: true };
+  return { written: writtenAbs, fullSuccess: true, graphPath };
 }
 
 // ---------------------------------------------------------------------------

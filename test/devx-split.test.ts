@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ClaimFs, Exec, ExecResult } from "../src/lib/devx/claim.js";
 import { claimSpec } from "../src/lib/devx/claim.js";
 import { parseSpecClaimFields } from "../src/lib/devx/verify-claim.js";
+import { type RegenFn, regenerateGraph } from "../src/lib/graph/regen.js";
 import { decideRepoNext } from "../src/lib/next/decide.js";
 import { gatherRepoSnapshot } from "../src/lib/next/gather.js";
 import {
@@ -894,6 +895,17 @@ function claimOpts(run: SplitRun, exec: Exec) {
     exec,
     now: () => FIXED_NOW,
     lock: <T>(_label: string, fn: () => T): T => fn(),
+    // sgr104: route the claim's GRAPH.md regen through the fake disk. The
+    // real `regenerateGraph` reads the seam it is handed but writes with
+    // `writeAtomic` — and this fixture's root is the imaginary `/repo`, whose
+    // `exists()` returns true on a prefix match, so the regen's own
+    // missing-root guard can't save us here. Without this the claim would
+    // attempt a real `mkdir('/repo')` on the host and then warn its way past
+    // the failure, silently un-testing the hook.
+    regen: ((readSeam, repoRoot, engine) =>
+      regenerateGraph(readSeam, repoRoot, engine, {
+        write: (p, c) => run.fs.writeFile(p, c),
+      })) as RegenFn,
   };
 }
 
