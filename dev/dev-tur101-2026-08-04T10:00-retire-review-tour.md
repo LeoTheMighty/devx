@@ -78,7 +78,9 @@ for `hold-check` / `next` / `loop` and is rehomed, not deleted.
       `loop-report.test.ts` assertions updated; loop report no longer
       emits a `Tour:` line.
 - [x] New regression coverage for the stale-template strip.
-- [x] Full `npm test` green.
+- [x] Full `npm test` green — verified on CI (run 30930591409, macos +
+      ubuntu, 133 files / 3,060 passed / 1 skipped) AND locally
+      (133 files / 3,061 passed / 0 failed, 915s).
 
 ### Docs
 
@@ -138,6 +140,11 @@ for `hold-check` / `next` / `loop` and is rehomed, not deleted.
   that costs 6,085s of test time locally costs 57s on a runner, so the
   contention-deadlock reading is unlikely and the spec was updated with
   that evidence.
+- 2026-08-04T11:2x — local full-suite re-run after the two fixes: 133
+  files / 3,061 passed / 0 failed in 915s. `loop-concurrency` passed this
+  run on a less-loaded machine, which is itself confirmation of the
+  load-flake reading in debug-7c1e93 rather than a real defect. Both
+  gates (local + remote CI) green on the same content.
 
 ## Links
 
