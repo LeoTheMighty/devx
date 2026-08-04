@@ -34,7 +34,7 @@ import { runLoop } from "../src/lib/loop/driver.js";
 import { readEvents } from "../src/lib/loop/state.js";
 import { type WorkerRunFn } from "../src/lib/loop/worker.js";
 import { type TailFn } from "../src/lib/loop/tail.js";
-import { type Exec, realExec } from "../src/lib/tour/exec.js";
+import { type Exec, realExec } from "../src/lib/exec.js";
 import { ClaimContendedError, claimSpec } from "../src/lib/devx/claim.js";
 import { type RunSummary } from "../src/lib/loop/report.js";
 

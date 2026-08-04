@@ -35,11 +35,12 @@
 //     (author: null) is skipped — inherited from merge-gate's
 //     blockingReviewCount semantics.
 //
-// Spec: dev/dev-v2t101-2026-07-05T13:04-review-tour.md
-// Design: v2/03-review-tour.md §4; D-5 in v2/07-decisions.md
+// Spec: dev/dev-v2t101-2026-07-05T13:04-review-tour.md (the review tour
+// itself retired at tur101; this hold gate outlived it — see D-5)
+// Design: D-5 in v2/07-decisions.md
 
 import { blockingReviewCount } from "../../commands/merge-gate.js";
-import { type Exec, realExec } from "../tour/exec.js";
+import { type Exec, realExec } from "../exec.js";
 
 /** The literal marker a human drops in a PR comment to block the merge
  *  tail. Matched case-insensitively with flexible whitespace after the

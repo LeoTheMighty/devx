@@ -58,7 +58,7 @@ Each phase is built on top of the previous one. No skipping, but parallelism wit
 
 > **v2 re-cut (2026-07-05):** Phases 0–1 shipped as written below. Phases 2+
 > are re-cut by the v2 migration — see `v2/06-phases.md` for the current
-> sequencing (native engine, review tours, universal dispatcher, overnight
+> sequencing (native engine, universal dispatcher, overnight
 > loop). The tables below are preserved as the original plan of record.
 
 ### Phase 0 — Foundation (week 1)

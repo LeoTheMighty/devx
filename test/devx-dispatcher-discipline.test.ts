@@ -49,7 +49,15 @@ describe("/devx dispatcher discipline (v2d101)", () => {
 
   it("keeps every stage word routable", () => {
     expect(body).toMatch(
-      /prd\|design\|plan\|red\|execute\|verify\|revise\|\s*address\|retro\|outcome\|review\|loop/,
+      /prd\|design\|plan\|red\|execute\|verify\|revise\|\s*address\|retro\|outcome\|loop/,
     );
+  });
+
+  it("no longer advertises `review` as a stage word (tur101)", () => {
+    // The review tour retired at tur101 and `review <pr>` went with it —
+    // review-shaped input routes to the Address stage now. Pinned so a
+    // future edit can't quietly reintroduce a stage word with no stage.
+    expect(body).not.toMatch(/outcome\|review\|loop/);
+    expect(body).toMatch(/that's where human review input on an open PR lands/);
   });
 });

@@ -28,9 +28,9 @@
 // Spec: dev/dev-v2l101-2026-07-05T13:06-overnight-loop.md
 // Design: v2/04-overnight-loop.md §4
 
-import { type Exec, type ExecResult, realExec } from "../tour/exec.js";
+import { type Exec, type ExecResult, realExec } from "../exec.js";
 
-export type { Exec, ExecResult } from "../tour/exec.js";
+export type { Exec, ExecResult } from "../exec.js";
 
 // ---------------------------------------------------------------------------
 // Errors

@@ -7,6 +7,8 @@
 //      (a complete config exercising every section).
 //   3. _devx/config-schema.json rejects test/fixtures/invalid-mode.yaml with
 //      an enum error pinned to `/mode` that lists the allowed values.
+//   4. qa.browser_harness accepts `claude-in-chrome` (bqa103) and still
+//      rejects a value outside the enum — the enum stays meaningful.
 //
 // Subsumed by cfg202's vitest suite once the @devx/cli package lands; until
 // then this is the validator gate that keeps the schema honest.
@@ -86,6 +88,50 @@ if (validate(invalid)) {
     } else {
       console.log(
         `PASS  invalid-mode.yaml rejected at /mode with allowed values: ${allowed.join(", ")}`
+      );
+    }
+  }
+}
+
+// qa.browser_harness: the attended-QA harness value must be legal, and the
+// enum must still reject anything outside it (bqa103).
+const withHarness = (value) => {
+  const cfg = JSON.parse(JSON.stringify(sample));
+  cfg.qa = { ...(cfg.qa ?? {}), browser_harness: value };
+  return cfg;
+};
+
+expectValid("qa.browser_harness: claude-in-chrome", withHarness("claude-in-chrome"));
+
+if (validate(withHarness("selenium"))) {
+  failures++;
+  console.error(
+    "FAIL  qa.browser_harness: selenium should have been rejected but validated"
+  );
+} else {
+  const harnessErr = (validate.errors ?? []).find(
+    (e) => e.instancePath === "/qa/browser_harness" && e.keyword === "enum"
+  );
+  if (!harnessErr) {
+    failures++;
+    console.error(
+      "FAIL  bogus browser_harness rejected but no enum-error pinned to /qa/browser_harness:"
+    );
+    for (const err of validate.errors ?? []) {
+      console.error(
+        `        ${err.instancePath || "(root)"} (${err.keyword}): ${err.message}`
+      );
+    }
+  } else {
+    const allowed = harnessErr.params?.allowedValues ?? [];
+    if (!allowed.includes("claude-in-chrome")) {
+      failures++;
+      console.error(
+        `FAIL  /qa/browser_harness enum does not offer claude-in-chrome: ${allowed.join(", ")}`
+      );
+    } else {
+      console.log(
+        `PASS  qa.browser_harness rejects "selenium"; allowed values: ${allowed.join(", ")}`
       );
     }
   }

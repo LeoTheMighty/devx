@@ -53,7 +53,7 @@ import {
   type NextFs,
   gatherRepoSnapshot,
 } from "../lib/next/gather.js";
-import type { Exec } from "../lib/tour/exec.js";
+import type { Exec } from "../lib/exec.js";
 
 export interface RunNextOpts {
   out?: (s: string) => void;

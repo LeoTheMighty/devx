@@ -47,7 +47,6 @@ import * as splitCommand from "./commands/split.js";
 import * as statusCommand from "./commands/status.js";
 import * as tailCommand from "./commands/tail.js";
 import * as todoCommand from "./commands/todo.js";
-import * as tourCommand from "./commands/tour.js";
 import * as uiCommand from "./commands/ui.js";
 import * as workstreamCommand from "./commands/workstream.js";
 
@@ -85,7 +84,6 @@ const commands: CommandModule[] = [
   statusCommand,
   tailCommand,
   todoCommand,
-  tourCommand,
   uiCommand,
   workstreamCommand,
 ];

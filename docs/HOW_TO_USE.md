@@ -52,8 +52,8 @@ fresh from repo state. `/devx` with no arguments runs it for you.
 - `/devx a1b2c3` → a spec hash → resumes that item wherever it left off.
 
 The execute loop for any item is always the same: claim it on the backlog →
-worktree → implement → adversarial self-review → local CI → PR (with a
-review tour) → remote CI → merge → cleanup. You'll see the PR land; the spec
+worktree → implement → adversarial self-review → local CI → PR → remote CI →
+merge → cleanup. You'll see the PR land; the spec
 file's status log records every step.
 
 ## Starting something big (the planning pipeline)
@@ -105,9 +105,10 @@ against disk — the report's claims are claims, not verdicts.
 
 ## Reviewing what agents did
 
-- `devx tour <hash>` — a guided review tour of a PR: ordered stops through
-  the diff with the decision narrative, on the `devx-tours` branch.
 - `devx status` — where everything is.
+- The PR itself — its body carries the spec link, the AC checklist, the test
+  plan, and reviewer notes, so the diff arrives with its intent attached.
+  Comment on it; `/devx address <pr>` dispositions every comment.
 - `devx outcome <hash>` — weeks after shipping, score the feature against
   the numeric goals from its PRD: keep / tune / restart / retire.
 - Retros write to `LEARN.md`, and future PRD stages read it back — the
@@ -175,7 +176,7 @@ devx loop --max-items 4     # let it run the whole backlog while you sleep
 ```
 
 Each phase: worktree → implement → self-review → CI → PR → merge. Next
-morning, read the report, click the preview URL, click through the tour.
+morning, read the report, click the preview URL, read the PRs.
 
 **4. Feedback and fixes**
 
@@ -210,6 +211,6 @@ for it at PRD time.
 | Change a plan mid-flight | `/devx revise <hash>` |
 | Run the backlog overnight | `devx loop` |
 | What's the state of everything? | `devx status` / `devx next` |
-| Review a PR properly | `devx tour <hash>` |
+| Respond to PR review comments | `/devx address <pr>` |
 | Answer agent questions | `/devx-interview` |
 | Did the thing we shipped work? | `devx outcome <hash>` |

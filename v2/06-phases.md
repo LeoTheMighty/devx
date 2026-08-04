@@ -76,9 +76,16 @@ Goal: `/devx` execution runs BMAD-free; BMAD is removed.
 Exit (AC): a dev item ships end-to-end with `grep -ri bmad src/ .claude/`
 clean (excluding frozen history); first native retro produces LEARN.md rows.
 
-## V2.3 — Review tour
+## V2.3 — Review tour *(shipped; RETIRED 2026-08-04 at tur101)*
 
 Goal: every `/devx` PR carries a working static tour; Leo reviews one for real.
+
+> **Retired.** V2.3 shipped and met its exit AC (PR #65 onward). It was then
+> removed wholesale at `tur101` — the per-PR narration step cost more time
+> than the guided walkthrough returned on a solo pre-launch repo. What
+> survives from this phase: `/devx address <pr>` and the `devx: hold` merge
+> gate (D-5). The scope below is preserved as the record of what was built.
+> See `07-decisions.md` D-4.
 
 - `devx tour build` (gather CLI + narrate agent-step schema + render CLI);
   vendored single-file template (diff2html + marked inline, no Mermaid,
@@ -144,15 +151,15 @@ Goal: the loop closes past merge.
 The 24-item mobile backlog (a/b/c/d epics) consumes the spec/backlog contract,
 not BMAD — **it keeps running throughout**, on whichever loop is current.
 Two v2 touchpoints, both additive: the morning report joins the push-payload
-sources (V2.5+), and tour URLs ride the `deep_link` field (V2.3+). ROADMAP's
-locked mobile decisions are untouched.
+sources (V2.5+), and PR URLs ride the `deep_link` field. ROADMAP's locked
+mobile decisions are untouched.
 
 ## Dependency graph
 
 ```
 V2.0 ──▶ V2.1 ──▶ V2.2 ──▶ V2.3 ──▶ V2.4 ──▶ V2.5 ──▶ V2.6
  (mgrret, roc101 first)      └────────────┬────────────┘
-mobile a→b→c→d epics ────────── parallel ─┘  (tour link V2.3+, report push V2.5+)
+mobile a→b→c→d epics ────────── parallel ─┘  (PR deep link, report push V2.5+)
 ```
 
 Strictly, V2.3 (tour) and V2.4 (dispatcher) could swap or interleave — both
@@ -165,7 +172,6 @@ depend only on V2.2. Default order puts the tour first because it upgrades
 |---|---|
 | Skill-body rewrites regress the 43-story-proven loop | Bootstrap discipline: v1 loop ships v2 code; each rewritten phase keeps its discipline tests (dvx103/dvx107 pattern); rewrite lands stage-by-stage, not big-bang |
 | User-foreground bottleneck (harness gate on `.claude/` edits) | Batch skill edits into one reviewed PR per phase boundary; everything else stays autonomous |
-| Tour narrative quality drifts (plausible-but-wrong trails) | grep-verified-edges hard rule + schema validation + drift-pin test; tour is fail-soft so a bad tour never blocks a PR |
 | Overnight loop meets a novel failure class | Ladder converges on stop; worktrees preserved; first nights supervised; LOCKDOWN mode disables `devx loop` entirely |
 | Prose budget creeps back up | S-1 canary test fails CI on regression |
 | Losing BMAD's planning depth for genuinely big projects | Gates are mode/thoroughness-scaled like everything else; PRFAQ/brainstorm-style depth can return later as optional pre-PRD stages — deliberately out of v2 scope |
@@ -185,7 +191,7 @@ principle (3). Tests 1,309 → 1,974; net −247K lines (the BMAD ejection).
 | V2.0 close-out & scaffold | [#59](https://github.com/LeoTheMighty/devx/pull/59) v2s101 · [#60](https://github.com/LeoTheMighty/devx/pull/60) roc101 · [#61](https://github.com/LeoTheMighty/devx/pull/61) mgrret |
 | V2.1 engine core | [#62](https://github.com/LeoTheMighty/devx/pull/62) v2e101 · [#63](https://github.com/LeoTheMighty/devx/pull/63) v2e102 |
 | V2.2 execute re-home & BMAD eject | [#64](https://github.com/LeoTheMighty/devx/pull/64) v2x101 |
-| V2.3 review tour | [#65](https://github.com/LeoTheMighty/devx/pull/65) v2t101 |
+| V2.3 review tour *(retired at tur101)* | [#65](https://github.com/LeoTheMighty/devx/pull/65) v2t101 |
 | V2.4 dispatcher | [#66](https://github.com/LeoTheMighty/devx/pull/66) v2d101 |
 | V2.5 overnight loop | [#67](https://github.com/LeoTheMighty/devx/pull/67) v2l101 |
 | V2.6 outcome loop & polish | v2o101 (the PR carrying this section) |

@@ -170,7 +170,7 @@ Contents (gnhf's exit-summary card, devx-flavored):
   from the worker's stream-json result event per debug-494590; budgets
   count new tokens processed: input + output + cache-creation);
   wall-clock; abort reason if any.
-- Per-merged-item: tour link, diff stat, test delta.
+- Per-merged-item: PR link, diff stat, test delta.
 - **Next steps**: exact reproduce/review commands.
 
 **Morning-review discipline (for the human's first `/devx` of the day, and

@@ -25,19 +25,22 @@ file; supersessions are appended, never rewritten.
 
 ## New v2 decisions
 
-- **D-4 [user]** — *Tour hosting: orphan `devx-tours` branch + htmlpreview
-  link, raw-file fallback for private repos.* Alternatives considered: CI
-  artifact upload (no stable URL, expires), GitHub Pages (extra repo setting,
-  better render — the designated upgrade path), committing tours on the
-  feature branch (pollutes the PR diff — rejected). Consumed by V2.3.
-  *Evidence (2026-07-05): exercised in PR #65 (v2t101) and every PR since —
-  tours published to the orphan `devx-tours` branch (v2t101/v2d101/v2l101
-  tours live there); [user] marker stays pending Leo's explicit flip.*
+- **D-4 [user]** — ~~*Tour hosting: orphan `devx-tours` branch + htmlpreview
+  link, raw-file fallback for private repos.*~~ **RETIRED 2026-08-04
+  (tur101).** The review tour is gone; hosting is moot. Original alternatives
+  considered: CI artifact upload (no stable URL, expires), GitHub Pages (extra
+  repo setting, better render), committing tours on the feature branch
+  (pollutes the PR diff — rejected). Shipped in V2.3, exercised on PRs #65–…,
+  and retired on owner call: the per-PR narration step cost more time than the
+  guided walkthrough returned on a solo pre-launch repo. The orphan
+  `devx-tours` branch is left in place as an archive (see MANUAL.md).
 - **D-5 [user]** — *YOLO auto-merge stays the default; review becomes
   possible, not mandatory:* a `devx: hold` comment or a requested-changes
   review before CI-green blocks the merge tail; silence merges as today.
   Rationale: preserves the YOLO memory-rule ("never stop at PR awaiting human
-  merge") while making the tour actionable. Consumed by V2.3.
+  merge") while making human review actionable. Consumed by V2.3.
+  *Survives tur101 — `devx devx-helper check-hold` is independent of the
+  retired tour.*
   *Evidence (2026-07-05): exercised in PR #65 (v2t101) — `devx devx-helper
   check-hold` ran live in its own merge tail (`{hold:false}` → silence
   merged); [user] marker stays pending Leo's explicit flip.*
@@ -59,22 +62,19 @@ file; supersessions are appended, never rewritten.
 - **D-11 (locked)** — *Loop completion is not acceptance.* `acs_met` from a
   worker routes to the PR/CI/merge tail; merge-gate remains the only path to
   main; morning reports present claims, not verdicts.
-- **D-12 (locked)** — *One plan phase ≙ one dev spec ≙ one PR ≙ one tour.*
-  Keeps v1's atomic-story rhythm as the engine's sizing invariant.
+- **D-12 (locked)** — *One plan phase ≙ one dev spec ≙ one PR.* Keeps v1's
+  atomic-story rhythm as the engine's sizing invariant. *(Amended 2026-08-04,
+  tur101: the trailing "≙ one tour" clause dropped with the review tour; the
+  sizing invariant itself is unchanged.)*
 
 ## Open questions (non-blocking, tracked)
 
-- **O-1** — Mermaid in tours: re-add via inlined mermaid (~1MB) once tour
-  size budget is measured on real PRs, or keep tables-only permanently?
-  (Revisit end of V2.3.)
-  *Measured (2026-07-05, v2o101 retro): real published single-file tours on
-  `devx-tours` came in at 1.41MB (v2d101), 1.49MB (v2t101), 1.65MB (v2l101)
-  — template itself is 42KB; the bulk is the inlined PR diff data island.
-  Adding ~1MB of mermaid would push large-PR tours past ~2.5MB. Still open;
-  the measured data leans tables-only until a GitHub-Pages render path
-  (D-4's designated upgrade) changes the arithmetic.*
-- **O-2** — Planning-PR tours (stops over prd/design/plan text diffs):
-  worth building at V2.3 or wait for demand? (Default: wait.)
+- ~~**O-1** — Mermaid in tours~~ **CLOSED 2026-08-04 (tur101)** — moot; the
+  tour is retired. *(Measured 2026-07-05, v2o101 retro: real published
+  single-file tours came in at 1.41MB (v2d101), 1.49MB (v2t101), 1.65MB
+  (v2l101) — template 42KB, the bulk being the inlined PR diff data island.
+  Kept as the size datum if a guided-review artifact is ever revisited.)*
+- ~~**O-2** — Planning-PR tours~~ **CLOSED 2026-08-04 (tur101)** — moot.
 - **O-3** — Focus-group / persona panel integration with the critique step:
   the `focus-group/` panel predates v2 — fold personas in as critique lenses,
   or keep as a separate FOCUS.md-driven surface? (Decide at V2.1 planning.)

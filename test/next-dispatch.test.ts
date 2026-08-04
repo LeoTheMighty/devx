@@ -28,7 +28,7 @@ import {
   rollupToCi,
 } from "../src/lib/next/gather.js";
 import { runNext } from "../src/commands/next.js";
-import type { Exec } from "../src/lib/tour/exec.js";
+import type { Exec } from "../src/lib/exec.js";
 import { captureIo, makeEngineRepo } from "./fixtures/engine-repo.js";
 
 // ---------------------------------------------------------------------------
@@ -55,6 +55,7 @@ function emptySnapshot(): RepoSnapshot {
     devReady: [],
     midPipeline: [],
     planReady: [],
+    qaWalkthroughs: [],
     blocked: [],
     todoDrift: [],
     drift: [],
@@ -145,6 +146,18 @@ function fullSnapshot(): RepoSnapshot {
   ];
   s.planReady = [
     { hash: "pln001", path: "plan/plan-pln001-x.md", title: "Big plan" },
+  ];
+  s.qaWalkthroughs = [
+    {
+      hash: "qaw001",
+      path: "test/test-qaw001-qa-walkthrough.md",
+      title: "QA walkthrough for Recipe import",
+    },
+    {
+      hash: "qaw002",
+      path: "test/test-qaw002-qa-walkthrough.md",
+      title: "QA walkthrough for Pantry search",
+    },
   ];
   s.blocked = [
     {
@@ -458,6 +471,28 @@ describe("decideRepoNext — each row fires in isolation", () => {
     expect(d.command).toBe("/devx prd pln001");
   });
 
+  it("row 10.5: unclaimed TEST.md walkthrough → /devx-test (attended-only)", () => {
+    const s = emptySnapshot();
+    s.qaWalkthroughs = fullSnapshot().qaWalkthroughs;
+    const d = rowOf(s);
+    expect(d.row).toBe(10.5);
+    expect(d.action).toBe("explore-qa");
+    expect(d.command).toBe("/devx-test qaw001");
+    expect(d.detail).toContain("test/test-qaw001-qa-walkthrough.md");
+    expect(d.detail).toContain("Recipe import");
+    expect(d.detail).toContain("(+1 more)");
+    expect(d.detail).toContain("attended-only");
+    expect(d.detail).toContain("$1/day");
+  });
+
+  it("row 10.5 omits the '+N more' tail for a lone walkthrough", () => {
+    const s = emptySnapshot();
+    s.qaWalkthroughs = [fullSnapshot().qaWalkthroughs[0]];
+    const d = rowOf(s);
+    expect(d.row).toBe(10.5);
+    expect(d.detail).not.toContain("more)");
+  });
+
   it("row 11: nothing ready, blocked items exist → report blockers + owners", () => {
     const s = emptySnapshot();
     s.blocked = fullSnapshot().blocked;
@@ -518,6 +553,9 @@ describe("decideRepoNext — first-match ordering (strip-down chain)", () => {
     expect(rowOf(s).row).toBe(10);
 
     s.planReady = [];
+    expect(rowOf(s).row).toBe(10.5);
+
+    s.qaWalkthroughs = [];
     expect(rowOf(s).row).toBe(11);
 
     s.blocked = [];
@@ -527,7 +565,8 @@ describe("decideRepoNext — first-match ordering (strip-down chain)", () => {
   it("cartesian spot-check: every earlier row beats every later row", () => {
     // For each pair (i, j) with i < j, a snapshot carrying only signals i
     // and j must fire row i. Signals are injected via targeted setters.
-    // Row 5.5 (outcome-due, v2o101) sits between 5 and 6 in the ordering.
+    // Row 5.5 (outcome-due, v2o101) sits between 5 and 6 in the ordering;
+    // row 10.5 (explore-qa, bqa104) sits between 10 and 11.
     const setters: Array<{ row: number; set: (s: RepoSnapshot) => void }> = [
       { row: 1, set: (s) => { s.loop = fullSnapshot().loop; } },
       { row: 2, set: (s) => { s.prs.push(fullSnapshot().prs[0]); } },
@@ -540,6 +579,7 @@ describe("decideRepoNext — first-match ordering (strip-down chain)", () => {
       { row: 8, set: (s) => { s.devReady = fullSnapshot().devReady; } },
       { row: 9, set: (s) => { s.midPipeline = fullSnapshot().midPipeline; } },
       { row: 10, set: (s) => { s.planReady = fullSnapshot().planReady; } },
+      { row: 10.5, set: (s) => { s.qaWalkthroughs = fullSnapshot().qaWalkthroughs; } },
       { row: 11, set: (s) => { s.blocked = fullSnapshot().blocked; } },
     ];
     for (let i = 0; i < setters.length; i++) {
@@ -1359,6 +1399,90 @@ describe("gatherRepoSnapshot — backlogs, drift, claims, gates", () => {
       expect(s.devReady).toEqual([]);
       expect(s.warnings.some((w) => w.includes("missing spec"))).toBe(true);
       expect(decideRepoNext(s).row).toBe(12);
+    } finally {
+      repo.cleanup();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2a-ter. QA-walkthrough gathering (row 10.5, bqa104)
+// ---------------------------------------------------------------------------
+
+describe("gatherRepoSnapshot — TEST.md QA walkthroughs (row 10.5)", () => {
+  const row = (hash: string, status = "ready") =>
+    "- [ ] `test/test-" +
+    hash +
+    "-qa-walkthrough.md` — QA walkthrough for Thing " +
+    hash +
+    "; 3 human check(s) outstanding. Status: " +
+    status +
+    ". From: " +
+    hash +
+    ".";
+
+  it("unchecked ready rows become signals in file order → row 10.5", () => {
+    const repo = makeEngineRepo();
+    try {
+      repo.write("TEST.md", `# TEST\n\n${row("qaa001")}\n${row("qaa002")}\n`);
+      const s = gather(repo);
+      expect(s.qaWalkthroughs.map((w) => w.hash)).toEqual(["qaa001", "qaa002"]);
+      expect(s.qaWalkthroughs[0].path).toBe(
+        "test/test-qaa001-qa-walkthrough.md",
+      );
+      expect(s.qaWalkthroughs[0].title).toBe("QA walkthrough for Thing qaa001");
+      const d = decideRepoNext(s);
+      expect(d.row).toBe(10.5);
+      expect(d.command).toBe("/devx-test qaa001");
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("checked, struck, and settled-status rows are not routable", () => {
+    const repo = makeEngineRepo();
+    try {
+      repo.write(
+        "TEST.md",
+        [
+          "# TEST",
+          "",
+          row("qaa010").replace("- [ ]", "- [x]"),
+          "- [ ] ~~`test/test-qaa011-qa-walkthrough.md` — struck. Status: ready.~~",
+          row("qaa012", "done"),
+          row("qaa013", "in-progress"),
+          "- [ ] `dev/dev-qaa014-2026-07-05T12:00-x.md` — not a walkthrough. Status: ready.",
+          "",
+        ].join("\n"),
+      );
+      const s = gather(repo);
+      expect(s.qaWalkthroughs).toEqual([]);
+      expect(decideRepoNext(s).row).toBe(12);
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("a missing TEST.md is simply empty (no warning, no row)", () => {
+    const repo = makeEngineRepo();
+    try {
+      const s = gather(repo);
+      expect(s.qaWalkthroughs).toEqual([]);
+      expect(s.warnings.some((w) => w.includes("TEST.md"))).toBe(false);
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("row 10.5 never preempts ready DEV.md work (attended-only, $1/day)", () => {
+    const repo = makeEngineRepo();
+    try {
+      repo.write("TEST.md", `# TEST\n\n${row("qaa020")}\n`);
+      writeSpec(repo, "dev", "qaa021", "ready");
+      repo.write("DEV.md", `# DEV\n\n${backlogRow("dev", "qaa021", "ready")}\n`);
+      const s = gather(repo);
+      expect(s.qaWalkthroughs).toHaveLength(1);
+      expect(decideRepoNext(s).row).toBe(8);
     } finally {
       repo.cleanup();
     }

@@ -54,8 +54,8 @@ GitHub PRs are the only external surface.
    ▼
  ┌──────────┐  per dev item   ┌────────────┐        ┌────────┐
  │ Emit     │───────────────▶ │  Execute   │───────▶│ Verify │──▶ merge
- │ dev specs│  (DEV.md +      │ (/devx v1  │  PR +  │ phase  │
- └──────────┘   spec files)   │  loop core)│  tour  └────────┘
+ │ dev specs│  (DEV.md +      │ (/devx v1  │   PR   │ phase  │
+ └──────────┘   spec files)   │  loop core)│        └────────┘
                               └────────────┘
                                                         │
                                               retro (per epic) ──▶ LEARN.md
@@ -217,13 +217,12 @@ right thing.*
 
 ### 4.7 Execute stage
 **v1's `/devx` Phases 1–8 survive nearly intact** — claim → worktree →
-implement → self-review → local CI → commit → push + PR (now with tour,
-`03-review-tour.md`) → await remote CI → merge-gate → cleanup. Changes:
+implement → self-review → local CI → commit → push + PR → await remote CI →
+merge-gate → cleanup. Changes:
 - Phase 2/3 (BMAD story) replaced by: work directly from spec ACs with the
   native execution discipline (`01-bmad-capture.md` §2.2); tests-first phases
   re-run the already-RED artifact and watch it fail *now* before coding.
 - Phase 4 review re-homed natively (§2.1), same status-log pinning.
-- New Phase 7.5: `devx tour build <hash>` attaches the review tour.
 - Claim precondition gains: parent workstream `evals_red: true` (dispatcher
   enforces; standalone debug/chore specs exempt).
 
@@ -315,7 +314,6 @@ config sections untouched.
 | `devx next [<hash>]` | pure decision function |
 | `devx workstream new <slug>` | scaffolder (templates → `_devx/workstreams/`) |
 | `devx revise <hash> --touched <file>` | cascade-reset applier |
-| `devx tour build <hash>` | see `03-review-tour.md` |
 | `devx loop …` | see `04-overnight-loop.md` |
 
 Skill bodies added/rewritten: the `/devx` dispatcher + stage sections
