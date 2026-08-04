@@ -57,6 +57,7 @@ import {
   PathLockHeldError,
   type LockHandle,
 } from "../manage/lock.js";
+import { defaultPidAlive } from "../locks/classify.js";
 import {
   ClaimContendedError,
   ClaimError,
@@ -857,6 +858,15 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
   // systemic — stop and report.
   const MAX_CONSECUTIVE_CLAIM_FAILURES = 3;
   let consecutiveClaimFailures = 0;
+  // debug-a7c3f9: a backlog-lock timeout against a LIVE holder is contention,
+  // not a broken claim — it gets contended routing off its own bounded
+  // counter (see the claim catch below). Same size as the claim-failure rail:
+  // 3 × the 30s deadline is 90s of continuous occupancy of a lock whose
+  // guarded sections are milliseconds-to-seconds (design §Architecture 2),
+  // which is a wedge, not a slow peer.
+  const MAX_CONSECUTIVE_LOCK_TIMEOUTS = 3;
+  let consecutiveLockTimeouts = 0;
+  const pidAlive = opts.pidAlive ?? defaultPidAlive;
 
   const outerStop = (): string | null => {
     if (signal?.aborted) return "stopped by signal";
@@ -934,6 +944,59 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
           });
           continue;
         }
+        if (e instanceof BacklogLockTimeoutError && e.holderPid !== null && pidAlive(e.holderPid)) {
+          // debug-a7c3f9 (mlc104 review EC-8): a LIVE peer still holding
+          // locks/backlog.lock at the 30s deadline is contention, the same
+          // healthy-peer situation as a lost push race — and the CLI already
+          // says so (`devx devx-helper claim` exits 1 "backlog lock held",
+          // documented as retryable in the /devx skill body). Only this
+          // in-process path disagreed: the timeout fell into the generic
+          // branch below and counted toward MAX_CONSECUTIVE_CLAIM_FAILURES,
+          // so three WAITING picks in a row stopped the night as a "systemic
+          // claim problem". mlc104 widened the locked claim section from 1
+          // push to up to 5 network ops, so a slow remote × N loops reaches
+          // 30s with nothing broken.
+          //
+          // Route it like claim-contended (mask + pick next, claim-failure
+          // budget untouched) but on its OWN bounded counter: a genuinely
+          // wedged holder times EVERY claim out, so 3 in a row still stops
+          // the run — with a diagnostic naming the pid to `ps`, instead of a
+          // misdiagnosis. A holder that is not provably live (pid unreadable
+          // — the empty-body mid-write/corrupt case the classifier
+          // conservatively calls held — or a dead pid the acquire's stale
+          // reaper could not unlink) falls through to claim-failed: masking
+          // only ever applies to live-held locks (design §Risks).
+          consecutiveLockTimeouts++;
+          const detail = `${firstLineOf(e.message)} — holder is live, so this is contention, not a broken claim`;
+          event("item:claim-lock-timeout", {
+            hash: pick.hash,
+            holderPid: e.holderPid,
+            consecutive: consecutiveLockTimeouts,
+            error: serializeError(e),
+          });
+          out(
+            `loop: backlog lock held by live pid ${e.holderPid} through the claim deadline for ${pick.hash} — picking next`,
+          );
+          items.push({
+            hash: pick.hash,
+            type: pick.type,
+            title: pick.title,
+            specPath: pick.path,
+            outcome: "claim-contended",
+            iterationsGood: 0,
+            iterationsFailed: 0,
+            tokens: emptyTokens(),
+            detail,
+          });
+          if (consecutiveLockTimeouts >= MAX_CONSECUTIVE_LOCK_TIMEOUTS) {
+            stopReason =
+              `${consecutiveLockTimeouts} backlog-lock timeouts with no successful claim in between (last holder: pid ${e.holderPid}) — ` +
+              `the holder looks wedged rather than busy, stopping the loop; check it with \`ps -p ${e.holderPid}\`, ` +
+              `and if it is gone remove ${e.lockPath}`;
+            break;
+          }
+          continue;
+        }
         const detail =
           e instanceof LockHeldError
             ? `spec lock already held (${e.lockPath})`
@@ -961,6 +1024,9 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
         continue;
       }
       consecutiveClaimFailures = 0;
+      // Both rails reset on the same signal — a claim that got THROUGH proves
+      // neither the claim path nor the lock is broken (debug-a7c3f9).
+      consecutiveLockTimeouts = 0;
       event("item:claimed", { hash: pick.hash, branch: claim.branch, claimSha: claim.claimSha });
       out(`loop: claimed ${pick.hash} on ${claim.branch}`);
 
