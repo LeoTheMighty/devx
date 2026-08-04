@@ -962,8 +962,11 @@ describe("E-5: fresh-claim viability of a follow-up (mss102)", () => {
     });
     const claimed = await claimSpec(followUpHash, claimOpts({ files, fs }, exec));
 
-    // The recorded WIP branch is inherited, not a fresh derived one.
+    // The recorded WIP branch is inherited, not a fresh derived one — and
+    // the result SAYS so, so disposal paths can tell inherited from created
+    // without re-deriving the name themselves (b41f7c AC 2).
     expect(claimed.branch).toBe("feat/dev-abc123");
+    expect(claimed.attached).toBe(true);
     const worktreeAdd = calls.find(
       (c) => c.cmd === "git" && c.args[0] === "worktree" && c.args[1] === "add",
     );
@@ -989,6 +992,7 @@ describe("E-5: fresh-claim viability of a follow-up (mss102)", () => {
     });
     const claimed = await claimSpec(followUpHash, claimOpts({ files, fs }, exec));
     expect(claimed.branch).toBe("feat/dev-abc123");
+    expect(claimed.attached).toBe(true);
 
     const fetch = calls.find((c) => c.args[0] === "fetch");
     expect(fetch!.args).toEqual([
@@ -1026,6 +1030,9 @@ describe("E-5: fresh-claim viability of a follow-up (mss102)", () => {
     try {
       const claimed = await claimSpec(followUpHash, claimOpts({ files, fs }, exec));
       expect(claimed.branch).toBe(`feat/dev-${followUpHash}`);
+      // Refused/failed inheritance is a DERIVE — nothing was inherited, so
+      // the branch is the claim's own and disposable (b41f7c).
+      expect(claimed.attached).toBe(false);
     } finally {
       spy.mockRestore();
     }
@@ -1070,6 +1077,9 @@ describe("E-5: fresh-claim viability of a follow-up (mss102)", () => {
     try {
       const claimed = await claimSpec(followUpHash, claimOpts({ files, fs }, exec));
       expect(claimed.branch).toBe(`feat/dev-${followUpHash}`);
+      // Refused/failed inheritance is a DERIVE — nothing was inherited, so
+      // the branch is the claim's own and disposable (b41f7c).
+      expect(claimed.attached).toBe(false);
     } finally {
       spy.mockRestore();
     }
@@ -1092,6 +1102,9 @@ describe("E-5: fresh-claim viability of a follow-up (mss102)", () => {
       claimOpts({ files, fs }, exec),
     );
     expect(claimed.branch).toBe(`feat/dev-${result.followUpHash}`);
+    // Derive path → the claim CREATED this branch, so it stays disposable
+    // for the loop's abandon hygiene (b41f7c).
+    expect(claimed.attached).toBe(false);
     const worktreeAdd = calls.find(
       (c) => c.cmd === "git" && c.args[0] === "worktree" && c.args[1] === "add",
     );

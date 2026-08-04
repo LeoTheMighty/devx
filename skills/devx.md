@@ -117,7 +117,7 @@ Repeat per item, respecting `stop_after`:
 
    When the spec is NOT in-progress (fresh claim) or no worktree exists, fall through to step 4 as usual.
 
-4. **Atomically claim** via `devx devx-helper claim <hash>` (dvx101). The helper drives the six-step claim — lock + DEV.md flip + spec frontmatter + status log + commit on the base branch + push to `origin/<base>` + worktree create — in fixed order with per-stage rollback. Stdout is JSON `{branch, lockPath, claimSha}`; exit codes encode the outcome:
+4. **Atomically claim** via `devx devx-helper claim <hash>` (dvx101). The helper drives the six-step claim — lock + DEV.md flip + spec frontmatter + status log + commit on the base branch + push to `origin/<base>` + worktree create — in fixed order with per-stage rollback. Stdout is JSON `{branch, attached, lockPath, claimSha}` (`attached: true` ⇒ mss102 attach mode — `branch` pre-existed and was inherited from the spec's `branch:` frontmatter, so it may carry a parent run's handed-off commits and must never be force-deleted while unmerged); exit codes encode the outcome:
    ```
    if ! CLAIM_JSON=$(devx devx-helper claim "$HASH"); then
      case $? in

@@ -24,6 +24,10 @@ export interface SpecFixture {
   type?: "dev" | "debug";
   title?: string;
   blockedBy?: string[];
+  /** `branch:` frontmatter — a branch-handoff follow-up records its PARENT's
+   *  WIP branch here, which switches the claim into mss102 attach mode
+   *  (b41f7c). Omitted ⇒ no field, the ordinary derive path. */
+  branch?: string;
 }
 
 export interface Fixture {
@@ -76,6 +80,7 @@ export function makeFixture(specs: SpecFixture[]): Fixture {
       `type: ${type}`,
       "created: 2026-07-05T13:00:00-06:00",
       `title: ${s.title ?? `Item ${s.hash}`}`,
+      ...(s.branch !== undefined ? [`branch: ${s.branch}`] : []),
       "status: ready",
       "---",
       "",

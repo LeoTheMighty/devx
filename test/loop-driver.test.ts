@@ -1374,6 +1374,152 @@ describe("infra-error classification + abandon hygiene (dc7514)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// b41f7c: attach-mode (mss102) claims hand the loop a branch it did NOT
+// create. The abandon path's `discardWorktree` used to `git branch -D` it
+// unconditionally — and the handed-off commits sit BELOW the claim's base
+// SHA, so `isBookkeepingOnlyWorktree` reports "nothing preserved" while the
+// branch is the only remaining copy of the parent's work.
+// ---------------------------------------------------------------------------
+
+describe("attach-mode branch disposal (b41f7c)", () => {
+  /** Create `branch` off main with one commit — the parent run's handed-off
+   *  WIP, as it looks to a follow-up claim (branch present locally, nothing
+   *  checked out). Returns the inherited tip SHA. */
+  function seedHandoffBranch(fx: Fixture, branch: string, file: string): string {
+    const tmp = join(fx.base, `seed-${branch.replace(/\//g, "-")}`);
+    g(fx.repoRoot, "worktree", "add", "-q", "-b", branch, tmp, "main");
+    writeFileSync(join(tmp, file), "parent WIP — the only copy\n", "utf8");
+    g(tmp, "add", "-A");
+    g(tmp, "commit", "-q", "-m", "feat: parent WIP handed off to the follow-up");
+    const sha = g(tmp, "rev-parse", "HEAD");
+    g(fx.repoRoot, "worktree", "remove", "--force", tmp);
+    return sha;
+  }
+
+  it("abandon with a bookkeeping-only worktree keeps the INHERITED branch (rewound to the handed-off tip), never `branch -D`s it", async () => {
+    fixture = makeFixture([{ hash: "att001", branch: "feat/dev-par001" }]);
+    const inherited = seedHandoffBranch(fixture, "feat/dev-par001", "wip.txt");
+
+    // 3 honest reported failures → abandon with nothing preserved beyond the
+    // loop's own `chore(loop): record iteration` bookkeeping. Pre-fix this
+    // deleted feat/dev-par001 outright (reflog-only recovery once origin's
+    // copy is gone — the fixture never pushed it).
+    const { worker } = scriptedWorker([
+      { kind: "report", report: { success: false, summary: "try 1 failed" } },
+      { kind: "report", report: { success: false, summary: "try 2 failed" } },
+      { kind: "report", report: { success: false, summary: "try 3 failed" } },
+    ]);
+    const r = await runLoop(baseOpts(fixture, { worker, tail: mergedTail().tail }));
+
+    const item = r.summary!.items[0];
+    expect(item.outcome).toBe("abandoned");
+    // The claim attached, so the worktree is still discarded…
+    expect(existsSync(join(fixture.repoRoot, ".worktrees", "dev-att001"))).toBe(false);
+    // …but the inherited branch survives, at exactly the handed-off tip:
+    // this run's bookkeeping commits are gone, the parent's work is not.
+    expect(g(fixture.repoRoot, "branch", "--list", "feat/dev-par001")).not.toBe("");
+    expect(g(fixture.repoRoot, "rev-parse", "feat/dev-par001")).toBe(inherited);
+    expect(g(fixture.repoRoot, "show", "feat/dev-par001:wip.txt")).toContain("only copy");
+    expect(g(fixture.repoRoot, "log", "--format=%s", "feat/dev-par001")).not.toContain(
+      "chore(loop)",
+    );
+
+    const events = readEvents(fixture.cacheDir, r.summary!.runId);
+    expect(events.map((e) => e.event)).toContain("item:inherited-branch-preserved");
+    expect(events.map((e) => e.event)).not.toContain("item:branch-delete-failed");
+    // Preserving the inheritance is the designed outcome, not an incident —
+    // no operator WARN, and the item goes back to ready for the next claim
+    // (which re-attaches to exactly what it was handed).
+    expect(item.warnings ?? []).toEqual([]);
+    expect(item.leftState).toBe("ready");
+    const devMd = readFileSync(join(fixture.repoRoot, "DEV.md"), "utf8");
+    expect(devMd).toMatch(/- \[ \] `dev\/dev-att001/);
+  });
+
+  it("a DERIVED claim branch is still deleted — the fix is scoped to inherited branches", async () => {
+    // Same abandon shape, no `branch:` frontmatter: the claim created
+    // feat/dev-att002 with `worktree add -b`, so it holds nothing the claim
+    // didn't put there and stays disposable (dc7514 hygiene, unchanged).
+    fixture = makeFixture([{ hash: "att002" }]);
+    const { worker } = scriptedWorker([
+      { kind: "report", report: { success: false, summary: "try 1 failed" } },
+      { kind: "report", report: { success: false, summary: "try 2 failed" } },
+      { kind: "report", report: { success: false, summary: "try 3 failed" } },
+    ]);
+    const r = await runLoop(baseOpts(fixture, { worker, tail: mergedTail().tail }));
+
+    expect(r.summary!.items[0].outcome).toBe("abandoned");
+    expect(g(fixture.repoRoot, "branch", "--list", "feat/dev-att002")).toBe("");
+    expect(
+      readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event),
+    ).not.toContain("item:inherited-branch-preserved");
+  });
+
+  it("an undeletable derived branch WARNs about silent adoption, not just a failing claim (AC 3)", async () => {
+    // Post-mss102 a surviving debris branch does NOT simply fail the next
+    // claim: if the spec records a `branch:` naming it, the claim ATTACHES
+    // and the dead run's commits ride into the follow-up's PR. The warning
+    // has to name that hazard, not promise the old failure.
+    fixture = makeFixture([{ hash: "att003" }]);
+    const { worker } = scriptedWorker([
+      { kind: "report", report: { success: false, summary: "try 1 failed" } },
+      { kind: "report", report: { success: false, summary: "try 2 failed" } },
+      { kind: "report", report: { success: false, summary: "try 3 failed" } },
+    ]);
+    // Fail ONLY `git branch -D` — everything else is the real git.
+    const exec: typeof realExec = (cmd, args, opts) =>
+      cmd === "git" && args[0] === "branch" && args[1] === "-D"
+        ? { exitCode: 1, stdout: "", stderr: "error: cannot delete branch (simulated)" }
+        : realExec(cmd, args, opts);
+    const r = await runLoop(baseOpts(fixture, { worker, exec, tail: mergedTail().tail }));
+
+    const warning = (r.summary!.items[0].warnings ?? []).find((w) =>
+      w.includes("stale local branch feat/dev-att003"),
+    );
+    expect(warning).toBeDefined();
+    expect(warning).toContain("silently adopted");
+    expect(warning).not.toMatch(/will fail\b/);
+    expect(readFileSync(r.reportPath!, "utf8")).toContain("stale local branch feat/dev-att003");
+    expect(
+      readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event),
+    ).toContain("item:branch-delete-failed");
+  });
+
+  it("a rewind that cannot be proven safe leaves the inherited branch untouched and WARNs", async () => {
+    // Deleting handed-off work is unrecoverable; leaving a branch with this
+    // run's bookkeeping on top is not. When `branch -f` fails the loop takes
+    // the recoverable side and says so.
+    fixture = makeFixture([{ hash: "att004", branch: "feat/dev-par004" }]);
+    const inherited = seedHandoffBranch(fixture, "feat/dev-par004", "wip.txt");
+    const { worker } = scriptedWorker([
+      { kind: "report", report: { success: false, summary: "try 1 failed" } },
+      { kind: "report", report: { success: false, summary: "try 2 failed" } },
+      { kind: "report", report: { success: false, summary: "try 3 failed" } },
+    ]);
+    const exec: typeof realExec = (cmd, args, opts) =>
+      cmd === "git" && args[0] === "branch" && args[1] === "-f"
+        ? { exitCode: 1, stdout: "", stderr: "fatal: cannot force-update branch (simulated)" }
+        : realExec(cmd, args, opts);
+    const r = await runLoop(baseOpts(fixture, { worker, exec, tail: mergedTail().tail }));
+
+    // Branch alive with the handed-off commit reachable — the rewind failing
+    // must never degrade into a delete.
+    expect(g(fixture.repoRoot, "show", "feat/dev-par004:wip.txt")).toContain("only copy");
+    expect(
+      g(fixture.repoRoot, "merge-base", "--is-ancestor", inherited, "feat/dev-par004"),
+    ).toBe("");
+    const warning = (r.summary!.items[0].warnings ?? []).find((w) =>
+      w.includes("inherited branch feat/dev-par004"),
+    );
+    expect(warning).toBeDefined();
+    expect(warning).toContain("bookkeeping commits");
+    expect(
+      readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event),
+    ).toContain("item:inherited-branch-rewind-skipped");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // defaultSleep (LOW-9 — the backoff/CI-poll sleep must wake on abort)
 // ---------------------------------------------------------------------------
 

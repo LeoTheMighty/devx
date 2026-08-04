@@ -452,6 +452,9 @@ describe("claimSpec — happy path", () => {
       "/repo/.devx-cache/locks/spec-dvx101.lock",
     );
     expect(result.claimSha).toBe("abc123def456");
+    // Derive path: the claim created this branch, so disposal paths may
+    // delete it (b41f7c).
+    expect(result.attached).toBe(false);
 
     // DEV.md flipped on disk.
     const devMdAfter = state.files.get(`${REPO}/DEV.md`) as string;
