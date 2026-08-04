@@ -7,7 +7,8 @@ from: null
 spawned: []
 status: in-progress
 owner: null
-branch: main
+branch: feat/dev-tur101
+pr: 113
 ---
 
 ## Goal
@@ -140,6 +141,13 @@ for `hold-check` / `next` / `loop` and is rehomed, not deleted.
   that costs 6,085s of test time locally costs 57s on a runner, so the
   contention-deadlock reading is unlikely and the spec was updated with
   that evidence.
+- 2026-08-04T11:4x — phase 8 caught a spec-authoring bug of mine:
+  frontmatter said `branch: main` (the branch I filed FROM, not the branch
+  the work lives on), so `devx merge-gate tur101` resolved no PR and
+  returned `{"merge":false,"reason":"no PR yet"}` — exit 2, the
+  investigate shape, exactly as designed. Corrected to
+  `branch: feat/dev-tur101` + `pr: 113`. Not a devx defect; the gate read
+  bad metadata and refused to guess.
 - 2026-08-04T11:3x — phase 4: 1-agent single-pass adversarial review; 2
   findings (0 HIGH, 2 MED, 0 LOW); ALL fixed in-place — the load-bearing
   one: `_devx/templates/tour/tour-template.html` (42KB, the vendored
