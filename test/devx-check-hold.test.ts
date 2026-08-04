@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { Exec, ExecResult } from "../src/lib/tour/exec.js";
+import type { Exec, ExecResult } from "../src/lib/exec.js";
 import {
   HOLD_MARKER,
   HoldCheckError,

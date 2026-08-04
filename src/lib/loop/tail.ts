@@ -360,7 +360,6 @@ function buildTailPrBody(item: TailItem, ctx: TailCtx): string {
     testPlan:
       "Produced by `devx loop` — each iteration ran the relevant build/tests before reporting success; remote CI gates this merge (D-11).",
     notes: `Overnight loop item (\`${item.hash}\`); iteration history is in the spec's Status log on this branch.`,
-    tour: { unavailableReason: "overnight loop run — generate via devx tour if needed" },
   });
   return rendered.body;
 }

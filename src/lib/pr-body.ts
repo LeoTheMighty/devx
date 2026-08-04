@@ -50,9 +50,6 @@ export const BUILTIN_TEMPLATE = `<!-- devx:mode -->
 
 ## Notes for reviewers
 <surprises, deviations, follow-ups>
-
-## 🗺 Review tour
-<tour links + orientation fallback>
 `;
 
 const PR_TEMPLATE_IDEMPOTENCY_MARKER = "<!-- devx:mode -->";
@@ -66,12 +63,6 @@ export const SUMMARY_PLACEHOLDER = "<1–3 bullets on what changed>";
 export const TEST_PLAN_PLACEHOLDER =
   "<bulleted list of what local CI gates covered + any manual steps>";
 export const NOTES_PLACEHOLDER = "<surprises, deviations, follow-ups>";
-/** v2t101: the `## 🗺 Review tour` section's placeholder. Unlike the other
- *  placeholders this one is FAIL-SOFT: it never lands in
- *  `unresolvedPlaceholders` — a missing tour renders the "unavailable" line
- *  instead, because tour failures must never block PR open
- *  (v2/03-review-tour.md §3). */
-export const TOUR_PLACEHOLDER = "<tour links + orientation fallback>";
 
 // Line-anchored substitution regexes (locked decision #4). Each matches the
 // canonical position only — placeholders appearing inside a fenced code
@@ -104,14 +95,19 @@ const AC_LINE_RE = new RegExp(
   "m",
 );
 
-/** Matches `<tour links + orientation fallback>` as the entire content of a
- *  line — same line-anchoring discipline as the AC placeholder (locked
- *  decision #4): a placeholder quoted inside a code block or prose must NOT
- *  substitute. */
-const TOUR_LINE_RE = new RegExp(
-  `^[ \\t]*${escapeRegex(TOUR_PLACEHOLDER)}[ \\t]*$`,
-  "m",
-);
+/** tur101: the retired `## 🗺 Review tour` section, as it appeared in every
+ *  template shipped between v2t101 and tur101. Repos that ran `/devx-init`
+ *  during that window still carry it in `.github/pull_request_template.md`,
+ *  and without this strip every rendered PR body would show a bare
+ *  `<tour links + orientation fallback>` placeholder under a dead heading.
+ *
+ *  Line-anchored in the same spirit as the substitution regexes (locked
+ *  decision #4): only the canonical heading-then-placeholder pair is
+ *  removed, so a template that merely *mentions* tours in prose is left
+ *  alone. Trailing blank lines are consumed so the body doesn't end in
+ *  whitespace. */
+const LEGACY_TOUR_SECTION_RE =
+  /^##\s+(?:🗺\s+)?Review tour[ \t]*\n[ \t]*<tour links \+ orientation fallback>[ \t]*\n?/m;
 
 /** Matches every idempotency marker line (with its trailing newline) so we can
  *  strip them all from the rendered PR body without leaving blank first lines.
@@ -156,36 +152,6 @@ export interface RenderPrBodyOpts {
   summary?: string;
   testPlan?: string;
   notes?: string;
-  /** v2t101: review-tour section data. Omitted / url-less → the section
-   *  renders the fail-soft "tour unavailable (<reason>)" line — NEVER an
-   *  unresolved placeholder, never a blocked PR. */
-  tour?: TourSectionData;
-}
-
-/** Minimal stop summary for the orientation text fallback. */
-export interface TourStopSummary {
-  id: string | number;
-  priority?: string;
-  title: string;
-}
-
-/** Inputs for the `## 🗺 Review tour` section (v2t101). */
-export interface TourSectionData {
-  /** Primary "Take the tour" link (usually the htmlpreview.github.io
-   *  wrapper). Absent → the section renders the unavailable line. */
-  url?: string;
-  /** Explicit raw-file fallback link. When absent and `url` is an
-   *  htmlpreview wrapper, it's derived by unwrapping the `?` query. */
-  rawUrl?: string;
-  /** orientation.summary from tour.json — the markdown fallback that
-   *  mobile / email / tour-hosting-failure see. */
-  orientationSummary?: string;
-  /** orientation.timeBoxed from tour.json. */
-  timeBoxed?: string;
-  /** Stop list for the fallback (id / priority / title). */
-  stops?: TourStopSummary[];
-  /** Why the tour is unavailable, when it is. Default "not generated". */
-  unavailableReason?: string;
 }
 
 export interface RenderPrBodyResult {
@@ -193,15 +159,8 @@ export interface RenderPrBodyResult {
   /** Names of placeholders that COULD NOT be substituted. Caller appends a
    *  status-log line per entry per locked decision #5. Includes both required
    *  (spec-path / mode / acceptance-criteria) and optional (summary /
-   *  test-plan / notes) placeholders. The tour placeholder is NEVER listed
-   *  here (fail-soft — see TOUR_PLACEHOLDER). */
+   *  test-plan / notes) placeholders. */
   unresolvedPlaceholders: string[];
-  /** v2t101: true when a tour LINK (tour.url) was supplied but the template
-   *  carries no canonical tour-placeholder line (stale user template) — the
-   *  link is the one material loss worth a stderr note. Orientation-only /
-   *  unavailable-reason-only inputs against such a template are dropped
-   *  silently (nothing reviewer-critical lost). Never an error. */
-  tourSectionSkipped?: boolean;
 }
 
 export function renderPrBody(opts: RenderPrBodyOpts): RenderPrBodyResult {
@@ -272,23 +231,10 @@ export function renderPrBody(opts: RenderPrBodyOpts): RenderPrBodyResult {
     unresolved,
   );
 
-  // 5. Review-tour section (v2t101) — FAIL-SOFT, line-anchored. Three cases:
-  //    • placeholder present + tour url given → links + orientation details.
-  //    • placeholder present + no tour       → "unavailable (<reason>)" line.
-  //    • placeholder absent (stale/custom template) → leave the template
-  //      alone (line-anchoring discipline per locked decision #4); flag
-  //      `tourSectionSkipped` iff a tour LINK was supplied so the CLI can
-  //      stderr-note the loss. Never lands in unresolvedPlaceholders.
-  let tourSectionSkipped: boolean | undefined;
-  if (TOUR_LINE_RE.test(body)) {
-    // Replacer FUNCTION, not string: the orientation summary is agent-
-    // authored markdown that may contain `$&`/`$'` sequences which a string
-    // replacement would interpret as substitution patterns.
-    const section = renderTourSection(opts.tour);
-    body = body.replace(TOUR_LINE_RE, () => section);
-  } else if (opts.tour?.url !== undefined) {
-    tourSectionSkipped = true;
-  }
+  // 5. Strip the retired review-tour section (tur101) from stale on-disk
+  // templates so its placeholder never reaches a rendered PR body. Never an
+  // unresolved placeholder — the section is gone, not unfilled.
+  body = body.replace(LEGACY_TOUR_SECTION_RE, "");
 
   // 6. Strip the idempotency marker line — useful on disk for /devx-init's
   // "already wrote" detection, noise in the rendered PR body. Stripping last
@@ -296,60 +242,11 @@ export function renderPrBody(opts: RenderPrBodyOpts): RenderPrBodyResult {
   // first non-empty line invariant holds.
   body = body.replace(MARKER_LINE_RE, "");
 
-  return { body, unresolvedPlaceholders: unresolved, tourSectionSkipped };
-}
+  // The legacy strip can leave the body ending in blank lines; normalize to a
+  // single trailing newline (the CLI's stdout contract).
+  body = `${body.replace(/\n+$/, "")}\n`;
 
-/** Render the body of the `## 🗺 Review tour` section (v2t101). Pure text
- *  assembly; markdown per v2/03-review-tour.md §3. */
-export function renderTourSection(tour: TourSectionData | undefined): string {
-  if (!tour || tour.url === undefined || tour.url.trim() === "") {
-    const reason = tour?.unavailableReason?.trim() || "not generated";
-    return `_Review tour unavailable (${reason})._`;
-  }
-  const url = tour.url.trim();
-
-  // Derive the raw fallback from an htmlpreview wrapper when not explicit.
-  const HTMLPREVIEW_PREFIX = "https://htmlpreview.github.io/?";
-  let rawUrl = tour.rawUrl?.trim();
-  if (!rawUrl && url.startsWith(HTMLPREVIEW_PREFIX)) {
-    rawUrl = url.slice(HTMLPREVIEW_PREFIX.length);
-  }
-
-  const lines: string[] = [];
-  lines.push(
-    rawUrl
-      ? `[Take the tour](${url}) · [raw file fallback](${rawUrl})`
-      : `[Take the tour](${url})`,
-  );
-
-  // Orientation text fallback — what mobile + email + tour-hosting-failure
-  // see. Only rendered when there's something to say.
-  const summary = tour.orientationSummary?.trim();
-  const timeBoxed = tour.timeBoxed?.trim();
-  const stops = tour.stops ?? [];
-  if (summary || timeBoxed || stops.length > 0) {
-    lines.push("");
-    lines.push("<details><summary>Orientation (text fallback)</summary>");
-    lines.push("");
-    if (summary) {
-      lines.push(summary);
-      lines.push("");
-    }
-    if (timeBoxed) {
-      lines.push(`**Time-boxed:** ${timeBoxed}`);
-      lines.push("");
-    }
-    if (stops.length > 0) {
-      lines.push("**Stops:**");
-      for (const s of stops) {
-        const prio = s.priority ? ` (${s.priority})` : "";
-        lines.push(`- Stop ${String(s.id)}${prio}: ${s.title}`);
-      }
-      lines.push("");
-    }
-    lines.push("</details>");
-  }
-  return lines.join("\n");
+  return { body, unresolvedPlaceholders: unresolved };
 }
 
 function maybeReplacePlaceholder(

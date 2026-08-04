@@ -1,11 +1,14 @@
-// Shared exec seam for the tour modules (v2t101).
+// Shared injectable exec seam (originally v2t101; rehomed here at tur101 when
+// the review tour was retired and this became the general shell-out seam).
 //
-// Same injectable shell-out shape as await-remote-ci.ts (dvx105), extended
-// with an `env` passthrough because publish.ts drives git plumbing against a
-// temporary GIT_INDEX_FILE (so the user's real index / worktree is never
-// disturbed). Tests inject a fake; production uses spawnSync.
+// Same shape as await-remote-ci.ts (dvx105), extended with an `env`
+// passthrough for callers that drive git plumbing against a scratch
+// GIT_INDEX_FILE (so the user's real index / worktree is never disturbed).
+// Tests inject a fake; production uses spawnSync.
 //
-// Spec: dev/dev-v2t101-2026-07-05T13:04-review-tour.md
+// Consumers: devx/hold-check.ts, next/gather.ts, loop/git-tx.ts.
+//
+// Spec: dev/dev-tur101-2026-08-04T10:00-retire-review-tour.md
 
 import { spawnSync } from "node:child_process";
 
@@ -27,7 +30,8 @@ export const realExec: Exec = (cmd, args, opts) => {
     cwd: opts?.cwd,
     // Merge over process.env rather than replace — git needs HOME/PATH etc.
     env: opts?.env ? { ...process.env, ...opts.env } : undefined,
-    // Tour diffs can be large; default 1MB maxBuffer truncates silently.
+    // Diffs and `gh` JSON payloads can be large; the default 1MB maxBuffer
+    // truncates silently.
     maxBuffer: 64 * 1024 * 1024,
   });
   if (r.error || r.status === null) {

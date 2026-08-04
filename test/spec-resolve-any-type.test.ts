@@ -1,23 +1,25 @@
 // debug-6a913f — hash→spec resolution hardcodes dev/ across v2 CLIs.
 //
-// RED artifacts for the debug loop: pre-fix, `devx merge-gate` and `devx tour
-// gather` cannot resolve `debug/` (or any non-dev) specs — merge-gate emits a
-// false-negative gate decision (exit 1 + "manual merge required") and tour
-// gather throws no-spec, so debug-loop PRs ship tour-less and Phase 8 files a
-// spurious MANUAL.md row. Post-fix both CLIs resolve specs through one shared
-// type-aware resolver, and a genuinely-missing hash is the exit-2
-// investigation shape (like "no PR yet"), not a gate decision.
+// RED artifacts for the debug loop: pre-fix, `devx merge-gate` could not
+// resolve `debug/` (or any non-dev) specs — it emitted a false-negative gate
+// decision (exit 1 + "manual merge required"), so debug-loop PRs made Phase 8
+// file a spurious MANUAL.md row. Post-fix every hash-taking CLI resolves specs
+// through one shared type-aware resolver, and a genuinely-missing hash is the
+// exit-2 investigation shape (like "no PR yet"), not a gate decision.
+//
+// tur101: the `devx tour gather` half of this file retired with the review
+// tour; the merge-gate half plus the findSpecForHashAnyType unit tests below
+// still pin the non-dev resolution contract this debug item was filed for.
 //
 // Spec: debug/debug-6a913f-2026-07-15T08:27-tour-gather-no-debug-spec-support.md
+// Spec: dev/dev-tur101-2026-08-04T10:00-retire-review-tour.md (tour half removed)
 
-import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { type ExecResult, runMergeGate } from "../src/commands/merge-gate.js";
-import { GatherError, gatherTour } from "../src/lib/tour/gather.js";
 
 // ---------------------------------------------------------------------------
 // Shared tmp bookkeeping
@@ -183,86 +185,6 @@ describe("debug-6a913f — merge-gate resolves non-dev specs", () => {
     // Resolution failure is investigation, not a gate decision — no advice,
     // so Phase 8 never files a MANUAL.md row for it.
     expect(r.decision?.advice).toBeUndefined();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// tour gather (real git fixture)
-// ---------------------------------------------------------------------------
-
-function git(cwd: string, args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf8" });
-}
-
-function makeTourRepo(hash: string, type: string): string {
-  const root = makeTmp("devx-any-type-tour-");
-  const repo = join(root, "repo");
-  mkdirSync(repo, { recursive: true });
-  git(repo, ["init", "-b", "main"]);
-  git(repo, ["config", "user.email", "test@example.com"]);
-  git(repo, ["config", "user.name", "Test"]);
-
-  mkdirSync(join(repo, type), { recursive: true });
-  writeFileSync(
-    join(repo, type, `${type}-${hash}-2026-07-15T08:27-fixture.md`),
-    [
-      "---",
-      `hash: ${hash}`,
-      `type: ${type}`,
-      "created: 2026-07-15T08:27:00-06:00",
-      "title: Fixture debug item",
-      "status: in-progress",
-      `branch: feat/${type}-${hash}`,
-      "---",
-      "",
-      "## Goal",
-      "",
-      "Fix the fixture bug.",
-      "",
-      "## Acceptance criteria",
-      "",
-      "- [ ] Repro exists.",
-      "",
-      "## Status log",
-      "",
-      "- 2026-07-15T08:27 — filed.",
-      "",
-    ].join("\n"),
-  );
-  writeFileSync(join(repo, "app.ts"), "export const x = 1;\n");
-  writeFileSync(
-    join(repo, "devx.config.yaml"),
-    "mode: YOLO\ngit:\n  default_branch: main\n  integration_branch: null\n  branch_prefix: feat/\n",
-  );
-  git(repo, ["add", "-A"]);
-  git(repo, ["commit", "-m", "init"]);
-
-  git(repo, ["checkout", "-b", `feat/${type}-${hash}`]);
-  writeFileSync(join(repo, "app.ts"), "export const x = 2;\n");
-  git(repo, ["add", "-A"]);
-  git(repo, ["commit", "-m", "fix: fixture"]);
-  git(repo, ["checkout", "main"]);
-  return repo;
-}
-
-describe("debug-6a913f — tour gather resolves non-dev specs", () => {
-  it("gathers a debug/ spec's tour inputs", () => {
-    const repo = makeTourRepo("abc904", "debug");
-    const g = gatherTour("abc904", { repoRoot: repo });
-    expect(g.meta.hash).toBe("abc904");
-    expect(g.meta.branch).toBe("feat/debug-abc904");
-    expect(g.meta.specPath).toContain("debug/debug-abc904");
-  });
-
-  it("still throws no-spec for a hash that matches no type dir", () => {
-    const repo = makeTourRepo("abc905", "debug");
-    try {
-      gatherTour("nosuch", { repoRoot: repo });
-      expect.unreachable("should have thrown");
-    } catch (e) {
-      expect(e).toBeInstanceOf(GatherError);
-      expect((e as GatherError).stage).toBe("no-spec");
-    }
   });
 });
 

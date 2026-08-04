@@ -61,7 +61,7 @@ import {
 } from "../loop/instances.js";
 import { heartbeatPath } from "../manage/state.js";
 import { parseFrontmatterValue } from "../plan/validate-emit.js";
-import { type Exec, realExec } from "../tour/exec.js";
+import { type Exec, realExec } from "../exec.js";
 import {
   type BlockedItemSignal,
   type CiState,
@@ -75,6 +75,7 @@ import {
   type OutcomeDueSignal,
   type OwnPrSignal,
   type PlanItemSignal,
+  type QaWalkthroughSignal,
   type ReadyItemSignal,
   type RepoSnapshot,
   type WorkstreamSignal,
@@ -405,6 +406,9 @@ export function gatherRepoSnapshot(opts: GatherOpts): RepoSnapshot {
     }
   }
 
+  // ── Unclaimed QA walkthroughs (row 10.5, bqa104) ────────────────────────
+  const qaWalkthroughs = gatherQaWalkthroughs(fs, repoRoot, warnings);
+
   // ── Mid-pipeline workstreams (row 9 — reuse the v1 stage rows) + due
   //    outcomes (row 5.5, v2o101) + advisory todo drift (hfi103) — one
   //    plan/ scan feeds all three. ─────────────────────────────────────────
@@ -433,6 +437,7 @@ export function gatherRepoSnapshot(opts: GatherOpts): RepoSnapshot {
     devReady,
     midPipeline,
     planReady,
+    qaWalkthroughs,
     blocked,
     todoDrift,
     drift,
@@ -463,6 +468,64 @@ function readBacklogRows(
     );
     return [];
   }
+}
+
+/** TEST.md walkthrough row (bqa104):
+ *  `` - [ ] `test/test-<hash>-qa-walkthrough.md` — <title>; … Status: ready. … ``
+ *  Deliberately NOT routed through parseDevMd: walkthrough filenames carry
+ *  no timestamp segment, so they are not spec paths and the backlog parser
+ *  would drop them. */
+const QA_WALKTHROUGH_ROW =
+  /^\s*-\s*\[( |x|X)\]\s*`(test\/test-([A-Za-z0-9]+)-qa-walkthrough\.md)`\s*(.*)$/;
+
+/** Statuses that mean the row is no longer waiting on a human pass. */
+const QA_SETTLED = new Set(["done", "deleted", "superseded", "in-progress"]);
+
+function gatherQaWalkthroughs(
+  fs: NextFs,
+  repoRoot: string,
+  warnings: string[],
+): QaWalkthroughSignal[] {
+  const abs = join(repoRoot, "TEST.md");
+  if (!fs.exists(abs)) return [];
+  let content: string;
+  try {
+    content = fs.readFile(abs);
+  } catch (e) {
+    warnings.push(
+      `TEST.md exists but is unreadable (${errMessage(e)}) — treated as empty`,
+    );
+    return [];
+  }
+  const out: QaWalkthroughSignal[] = [];
+  for (const line of content.split("\n")) {
+    // Struck rows are settled history, never routable work.
+    if (line.includes("~~")) continue;
+    const m = QA_WALKTHROUGH_ROW.exec(line);
+    if (!m) continue;
+    // Checked box = the human pass already happened.
+    if (m[1] !== " ") continue;
+    const rest = m[4];
+    const status = /Status:\s*([A-Za-z-]+)/.exec(rest)?.[1]?.toLowerCase();
+    if (status !== undefined && QA_SETTLED.has(status)) continue;
+    out.push({
+      hash: m[3],
+      path: m[2],
+      title: qaRowTitle(rest),
+    });
+  }
+  return out;
+}
+
+/** The human-readable head of a walkthrough row: the em-dash segment, cut
+ *  at the first `;` or trailing `Status:`/`From:` field. */
+function qaRowTitle(rest: string): string {
+  const afterDash = /^\s*[—-]\s*(.*)$/.exec(rest)?.[1] ?? rest;
+  return afterDash
+    .split(";")[0]
+    .split(/\.?\s*(?:Status|From):/)[0]
+    .trim()
+    .replace(/\.$/, "");
 }
 
 function claimSignalFor(

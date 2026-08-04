@@ -67,7 +67,7 @@ runs, tests still run. YOLO relaxes the *gates* (what blocks merge), not the
 ├── devx.config.yaml       ← every knob; see docs/CONFIG.md
 ├── dev/                   ← spec files (one per DEV.md entry)
 ├── plan/                  ← spec files (one per PLAN.md entry)
-├── v2/                    ← native-engine design docs (engine, tours, loop, decisions)
+├── v2/                    ← native-engine design docs (engine, loop, decisions)
 ├── _devx/
 │   ├── workstreams/       ← engine workstream artifacts (prd/design/plan/evals per slug)
 │   ├── templates/engine/  ← stage templates shipped in the npm package
@@ -413,7 +413,8 @@ All 10 items merged, PRs #59–#68: v2s101 engine templates (#59), roc101
 verify-claim (#60), mgrret final BMAD retro (#61), v2e101 gate CLIs
 (#62), v2e102 planning stages + first real gate run (#63), v2x101 BMAD
 ejection (~950 files deleted, `/devx` native, `engine:`/`loop:` config)
-(#64), v2t101 review tours + `devx: hold` (#65), v2d101 universal
+(#64), v2t101 review tours + `devx: hold` (#65) [tours retired at tur101;
+`devx: hold` survives], v2d101 universal
 dispatcher + 12-row `devx next` (#66), v2l101 overnight loop (#67),
 v2o101 outcome loop + migration retro (#68).
 
@@ -421,13 +422,26 @@ Numbers: 1,309 → 2,039 tests; ~111 adversarial-review findings fixed
 in-place; planning prose ~550KB → 23.9KB (S-1, CI-gated at 60KB); net
 −247K lines. First real outcome verdict: v2x101 scored **keep, 3/3
 goals**. Retro: `_devx/retros/v2-migration-2026-07-05.md` (LEARN.md §
-v2-migration E1–E10 + 1 cross-epic promotion). Every PR since #65
-carries a review tour on the `devx-tours` branch.
+v2-migration E1–E10 + 1 cross-epic promotion). PRs #65 through the
+tur101 PR carried a review tour on the `devx-tours` branch; the tour
+was retired 2026-08-04 (see below) and that branch is now an archive.
+
+## Status: review tour retired (2026-08-04, tur101)
+
+`devx tour` and everything under it is gone: the `src/lib/tour/` renderer +
+schema + publisher, the `devx tour` CLI, the `## 🗺 Review tour` PR-body
+section, `/devx` Phase 7.5, and `v2/03-review-tour.md`. Owner call — the
+per-PR narration step cost more time than the guided walkthrough returned
+on a solo pre-launch repo. Dropped `diff2html` + `marked` as runtime deps.
+**What survives:** `/devx address <pr>` and the `devx: hold` merge gate
+(D-5) — human review is still possible, just not narrated. The orphan
+`devx-tours` branch is left in place as an archive (MANUAL.md MV-tur101.1).
+Decision record: `v2/07-decisions.md` D-4 (retired), D-12 (amended).
 
 The system's surfaces now: `/devx` (universal dispatcher; no-args →
 `devx next`), `/devx-plan` (PRD → Design → Plan → RED gates),
-`devx loop` (overnight; D-6/D-11), `devx tour` (review artifacts),
-`devx outcome` (post-ship scoring). Decision ledger: `v2/07-decisions.md`.
+`devx loop` (overnight; D-6/D-11), `devx outcome` (post-ship scoring).
+Decision ledger: `v2/07-decisions.md`.
 
 Open human items: INTERVIEW.md Q#9 (full-surface prose budget, 64.2KB vs
 60KB target) + MANUAL.md MV2.1 (S-3 supervised first night of

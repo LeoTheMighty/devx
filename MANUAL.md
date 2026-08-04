@@ -192,3 +192,18 @@ step↔threshold table + results record:
     scope.
   - Spec: `dev/dev-rtl105-2026-07-30T09:31-init-hook-distribution.md` (T5.4);
     workstream: `_devx/workstreams/retro-listener/`.
+
+## For tur101 — the orphan `devx-tours` branch (filed by tur101)
+
+- [ ] **MV-tur101.1 — Decide what happens to the `devx-tours` branch.**
+  - Why: the review tour retired at tur101, but every tour ever published
+    still lives on the orphan `devx-tours` branch (PRs #65 onward — roughly
+    1.4–1.7MB per tour). Nothing reads it anymore. Deleting a remote branch
+    is destructive and outward-facing, so no agent will do it for you.
+  - How: leave it as an archive (the default — it costs nothing but clone
+    size), or delete it with
+    `git push origin --delete devx-tours && git branch -D devx-tours`.
+    Old PR bodies keep their now-dead tour links either way; that's cosmetic
+    on merged PRs.
+  - Spec: `dev/dev-tur101-2026-08-04T10:00-retire-review-tour.md`;
+    decision record: `v2/07-decisions.md` D-4.

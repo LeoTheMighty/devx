@@ -62,8 +62,7 @@ Thin prompt-level routing in the skill body — no ML ceremony. Signals:
   (interview starts immediately with the free text as seed).
 - **Question-shaped** ("how does X work", "what's left") → answer/status;
   file nothing unless asked.
-- **Review-shaped** ("review PR 42", "address comments") → tour build /
-  address stage.
+- **Review-shaped** ("review PR 42", "address comments") → address stage.
 - Ambiguity rule unchanged: silent product decisions are forbidden — when the
   route is genuinely unclear, ask (or INTERVIEW.md in unattended mode).
 
@@ -76,9 +75,8 @@ DEBUG.md existed in v1 with no consumer skill. v2 wires it:
 2. **Reproduce before touching code**: a failing test or runnable repro
    script, committed — this *is* the RED gate for bugs.
 3. Root-cause with evidence in the Status log (hypothesis → check → result).
-4. Fix via the normal execute tail (worktree → PR + tour → merge). The tour's
-   decision ledger carries the root-cause narrative — debug PRs become
-   readable.
+4. Fix via the normal execute tail (worktree → PR → merge). The PR body's
+   Notes section carries the root-cause narrative — debug PRs stay readable.
 5. Learnings → LEARN.md candidates.
 
 ## 5. Any-repo portability

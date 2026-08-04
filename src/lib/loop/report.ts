@@ -214,13 +214,9 @@ function itemSection(item: ItemResult): string {
   );
   if (item.prUrl) lines.push(`- PR: ${item.prUrl}`);
   if (item.outcome === "merged") {
-    // Honest-unavailable lines (review finding LOW-14): the overnight loop
-    // does not generate review tours and does not parse test counts out of
-    // the tail — say so explicitly rather than plumbing fields nothing
-    // ever sets.
-    lines.push(
-      `- Tour: not generated (overnight loop) — run \`devx tour ${item.hash}\` if you want one`,
-    );
+    // Honest-unavailable line (review finding LOW-14): the overnight loop
+    // does not parse test counts out of the tail — say so explicitly rather
+    // than plumbing a field nothing ever sets.
     lines.push(`- Test delta: not tracked (v1 bound)`);
   }
   if (item.diff) lines.push(`- Diff: ${fmtDiff(item.diff)}`);

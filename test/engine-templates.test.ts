@@ -17,6 +17,7 @@ const EXPECTED_TEMPLATES = [
   "lessons-entry.md",
   "results.md",
   "todo.md",
+  "qa-walkthrough.md",
 ];
 
 // D-10 (v2/07-decisions.md): no external-tracker surface anywhere in the
@@ -68,6 +69,41 @@ describe("engine templates (v2s101)", () => {
     }
     const results = readFileSync(join(engineDir, "results.md"), "utf8");
     expect(results).toMatch(/outcome: <keep \| tune \| restart \| retire>/);
+  });
+
+  // The emitted walkthrough is parsed by consumer-side evals (checkbox
+  // lines tagged machine/human; human items carry an inline "verify"
+  // hint). Pin the same regexes here so the template can't drift out of
+  // the contract it's supposed to teach.
+  it("qa-walkthrough template carries the machine/human item contract", () => {
+    const body = readFileSync(join(engineDir, "qa-walkthrough.md"), "utf8");
+
+    const headings = body
+      .split("\n")
+      .filter((l) => l.startsWith("## "))
+      .map((l) => l.slice(3).trim());
+    expect(headings).toEqual([
+      "Pre-flight",
+      "Manual checks",
+      "Regressions to watch",
+      "Post-merge follow-ups",
+    ]);
+
+    const items = body
+      .split("\n")
+      .filter((l) => /^\s*[-*]\s\[.\]/.test(l));
+    const machine = items.filter((l) => /\bmachine\b/.test(l));
+    const human = items.filter((l) => /\bhuman\b/.test(l));
+    expect(machine.length, "template must demo a machine item").toBeGreaterThan(0);
+    expect(human.length, "template must demo a human item").toBeGreaterThan(0);
+    for (const l of human) {
+      expect(l, `human item needs a "verify" hint: ${l}`).toMatch(/verify/i);
+    }
+
+    // Every machine item needs somewhere to paste evidence — the eval
+    // budgets one fenced block pair per machine item, file-wide.
+    const fences = (body.match(/^\s*```/gm) ?? []).length;
+    expect(Math.floor(fences / 2)).toBeGreaterThanOrEqual(machine.length);
   });
 
   it("workstreams root exists", () => {

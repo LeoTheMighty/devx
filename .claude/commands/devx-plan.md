@@ -135,7 +135,7 @@ free-nested sub-items (contract in Stage: PRD).
    test it.
 2. **Sizing rule:** a phase is one cohesive concern with a verifiable exit,
    sized to land as a single reviewable PR. Default to more, smaller
-   phases. One phase ≙ one dev spec ≙ one PR ≙ one tour (D-12).
+   phases. One phase ≙ one dev spec ≙ one PR (D-12).
 3. Fill the template: Current / Desired / NOT doing; **Expectation
    coverage table** (every E-id: phase, validation type, artifact path,
    full/partial); Phase checklist; per-phase Overview / Files-with-why /

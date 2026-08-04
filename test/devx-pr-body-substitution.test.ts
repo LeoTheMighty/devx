@@ -427,6 +427,61 @@ describe("renderPrBody — optional placeholders + unresolved reporting", () => 
   });
 });
 
+describe("renderPrBody — retired review-tour section (tur101)", () => {
+  // Every template shipped between v2t101 and tur101 carried this pair, and
+  // repos that ran `/devx-init` in that window still have it on disk. Without
+  // the strip, `devx pr-body` would render a dead heading over a bare
+  // placeholder on every PR those repos open.
+  const STALE_TEMPLATE = `<!-- devx:mode -->
+**Spec:** \`<dev/dev-<hash>-<ts>-<slug>.md>\`
+**Mode:** <!-- devx:auto:mode --> *(stamped at PR-open by /devx)*
+
+## Summary
+<1–3 bullets on what changed>
+
+## Acceptance criteria
+<checkbox list copied from spec>
+
+## Test plan
+<bulleted list of what local CI gates covered + any manual steps>
+
+## Notes for reviewers
+<surprises, deviations, follow-ups>
+
+## 🗺 Review tour
+<tour links + orientation fallback>
+`;
+
+  it("strips the heading + placeholder from a stale on-disk template", () => {
+    const r = renderPrBody({
+      template: STALE_TEMPLATE,
+      mode: "YOLO",
+      specPath: SPEC_PATH,
+      acChecklist: "- [ ] thing",
+      summary: "- did a thing",
+      testPlan: "- npm test",
+      notes: "- (none)",
+    });
+    expect(r.body).not.toContain("Review tour");
+    expect(r.body).not.toContain("<tour links + orientation fallback>");
+    // Never an unresolved placeholder — the section is gone, not unfilled.
+    expect(r.unresolvedPlaceholders).toEqual([]);
+    // The section it replaced is still the last thing in the body, and the
+    // body ends in exactly one newline.
+    expect(r.body.endsWith("## Notes for reviewers\n- (none)\n")).toBe(true);
+  });
+
+  it("leaves prose that merely mentions a review tour alone (line-anchored)", () => {
+    const r = renderPrBody({
+      template: `${BUILTIN_TEMPLATE}\n## History\nWe used to ship a Review tour here.\n`,
+      mode: "YOLO",
+      specPath: SPEC_PATH,
+      acChecklist: "- [ ] thing",
+    });
+    expect(r.body).toContain("We used to ship a Review tour here.");
+  });
+});
+
 describe("renderPrBody — built-in fallback parity with the on-disk canonical template", () => {
   it("BUILTIN_TEMPLATE matches _devx/templates/pull_request_template.md byte-for-byte", () => {
     // The BUILTIN_TEMPLATE constant is the only fallback when a repo predates
@@ -547,9 +602,6 @@ describe("renderPrBody — golden-file shape (AC 6)", () => {
 
       ## Notes for reviewers
       - (none)
-
-      ## 🗺 Review tour
-      _Review tour unavailable (not generated)._
       "
     `);
     expect(r.unresolvedPlaceholders).toEqual([]);

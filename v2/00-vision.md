@@ -10,7 +10,6 @@ On **any** repo — this one, a fresh idea, a legacy brownfield — you run
 /devx "add dark mode"          # route: needs a PRD? design? or just execute?
 /devx debug "login 500s"       # route to the debug loop
 /devx plan mobile-v2           # route to the planning stages
-/devx review 42                # build the review tour for PR #42
 /devx loop --until 07:30       # good night, have fun
 ```
 
@@ -19,9 +18,10 @@ and when to stop and ask** — because every unit of work is a markdown artifact
 with machine-readable gate state, and a deterministic next-command function
 reads that state and routes. The human's job collapses to three surfaces:
 
-1. **PRs** — every change arrives as a PR carrying a static HTML review tour;
-   you review by taking the tour and commenting on the PR. Your comments are
-   the steering input.
+1. **PRs** — every change arrives as a PR; you review the diff and comment.
+   Your comments are the steering input. *(V2.3 shipped a static HTML review
+   tour on every PR; it was retired 2026-08-04 at tur101 — the per-PR
+   narration cost exceeded what the walkthrough returned.)*
 2. **Backlog files** — `DEV.md`, `PLAN.md`, `DEBUG.md`, `INTERVIEW.md`,
    `MANUAL.md` stay the shared TODO surface between you and the agents. Agents
    update them; you can hand-edit them; `[locked]` lines are sacrosanct.
@@ -41,9 +41,10 @@ The engine's job is to make autonomy *reviewable*, at three altitudes:
 - **At code**: non-skippable adversarial self-review (the one BMAD discipline
   with 9-epics-deep evidence it catches real bugs every time), local CI on
   touched surfaces, remote CI as the merge gate.
-- **At review**: the PR is not a raw diff — it's a guided tour with a decision
-  ledger, dependency-ordered stops, verified call-chain trails, and blast
-  radius. Reviewing well becomes cheap, so it actually happens.
+- **At review**: the PR body carries the spec link, the AC checklist, the
+  test plan, and reviewer notes, so the diff arrives with its intent attached.
+  *(The richer guided-tour artifact shipped at V2.3 and retired at tur101 —
+  see `07-decisions.md` D-4.)*
 
 ## Principles carried forward from v1 (non-negotiable)
 
@@ -81,20 +82,23 @@ These survived 9 epics and are load-bearing. v2 keeps all of them:
 |---|---|
 | Planning = `/devx-plan` invoking ~450–500KB of BMAD workflows (research → PRD → party-mode → readiness) | Planning = PRD / Design / Plan stages as flat skill bodies + `devx gate *` CLI checks; ~10–20KB loaded per stage |
 | Execution = `/devx` invoking `bmad-dev-story` + `bmad-code-review` (story file skipped 43/43 times) | Execution = native execute stage working directly from spec ACs; adversarial review re-homed as a native skill + CLI-pinned status lines |
-| Review = human reads a raw GitHub diff | Review = static HTML tour linked from the PR description; human comments on the PR; `/devx` addresses comments |
+| Review = human reads a raw GitHub diff | Review = spec-linked PR body (ACs + test plan + notes); human comments on the PR; `/devx address` dispositions every one. *(A static HTML tour shipped here at V2.3 and was retired at tur101.)* |
 | Retro = `bmad-retrospective` (63KB) → LEARN.md rows | Retro = native retro stage (~5KB) → same LEARN.md contract, plus an outcome gate weeks after ship |
-| `/devx` = dev-execution only; `/devx-plan` separate; no debug loop | `/devx` = universal dispatcher with intent routing; plan/design/execute/debug/review/loop are stages behind it |
+| `/devx` = dev-execution only; `/devx-plan` separate; no debug loop | `/devx` = universal dispatcher with intent routing; plan/design/execute/debug/address/loop are stages behind it |
 | Overnight = manager spawns workers, but no iteration contract, no failure ladder, no budgets | Overnight = gnhf-grade loop: commit-or-reset iterations, 3-strike abort, token/iteration caps, morning report |
 | sprint-status.yaml maintained at real cost, zero consumers | Retired. The spec graph + backlogs are the only tracking state |
 | Works on this repo (bootstrap) | `devx init` makes any repo devx-able; the engine ships in the npm package |
 
 ## Success criteria for v2 as a whole
 
-- **S-1**: A full feature travels PRD → Design → Plan → RED → Execute → PR with
-  tour → merge with zero BMAD skill invocations and < 60KB of engine prose
-  loaded across all stages combined.
-- **S-2**: Every PR opened by `/devx` carries a working, self-contained review
-  tour link; Leo reviews ≥1 real PR using only the tour + PR comments.
+- **S-1**: A full feature travels PRD → Design → Plan → RED → Execute → PR →
+  merge with zero BMAD skill invocations and < 60KB of engine prose loaded
+  across all stages combined.
+- ~~**S-2**: Every PR opened by `/devx` carries a working, self-contained
+  review tour link; Leo reviews ≥1 real PR using only the tour + PR
+  comments.~~ **Met at V2.3, then retired 2026-08-04 (tur101)** — the
+  criterion was satisfied on PRs #65 onward; the tour was removed on owner
+  call once the narration cost proved to outweigh the review benefit.
 - **S-3**: An overnight `devx loop` run completes ≥3 backlog items unattended,
   with every failure either recovered or cleanly rolled back, and produces a
   morning report reconstructable from disk alone.

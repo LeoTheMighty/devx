@@ -1,12 +1,12 @@
 ---
 name: 'devx'
-description: 'The universal devx dispatcher: knows when to plan, design, execute, debug, review, or loop. No args → devx next decides from repo state; a hash routes by spec type + stage; free text routes by intent (bug → debug loop, small feature → execute, big/vague → PRD stage, review → tour/address). The execute arm runs the full dev loop: claim → implement → self-review → local CI → PR+tour → remote CI → merge → cleanup. Respects mode (YOLO/BETA/PROD/LOCKDOWN) + trust gradient. Use for "devx this", "/devx <anything>", "fix X", "build Y".'
+description: 'The universal devx dispatcher: knows when to plan, design, execute, debug, review, or loop. No args → devx next decides from repo state; a hash routes by spec type + stage; free text routes by intent (bug → debug loop, small feature → execute, big/vague → PRD stage, review → address). The execute arm runs the full dev loop: claim → implement → self-review → local CI → PR → remote CI → merge → cleanup. Respects mode (YOLO/BETA/PROD/LOCKDOWN) + trust gradient. Use for "devx this", "/devx <anything>", "fix X", "build Y".'
 ---
 
 # /devx — The Universal Dispatcher
 
 > **v2 (v2d101).** `/devx` is the only command you need. It routes to the
-> right stage — plan / design / execute / debug / review / loop — from repo
+> right stage — plan / design / execute / debug / address / loop — from repo
 > state (`devx next`) or from what you typed. The execute arm below is the
 > Phase 1 loop, unchanged where it was already proven.
 >
@@ -40,8 +40,8 @@ Parse the user's message after `/devx`:
    `/devx-plan` stage; debug spec → Stage: Debug. A stage name after the
    hash overrides (`/devx <hash> retro`).
 3. **Explicit stage word** (`prd|design|plan|red|execute|verify|revise|
-   address|retro|outcome|review|loop`) → that stage. `review <pr>` = build
-   the tour for an existing PR; `address <pr>` = Stage: Address.
+   address|retro|outcome|loop`) → that stage. `address <pr>` = Stage:
+   Address (that's where human review input on an open PR lands).
 4. **Free text** → intent classification (say your routing call out loud;
    `INTERVIEW.md` when genuinely ambiguous — no silent product decisions):
    - **Bug-shaped** ("broken", "500s", stack trace, "why does…") → file
@@ -70,8 +70,8 @@ the user as a defect, never silently fixed.
    irreproducible, document the attempt and file for observability instead.
 3. Root-cause with evidence in the status log (hypothesis → check →
    result, one line each).
-4. Fix via the Execute arm (worktree → PR + tour → merge); the tour's
-   decision ledger carries the root-cause narrative.
+4. Fix via the Execute arm (worktree → PR → merge); the PR body's Notes
+   section carries the root-cause narrative.
 5. Learnings → LEARN.md candidates at the next retro.
 
 ## Core Principles
@@ -251,6 +251,14 @@ Steps:
    - Fix the root cause (don't paper over).
    - Re-run until green.
 6. Do NOT proceed to commit until every required gate passes for the touched surface.
+7. **Emit the QA walkthrough** (stories with a user-visible surface only — a screen, a route, a CLI output, an email, anything a person perceives; pure-internal refactors skip this step and say so in the status log):
+   - Author `test/test-<hash>-qa-walkthrough.md` from `_devx/templates/engine/qa-walkthrough.md`. One file per story; `<hash>` is the spec hash.
+   - Every check is a checkbox line tagged `machine` or `human`.
+   - **Execute every `machine` item inline, right here.** The gates just ran, the services are up, and the evidence is freshest at Phase 5 — that is why emission lives here and not at commit time. Run the command, paste the real output into its fenced evidence block, and check the box `[x]`. An unchecked machine item means the walkthrough is unfinished, not that the check is optional.
+   - Leave every `human` item unchecked, and give each one an inline `how to verify:` hint — where to look and what you should see, in one line, so the reviewer never has to re-read the diff.
+   - If a machine item fails, that's a Phase 5 gate failure: fix the root cause and re-run (step 5), don't downgrade the item to `human`.
+   - Append a row to `TEST.md`: `` - [ ] `test/test-<hash>-qa-walkthrough.md` — QA walkthrough for <spec title>; <n> human check(s) outstanding. Status: ready. From: <hash>. ``
+   - The walkthrough file commits **with the story** in Phase 6 — it is part of the item's diff, not a follow-up.
 
 **Prose-bearing diffs: finish editing before you start the gate.** The skill-body discipline tests (`devx-skill-phase*.test.ts`, `skills-sync.test.ts`, `devx-status-log-discipline.test.ts`) read their subject files from disk at test time, so editing `.claude/commands/*.md`, `skills/*.md`, or a spec while the suite is running produces a red that reflects a torn read, not a real failure — and on a long suite that red costs a full re-run to disprove. Batch every prose fix first, run the targeted discipline files (sub-second), and only then start the full gate. If a prose fix becomes necessary after the gate is underway, let the run finish, apply it, and re-run the affected files rather than racing it.
 
@@ -258,7 +266,7 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
 
 ### Phase 6: Commit
 
-1. Stage only files relevant to this item — use `git add <specific files>`, never `git add -A`.
+1. Stage only files relevant to this item — use `git add <specific files>`, never `git add -A`. The Phase 5 walkthrough (`test/test-<hash>-qa-walkthrough.md`) and its `TEST.md` row are part of this item; stage them with it.
 2. Commit with message:
    ```
    <type>: <spec-hash> — <spec title>
@@ -334,32 +342,6 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
    - File a `debug/debug-*.md` spec + `DEBUG.md` entry describing the CI-only failure pattern (so `/devx-learn` can eventually add it to local gates).
 
    > Implementation note: `devx devx-helper await-remote-ci <branch>` (without `--once`) wraps the full state machine and blocks via real `setTimeout` until terminal. Useful from non-harness consumers (e.g. CI runners that aren't an LLM) and as the canonical reference impl. The `/devx` skill body always uses `--once` because the agent's cache stays warm only when the harness drives the wait via `ScheduleWakeup`, not when the CLI internally sleeps for 120s.
-
-### Phase 7.5: Review Tour (v2t101 — fail-soft)
-
-Every PR ships a self-contained static review tour so human review is a
-guided walkthrough, not a raw diff. The tour presents and points — no
-severity verdicts (judging is the reviewer's job; your Phase 4 already ran).
-
-1. `devx tour gather <hash>` — emits the gather JSON (spec Goal/ACs, diff vs
-   base, numstat, commits).
-2. Narrate: build the tour model from the gather JSON — changeMap with
-   honest weight classes (core/supporting/mechanical/tests), 3–7 decision
-   ledger entries, dependency-ordered stops (must/should/skim + the 4 flags
-   ⚠ decision · 🔍 scrutinize · 💬 discussed · 🕳 gap), trails (**every
-   A-calls-B edge grep-verified at the call site or flagged 🕳 — never
-   narrated from plausibility**), blast radius incl. callers-not-updated,
-   coverage rows seeded from the spec ACs. For big diffs (>~1500 lines /
-   >25 files) fan out subagents per semantic area; synthesize in one head.
-   Write tour.json; `devx tour build <hash> --tour-json <path>` validates
-   (fix and retry on schema errors) and renders the single-file HTML.
-3. `devx tour publish <hash>` — pushes to the orphan `devx-tours` branch
-   (D-4), prints the htmlpreview + raw URLs.
-4. Pass `--tour-url <url> --tour-orientation <path>` to `devx pr-body` so
-   the PR body carries the tour link + orientation fallback.
-5. **Fail-soft rule**: any tour step failing must NOT block the PR — pass
-   no tour flags (pr-body renders the unavailable line), note the failure
-   in the status log, continue to Phase 8.
 
 ### Phase 8: Auto-Merge (gate-driven) or Hand Off
 
@@ -483,14 +465,13 @@ Consume human review input from a PR. Every comment gets a response —
 a reply, a commit, or a filed spec — never silent resolution.
 
 1. Fetch comments + review threads (`gh api repos/{owner}/{repo}/pulls/<n>/comments`
-   + reviews). Tour-originated comments carry `path:line` anchors — map
-   each to the spec/stop context mechanically.
+   + reviews). Inline comments carry `path:line` anchors — map each to the
+   spec AC it bears on mechanically.
 2. Triage each comment: **in-scope** (fix on the PR branch now, reply with
    what was done + the commit sha) / **out-of-scope** (file a debug/test
    spec + backlog row, reply with the spec path) / **question** (answer in
    a reply with file:line evidence).
-3. Re-run local CI after fixes; push; the PR updates in place. Rebuild +
-   republish the tour (Phase 7.5) when the diff changed materially.
+3. Re-run local CI after fixes; push; the PR updates in place.
 4. Append a status-log line: `address: <n> comments — <f> fixed, <s> filed,
    <q> answered`.
 5. If the PR carried a hold, ask the reviewer to lift it (reply summarizing

@@ -444,8 +444,8 @@ export interface SpecResolution {
 
 /** Thrown when the same hash resolves in more than one type dir. Hashes are
  *  unique by convention (6 random hex chars); a collision means a
- *  hand-authored duplicate, and picking one silently would gate/tour the
- *  wrong spec. */
+ *  hand-authored duplicate, and picking one silently would gate the wrong
+ *  spec. */
 export class AmbiguousSpecHashError extends Error {
   constructor(
     public readonly hash: string,
@@ -462,7 +462,7 @@ export class AmbiguousSpecHashError extends Error {
 /**
  * Resolve a bare hash across every spec type dir (debug-6a913f). The single
  * type-aware resolution point for CLIs that take only a hash (`devx
- * merge-gate`, `devx tour gather`, …) — per-command `dev/` hardcoding is the
+ * merge-gate`, `devx split`, …) — per-command `dev/` hardcoding is the
  * regression class this replaces. Returns null when no dir has the hash;
  * throws AmbiguousSpecHashError on a cross-dir collision.
  */

@@ -20,6 +20,7 @@
 //   | 8   | DEV.md ready items whose workstream gates pass   | execute-dev       |
 //   | 9   | a workstream is mid-pipeline                     | workstream-stage  |
 //   | 10  | PLAN.md has ready plan items                     | plan-prd          |
+//   | 10.5| TEST.md has unclaimed QA walkthroughs            | explore-qa        |
 //   | 11  | nothing ready, blocked items exist               | report-blocked    |
 //   | 12  | genuinely empty                                  | propose-interview |
 //
@@ -27,6 +28,15 @@
 // the canonical 1–12 numbers are pinned across v2/05-dispatcher.md §2, the
 // S-4 matrix, and the skill body, and an outcome that came due outranks new
 // work (rows 6+) but never preempts in-flight work (rows 1–5).
+//
+// Row 10.5 (bqa104): same fractional trick, opposite end. `/devx-test` is
+// ATTENDED-ONLY (docs/QA.md §Layer 2 carve-out, $1/day cap), so it must
+// never preempt work an unattended loop could actually do — it sits below
+// every executable row (7/8/9/10) and only fires when the backlogs have
+// nothing ready. That placement also makes it harmless when an unattended
+// dispatcher hits it: the rows it displaces (11 report-blocked, 12
+// propose-interview) are themselves stop-and-report, so a loop loses no
+// work by seeing "run /devx-test" and standing down.
 //
 // Row 8 before row 9 keeps shipping ahead of planning when both are
 // available; `--prefer plan` (opts.preferPlan) flips the 8/9 evaluation
@@ -66,6 +76,7 @@ export type NextAction =
   | "execute-dev"
   | "workstream-stage"
   | "plan-prd"
+  | "explore-qa"
   | "report-blocked"
   | "propose-interview";
 
@@ -233,6 +244,18 @@ export interface BlockedItemSignal {
   owner: string | null;
 }
 
+/** An unclaimed `TEST.md` QA-walkthrough row (row 10.5, bqa104) — the
+ *  `test/test-<hash>-qa-walkthrough.md` artifacts `/devx` Phase 5 emits,
+ *  still carrying unchecked `human` items. */
+export interface QaWalkthroughSignal {
+  /** Story hash the walkthrough belongs to (from the filename). */
+  hash: string;
+  /** Repo-relative walkthrough path, as written in the TEST.md row. */
+  path: string;
+  /** Row title text (empty when the row carries none). */
+  title: string;
+}
+
 export interface RepoSnapshot {
   loop: LoopSignal;
   /** Own open PRs (gh --author @me), CI state resolved. */
@@ -253,6 +276,8 @@ export interface RepoSnapshot {
   midPipeline: WorkstreamSignal[];
   /** PLAN.md ready rows in file order. */
   planReady: PlanItemSignal[];
+  /** TEST.md rows pointing at unclaimed QA walkthroughs, in file order. */
+  qaWalkthroughs: QaWalkthroughSignal[];
   /** Blocked rows across DEV/DEBUG/PLAN (for row 11's report). */
   blocked: BlockedItemSignal[];
   /** Advisory todo-drift rows across every scanned engine workstream
@@ -539,6 +564,23 @@ const row10: RowFn = (s) => {
   };
 };
 
+const row10_5: RowFn = (s) => {
+  const top = s.qaWalkthroughs[0];
+  if (!top) return null;
+  const more =
+    s.qaWalkthroughs.length > 1
+      ? ` (+${s.qaWalkthroughs.length - 1} more)`
+      : "";
+  return {
+    row: 10.5,
+    action: "explore-qa",
+    command: `/devx-test ${top.hash}`,
+    detail: `TEST.md has an unclaimed QA walkthrough '${top.path}'${
+      top.title ? ` — ${top.title}` : ""
+    }${more}; /devx-test is attended-only ($1/day cap) — run it from a foreground session, or stand down if nobody is watching`,
+  };
+};
+
 const row11: RowFn = (s) => {
   if (s.blocked.length === 0) return null;
   const lines = s.blocked
@@ -577,6 +619,7 @@ const CANONICAL_ORDER: RowFn[] = [
   row8,
   row9,
   row10,
+  row10_5,
   row11,
   row12,
 ];
@@ -593,6 +636,7 @@ const PREFER_PLAN_ORDER: RowFn[] = [
   row9, // flipped: planning ahead of shipping
   row8,
   row10,
+  row10_5,
   row11,
   row12,
 ];

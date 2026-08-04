@@ -39,7 +39,7 @@
 // Design: v2/03-review-tour.md §4; D-5 in v2/07-decisions.md
 
 import { blockingReviewCount } from "../../commands/merge-gate.js";
-import { type Exec, realExec } from "../tour/exec.js";
+import { type Exec, realExec } from "../exec.js";
 
 /** The literal marker a human drops in a PR comment to block the merge
  *  tail. Matched case-insensitively with flexible whitespace after the

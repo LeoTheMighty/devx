@@ -91,11 +91,12 @@ describe("renderMorningReport (v2/04 §5)", () => {
     expect(body).toContain("Ran 9h 30m");
   });
 
-  it("per-merged-item: PR link, honest tour/test-delta lines, diff stat (LOW-14)", () => {
+  it("per-merged-item: PR link, honest test-delta line, diff stat (LOW-14)", () => {
     expect(body).toContain("https://github.com/x/y/pull/70");
-    // No dead tourUrl plumbing — the loop doesn't generate tours; say so
-    // explicitly with the recovery command instead of pretending.
-    expect(body).toContain("Tour: not generated (overnight loop) — run `devx tour aaa111` if you want one");
+    // No dead tour plumbing — the review tour retired at tur101 and the loop
+    // never parsed test counts; say the latter explicitly rather than
+    // pretending, and say nothing at all about tours.
+    expect(body).not.toContain("Tour:");
     expect(body).toContain("Test delta: not tracked (v1 bound)");
     expect(body).toContain("6 files, +210/-12");
   });
@@ -104,11 +105,10 @@ describe("renderMorningReport (v2/04 §5)", () => {
     expect(body).toContain("- WARN: main is ahead of origin — push failed after a loop-owned commit: mock");
   });
 
-  it("non-merged items carry no tour/test-delta noise", () => {
-    // The honest-unavailable lines are merged-item furniture; an abandoned
-    // item's section must not render them.
+  it("non-merged items carry no test-delta noise", () => {
+    // The honest-unavailable line is merged-item furniture; an abandoned
+    // item's section must not render it.
     const section = body.split("### `bbb222`")[1].split("### ")[0];
-    expect(section).not.toContain("Tour:");
     expect(section).not.toContain("Test delta:");
   });
 

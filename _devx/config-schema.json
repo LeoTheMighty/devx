@@ -381,9 +381,11 @@
       "type": "object",
       "properties": {
         "browser_harness": {
+          "description": "Which browser harness drives Layer-2 QA. `claude-in-chrome` means the attended agent drives a real Chrome session instead of a scripted runner.",
           "enum": [
             "playwright",
             "cypress",
+            "claude-in-chrome",
             "none"
           ]
         },

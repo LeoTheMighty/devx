@@ -4,7 +4,7 @@
      E-id; P0 floor: every P0 expectation `full` and naming a runnable
      artifact). Sizing rule: a phase is one cohesive concern with a
      verifiable exit, sized to land as a single reviewable PR. Default to
-     more, smaller phases. One phase ≙ one dev spec ≙ one PR ≙ one tour. -->
+     more, smaller phases. One phase ≙ one dev spec ≙ one PR. -->
 
 ## Current state
 

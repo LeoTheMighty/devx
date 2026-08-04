@@ -242,10 +242,6 @@ describe("cli303 — devx --help command listing", () => {
                                      2 other.
         todo                         Per-workstream todo.md working memory
                                      (harness-fold-in). Subcommand-driven.
-        tour                         Static HTML review tour for a spec's PR
-                                     (v2t101). gather → (agent narrates) → build →
-                                     publish; prune for retention. See
-                                     v2/03-review-tour.md.
         workstream                   Workstream operations (v2 engine). \`new <slug>\`
                                      scaffolds _devx/workstreams/<slug>/ + the plan
                                      spec's engine frontmatter.
