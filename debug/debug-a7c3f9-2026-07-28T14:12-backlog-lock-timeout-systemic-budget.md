@@ -3,10 +3,10 @@ hash: a7c3f9
 type: debug
 created: 2026-07-28T14:12:00-06:00
 title: "Backlog-lock timeouts count toward the systemic claim-failure budget"
-status: ready
+status: in-progress
 from: dev/dev-mlc104-2026-07-28T09:02-claim-contention-harness.md
 branch: null
-owner: null
+owner: /devx-loop-2026-08-04T19-52-58-179-34486
 ---
 ## Goal
 
@@ -52,6 +52,7 @@ reduce peer pressure on the lock).
   the top ready DEBUG row. It was killed at iteration 1; no worker commits
   exist on feat/debug-a7c3f9. Row, frontmatter, worktree, branch and spec
   lock all reverted; the item is untouched and free to claim.
+- 2026-08-04T13:52:58-06:00 — claimed by /devx in session /devx-loop-2026-08-04T19-52-58-179-34486
 
 ## Links
 
