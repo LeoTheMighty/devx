@@ -207,3 +207,36 @@ step↔threshold table + results record:
     on merged PRs.
   - Spec: `dev/dev-tur101-2026-08-04T10:00-retire-review-tour.md`;
     decision record: `v2/07-decisions.md` D-4.
+
+## For story-graph — downstream GRAPH.md rollout (filed by sgr107, due with G-2: 2026-08-23)
+
+Each row ends in a committed GRAPH.md in the named repo — that is G-2's
+scoring condition (all three repos committed + rendering by 2026-08-23; the
+devx repo's own GRAPH.md landed with sgr103/sgr106). E-7 proved the packaged
+CLI serves a downstream-shaped repo with zero devx-repo state reads
+(`_devx/workstreams/story-graph/evals/E-7_downstream-portability.ts`).
+
+- [ ] **MV-sgr107.1 — Refresh the global `devx` install.**
+  - Why: friend-finder-mesh + palateful run the globally-installed CLI; the
+    graph surface (sgr101–sgr106) postdates your last `npm i -g`.
+  - How: from the devx checkout, `npm run install:global`, then confirm
+    `devx graph --help` renders.
+  - Blocks: MV-sgr107.2 + MV-sgr107.3.
+
+- [ ] **MV-sgr107.2 — friend-finder-mesh: `/devx-init` refresh, then attended backfill PR ending in a committed GRAPH.md.**
+  - Why: skill bodies in downstream repos are frozen at their last
+    `/devx-init` (rtl105 mechanism); the backfill run is attended-only by
+    design (D-9 — the CLI never guesses, the pass-2 underivable report is
+    yours to resolve). Backfill writes edges, not GRAPH.md — the render
+    step is explicit.
+  - How: in ffm, re-run `/devx-init` to refresh skill bodies; then on a
+    branch: `devx graph backfill` (review the pass-1 diff edge-by-edge,
+    resolve or explicitly defer the pass-2 report), `devx graph`, commit
+    GRAPH.md in that same PR, merge.
+  - Blocks: G-2 scoring (due 2026-08-23).
+
+- [ ] **MV-sgr107.3 — palateful: same as MV-sgr107.2.**
+  - How: identical sequence in the palateful repo: `/devx-init` refresh →
+    branch → `devx graph backfill` (attended review) → `devx graph` →
+    commit GRAPH.md in the same PR → merge.
+  - Blocks: G-2 scoring (due 2026-08-23).
