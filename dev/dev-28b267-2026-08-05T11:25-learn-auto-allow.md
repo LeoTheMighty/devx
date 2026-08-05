@@ -7,7 +7,8 @@ from: null
 status: in-progress
 owner: /devx-2026-08-05T1128-99202
 blocked_by: []
-branch: null
+branch: feat/dev-28b267
+pr: 119
 ---
 
 ## Goal
