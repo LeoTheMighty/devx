@@ -41,7 +41,7 @@
   - [x] Phase 2: Graph model → sgr102
   - [x] Phase 3: Renderer + `devx graph` CLI → sgr103
   - [x] Phase 4: Regen hooks (claim + emission) → sgr104
-  - [ ] Phase 5: `mark-done` helper + Phase-8 rewrite → sgr105
+  - [x] Phase 5: `mark-done` helper + Phase-8 rewrite → sgr105
   - [x] Phase 6: Backfill → sgr106
   - [x] Phase 7: Downstream portability → sgr107
     - [x] T7.1 pack-and-run harness (npm pack leg) + fs-audit preload in E-7; fix fixture cycle bug

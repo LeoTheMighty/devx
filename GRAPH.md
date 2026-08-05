@@ -4,7 +4,7 @@
 
 # Story graph
 
-190 specs across 22 groups — 12 blocked · 120 done · 7 in-progress · 51 ready; 390 edges.
+194 specs across 22 groups — 12 blocked · 122 done · 5 in-progress · 55 ready; 394 edges.
 
 ## Legend
 
@@ -150,11 +150,14 @@ flowchart TD
     494590["494590 Loop token accounting implausibly low — b…"]
     4d9c1a["4d9c1a QA walkthrough — sgr104 regen hooks (clai…"]
     5c8b21["5c8b21 loop-concurrency G-1 test sits ~1.3x unde…"]
+    620337["620337 loop-worker + manage-crash-restart-loop f…"]
     6a913f["6a913f hash→spec resolution hardcodes dev/ acros…"]
     74632d["74632d loop-driver fixture teardown races on mac…"]
     7a2d1f["7a2d1f Mobile companion v0.1 through real-time s…"]
     7c1e93["7c1e93 loop-concurrency G-1 harness times out un…"]
     7e2b56["7e2b56 emit-retro-story writes its artifacts to…"]
+    8a9586["8a9586 Loop merge tail leaves GRAPH.md stale — F…"]
+    8b9165["8b9165 QA walkthrough — sgr105 mark-done helper…"]
     97f6d8["97f6d8 QA walkthrough — devx graph renderer + CL…"]
     9b9be5["9b9be5 devx gate evals lacks mid-flight state-aw…"]
     9c4e21["9c4e21 appendManualEntry read-check-write race c…"]
@@ -170,6 +173,7 @@ flowchart TD
     b7f2c1["b7f2c1 Unidentified 1-in-2,665 suite flake under…"]
     c808b1["c808b1 /devx-learn unattended mode — route and a…"]
     c81f04["c81f04 backlog-mutate R3 concurrency test is fla…"]
+    c94f14["c94f14 await-remote-ci reads a CONFLICTING PR as…"]
     c98aee["c98aee Wire flutter analyze + test into devx-ci…"]
     cf65aa["cf65aa loop merge tail never emits the dvx103 ph…"]
     d01000["d01000 Phase 3 — Parallelism & coordination: loc…"]
@@ -399,6 +403,10 @@ flowchart TD
   sgr104 --> sgr103
   sgr104 --- |par| sgr106
   sgr104 --- |par| sgr107
+  sgr105 -.-> 620337
+  sgr105 -.-> 8a9586
+  sgr105 -.-> 8b9165
+  sgr105 -.-> c94f14
   sgr105 --> sgr104
   sgr105 --- |par| sgr106
   sgr105 --- |par| sgr107
@@ -470,8 +478,8 @@ flowchart TD
   class sgr102 done
   class sgr103 done
   class sgr104 done
-  class sgr105 wip
-  class sgr106 wip
+  class sgr105 done
+  class sgr106 done
   class sgr107 done
   class sgrret ready
   class c8e2d4 ready
@@ -518,11 +526,14 @@ flowchart TD
   class 494590 done
   class 4d9c1a ready
   class 5c8b21 ready
+  class 620337 ready
   class 6a913f done
   class 74632d ready
   class 7a2d1f wip
   class 7c1e93 ready
   class 7e2b56 ready
+  class 8a9586 ready
+  class 8b9165 ready
   class 97f6d8 ready
   class 9b9be5 done
   class 9c4e21 done
@@ -538,6 +549,7 @@ flowchart TD
   class b7f2c1 ready
   class c808b1 ready
   class c81f04 wip
+  class c94f14 ready
   class c98aee ready
   class cf65aa done
   class d01000 blocked

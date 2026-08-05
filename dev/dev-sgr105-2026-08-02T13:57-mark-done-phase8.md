@@ -6,7 +6,7 @@ title: "mark-done helper + Phase-8 rewrite (merge-cleanup mechanical host)"
 from: plan/plan-62bcd1-2026-08-02T09:00-story-graph.md
 plan: _devx/workstreams/story-graph
 phase: 5
-status: in-progress
+status: done
 owner: /devx-2026-08-05T1356-3064
 blocked_by: [sgr104]
 branch: feat/dev-sgr105
@@ -72,3 +72,4 @@ flip green.
 - 2026-08-05T13:49-06:00 — orphaned claim released (owner session's pid 94741 dead; stale lock removed with user authorization); flipped back to ready for re-claim
 - 2026-08-05T13:56:09-06:00 — claimed by /devx in session /devx-2026-08-05T1356-3064
 - 2026-08-05T14:07 — phase 7 (resume): silent-CI root cause proven — PR #118 was `CONFLICTING` (`mergeStateStatus: DIRTY`); GitHub builds no merge ref for a conflicted PR so `pull_request` workflows never fire. Main moved under the branch when #119 + #120 merged. Merged `origin/main` into `feat/dev-sgr105`; resolved 3 append-append conflicts (DEBUG.md, TEST.md, this status log) as chronological unions. Q#16 resolved in-branch; `debug-c94f14` filed (probe should surface `pr-conflicting` as a distinct state). Pushing to trigger the real CI run.
+- 2026-08-05T14:05:13-06:00 — merged via PR #118 (squash → 4928dd9)
