@@ -158,8 +158,10 @@ export const BACKLOG_FILES: ReadonlyArray<string> = [
 export const STANDALONE_GROUP = "standalone";
 
 /** Statuses that mean "this item needs no more attention" — the collapse
- *  rule's definition of settled. */
-const SETTLED: ReadonlySet<SpecStatus> = new Set<SpecStatus>([
+ *  rule's definition of settled. Exported for backfill (sgr106), which uses
+ *  the SAME definition to decide a row is closed and must not grow new prose;
+ *  two spellings of "settled" would let the map and the writer disagree. */
+export const SETTLED_STATUSES: ReadonlySet<SpecStatus> = new Set<SpecStatus>([
   "done",
   "deleted",
   "superseded",
@@ -213,6 +215,30 @@ function latestMergedDate(content: string): string | null {
  * `parseFrontmatterValue`, which is a single-line scalar reader and cannot
  * see a `spawned:` block-list or an inline array (spec AC 1).
  *
+ * Exported un-memoized for backfill (sgr106), which needs the same raw view
+ * — both `blocked_by` spellings plus `phase:` — while it decides what to
+ * write. One parser, two readers: a second hand-rolled frontmatter reader is
+ * exactly how the hyphen key got lost in the first place.
+ */
+export function readSpecFrontmatterMap(
+  content: string,
+): Record<string, unknown> {
+  const split = splitFrontmatter(content);
+  if (!split) return {};
+  try {
+    const parsed = parseDocument(split.fmText).toJS() as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Malformed frontmatter degrades to "no keys" — same defensive posture
+    // as readEngineState. A half-edited spec must never crash a board render
+    // (nor abort a backfill pass that has other specs to complete).
+  }
+  return {};
+}
+
+/**
  * Memoized by content string: `resolveSpecWorkstream` calls the injected
  * scalar reader twice per spec on top of this module's own reads, and a
  * 200-spec repo would otherwise re-parse the same YAML ~1,000 times.
@@ -225,20 +251,7 @@ function makeFrontmatterReader(): {
   const map = (content: string): Record<string, unknown> => {
     const hit = memo.get(content);
     if (hit !== undefined) return hit;
-    let out: Record<string, unknown> = {};
-    const split = splitFrontmatter(content);
-    if (split) {
-      try {
-        const parsed = parseDocument(split.fmText).toJS() as unknown;
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          out = parsed as Record<string, unknown>;
-        }
-      } catch {
-        // Malformed frontmatter degrades to "no keys" — same defensive
-        // posture as readEngineState. A half-edited spec must never crash
-        // a board render.
-      }
-    }
+    const out = readSpecFrontmatterMap(content);
     memo.set(content, out);
     return out;
   };
@@ -313,7 +326,11 @@ const SPEC_FILENAME_RES = new Map<string, RegExp>(
   SPEC_TYPE_DIRS.map((t) => [t, new RegExp(`^${t}-([a-z0-9]{3,12})-.+\\.md$`, "i")]),
 );
 
-function specFilenameHash(type: string, name: string): string | null {
+/** The hash a spec FILENAME encodes, or null when the name isn't a spec of
+ *  that type. Exported for backfill (sgr106), which walks the same dirs to
+ *  find each node's file — a second filename regex would drift from this
+ *  one the first time the convention moves. */
+export function specFilenameHash(type: string, name: string): string | null {
   const m = SPEC_FILENAME_RES.get(type)?.exec(name);
   return m ? m[1].toLowerCase() : null;
 }
@@ -812,7 +829,7 @@ export function buildGraphModel(
   const groups: GraphGroup[] = [];
   for (const [id, kind] of groupKinds) {
     const members = nodes.filter((n) => n.group === id);
-    const done = members.filter((n) => SETTLED.has(n.status)).length;
+    const done = members.filter((n) => SETTLED_STATUSES.has(n.status)).length;
     let lastMerged: string | null = null;
     for (const m of members) {
       const d = specs.get(m.hash)?.mergedDate ?? null;

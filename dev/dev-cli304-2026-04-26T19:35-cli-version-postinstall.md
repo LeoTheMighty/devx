@@ -2,7 +2,7 @@
 hash: cli304
 type: dev
 created: 2026-04-26T19:35:00-07:00
-title: `devx --version` + postinstall PATH verification
+title: "`devx --version` + postinstall PATH verification"
 from: _bmad-output/planning-artifacts/epic-cli-skeleton.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
 status: done
