@@ -133,6 +133,21 @@ under `nohup` and still drain.
   `repos.json` never being written), 2 human checks left for an actual
   unattended overnight drain and the recorded-`deny` case.
   Coverage: YOLO → informational, not a gate.
+- 2026-08-05T13:16 — phase 7: PR #119 opened; remote CI **success** on both
+  runners (devx-ci run 31038425217, macos-latest + ubuntu-latest / node 20).
+  macOS passing on CI independently confirms the phase-5 local reds were
+  machine contention, not this diff — the same `manage-spawn` tests are green
+  there. `check-hold` → `{"hold":false}`.
+- 2026-08-05T13:20 — phase 8 correction: first `devx merge-gate 28b267` exited
+  2 — `hash '28b267' resolves to 2 spec files`, because the QA walkthrough was
+  emitted as `test/test-28b267-qa-walkthrough.md`, reusing the STORY's hash.
+  That is the known `debug-ea4f41` bug verbatim (the skill's Phase 5
+  instruction is the outlier; every existing TEST.md row uses a fresh
+  own-hash). Applied that spec's documented workaround: renamed to
+  `test/test-ebf8c4-2026-08-05T13:20-28b267-qa-walkthrough.md` with canonical
+  frontmatter, and updated the TEST.md row. Supersedes the
+  `test/test-28b267-qa-walkthrough.md` path named in the phase-5 line above.
+  Third recorded occurrence — ea4f41 is still ready and unfixed.
 - 2026-08-05T11:28:56-06:00 — claimed by /devx in session /devx-2026-08-05T1128-99202
 
 ## Links

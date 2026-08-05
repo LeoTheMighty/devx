@@ -1,3 +1,13 @@
+---
+hash: ebf8c4
+type: test
+created: 2026-08-05T13:20:00-06:00
+title: "QA walkthrough — learn.auto_allow unattended watcher (28b267)"
+from: dev/dev-28b267-2026-08-05T11:25-learn-auto-allow.md
+status: ready
+owner: null
+branch: null
+---
 # QA walkthrough — Story `28b267`
 
 > `learn.auto_allow` makes `devx learn-watch` servable with nobody at a
