@@ -7,7 +7,7 @@ from: plan/plan-62bcd1-2026-08-02T09:00-story-graph.md
 plan: _devx/workstreams/story-graph
 phase: 5
 status: in-progress
-owner: /devx-2026-08-05T1113-94741
+owner: /devx-2026-08-05T1356-3064
 blocked_by: [sgr104]
 branch: feat/dev-sgr105
 ---
@@ -64,3 +64,5 @@ flip green.
 
 - 2026-08-02T13:57 — emitted by /devx-plan RED stage (workstream 62bcd1).
 - 2026-08-05T11:13:48-06:00 — claimed by /devx in session /devx-2026-08-05T1113-94741
+- 2026-08-05T13:49-06:00 — orphaned claim released (owner session's pid 94741 dead; stale lock removed with user authorization); flipped back to ready for re-claim
+- 2026-08-05T13:56:09-06:00 — claimed by /devx in session /devx-2026-08-05T1356-3064
