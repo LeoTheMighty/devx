@@ -22,6 +22,17 @@ planned; this section outranks the paused mobile backlog below.
 ### Review tour retirement
 - [x] `dev/dev-tur101-2026-08-04T10:00-retire-review-tour.md` — Retire the review tour: rip out `src/lib/tour/` + `devx tour` CLI + `/devx` Phase 7.5 + the `## 🗺 Review tour` PR-body section + `v2/03-review-tour.md`; rehome the shared exec seam; drop `diff2html` + `marked` deps. `/devx address` and the `devx: hold` gate survive. Status: done. Owner call 2026-08-04. PR: https://github.com/LeoTheMighty/devx/pull/113 (merged 8fc3a72).
 
+### Retro-loop autonomy (from the 2026-08-05 learn-watch triage)
+
+Two sessions sat pending in `~/.claude/devx/learn-queue.jsonl` since
+2026-08-02 behind the once-per-repo allow prompt, with no human at a
+terminal to answer it. Owner-requested: the watcher should drain
+unattended, and the retros it spawns should carry their findings to a
+merged change instead of stopping at an unread evidence table.
+
+- [/] `dev/dev-28b267-2026-08-05T11:25-learn-auto-allow.md` — `learn.auto_allow`: unreviewed repos serve instead of blocking an unattended watcher (recorded `deny` still wins; the policy never writes `repos.json`). Status: in-progress. From: 2026-08-05 triage session.
+- [ ] `dev/dev-c808b1-2026-08-05T11:25-devx-learn-unattended-apply.md` — `/devx-learn` unattended mode: auto-prune rule, `devx learn-helper route` apply-vs-propose predicate (wedge paths can't be edited in an unattended tab), applied rows through the normal PR + merge gate, durable report. Status: ready. Blocked-by: 28b267. **Carries an owner ruling** — whether locked machinery (gate logic, refusal paths, verdict vocabulary, append-only disciplines) stays proposal-only in auto mode.
+
 ### Self-healing state reconciliation (from loop-2026-07-24 post-mortem)
 - [ ] `dev/dev-db36af-2026-07-25T08:55-devx-doctor-reconcile.md` — `devx doctor` — mechanical state reconciliation (stale locks, dead owners, mirror drift, bookkeeping-only abandonments), `--fix` for the mechanical class, wired into `devx next` drift rows + loop start. Status: ready. Blocked-by: dc7514 (shared abandon-path predicate; both touch loop driver). From: debug-dc7514.
 - [ ] `dev/dev-b931a1-2026-07-29T10:15-finalize-merge-tail-primitive.md` — `devx devx-helper finalize <hash>` — merge-tail primitive: scoped staging (kills the `git add -A` peer-file sweep), spec-lock release (4/6 mlc specs leaked), clock-stamped merge line, and a post-merge rebuild of the self-hosted `dist/` (mlc106 merged unreachable from the CLI). Status: ready. From: mlcret retro E1/E2/E3/E5. Consumes: ee7049 (release-lock CLI — do not write a second release path). Builds on: PR #102 (prose+test staging rule already landed; extend, don't replace). Related: db36af (offline sweep of already-leaked locks).

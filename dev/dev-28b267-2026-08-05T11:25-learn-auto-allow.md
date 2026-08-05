@@ -4,8 +4,8 @@ type: dev
 created: 2026-08-05T11:25:00-06:00
 title: learn.auto_allow — the retro watcher stops needing a human at the prompt
 from: null
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-08-05T1128-99202
 blocked_by: []
 branch: null
 ---
@@ -92,6 +92,7 @@ under `nohup` and still drain.
   pending 2026-08-02 entries above). Owner asked for the watcher to stop
   needing a human at the prompt. Manual stopgap applied the same day:
   `~/.claude/devx/repos.json` hand-written with `allow` for this repo.
+- 2026-08-05T11:28:56-06:00 — claimed by /devx in session /devx-2026-08-05T1128-99202
 
 ## Links
 
