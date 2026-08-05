@@ -6,6 +6,7 @@ title: devx doctor — mechanical state reconciliation (self-healing primitive)
 from: debug/debug-dc7514-2026-07-25T08:55-loop-infra-failure-classification.md
 status: ready
 branch: feat/dev-db36af
+blocked_by: [dc7514]
 ---
 
 ## Goal

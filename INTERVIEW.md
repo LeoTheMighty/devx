@@ -337,7 +337,7 @@ loop can read.
     `from:` chain at split time), so it belongs in its own follow-up spec
     rather than being retrofitted into this phase.
 
-- [ ] **Q#16 — PR #118 got no CI run at all: merge on a targeted-subset green, or fix the trigger first?** (from /devx on dev-sgr105)
+- [x] **Q#16 — PR #118 got no CI run at all: merge on a targeted-subset green, or fix the trigger first?** (from /devx on dev-sgr105)
   - Context: PR #118 (sgr105, `feat/dev-sgr105` → `main`) has had **zero**
     workflow runs since it opened. `devx devx-helper await-remote-ci
     feat/dev-sgr105 --once` returned `{"state":"empty"}` on 41 consecutive
@@ -366,6 +366,16 @@ loop can read.
     one round-trip. If a re-trigger also produces nothing, escalate to (c);
     a repo where PR CI silently does not fire breaks the merge gate for every
     future story, not just this one.
+  - **Resolved (2026-08-05, /devx sgr105 resume session):** root cause proven
+    mechanically — `gh pr view 118 --json mergeable` returned `CONFLICTING`
+    (`mergeStateStatus: DIRTY`). GitHub cannot build the merge ref for a
+    conflicted PR, so `pull_request`-triggered workflows never start; that is
+    why peers got runs and #118 got silence (main moved under the branch when
+    #119 + #120 merged, conflicting in DEV.md/TEST.md/DEBUG.md/spec status
+    log). Fix applied: merged `origin/main` into `feat/dev-sgr105`, resolved
+    the three append-append conflicts, pushed — CI triggered on the merge
+    commit. Lesson for the probe: `state: "empty"` should check mergeability
+    and name `CONFLICTING` as a distinct, self-serviceable state.
 
 ---
 

@@ -2,7 +2,7 @@
 hash: mgr102
 type: dev
 created: 2026-04-28T19:30:00-07:00
-title: State persistence: schedule.json + manager.json + heartbeat.json with atomic writes
+title: "State persistence: schedule.json + manager.json + heartbeat.json with atomic writes"
 from: _bmad-output/planning-artifacts/epic-devx-manage-minimal.md
 plan: plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md
 status: done

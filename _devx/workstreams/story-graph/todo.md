@@ -42,7 +42,10 @@
   - [x] Phase 3: Renderer + `devx graph` CLI → sgr103
   - [x] Phase 4: Regen hooks (claim + emission) → sgr104
   - [ ] Phase 5: `mark-done` helper + Phase-8 rewrite → sgr105
-  - [ ] Phase 6: Backfill → sgr106
-  - [ ] Phase 7: Downstream portability → sgr107
+  - [x] Phase 6: Backfill → sgr106
+  - [x] Phase 7: Downstream portability → sgr107
+    - [x] T7.1 pack-and-run harness (npm pack leg) + fs-audit preload in E-7; fix fixture cycle bug
+    - [x] T7.2 E-7 RED → green; fix surfaced portability gaps (expected none)
+    - [x] T7.3 MANUAL.md rows (global update + /devx-init refresh + per-repo backfill + render/commit, dated for G-2)
 - [ ] Stage: Retro
 - [ ] Stage: Outcome

@@ -118,6 +118,24 @@ export interface EnginePatch {
   successor?: string;
   learnsFrom?: string;
   supersededBy?: string;
+  /**
+   * Blocking edges, written to the canonical underscore key in inline-array
+   * form (`blocked_by: [aaa111, bbb222]` — the spelling every shipped spec
+   * in this repo uses). Added at sgr106 so `devx graph backfill` completes
+   * edges through the engine's own splice instead of a parallel writer.
+   *
+   * Entries are written VERBATIM: the backfill passes the existing raw list
+   * plus the additions, so a spec-path-shaped blocker
+   * (`dev/dev-aaa111-….md`) survives a completion pass unrewritten.
+   *
+   * Setting this also DELETES the hyphenated `blocked-by:` drift key. Both
+   * spellings live at once in the wild and readers union them (graph
+   * model.ts), so leaving the old key behind would re-warn forever about an
+   * edge the canonical write just absorbed. Callers therefore MUST fold the
+   * hyphen key's entries into the value they pass — the deletion is a
+   * re-spelling, never an edge drop.
+   */
+  blocked_by?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -257,6 +275,32 @@ export function readEngineState(content: string): EngineState {
   return state;
 }
 
+/**
+ * The first YAML error in a spec's frontmatter block, or null when it parses.
+ *
+ * `readEngineState` deliberately fails SOFT — a half-edited spec must not
+ * crash a gate — which means an unparseable block reads as "no keys at all"
+ * and every edge, status and pointer in it silently disappears. That is the
+ * right posture for a reader and a trap for a WRITER: `applyEnginePatch`
+ * throws on the same input, so a caller planning a write needs to know the
+ * difference between "this spec records nothing" and "this spec is
+ * unreadable". Added at sgr106, where backfill found two shipped specs whose
+ * unquoted `title:` contains a colon.
+ *
+ * Returns null for a spec with no frontmatter block at all — that is a
+ * different condition, and `splitFrontmatter` already reports it.
+ */
+export function frontmatterParseError(content: string): string | null {
+  const split = splitFrontmatter(content);
+  if (!split) return null;
+  try {
+    const doc = parseDocument(split.fmText);
+    return doc.errors.length > 0 ? doc.errors[0].message.split("\n")[0] : null;
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Write
 // ---------------------------------------------------------------------------
@@ -265,7 +309,9 @@ export function readEngineState(content: string): EngineState {
  * Apply an engine patch to a spec's frontmatter, preserving every unknown
  * field, the key order, YAML comments, and the entire body byte-for-byte.
  * Only the keys named in the patch are touched; `gate_status:` /
- * `outcome:` maps are created if absent and merged key-wise if present.
+ * `outcome:` maps are created if absent and merged key-wise if present. The
+ * one exception is `blocked_by`, which also removes the hyphenated
+ * `blocked-by:` spelling of itself (see EnginePatch.blocked_by).
  *
  * Throws when the spec has no frontmatter block — every engine consumer
  * resolves the spec through findSpecForHashIn() first, so a missing block
@@ -316,6 +362,16 @@ export function applyEnginePatch(content: string, patch: EnginePatch): string {
       doc.setIn(["outcome", "measure_by"], patch.outcome.measure_by);
     }
   }
+  if (patch.blocked_by !== undefined) {
+    // `createNode(..., {flow:true})` rather than a bare array so the value
+    // renders as `blocked_by: [a, b]` — the form every hand-authored and
+    // emitted spec already carries. A block list would round-trip fine but
+    // would rewrite the shape of every spec a completion pass touches.
+    doc.setIn(["blocked_by"], doc.createNode(patch.blocked_by, { flow: true }));
+    // See EnginePatch.blocked_by: the drift key's entries are already folded
+    // into the value above, so this is a re-spelling, not a deletion.
+    if (doc.hasIn(["blocked-by"])) doc.deleteIn(["blocked-by"]);
+  }
   if (patch.successor !== undefined) doc.setIn(["successor"], patch.successor);
   if (patch.learnsFrom !== undefined) {
     doc.setIn(["learns_from"], patch.learnsFrom);
@@ -334,9 +390,18 @@ export function applyEnginePatch(content: string, patch: EnginePatch): string {
  * hygiene and because the v1 line-splicing parsers (claim.ts, merge-gate)
  * read those lines positionally. The trailing newline is trimmed so the
  * closing `---` lands flush.
+ *
+ * `flowCollectionPadding: false` (sgr106) emits `[a, b]`, which is how every
+ * hand-authored and emitted `blocked_by:` in this repo is spelled. yaml's
+ * default re-pads to `[ a, b ]`, so WITHOUT this any patch — a gate flag, a
+ * stage bump — silently reformats an untouched `blocked_by:` list on its way
+ * past. Style churn in a diff that is supposed to show one flag flipping is
+ * how a reviewer learns to skim.
  */
 function docToFmText(doc: ReturnType<typeof parseDocument>): string {
-  return doc.toString({ lineWidth: 0 }).replace(/\n$/, "");
+  return doc
+    .toString({ lineWidth: 0, flowCollectionPadding: false })
+    .replace(/\n$/, "");
 }
 
 /**

@@ -1031,6 +1031,10 @@
           "description": "Queue home (queue JSONL, done log, markers, locks, repos.json). User-global so one watcher serves many repos. A leading `~/` expands. Default `~/.claude/devx`; DEVX_LEARN_HOME overrides this at runtime.",
           "type": "string",
           "minLength": 1
+        },
+        "auto_allow": {
+          "description": "Treat a repo nobody has reviewed as allowed instead of prompting once per repo (28b267). Default false. Turn it on to run the watcher unattended (`nohup devx learn-watch &`), where the [y/N] prompt can never be answered and every unreviewed entry would otherwise be walked past forever. A recorded `deny` in repos.json still wins, and the policy never WRITES repos.json — that file stays the record of what a human reviewed, so turning this back off restores prompting. `devx learn-watch --auto-allow` forces it on for one run.",
+          "type": "boolean"
         }
       },
       "additionalProperties": false

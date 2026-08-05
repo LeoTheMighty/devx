@@ -35,12 +35,25 @@ export interface LearnConfig {
   /** Queue home AS WRITTEN in config: may be `~`-relative. Run it through
    *  `resolveLearnHome` before touching the filesystem. */
   home: string;
+  /**
+   * Policy: treat a repo nobody has reviewed as allowed, instead of asking
+   * (28b267). Off by default — turning it on is what makes the watcher
+   * servable under `nohup`, where there is no human to answer `[y/N]` and an
+   * unreviewed repo would otherwise be walked past forever.
+   *
+   * A POLICY, NOT A DECISION: a recorded `deny` in `repos.json` still beats
+   * it, and an auto-allowed spawn never writes `repos.json` — so turning the
+   * knob back off restores prompting rather than leaving every repo the
+   * watcher ever touched permanently allowed.
+   */
+  autoAllow: boolean;
 }
 
 export const LEARN_DEFAULTS: LearnConfig = {
   idleMinutes: 15,
   retroTimeoutMinutes: 360,
   home: "~/.claude/devx",
+  autoAllow: false,
 };
 
 /** Positive finite minutes, fractions allowed (sub-minute windows are useful
@@ -49,6 +62,17 @@ export const LEARN_DEFAULTS: LearnConfig = {
 function posMinutes(v: unknown): number | null {
   if (typeof v !== "number" || !Number.isFinite(v)) return null;
   return v > 0 ? v : null;
+}
+
+/**
+ * A real boolean, or null. Deliberately NOT truthiness: YAML already gives
+ * `yes`/`on`/`true` as booleans, so anything reaching here as a string (`"yes"`
+ * from a quoted value) or a number (`1`) is a *typo*, and reading a typo as
+ * "allow every unreviewed repo" is the one fallback direction this knob must
+ * never take.
+ */
+function bool(v: unknown): boolean | null {
+  return typeof v === "boolean" ? v : null;
 }
 
 function nonBlankString(v: unknown): string | null {
@@ -75,6 +99,8 @@ export function learnConfigFrom(merged: unknown): LearnConfig {
   if (timeout !== null) out.retroTimeoutMinutes = timeout;
   const home = nonBlankString(l.home);
   if (home !== null) out.home = home;
+  const autoAllow = bool(l.auto_allow);
+  if (autoAllow !== null) out.autoAllow = autoAllow;
 
   return out;
 }

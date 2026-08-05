@@ -478,6 +478,55 @@ workstream's evidence; do not treat as promoted rows.*
 
 ---
 
+## story-graph — candidates (learn 2026-08-05, for sgrret)
+
+*Added by a `/devx-learn` run over the sgr107 session (PR #117), user-pruned
+("all of them" — kept in full). Candidates only — sgrret promotes, merges, or
+strikes these against the full workstream's evidence; do not treat as
+promoted rows. Two further session findings were already routed durably
+during the run itself and are listed in the specs, not here: transient-gh-401
+merge-tail fragility (`debug-d7e8e5`) and the macOS parallel-load
+child-process-spawn flake corroboration (`debug-7c1e93`).*
+
+- [C1] [med] [docs] **A RED artifact can be red for a fixture-defect reason,
+  and only the "fails for the STATED reason" check tells you.** E-7's two
+  "audited drift" shapes — a prose-only row edge on dwn111 and a hyphen-key
+  frontmatter edge on dwn222 — accidentally formed a blocking-edge cycle, so
+  the CLI's *correct* refusal ("cycle detected") kept the eval RED in a way
+  that looked exactly like the missing-feature RED. Fixtures that compose
+  multiple drift shapes must be checked for self-contradiction; a cycle is
+  refused by design, not tolerated drift. — applied within sgr107 (edge
+  rerouted via a new dwn000 done spec, PR #117); pending sgrret review.
+- [C2] [med] [code] **Linked worktrees have no `node_modules` — any harness
+  path built as `join(repoRoot, "node_modules")` dangles there.** E-7's dep
+  symlink for the extracted npm-pack tarball pointed at
+  `.worktrees/dev-sgr107/node_modules` (nonexistent; deps resolve by
+  directory walk-up to the main checkout) and failed with
+  ERR_MODULE_NOT_FOUND. Fix: resolve a real dep's entry via `createRequire`
+  and walk up to the `node_modules` segment — the same worktree-safe move
+  `_fixture.ts` already uses for tsx. A second observation should promote
+  this into a shared `_fixture.ts` helper rather than per-eval code. —
+  applied within sgr107 (PR #117); pending sgrret review.
+- [C3] [med] [code] **An fs-audit guard scoped to `repoRoot` is blind in
+  worktree runs.** From a linked worktree, a baked-in absolute path in the
+  packaged CLI would read the *main* checkout — outside the guarded subtree —
+  so the "0 devx-repo state reads" assertion would pass vacuously. E-7 now
+  guards both `repoRoot` and the checkout that owns `node_modules`
+  (identical on non-worktree runs). Generalization: any "no reads outside X"
+  assertion must enumerate every root the process could legitimately have
+  baked in, not just the one the test was launched from. — applied within
+  sgr107 (Phase 4 finding, PR #117); pending sgrret review.
+- [C4] [low] [docs] **`devx graph --check` exceeded its G-1 budget (~<2s) by
+  >90× under peer load — cause unattributed.** Two attempts hung >2–3 min on
+  2026-08-05 ~12:15 with two peer /devx sessions live (full vitest suites
+  running) plus a slow-network window; could be machine load, backlog-lock
+  contention, or the stale global dist. Left as a candidate, not a debug
+  spec, because the evidence is one loaded afternoon with no root cause —
+  promote to a debug spec if it recurs on a quiet machine (relevant to G-1
+  scoring at outcome time). — noted only; pending sgrret review.
+
+---
+
 ## Cross-epic patterns
 
 Findings that recur across multiple epics get promoted up to this section once they hit ≥3 concordant retros (the Phase 5 `epic-learn-agent` threshold; we mirror it manually here). These are higher-confidence and warrant skill / template / `CLAUDE.md` edits rather than memory.

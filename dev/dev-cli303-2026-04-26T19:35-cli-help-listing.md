@@ -2,7 +2,7 @@
 hash: cli303
 type: dev
 created: 2026-04-26T19:35:00-07:00
-title: `devx --help` listing with phase + epic annotations
+title: "`devx --help` listing with phase + epic annotations"
 from: _bmad-output/planning-artifacts/epic-cli-skeleton.md
 plan: plan/plan-a01000-2026-04-26T19:30-foundation.md
 status: done

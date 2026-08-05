@@ -22,6 +22,17 @@ planned; this section outranks the paused mobile backlog below.
 ### Review tour retirement
 - [x] `dev/dev-tur101-2026-08-04T10:00-retire-review-tour.md` — Retire the review tour: rip out `src/lib/tour/` + `devx tour` CLI + `/devx` Phase 7.5 + the `## 🗺 Review tour` PR-body section + `v2/03-review-tour.md`; rehome the shared exec seam; drop `diff2html` + `marked` deps. `/devx address` and the `devx: hold` gate survive. Status: done. Owner call 2026-08-04. PR: https://github.com/LeoTheMighty/devx/pull/113 (merged 8fc3a72).
 
+### Retro-loop autonomy (from the 2026-08-05 learn-watch triage)
+
+Two sessions sat pending in `~/.claude/devx/learn-queue.jsonl` since
+2026-08-02 behind the once-per-repo allow prompt, with no human at a
+terminal to answer it. Owner-requested: the watcher should drain
+unattended, and the retros it spawns should carry their findings to a
+merged change instead of stopping at an unread evidence table.
+
+- [x] `dev/dev-28b267-2026-08-05T11:25-learn-auto-allow.md` — `learn.auto_allow`: unreviewed repos serve instead of blocking an unattended watcher (recorded `deny` still wins; the policy never writes `repos.json`). Status: done. From: 2026-08-05 triage session. PR: https://github.com/LeoTheMighty/devx/pull/119 (merged bc7fe84)
+- [ ] `dev/dev-c808b1-2026-08-05T11:25-devx-learn-unattended-apply.md` — `/devx-learn` unattended mode: auto-prune rule, `devx learn-helper route` apply-vs-propose predicate (wedge paths can't be edited in an unattended tab), applied rows through the normal PR + merge gate, durable report. Status: ready. Blocked-by: 28b267. **Carries an owner ruling** — whether locked machinery (gate logic, refusal paths, verdict vocabulary, append-only disciplines) stays proposal-only in auto mode.
+
 ### Self-healing state reconciliation (from loop-2026-07-24 post-mortem)
 - [ ] `dev/dev-db36af-2026-07-25T08:55-devx-doctor-reconcile.md` — `devx doctor` — mechanical state reconciliation (stale locks, dead owners, mirror drift, bookkeeping-only abandonments), `--fix` for the mechanical class, wired into `devx next` drift rows + loop start. Status: ready. Blocked-by: dc7514 (shared abandon-path predicate; both touch loop driver). From: debug-dc7514.
 - [ ] `dev/dev-b931a1-2026-07-29T10:15-finalize-merge-tail-primitive.md` — `devx devx-helper finalize <hash>` — merge-tail primitive: scoped staging (kills the `git add -A` peer-file sweep), spec-lock release (4/6 mlc specs leaked), clock-stamped merge line, and a post-merge rebuild of the self-hosted `dist/` (mlc106 merged unreachable from the CLI). Status: ready. From: mlcret retro E1/E2/E3/E5. Consumes: ee7049 (release-lock CLI — do not write a second release path). Builds on: PR #102 (prose+test staging rule already landed; extend, don't replace). Related: db36af (offline sweep of already-leaked locks).
@@ -147,7 +158,7 @@ when it resumes.
 - [ ] `dev/dev-d40005-2026-04-23T13:34-flutter-fcm-integration.md` — Flutter firebase_messaging integration. Status: ready. Blocked-by: d40004. Requires user action (GoogleService-Info.plist).
 - [ ] `dev/dev-d40006-2026-04-23T13:35-deep-linking-inline-reply.md` — Deep-linking + iOS inline-reply. Status: ready. Blocked-by: d40005.
 - [ ] `dev/dev-d40007-2026-04-23T13:36-laptop-fastpath-webhook.md` — Laptop-side fast-path webhook receiver. Status: ready. Blocked-by: d40003. Optional.
-- [ ] `dev/dev-d40ret-2026-04-27T08:00-retro-realtime-updates-push.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: d40001, d40002, d40003, d40004, d40005, d40006.
+- [ ] `dev/dev-d40ret-2026-04-27T08:00-retro-realtime-updates-push.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: d40001, d40002, d40003, d40004, d40005, d40006, d40007.
 
 ## Phase 1 — Single-agent core loop (plan: plan-b01000)
 
@@ -238,6 +249,6 @@ re-run `devx graph`.
 - [x] `dev/dev-sgr103-2026-08-02T13:57-graph-render-cli.md` — Renderer + devx graph CLI (E-1..E-4 go green, initial GRAPH.md). Attended-only: loop must `--exclude`. Status: done. Blocked-by: sgr102. PR: https://github.com/LeoTheMighty/devx/pull/112 (merged f41d545)
 - [x] `dev/dev-sgr104-2026-08-02T13:57-regen-hooks-claim-emission.md` — Regen hooks — claim + RED emission keep GRAPH.md fresh. Status: done. Blocked-by: sgr103. PR: https://github.com/LeoTheMighty/devx/pull/114 (merged 6527aea)
 - [/] `dev/dev-sgr105-2026-08-02T13:57-mark-done-phase8.md` — mark-done helper + Phase-8 rewrite (E-5 goes green). Status: in-progress. Blocked-by: sgr104.
-- [ ] `dev/dev-sgr106-2026-08-02T13:57-graph-backfill.md` — Backfill — adds-only idempotent edge completion + attended devx-repo run (E-6). Attended-only: loop must `--exclude`. Status: ready. Blocked-by: sgr103. Parallel-safe with sgr104/sgr105/sgr107.
-- [ ] `dev/dev-sgr107-2026-08-02T13:57-downstream-portability.md` — Downstream portability — packaged CLI proof + MANUAL.md handoff (E-7). Status: ready. Blocked-by: sgr103. Parallel-safe with sgr104/sgr105/sgr106.
+- [x] `dev/dev-sgr106-2026-08-02T13:57-graph-backfill.md` — Backfill — adds-only idempotent edge completion + attended devx-repo run (E-6). Attended-only: loop must `--exclude`. Status: done. Blocked-by: sgr103. Parallel-safe with sgr104/sgr105/sgr107. PR: https://github.com/LeoTheMighty/devx/pull/120 (merged 66720bd)
+- [x] `dev/dev-sgr107-2026-08-02T13:57-downstream-portability.md` — Downstream portability — packaged CLI proof + MANUAL.md handoff (E-7). Status: done. Blocked-by: sgr103. Parallel-safe with sgr104/sgr105/sgr106. PR: https://github.com/LeoTheMighty/devx/pull/117 (merged 119f933)
 - [ ] `dev/dev-sgrret-2026-08-02T14:00-retro-story-graph.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: sgr101, sgr102, sgr103, sgr104, sgr105, sgr106, sgr107.
