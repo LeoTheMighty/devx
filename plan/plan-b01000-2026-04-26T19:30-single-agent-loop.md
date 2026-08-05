@@ -39,7 +39,7 @@ mode: YOLO
 project_shape: empty-dream
 thoroughness: balanced
 stack_layers: [backend, infra]
-blocked_by: []
+blocked_by: [a01000]
 ---
 
 ## Goal

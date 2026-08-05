@@ -158,7 +158,7 @@ when it resumes.
 - [ ] `dev/dev-d40005-2026-04-23T13:34-flutter-fcm-integration.md` — Flutter firebase_messaging integration. Status: ready. Blocked-by: d40004. Requires user action (GoogleService-Info.plist).
 - [ ] `dev/dev-d40006-2026-04-23T13:35-deep-linking-inline-reply.md` — Deep-linking + iOS inline-reply. Status: ready. Blocked-by: d40005.
 - [ ] `dev/dev-d40007-2026-04-23T13:36-laptop-fastpath-webhook.md` — Laptop-side fast-path webhook receiver. Status: ready. Blocked-by: d40003. Optional.
-- [ ] `dev/dev-d40ret-2026-04-27T08:00-retro-realtime-updates-push.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: d40001, d40002, d40003, d40004, d40005, d40006.
+- [ ] `dev/dev-d40ret-2026-04-27T08:00-retro-realtime-updates-push.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: d40001, d40002, d40003, d40004, d40005, d40006, d40007.
 
 ## Phase 1 — Single-agent core loop (plan: plan-b01000)
 

@@ -40,6 +40,7 @@ import type { Command } from "commander";
 
 import { epicSlugify } from "../lib/backlog/parse.js";
 import { findProjectConfig } from "../lib/config-io.js";
+import { type EngineConfig } from "../lib/engine/config.js";
 import { loadEngineContext } from "../lib/engine/context.js";
 import {
   type EngineFs,
@@ -49,7 +50,12 @@ import {
   type GraphModel,
   buildGraphModel,
 } from "../lib/graph/model.js";
-import { GRAPH_FILENAME } from "../lib/graph/regen.js";
+import {
+  type BackfillFs,
+  renderBackfillReport,
+  runBackfill,
+} from "../lib/graph/backfill.js";
+import { GRAPH_FILENAME, regenerateGraph } from "../lib/graph/regen.js";
 import { REGEN_COMMAND, renderStoryGraph } from "../lib/graph/render.js";
 import { attachPhase } from "../lib/help.js";
 import {
@@ -177,6 +183,39 @@ export function resolveGraphRoot(
   return { ok: true, root: info.root };
 }
 
+type ContextResolution =
+  | { ok: true; repoRoot: string; engine: EngineConfig }
+  | { ok: false; code: number; message: string };
+
+/** Root + engine config, resolved once for every `devx graph …` entry point.
+ *  Shared so `backfill` writes into the SAME canonical checkout `graph`
+ *  renders from — a second resolution here is how a worktree-run backfill
+ *  would splice the worktree's copy of DEV.md instead of main's. */
+function resolveContext(
+  cwd: string,
+  projectPath: string | undefined,
+): ContextResolution {
+  const resolution = resolveGraphRoot(cwd, projectPath);
+  if (!resolution.ok) {
+    return { ok: false, code: 2, message: resolution.error ?? "root resolution failed" };
+  }
+  const configPath = join(resolution.root, "devx.config.yaml");
+  // Real fs, NOT the injectable seam: root resolution (`resolveRepoRoot`,
+  // `findProjectConfig`) and `loadEngineContext` both read the real disk, so
+  // probing this one path through a fake would let the seam disagree with the
+  // loader that runs two lines later. The seam's job is the MODEL's reads.
+  if (!existsSync(configPath)) {
+    return {
+      ok: false,
+      code: 2,
+      message: `no devx.config.yaml at the resolved repo root (${resolution.root})`,
+    };
+  }
+  const ctx = loadEngineContext(configPath);
+  if (!ctx.ok) return { ok: false, code: 2, message: ctx.error };
+  return { ok: true, repoRoot: ctx.ctx.repoRoot, engine: ctx.ctx.engine };
+}
+
 // ---------------------------------------------------------------------------
 // Driver
 // ---------------------------------------------------------------------------
@@ -208,28 +247,12 @@ export function runGraph(opts: RunGraphOpts = {}): number {
   }
 
   // ── root + config ──────────────────────────────────────────────────────
-  const resolution = resolveGraphRoot(cwd, opts.projectPath);
-  if (!resolution.ok) {
-    err(`devx graph: ${resolution.error}\n`);
-    return 2;
-  }
-  const configPath = join(resolution.root, "devx.config.yaml");
-  // Real fs, NOT the injectable seam: root resolution (`resolveRepoRoot`,
-  // `findProjectConfig`) and `loadEngineContext` both read the real disk, so
-  // probing this one path through a fake would let the seam disagree with the
-  // loader that runs two lines later. The seam's job is the MODEL's reads.
-  if (!existsSync(configPath)) {
-    err(
-      `devx graph: no devx.config.yaml at the resolved repo root (${resolution.root})\n`,
-    );
-    return 2;
-  }
-  const ctx = loadEngineContext(configPath);
+  const ctx = resolveContext(cwd, opts.projectPath);
   if (!ctx.ok) {
-    err(`devx graph: ${ctx.error}\n`);
-    return 2;
+    err(`devx graph: ${ctx.message}\n`);
+    return ctx.code;
   }
-  const { repoRoot, engine } = ctx.ctx;
+  const { repoRoot, engine } = ctx;
 
   // ── model ──────────────────────────────────────────────────────────────
   let result;
@@ -359,6 +382,99 @@ export function runGraph(opts: RunGraphOpts = {}): number {
   return 0;
 }
 
+// ---------------------------------------------------------------------------
+// backfill (sgr106 / plan Phase 6)
+// ---------------------------------------------------------------------------
+
+export interface RunBackfillCliOpts {
+  out?: (s: string) => void;
+  err?: (s: string) => void;
+  projectPath?: string;
+  cwd?: string;
+  fs?: BackfillFs;
+  dryRun?: boolean;
+}
+
+/**
+ * `devx graph backfill [--dry-run]` — complete the durable edge set.
+ *
+ * Exit codes match the rest of `devx graph`: 0 success (an underivable
+ * remainder is a REPORT, not a failure — the operator resolves it, and
+ * failing here would make the honest answer look like a broken command),
+ * 1 refusal (cycle), 2 root/config resolution failure.
+ */
+export function runGraphBackfill(opts: RunBackfillCliOpts = {}): number {
+  const out = opts.out ?? ((s) => process.stdout.write(s));
+  const err = opts.err ?? ((s) => process.stderr.write(s));
+  const cwd = opts.cwd ?? process.cwd();
+  const dryRun = opts.dryRun === true;
+
+  const ctx = resolveContext(cwd, opts.projectPath);
+  if (!ctx.ok) {
+    err(`devx graph backfill: ${ctx.message}\n`);
+    return ctx.code;
+  }
+
+  // Backfill inherits `devx graph`'s canonical-root resolution: specs and
+  // backlogs live in the main checkout, and that is where the completion
+  // lands. From inside a worktree that is a genuine surprise — the writes
+  // appear outside the branch you are on — so say so rather than let the
+  // operator discover it in `git status`.
+  if (opts.projectPath === undefined) {
+    let linked = false;
+    try {
+      linked = resolveRepoRoot(cwd).isLinkedWorktree;
+    } catch {
+      linked = false;
+    }
+    if (linked) {
+      err(
+        `devx graph backfill: NOTE — writing to the main checkout (${ctx.repoRoot}), ` +
+          `not this worktree; specs and backlogs live there. Its diff will NOT be part of this branch.\n`,
+      );
+    }
+  }
+
+  let result;
+  try {
+    result = runBackfill(ctx.repoRoot, ctx.engine, { fs: opts.fs, dryRun });
+  } catch (e) {
+    // Chiefly BacklogLockTimeoutError: a peer claim or loop is mid-mutation.
+    // That is contention, not a defect in the board — an uncaught stack trace
+    // here would read as "backfill is broken" when the answer is "try again".
+    err(
+      `devx graph backfill: ${e instanceof Error ? e.message : String(e)}\n` +
+        "Nothing was written. Retry once the holder finishes.\n",
+    );
+    return 2;
+  }
+  if (!result.ok) {
+    err(`devx graph backfill: ${result.error}\n`);
+    // Same split `devx graph` uses: a cycle is a REFUSAL the operator fixes
+    // by editing an edge (1); anything else is the board failing to load at
+    // all (2), which is an investigation, not a backlog edit.
+    return result.cycle !== undefined ? 1 : 2;
+  }
+
+  out(
+    renderBackfillReport(result.plan, {
+      dryRun,
+      filesWritten: result.filesWritten,
+      warnings: result.warnings,
+    }),
+  );
+
+  // A completion pass that moved edges has invalidated the committed board.
+  // Regen is warn-and-continue (the sgr104 posture): the spec/backlog writes
+  // already landed and are the operator's real deliverable — a render failure
+  // must not report them as a failed run.
+  if (!dryRun && result.filesWritten.length > 0) {
+    const regen = regenerateGraph(opts.fs ?? realEngineFs, ctx.repoRoot, ctx.engine);
+    if (!regen.ok) err(`devx graph backfill: ${regen.warning}\n`);
+  }
+  return 0;
+}
+
 export function register(program: Command): void {
   const sub = program
     .command("graph")
@@ -390,6 +506,19 @@ export function register(program: Command): void {
         epic: (options.epic as string[] | undefined) ?? [],
         workstream: (options.workstream as string[] | undefined) ?? [],
       });
+      if (code !== 0) process.exit(code);
+    });
+  sub
+    .command("backfill")
+    .description(
+      "Complete the durable edge set: write each blocking edge to whichever side " +
+        "(spec frontmatter / backlog row) is missing it, derive ordering from " +
+        "durable state only, and report what cannot be derived. Adds only; never " +
+        "deletes an edge; a second run writes nothing.",
+    )
+    .option("--dry-run", "compute and report without writing any file")
+    .action((options: Record<string, unknown>) => {
+      const code = runGraphBackfill({ dryRun: options.dryRun === true });
       if (code !== 0) process.exit(code);
     });
   attachPhase(sub, 1);

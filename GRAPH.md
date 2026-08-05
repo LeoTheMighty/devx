@@ -4,7 +4,7 @@
 
 # Story graph
 
-181 specs across 22 groups — 12 blocked · 115 done · 4 in-progress · 50 ready; 384 edges.
+190 specs across 22 groups — 12 blocked · 120 done · 7 in-progress · 51 ready; 390 edges.
 
 ## Legend
 
@@ -143,6 +143,8 @@ flowchart TD
     d40ret["d40ret Retrospective + LEARN.md updates for epic…"]
   end
   subgraph sg_standalone["standalone — no workstream or epic"]
+    28b267["28b267 learn.auto_allow — the retro watcher stop…"]
+    2e7b45["2e7b45 QA walkthrough for 'Backfill — adds-only…"]
     357d0c["357d0c Loop instance registry: crash-orphan-thro…"]
     3b9e07["3b9e07 `devx loop` never emits the mandatory `ph…"]
     494590["494590 Loop token accounting implausibly low — b…"]
@@ -151,10 +153,12 @@ flowchart TD
     6a913f["6a913f hash→spec resolution hardcodes dev/ acros…"]
     74632d["74632d loop-driver fixture teardown races on mac…"]
     7a2d1f["7a2d1f Mobile companion v0.1 through real-time s…"]
+    7c1e93["7c1e93 loop-concurrency G-1 harness times out un…"]
     7e2b56["7e2b56 emit-retro-story writes its artifacts to…"]
     97f6d8["97f6d8 QA walkthrough — devx graph renderer + CL…"]
     9b9be5["9b9be5 devx gate evals lacks mid-flight state-aw…"]
     9c4e21["9c4e21 appendManualEntry read-check-write race c…"]
+    9f24c7["9f24c7 Unparseable spec frontmatter reads as an…"]
     a01000["a01000 Phase 0 — Foundation: /devx-init + config…"]
     a02000["a02000 Phase 6 — Focus group: persistent persona…"]
     a03000["a03000 Cross-cutting — realtime stream + Live Ac…"]
@@ -164,11 +168,13 @@ flowchart TD
     b365ac["b365ac yaml in devDependencies but imported at r…"]
     b41f7c["b41f7c Loop discardWorktree force-deletes an inh…"]
     b7f2c1["b7f2c1 Unidentified 1-in-2,665 suite flake under…"]
+    c808b1["c808b1 /devx-learn unattended mode — route and a…"]
     c81f04["c81f04 backlog-mutate R3 concurrency test is fla…"]
     c98aee["c98aee Wire flutter analyze + test into devx-ci…"]
     cf65aa["cf65aa loop merge tail never emits the dvx103 ph…"]
     d01000["d01000 Phase 3 — Parallelism & coordination: loc…"]
     d02000["d02000 Phase 9 — Modes & full gate cascade"]
+    d7e8e5["d7e8e5 Merge-tail helpers treat transient gh Gra…"]
     db36af["db36af devx doctor — mechanical state reconcilia…"]
     dc7514["dc7514 Loop counts infra hangs as item failures…"]
     e01000["e01000 Phase 4 — Observability surfaces: TUI, we…"]
@@ -177,11 +183,14 @@ flowchart TD
     e5a9c0["e5a9c0 Vision-gap Track 3 — Interim blocker push…"]
     ea4f41["ea4f41 QA-walkthrough naming `test/test-story-ha…"]
     eac611["eac611 Integration: manage tick writes state in…"]
+    ebf8c4["ebf8c4 QA walkthrough — learn.auto_allow unatten…"]
+    ecdcda["ecdcda manage-spawn / manage-spawn-integration t…"]
     f01000["f01000 Phase 5 — Test, debug, retro, learn"]
     f02000["f02000 Cross-cutting — thoroughness axis wiring"]
     f1d6b2["f1d6b2 Vision-gap Track 4 — Fleet layer: thin mu…"]
     lpf101["lpf101 Loop preflight main-health check"]
     roc101["roc101 /devx Phase 1 resume-detection — verify c…"]
+    tur101["tur101 Retire the review tour — rip out `devx to…"]
     v2d101["v2d101 V2.4 — universal /devx dispatcher + debug…"]
     v2e101["v2e101 V2.1-A — engine CLI primitives (workstrea…"]
     v2e102["v2e102 V2.1-B — stage skill bodies (prd / design…"]
@@ -198,6 +207,8 @@ flowchart TD
   20eb6f -.-> mlc105
   20eb6f -.-> mlc106
   20eb6f -.-> mlcret
+  28b267 -.-> ebf8c4
+  28b267 -.-> ecdcda
   620c74 -.-> rtl101
   620c74 -.-> rtl102
   620c74 -.-> rtl103
@@ -275,6 +286,7 @@ flowchart TD
   c30ret --> c30003
   c30ret --> c30004
   c30ret --> c30005
+  c808b1 --> 28b267
   grp_devx_config_yaml_schema_cli --> grp_devx_cli_skeleton
   grp_devx_cli_skeleton --> grp_devx_config_yaml_schema_cli
   d01000 -.-> 20eb6f
@@ -390,8 +402,10 @@ flowchart TD
   sgr105 --> sgr104
   sgr105 --- |par| sgr106
   sgr105 --- |par| sgr107
+  sgr106 -.-> 9f24c7
   sgr106 --> sgr103
   sgr106 --- |par| sgr107
+  sgr107 -.-> d7e8e5
   sgr107 --> sgr103
   sgrret --> sgr101
   sgrret --> sgr102
@@ -401,6 +415,7 @@ flowchart TD
   sgrret --> sgr106
   sgrret --> sgr107
   grp_os_supervisor_scaffold --> grp_devx_cli_skeleton
+  tur101 -.-> 7c1e93
   v2d101 --> v2x101
   v2e101 --> v2s101
   v2e102 --> v2e101
@@ -455,9 +470,9 @@ flowchart TD
   class sgr102 done
   class sgr103 done
   class sgr104 done
-  class sgr105 ready
-  class sgr106 ready
-  class sgr107 ready
+  class sgr105 wip
+  class sgr106 wip
+  class sgr107 done
   class sgrret ready
   class c8e2d4 ready
   class c30001 ready
@@ -496,6 +511,8 @@ flowchart TD
   class d40006 ready
   class d40007 ready
   class d40ret ready
+  class 28b267 done
+  class 2e7b45 ready
   class 357d0c ready
   class 3b9e07 ready
   class 494590 done
@@ -504,24 +521,28 @@ flowchart TD
   class 6a913f done
   class 74632d ready
   class 7a2d1f wip
+  class 7c1e93 ready
   class 7e2b56 ready
   class 97f6d8 ready
   class 9b9be5 done
   class 9c4e21 done
+  class 9f24c7 ready
   class a01000 done
   class a02000 blocked
   class a03000 blocked
-  class a7c3f9 ready
+  class a7c3f9 done
   class b01000 done
   class b02000 blocked
   class b365ac done
-  class b41f7c ready
+  class b41f7c done
   class b7f2c1 ready
-  class c81f04 ready
+  class c808b1 ready
+  class c81f04 wip
   class c98aee ready
   class cf65aa done
   class d01000 blocked
   class d02000 blocked
+  class d7e8e5 ready
   class db36af ready
   class dc7514 done
   class e01000 blocked
@@ -530,11 +551,14 @@ flowchart TD
   class e5a9c0 ready
   class ea4f41 ready
   class eac611 ready
+  class ebf8c4 ready
+  class ecdcda ready
   class f01000 blocked
   class f02000 blocked
   class f1d6b2 blocked
   class lpf101 done
   class roc101 done
+  class tur101 done
   class v2d101 done
   class v2e101 done
   class v2e102 done
@@ -547,9 +571,8 @@ flowchart TD
 
 ## Warnings
 
-5 warnings — reported, never auto-fixed.
+4 warnings — reported, never auto-fixed.
 
-- `edge-drift` — 'd40ret': row blockers [d40001,d40002,d40003,d40004,d40005,d40006] disagree with frontmatter blockers [d40001,d40002,d40003,d40004,d40005,d40006,d40007] — both are rendered; reconcile the spec (fix is `devx doctor`'s, dev-db36af)
 - `heading-fallback` — DEV.md: epic heading 'bidirectional-writes-offline' names no plan hash — grouped by slug alone; add `(plan: <hash>)` or `(workstream <hash>)` to link it to its plan spec
 - `heading-fallback` — DEV.md: epic heading 'flutter-scaffold-ios-on-device' names no plan hash — grouped by slug alone; add `(plan: <hash>)` or `(workstream <hash>)` to link it to its plan spec
 - `heading-fallback` — DEV.md: epic heading 'github-connection-read' names no plan hash — grouped by slug alone; add `(plan: <hash>)` or `(workstream <hash>)` to link it to its plan spec

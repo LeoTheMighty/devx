@@ -147,7 +147,11 @@ const ROW_RE =
   /^- (?:\[(?<state>[ \/\-x])\]\s+)?(?<struckOpen>~~)?`(?<path>(?<type>dev|plan|test|debug|focus|learn|qa)\/\k<type>-(?<hash>[a-z0-9]{3,12})-[^`]+?\.md)`(?<rest>.*)$/;
 
 const STATUS_TEXT_RE = /Status:\s*([A-Za-z\-]+)/;
-const BLOCKED_BY_TEXT_RE = /Blocked-by:\s*([^.\n]+?)(?:\.|$)/i;
+/** The row-side blocking annotation. Exported (sgr106) so `devx graph
+ *  backfill` splices INTO the same span this reads FROM — a writer with its
+ *  own copy of the grammar would eventually append outside the annotation
+ *  the parser sees, producing an edge nothing reads. */
+export const BLOCKED_BY_TEXT_RE = /Blocked-by:\s*([^.\n]+?)(?:\.|$)/i;
 // Symmetric with BLOCKED_BY_TEXT_RE (sgr101 / T1.2). Both annotation
 // spellings occur in the wild: `Parallel-safe with a/b` is what the skill
 // bodies emit and what every audited repo uses; `Parallel-with: a, b` is the
