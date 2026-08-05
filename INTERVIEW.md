@@ -337,6 +337,36 @@ loop can read.
     `from:` chain at split time), so it belongs in its own follow-up spec
     rather than being retrofitted into this phase.
 
+- [ ] **Q#16 — PR #118 got no CI run at all: merge on a targeted-subset green, or fix the trigger first?** (from /devx on dev-sgr105)
+  - Context: PR #118 (sgr105, `feat/dev-sgr105` → `main`) has had **zero**
+    workflow runs since it opened. `devx devx-helper await-remote-ci
+    feat/dev-sgr105 --once` returned `{"state":"empty"}` on 41 consecutive
+    probes across ~50 minutes; `gh pr checks 118` says "no checks reported";
+    `gh run list --branch feat/dev-sgr105` is empty.
+    `.github/workflows/devx-ci.yml` triggers on `pull_request: branches:
+    [main]`, which this PR matches, and peer branches `feat/dev-sgr106` and
+    `feat/dev-28b267` got runs within minutes over the same window — so
+    Actions is working and the `on:` filter looks correct. Cause unknown; it
+    looks GitHub-side rather than config-side, but I could not prove that.
+  - Blocks: dev-sgr105 (PR #118, open, unmerged)
+  - Why this is not an auto-merge: `/devx` Phase 7 states that a persistent
+    `empty` probe means "silent CI is a config bug, not a green light — do
+    NOT auto-merge". `devx merge-gate sgr105` does return `{"merge":true}`,
+    but the gate cannot distinguish "CI green" from "CI never ran", which is
+    exactly the case Phase 7's rule exists to catch. Compounding it, the
+    local full gate is red for reasons predating this branch
+    (`debug-620337`), so there is no green signal from either side — only a
+    targeted 12-file / 239-test subset covering the touched surface, plus
+    E-5 green, typecheck, build, and `sync:skills --check`.
+  - Options: (a) re-trigger CI (close/reopen the PR, or push an empty commit)
+    and merge normally on green; (b) merge #118 as-is on the strength of the
+    targeted subset; (c) investigate the trigger gap first and treat it as a
+    defect in its own right before any merge.
+  - Agent recommendation: (a) — cheapest, restores the real gate, and costs
+    one round-trip. If a re-trigger also produces nothing, escalate to (c);
+    a repo where PR CI silently does not fire breaks the merge gate for every
+    future story, not just this one.
+
 ---
 
 ## Phase 0 / cli301 prerequisites
