@@ -85,6 +85,7 @@ import {
   acquireSpecLock,
   composeSpecLockBody,
 } from "./spec-lock.js";
+import { appendStatusLogLine } from "./status-log.js";
 import { VerifyClaimError, parseSpecClaimFields } from "./verify-claim.js";
 
 // ---------------------------------------------------------------------------
@@ -182,7 +183,10 @@ export const realFs: ClaimFs = {
   readdir: (p) => readdirSync(p),
 };
 
-const realExec: Exec = (cmd, args, opts) => {
+/** The production `git` shell-out. Exported (sgr105) so mark-done's
+ *  `git remote get-url origin` probe inherits the same hardening —
+ *  GIT_TERMINAL_PROMPT=0 and LC_ALL=C — instead of re-deriving it. */
+export const realExec: Exec = (cmd, args, opts) => {
   // GIT_TERMINAL_PROMPT=0 (mlc102 review BH-MED-3): the claim's push now
   // runs INSIDE the global backlog lock — a credential prompt hanging the
   // push would wedge every concurrent loop's mutations behind a live,
@@ -367,7 +371,10 @@ const HASH_RE = /^[a-z0-9]{3,12}$/i;
 export const CLAIMABLE_TYPES = ["dev", "debug"] as const;
 export type ClaimableType = (typeof CLAIMABLE_TYPES)[number];
 
-const BACKLOG_BY_TYPE: Record<ClaimableType, string> = {
+/** Which backlog file carries a claimable type's rows. Exported so
+ *  mark-done (sgr105) routes its `[/]→[x]` flip to the same file the claim
+ *  flipped `[ ]→[/]` — one mapping, no drift. */
+export const BACKLOG_BY_TYPE: Record<ClaimableType, string> = {
   dev: "DEV.md",
   debug: "DEBUG.md",
 };
@@ -491,33 +498,13 @@ export function updateSpecForClaim(
   const after = content.slice(fmMatch.index + fmMatch[0].length);
   let updated = `${before}---\n${newFm}\n---${after}`;
 
-  const logLine = `- ${isoTimestamp} — claimed by /devx in session /devx-${sessionId}`;
-  // Status log lives in `## Status log` section. Find the section bounds
-  // (next `## ` heading or EOF) and append at the end of the body —
-  // preserving any trailing newlines outside the section.
-  const slMatch = /^## Status log\s*\n/m.exec(updated);
-  if (!slMatch) {
-    // No section yet — append a fresh one at EOF. Spec authors should
-    // always include this section per CLAUDE.md, but defend anyway.
-    const tail = updated.endsWith("\n") ? "" : "\n";
-    updated = `${updated}${tail}\n## Status log\n\n${logLine}\n`;
-    return updated;
-  }
-  const slStart = slMatch.index + slMatch[0].length;
-  // Find next `## ` heading after the status-log heading (could be EOF).
-  // `m` flag makes `^` match line starts.
-  let slEnd = updated.length;
-  const restAfterHeading = updated.slice(slStart);
-  const nextHeading = /^## /m.exec(restAfterHeading);
-  if (nextHeading) {
-    slEnd = slStart + nextHeading.index;
-  }
-  // Strip trailing whitespace inside the section, append, restore the
-  // single newline that separates it from the next section (if any).
-  const sectionBody = updated.slice(slStart, slEnd).replace(/\s+$/, "");
-  const trailer = slEnd < updated.length ? "\n\n" : "\n";
-  const newSection = `${sectionBody}\n${logLine}${trailer}`;
-  return updated.slice(0, slStart) + newSection + updated.slice(slEnd);
+  // Status log splice lives in status-log.ts — shared with mark-done's
+  // `updateSpecForDone` (sgr105) so the append-only invariant has exactly
+  // one implementation.
+  return appendStatusLogLine(
+    updated,
+    `- ${isoTimestamp} — claimed by /devx in session /devx-${sessionId}`,
+  );
 }
 
 /**
@@ -1530,11 +1517,15 @@ export function resolveInheritedBranch(args: {
   };
 }
 
-function escapeRegex(s: string): string {
+/** Exported (sgr105) so mark-done's row probes anchor on the identical
+ *  escaping — a divergence there is a silently-wrong regex, not a crash. */
+export function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function relativeFromRepo(absPath: string, repoRoot: string): string {
+/** Exported (sgr105): mark-done returns the same repo-relative pathspecs
+ *  the claim commits, so both sides derive them the same way. */
+export function relativeFromRepo(absPath: string, repoRoot: string): string {
   // node:path.relative handles trailing slashes, normalizes ".." segments,
   // and is portable across POSIX/Windows. Manual prefix slicing would
   // double-slash on `${repoRoot}/` when repoRoot already ends with `/`.
@@ -1547,7 +1538,9 @@ function relativeFromRepo(absPath: string, repoRoot: string): string {
  * formatTimestamps — duplicated here intentionally to keep this module
  * dependency-free of plan/* (avoids a back-edge in the import graph).
  */
-function formatIsoLocal(d: Date): string {
+/** Exported (sgr105) so mark-done's status-log timestamps are byte-identical
+ *  in shape to the claim's. */
+export function formatIsoLocal(d: Date): string {
   const pad = (n: number, w = 2) => String(n).padStart(w, "0");
   const yyyy = d.getFullYear();
   const mo = pad(d.getMonth() + 1);

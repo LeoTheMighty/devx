@@ -10,6 +10,7 @@
 //   • dvx105: `devx devx-helper await-remote-ci <branch> [--once]`
 //   • roc101: `devx devx-helper verify-claim <hash> [--session-token <token>]`
 //   • v2t101: `devx devx-helper check-hold <pr-number>` (D-5 merge-tail hold)
+//   • sgr105: `devx devx-helper mark-done <hash> --pr <n> --merge-sha <sha>`
 //
 // (dvx102's `should-create-story` was retired by v2x101 — the v2 engine
 // implements from spec ACs directly; the canary machinery went with it.)
@@ -59,6 +60,20 @@
 //     • 2  → gh failure. JSON `{error, stage}` on stdout; stderr has detail.
 //            Uncertainty defaults to safe: the skill body does NOT merge on
 //            exit 2 (same posture as merge-gate's exit 2).
+//     • 64 → usage error. stderr only.
+//
+//   `mark-done` (Phase 8 after-merge bookkeeping, AFTER the merge verified):
+//     • 0  → written. JSON `{hash, paths, todoSynced}` on stdout; `paths`
+//            are the repo-relative pathspecs to stage (backlog, spec,
+//            [todo.md], [GRAPH.md]). Caller owns commit + push.
+//     • 1  → state mismatch (backlog row not `[/]`, or spec frontmatter not
+//            `status: in-progress`) — nothing written; JSON
+//            `{error: "mark-done-failed", stage: "state"}`. Also the
+//            backlog-lock contention shape `{error: "backlog lock held", …}`,
+//            which is retryable for the same reason it is under `claim`.
+//     • 2  → resolution/write failure. JSON `{error: "mark-done-failed",
+//            stage}` where `stage ∈ {"validate","resolve","read","compose",
+//            "write-tmp","rename","config-load","unknown"}`.
 //     • 64 → usage error. stderr only.
 //
 //   `verify-claim`:
@@ -111,6 +126,11 @@ import {
   HoldCheckError,
   checkHold,
 } from "../lib/devx/hold-check.js";
+import {
+  MarkDoneError,
+  type MarkDoneOpts,
+  markDone,
+} from "../lib/devx/mark-done.js";
 import type { DeriveBranchConfig } from "../lib/plan/derive-branch.js";
 
 const HASH_RE = /^[a-z0-9]{3,12}$/i;
@@ -639,6 +659,169 @@ export function runCheckHold(
 }
 
 // ---------------------------------------------------------------------------
+// mark-done (sgr105)
+// ---------------------------------------------------------------------------
+
+export interface RunMarkDoneOpts {
+  out?: (s: string) => void;
+  err?: (s: string) => void;
+  /** Test seam: explicit project config path (skip findProjectConfig walk). */
+  projectPath?: string;
+  /** Test seam: project repo root (defaults to dirname of resolved config). */
+  repoRoot?: string;
+  /** Test seam: forward through to markDone. */
+  markDoneOpts?: Partial<MarkDoneOpts>;
+}
+
+/**
+ * Drive the merge-cleanup writes. Emits exactly one JSON object on stdout;
+ * human-readable detail goes to stderr.
+ *
+ * Exit codes (file header): 0 success · 1 state mismatch (row not `[/]` /
+ * spec not `in-progress`) or backlog-lock contention · 2 resolution ·
+ * 64 usage.
+ */
+export function runMarkDone(
+  args: string[],
+  opts: RunMarkDoneOpts = {},
+): number {
+  const out = opts.out ?? ((s) => process.stdout.write(s));
+  const err = opts.err ?? ((s) => process.stderr.write(s));
+  const usage =
+    "usage: devx devx-helper mark-done <hash> --pr <n> --merge-sha <sha> [--type dev|debug]\n";
+
+  // Hand-parsed, mirroring runClaim/runVerifyClaim: test seams stay
+  // independent of commander state.
+  const flags: Record<string, string> = {};
+  const positional: string[] = [];
+  const KNOWN = new Set(["--pr", "--merge-sha", "--type"]);
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (KNOWN.has(a)) {
+      // A flag-shaped "value" means the real value was omitted — don't
+      // swallow the next flag as this one's argument.
+      if (i + 1 >= args.length || args[i + 1].startsWith("--")) {
+        err(`devx devx-helper mark-done: ${a} requires a value\n`);
+        return 64;
+      }
+      flags[a] = args[i + 1];
+      i++;
+    } else if (a.startsWith("--")) {
+      err(`devx devx-helper mark-done: unknown flag '${a}'\n`);
+      return 64;
+    } else {
+      positional.push(a);
+    }
+  }
+  if (positional.length !== 1) {
+    err(usage);
+    return 64;
+  }
+  const hash = positional[0];
+  if (!HASH_RE.test(hash)) {
+    err(
+      `devx devx-helper mark-done: invalid hash '${hash}' (expected hex/alnum 3-12 chars)\n`,
+    );
+    return 64;
+  }
+  if (flags["--pr"] === undefined || flags["--merge-sha"] === undefined) {
+    err(usage);
+    return 64;
+  }
+  // Parsed here rather than in the lib so a typo'd `--pr abc` is a usage
+  // error (64) instead of a validation throw (2) — the operator's fix is
+  // "retype the flag", not "investigate".
+  if (!/^[0-9]+$/.test(flags["--pr"])) {
+    err(
+      `devx devx-helper mark-done: invalid --pr '${flags["--pr"]}' (expected a positive integer)\n`,
+    );
+    return 64;
+  }
+  const pr = Number(flags["--pr"]);
+  if (pr <= 0 || !Number.isSafeInteger(pr)) {
+    err(
+      `devx devx-helper mark-done: invalid --pr '${flags["--pr"]}' (expected a positive integer)\n`,
+    );
+    return 64;
+  }
+  // Shape-checked here so an operator typo ("--merge-sha feat/dev-sgr105")
+  // is a usage error to retype, not the exit-2 "investigate" tier. The lib
+  // re-validates for its library-mode callers.
+  if (!/^[0-9a-f]{4,64}$/i.test(flags["--merge-sha"])) {
+    err(
+      `devx devx-helper mark-done: invalid --merge-sha '${flags["--merge-sha"]}' (expected 4-64 hex chars)\n`,
+    );
+    return 64;
+  }
+  const type = flags["--type"];
+  if (type !== undefined && type !== "dev" && type !== "debug") {
+    err(
+      `devx devx-helper mark-done: invalid --type '${type}' (expected 'dev' or 'debug')\n`,
+    );
+    return 64;
+  }
+
+  const projectConfigPath = opts.projectPath ?? findProjectConfig();
+  if (!projectConfigPath) {
+    err(
+      "devx devx-helper mark-done: devx.config.yaml not found (walked up from cwd)\n",
+    );
+    return 64;
+  }
+  const repoRoot = opts.repoRoot ?? dirname(projectConfigPath);
+
+  let merged: unknown;
+  try {
+    merged = loadMerged({ projectPath: projectConfigPath });
+  } catch (e) {
+    // Same posture as runClaim: keep the JSON-on-stdout contract intact so
+    // shell-side parsers can always JSON.parse stdout on non-zero.
+    out(`${JSON.stringify({ error: "mark-done-failed", stage: "config-load" })}\n`);
+    err(
+      `devx devx-helper mark-done: config load failed: ${e instanceof Error ? e.message : String(e)}\n`,
+    );
+    return 2;
+  }
+
+  try {
+    const result = markDone(hash, {
+      repoRoot,
+      config: merged,
+      pr,
+      mergeSha: flags["--merge-sha"],
+      ...(type !== undefined ? { type } : {}),
+      ...(opts.markDoneOpts ?? {}),
+    });
+    out(
+      `${JSON.stringify({ hash: result.hash, paths: result.paths, todoSynced: result.todoSynced })}\n`,
+    );
+    return 0;
+  } catch (e) {
+    if (e instanceof BacklogLockTimeoutError) {
+      // Retryable contention — nothing was mutated (the timeout fires before
+      // the first read). Grouped with the exit-1 family for the same reason
+      // the claim groups it there: the operator's response is "retry", not
+      // "investigate".
+      out(
+        `${JSON.stringify({ error: "backlog lock held", lockPath: e.lockPath, holderPid: e.holderPid })}\n`,
+      );
+      err(`devx devx-helper mark-done: ${e.message}\n`);
+      return 1;
+    }
+    if (e instanceof MarkDoneError) {
+      out(`${JSON.stringify({ error: "mark-done-failed", stage: e.stage })}\n`);
+      err(`devx devx-helper mark-done: ${e.message}\n`);
+      return e.stage === "state" ? 1 : 2;
+    }
+    out(`${JSON.stringify({ error: "mark-done-failed", stage: "unknown" })}\n`);
+    err(
+      `devx devx-helper mark-done: unexpected error: ${e instanceof Error ? e.message : String(e)}\n`,
+    );
+    return 2;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // commander wiring
 // ---------------------------------------------------------------------------
 
@@ -701,6 +884,38 @@ export function register(program: Command): void {
           args.push("--type", options.type);
         }
         const code = await runVerifyClaim(args, {});
+        if (code !== 0) {
+          process.exit(code);
+        }
+      },
+    );
+
+  sub
+    .command("mark-done")
+    .description(
+      "Merge-cleanup writes for /devx Phase 8 (sgr105): spec `status: done` + status-log line, backlog `[/]→[x]` + PR-URL append, workstream todo.md sync, GRAPH.md regen — all under the backlog lock. Emits {hash, paths, todoSynced}; the caller stages `paths` by explicit pathspec and owns the commit + push. Exit 0 / 1 state mismatch or lock contention / 2 resolution.",
+    )
+    .argument("<hash>", "spec hash (e.g. 'sgr105')")
+    // NOT `.requiredOption`: commander enforces those itself and exits 1
+    // before the action runs, and exit 1 is this subcommand's "state
+    // mismatch / retryable contention" signal — a forgotten flag would read
+    // to the skill body as a claimed-item mismatch. `runMarkDone` owns the
+    // required-flag check and answers 64, like every other usage error here.
+    .option("--pr <number>", "merged PR number (required)")
+    .option("--merge-sha <sha>", "squash-merge commit sha (required)")
+    .option("--type <type>", "spec type: 'dev' (default) or 'debug'")
+    .action(
+      (
+        hash: string,
+        options: { pr?: string; mergeSha?: string; type?: string },
+      ) => {
+        const args = [hash];
+        if (options.pr !== undefined) args.push("--pr", options.pr);
+        if (options.mergeSha !== undefined) {
+          args.push("--merge-sha", options.mergeSha);
+        }
+        if (options.type !== undefined) args.push("--type", options.type);
+        const code = runMarkDone(args, {});
         if (code !== 0) {
           process.exit(code);
         }

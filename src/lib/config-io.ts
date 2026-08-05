@@ -35,7 +35,10 @@ export interface SetLeafOpts {
   userPath?: string;
 }
 
-const PROJECT_FILENAME = "devx.config.yaml";
+/** Exported (sgr105) so callers that reconstruct the config path from a
+ *  repo root — mark-done's in-process `todo sync` — can't drift from what
+ *  `findProjectConfig` actually walks for. */
+export const PROJECT_FILENAME = "devx.config.yaml";
 const LEAF_ONLY_MSG =
   "Phase 0 supports leaf scalar writes only — see Phase 1";
 

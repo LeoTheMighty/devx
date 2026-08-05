@@ -135,13 +135,13 @@ describe("devx skill — Phase 8 dispatch discipline (dvx106)", () => {
     // The bookkeeping commit must be a single commit covering DEV.md +
     // spec status + workstream todo + PR URL append.
     //
-    // The `all of (N-M)` alternative below is the pre-2026-07-29 phrasing,
-    // kept so this assertion stays about "it's ONE commit" rather than
-    // about wording. The renumbering fix replaced it with `steps N–M`
-    // (en-dash); the contiguity of that range is asserted separately in the
-    // staging-discipline describe block below.
+    // sgr105 collapsed the four hand-edits into `devx devx-helper
+    // mark-done`, so the commit step no longer names a step RANGE — it
+    // names the pathspecs the helper returned. The older `all of (N-M)` /
+    // `steps N–M` phrasings stay as accepted alternatives so this assertion
+    // remains about "it's ONE commit" rather than about wording.
     expect(body).toMatch(
-      /(one commit|single commit|all of \(\d+-\d+\) on `main`|Commit steps \d+[–-]\d+ on `main`)/i,
+      /(one commit|single commit|all of \(\d+-\d+\) on `main`|Commit steps \d+[–-]\d+ on `main`|Commit the pathspecs)/i,
     );
     expect(body).toMatch(/chore: mark .* done after PR/);
     // AC #4 explicitly says the commit is pushed to origin/main. The
@@ -149,11 +149,11 @@ describe("devx skill — Phase 8 dispatch discipline (dvx106)", () => {
     // regression mode of forgetting this push — pinning the word here
     // catches a future maintainer who drops "and push" from the
     // bookkeeping step.
-    // Both phrasings accepted (see the note above); the window is widened
+    // All phrasings accepted (see the note above); the window is wide
     // because the 2026-07-29 staging-discipline sentence now sits between
     // the commit instruction and the word "push".
     expect(body).toMatch(
-      /Commit (all of \(\d+-\d+\)|steps \d+[–-]\d+)[\s\S]{0,400}push/i,
+      /Commit (all of \(\d+-\d+\)|steps \d+[–-]\d+|the pathspecs)[\s\S]{0,600}push/i,
     );
   });
 
@@ -232,7 +232,7 @@ describe("devx skill — explicit-pathspec staging discipline (learn 2026-07-29)
     expect(body).toMatch(NEVER_ADD_ALL);
   });
 
-  it("Phase 8's after-merge list is contiguously numbered and its commit step references a real range", () => {
+  it("Phase 8's after-merge list is contiguously numbered and every step reference resolves", () => {
     const body = phase8Body(loadSkill());
     const afterMerge = body.slice(body.indexOf("After merge:"));
     expect(afterMerge).not.toBe("");
@@ -240,19 +240,93 @@ describe("devx skill — explicit-pathspec staging discipline (learn 2026-07-29)
     // The list previously ran 1,2,3,4,5,7,8,9 — no step 6 — while step 7
     // instructed "Commit all of (4-6)", a range whose upper bound did not
     // exist. An agent cannot resolve that; renumbering is the fix and this
-    // asserts it stays fixed.
+    // asserts it stays fixed. sgr105 shortened the list (four hand-edit
+    // steps collapsed into one `mark-done` call), so the floor tracks the
+    // post-sgr105 shape rather than the old count.
     const numbers = [...afterMerge.matchAll(/^(\d+)\. /gm)].map((m) => Number(m[1]));
-    expect(numbers.length).toBeGreaterThanOrEqual(8);
+    expect(numbers.length).toBeGreaterThanOrEqual(6);
     for (let i = 0; i < numbers.length; i += 1) {
       expect(numbers[i]).toBe(i + 1);
     }
 
-    // Any "steps N–M" style reference in the commit step must name bounds
-    // that exist in the list.
-    const range = afterMerge.match(/steps (\d+)[–-](\d+)/);
-    expect(range).not.toBeNull();
-    const [, lo, hi] = range as RegExpMatchArray;
-    expect(numbers).toContain(Number(lo));
-    expect(numbers).toContain(Number(hi));
+    // Every step reference — whether a range ("steps N–M") or a single
+    // step ("step N") — must name a step that exists. This is the general
+    // form of the bug the range check caught.
+    const ranges = [...afterMerge.matchAll(/steps (\d+)[–-](\d+)/g)];
+    for (const [, lo, hi] of ranges) {
+      expect(numbers).toContain(Number(lo));
+      expect(numbers).toContain(Number(hi));
+    }
+    const singles = [...afterMerge.matchAll(/\bstep (\d+)\b/g)];
+    expect(ranges.length + singles.length).toBeGreaterThan(0);
+    for (const [, n] of singles) {
+      expect(numbers).toContain(Number(n));
+    }
+  });
+});
+
+/**
+ * mark-done host discipline (sgr105).
+ *
+ * Phase 8's after-merge bookkeeping was four hand-edits on `main` — spec
+ * frontmatter, backlog row, workstream todo, and (post-sgr104) an implicit
+ * board regen that prose never mentioned. Hand-editing is what produced the
+ * `git add -A` cleanup-commit class (erratum `ba3c65b`, twice). sgr105 makes
+ * the closing flip mechanical the way dvx101 made the opening one: one CLI
+ * call that returns the exact pathspecs to stage.
+ *
+ * These assertions are the lock. The regression shape they foreclose is an
+ * agent reading Phase 8, deciding the helper is optional, and editing the
+ * three files by hand — which reintroduces both the torn-write race and the
+ * blanket-stage authorship bug.
+ */
+describe("devx skill — Phase 8 mark-done host (sgr105)", () => {
+  it("the after-merge bookkeeping invokes `devx devx-helper mark-done`", () => {
+    const body = phase8Body(loadSkill());
+    expect(body).toMatch(
+      /devx devx-helper mark-done <hash> --pr <n> --merge-sha <merge-sha>/,
+    );
+  });
+
+  it("mark-done runs AFTER the merge verify, not before", () => {
+    const body = phase8Body(loadSkill());
+    const verifyIdx = body.indexOf("gh pr view");
+    const markDoneIdx = body.indexOf("devx devx-helper mark-done");
+    expect(verifyIdx).toBeGreaterThanOrEqual(0);
+    expect(markDoneIdx).toBeGreaterThan(verifyIdx);
+  });
+
+  it("all three exit codes are documented as routes", () => {
+    const body = phase8Body(loadSkill());
+    const afterMerge = body.slice(body.indexOf("After merge:"));
+    // 0 hands back `paths`; 1 is the do-not-write state mismatch (plus
+    // retryable lock contention); 2 is stop-and-surface.
+    expect(afterMerge).toMatch(/\*\*0\*\*[^\n]*paths/);
+    expect(afterMerge).toMatch(/\*\*1\*\*[^\n]*state mismatch/i);
+    expect(afterMerge).toMatch(/\*\*2\*\*/);
+  });
+
+  it("the commit step stages the pathspecs mark-done returned", () => {
+    const body = phase8Body(loadSkill());
+    const afterMerge = body.slice(body.indexOf("After merge:"));
+    // The `paths` handoff is the mechanism that makes explicit-pathspec
+    // staging structural instead of a rule to remember.
+    expect(afterMerge).toMatch(/git add -- <paths from step \d+>/);
+  });
+
+  it("Phase 8 forbids hand-editing the artifacts mark-done owns", () => {
+    const body = phase8Body(loadSkill());
+    expect(body).toMatch(/Do NOT hand-edit the spec, the backlog row, or `todo\.md`/);
+  });
+
+  it("Phase 8 no longer instructs the hand-edit sequence mark-done replaced", () => {
+    const afterMerge = phase8Body(loadSkill());
+    // The pre-sgr105 imperatives. Their return means an agent is being told
+    // to do by hand what the helper does transactionally under the lock.
+    expect(afterMerge).not.toMatch(/^\d+\. Update the spec file: `status: done`/m);
+    expect(afterMerge).not.toMatch(/^\d+\. Update `DEV\.md`: flip the checkbox/m);
+    expect(afterMerge).not.toMatch(
+      /^\d+\. If the item belongs to a workstream, run `devx todo sync/m,
+    );
   });
 });

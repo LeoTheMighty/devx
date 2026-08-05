@@ -392,14 +392,23 @@ After merge:
 1. `git fetch origin --prune && git pull --ff-only` in the main worktree to bring the merge commit into local `main`.
 2. Remove worktree: `git worktree remove .worktrees/dev-<hash>`.
 3. Delete local branch: `git branch -D <branch-name>` (the `--delete-branch` flag on `gh pr merge` handles the remote).
-4. Update the spec file: `status: done`, append status-log line `merged via PR #<n> (squash → <merge-sha-short>)`.
-5. Update `DEV.md`: flip the checkbox `[/]` → `[x]`, append the PR URL inline in the format used by prior entries: `PR: https://github.com/.../pull/<n> (merged <merge-sha-short>)`. If the spec was abandoned/superseded, wrap the entry line in `~~…~~` instead.
-6. If the item belongs to a workstream, run `devx todo sync <plan-hash>` so the phase line trues.
-7. Commit steps 4–6 on `main` with message `chore: mark <hash> done after PR #<n> merge` and push. **Stage by explicit pathspec — `git add <spec> <backlog> [workstream todo]`, never `git add -A`.** This is the same rule as Phase 6, and it matters more here: `main` is the one tree every concurrent session shares, so a blanket stage silently commits peers' in-flight spec and todo edits under your authorship. That has happened twice (2026-07-29 erratum `ba3c65b`); the content survives but the audit trail lies about who wrote it.
-8. File gaps:
+4. Run the bookkeeping writes as ONE mechanical call, from the **main worktree** (sgr105). It flips the spec to `status: done` + appends the `merged via PR #<n> (squash → <sha>)` status-log line, flips the backlog row `[/]` → `[x]` + appends `PR: https://github.com/.../pull/<n> (merged <sha7>)`, trues the workstream `todo.md`, and regenerates `GRAPH.md` — all under the backlog lock, so a concurrent session can't interleave with it:
+   ```
+   devx devx-helper mark-done <hash> --pr <n> --merge-sha <merge-sha> [--type debug]
+   ```
+   Do NOT hand-edit the spec, the backlog row, or `todo.md` — the helper is the single source of truth for the closing flip exactly as `devx devx-helper claim` is for the opening one, and hand-editing is what produced the `git add -A` incident class this closes.
+
+   Branch on the exit code:
+   - **0** — `{"hash":"…","paths":[…],"todoSynced":true|false}`. `paths` are the repo-relative pathspecs it wrote (backlog, spec, and — when present — `todo.md` and `GRAPH.md`). Carry them to step 5 verbatim. A `todoSynced: false` on a workstream item means the sync failed (stderr says why); the flips still landed, so continue and re-run `devx todo sync <plan-hash>` after.
+   - **1** — state mismatch (`{"error":"mark-done-failed","stage":"state"}`) or retryable contention (`{"error":"backlog lock held",…}`). Nothing was written. A state mismatch means the backlog row isn't `[/]` or the spec isn't `status: in-progress` — the item you just merged is not the item you're closing. Stop and reconcile; do not hand-flip it. Lock contention is a peer mid-mutation: retry shortly.
+   - **2** — resolution/write failure (`stage ∈ validate|resolve|read|compose|write-tmp|rename|config-load`). Surface stderr and stop.
+
+   If the spec was abandoned/superseded rather than merged, mark-done does not apply — wrap the backlog entry line in `~~…~~` by hand instead.
+5. Commit the pathspecs mark-done returned, on `main`, with message `chore: mark <hash> done after PR #<n> merge`, and push. **Stage by explicit pathspec — `git add -- <paths from step 4>`, never `git add -A`.** This is the same rule as Phase 6, and it matters more here: `main` is the one tree every concurrent session shares, so a blanket stage silently commits peers' in-flight spec and todo edits under your authorship. That has happened twice (2026-07-29 erratum `ba3c65b`); the content survives but the audit trail lies about who wrote it. Staging exactly `paths` is what makes that structural rather than a thing to remember — it is the whole reason the helper returns them.
+6. File gaps:
    - **Test gaps** observed during implementation → new `test/test-*.md` specs + `TEST.md` entries.
    - **Bugs discovered but out of scope** → new `debug/debug-*.md` specs + `DEBUG.md` entries.
-9. If the item is part of an epic, check if the epic's other stories are all done; if so, log a promotion candidate in `PLAN.md`.
+7. If the item is part of an epic, check if the epic's other stories are all done; if so, log a promotion candidate in `PLAN.md`.
 
 ### Phase 9: Next Item or Finish
 
