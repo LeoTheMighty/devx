@@ -401,6 +401,12 @@ export interface RepoDecisionOpts extends RepoOpts, PromptOpts {
   /** Did this run start attached to an answerable terminal? */
   interactive: boolean;
   /**
+   * `learn.auto_allow` (28b267): an unreviewed repo reads as `allow` instead
+   * of prompting. Ranks BELOW a recorded verdict and ABOVE the prompt — see
+   * {@link repoDecision} for why that order is the contract.
+   */
+  autoAllow?: boolean;
+  /**
    * Ask the human about `key` and hand back their raw answer, or `null` when
    * stdin went away between the check and the read. Required: this module owns
    * no terminal I/O, so the actual readline lives in the CLI layer.
@@ -413,12 +419,27 @@ export interface RepoDecisionOpts extends RepoOpts, PromptOpts {
 /**
  * May we spawn a retro for this cwd's repo — `allow`, `deny`, or `unknown`?
  *
- * A recorded verdict short-circuits; otherwise this is the *only* place that
- * prompts, and it re-runs {@link canPrompt} first rather than trusting the
- * value the run started with. A watcher Ctrl-Z'd and `bg`'d after launch is no
- * longer in the terminal's foreground group, and reading there does not throw —
- * it takes SIGTTIN and *stops* the process, which no `catch` can cover. The
- * re-check costs two syscalls; skipping it costs a wedged watcher.
+ * Three arms, and **the order is the contract** (28b267):
+ *
+ *   1. **a recorded verdict short-circuits.** `repos.json` is what a human
+ *      decided, so an explicit `deny` there beats the blanket policy below —
+ *      turning `auto_allow` on must not silently un-deny a repo somebody
+ *      deliberately refused.
+ *   2. **`autoAllow` → `allow`.** The knob that makes the watcher servable
+ *      under `nohup`, where arm 3 can never succeed. A cwd that cannot be
+ *      keyed still defers ahead of this — the policy answers "is this repo
+ *      allowed", not "is this entry servable".
+ *   3. **the prompt.** This is the *only* place that prompts, and it re-runs
+ *      {@link canPrompt} first rather than trusting the value the run started
+ *      with. A watcher Ctrl-Z'd and `bg`'d after launch is no longer in the
+ *      terminal's foreground group, and reading there does not throw — it
+ *      takes SIGTTIN and *stops* the process, which no `catch` can cover. The
+ *      re-check costs two syscalls; skipping it costs a wedged watcher.
+ *
+ * **Arm 2 does not write `repos.json`.** A policy is not a decision: the file
+ * stays the record of what a *human* reviewed, so flipping the knob back off
+ * restores prompting instead of leaving every repo the watcher ever touched
+ * permanently allowed. Only arm 3 records.
  *
  * `unknown` is also what a vanished stdin (`ask` → null) yields, so the caller
  * can drop to non-interactive for the rest of the run instead of looping on an
@@ -431,13 +452,18 @@ export function repoDecision(
 ): RepoVerdict {
   const known = repoLookup(home, cwd, opts);
   if (known !== null) return known;
+  const key = repoKey(cwd, opts);
+  // A cwd we cannot key is a repo we cannot identify, and this guard sits
+  // ABOVE every remaining arm — including `autoAllow` — so the answer is the
+  // same one it has always been on the prompt path. Unreachable via the drain
+  // loop (`classifyEntry` retires cwd-less entries first), but the policy arm
+  // below must not become the thing that says "yes, spawn a retro" for an
+  // entry whose working directory nobody could name.
+  if (key === "") return "unknown";
+  if (opts.autoAllow === true) return "allow";
   if (!opts.interactive) return "unknown";
   const promptable = opts.promptable ?? (() => canPrompt(opts));
   if (!promptable()) return "unknown";
-  const key = repoKey(cwd, opts);
-  // Unreachable via the drain loop (`classifyEntry` retires cwd-less entries
-  // first), but a keyless prompt could only write `{"": …}`, so it defers.
-  if (key === "") return "unknown";
   const answer = opts.ask(key);
   if (answer === null) return "unknown";
   const decision: RepoDecision = /^y(es)?$/i.test(answer.trim()) ? "allow" : "deny";
@@ -524,6 +550,13 @@ export function skipKey(entry: TaggedEntry): string {
 export interface PickReadyOpts extends Omit<ReadinessOpts, "home">, RepoOpts {
   /** Can this run answer an allow prompt? Unreviewed repos are unservable when not. */
   interactive: boolean;
+  /**
+   * `learn.auto_allow` (28b267): an unreviewed repo is servable even when this
+   * run can't ask, because {@link repoDecision} will allow it without a
+   * prompt. Without this flag reaching HERE the entry never gets as far as
+   * `repoDecision` and the knob silently does nothing.
+   */
+  autoAllow?: boolean;
   /** Keys ({@link skipKey}) this run has dealt with without consuming — dry-run only. */
   skip?: ReadonlySet<string>;
 }
@@ -548,6 +581,13 @@ export interface ReadyPick {
  * permanently. The caller notes each skipped entry once per session and moves
  * on.
  *
+ * `autoAllow` (28b267) removes the unservable arm entirely: an unreviewed repo
+ * is servable without a terminal, because {@link repoDecision} allows it
+ * without asking. This gate is the reason the knob has to be threaded all the
+ * way down here — an entry filtered out as "unservable" never reaches
+ * `repoDecision` at all, so a version that only taught `repoDecision` the
+ * policy would drain exactly as many entries as before.
+ *
  * Malformed entries are classified *before* the allowlist arm, deliberately
  * diverging from upstream: there, a cwd-less entry keys as `""`, looks up as
  * "never reviewed", and a non-interactive run therefore reports it as an
@@ -557,12 +597,13 @@ export interface ReadyPick {
  */
 export function pickReady(home: string, opts: PickReadyOpts): ReadyPick {
   const skip = opts.skip;
+  const servableUnreviewed = opts.interactive || opts.autoAllow === true;
   const unservable: Array<QueueEntry & TaggedEntry> = [];
   for (const entry of readQueue(home)) {
     if (skip?.has(skipKey(entry))) continue;
     if (!sessionOver(entry, { ...opts, home })) continue;
     if (classifyEntry(entry) === "error-malformed") return { entry, unservable };
-    if (!opts.interactive && repoLookup(home, entry.cwd, opts) === null) {
+    if (!servableUnreviewed && repoLookup(home, entry.cwd, opts) === null) {
       unservable.push(entry);
       continue;
     }
@@ -807,6 +848,12 @@ export interface DrainPassOpts extends RepoOpts, PromptOpts {
   dryRun?: boolean;
   /** Did this run start attached to an answerable terminal? */
   interactive: boolean;
+  /**
+   * `learn.auto_allow` (28b267): serve unreviewed repos instead of walking
+   * past them. Forwarded to BOTH {@link pickReady} (or the entry never
+   * arrives) and {@link repoDecision} (or it arrives and is refused).
+   */
+  autoAllow?: boolean;
   /** Readiness window. Default {@link DEFAULT_IDLE_SECONDS}. */
   idleSeconds?: number;
   /** Clock seam (epoch ms) — readiness, `processed_ts`, and the marker bound. */
@@ -900,7 +947,10 @@ function sessionIdOf(entry: QueueEntry): string | null {
  *   2. **repo decision** — `deny` retires as `skipped-denied-repo`; `unknown`
  *      (stdin vanished between the foreground check and the read) notes once
  *      and drops the rest of the run to non-interactive rather than looping on
- *      an unanswerable prompt.
+ *      an unanswerable prompt. Under `learn.auto_allow` an unreviewed repo
+ *      allows without a prompt, so `unknown` is unreachable and the
+ *      drop-to-non-interactive path never fires — which is the whole point:
+ *      an unattended watcher drains instead of degrading.
  *   3. **spawn** — and only the `spawned` arm reaches {@link awaitMarker}.
  *      `manual` and `error-spawn` are terminal: the command was printed, so
  *      the entry is retired immediately instead of holding the serial queue
@@ -915,6 +965,7 @@ function sessionIdOf(entry: QueueEntry): string | null {
 export function drainPass(opts: DrainPassOpts): DrainSummary {
   const { home } = opts;
   const dryRun = opts.dryRun === true;
+  const autoAllow = opts.autoAllow === true;
   const log = opts.log ?? ((line: string) => process.stdout.write(`${line}\n`));
   const seen = opts.seen ?? new Set<string>();
   const noted = opts.noted ?? new Set<string>();
@@ -963,6 +1014,11 @@ export function drainPass(opts: DrainPassOpts): DrainSummary {
     const pick = pickReady(home, {
       ...opts,
       interactive: dryRun ? true : summary.interactive,
+      // Named explicitly rather than left to the spread: this is the gate that
+      // decides whether an unreviewed entry is ever *seen* by the repo arm
+      // below, and a future refactor that narrows the spread must break here
+      // rather than silently reinstate the skip.
+      autoAllow,
       skip: seen,
       now,
     });
@@ -973,8 +1029,12 @@ export function drainPass(opts: DrainPassOpts): DrainSummary {
       summary.skipped++;
       note(
         key,
+        // Names the escape hatch. Without it a human reading an unattended
+        // log has no way to learn the policy exists — which is exactly how
+        // two sessions sat pending for three days (28b267).
         `  skip ${entryLabel(passed)} — repo not reviewed and this run can't ask; ` +
-          `run \`devx learn-watch\` in a foreground terminal to decide`,
+          `run \`devx learn-watch\` in a foreground terminal to decide, ` +
+          `or set \`learn.auto_allow: true\` / pass --auto-allow to serve unreviewed repos`,
       );
     }
 
@@ -1003,12 +1063,21 @@ export function drainPass(opts: DrainPassOpts): DrainSummary {
         continue;
       }
       if (known === null) {
-        log(`  [dry-run] ${entryLabel(entry)} — repo not reviewed yet; a real run would ask first`);
+        // Under the policy "a real run would ask first" is simply false, and a
+        // setup check that says it would send a human to a foreground terminal
+        // they don't need.
+        log(
+          autoAllow
+            ? `  [dry-run] ${entryLabel(entry)} — repo not reviewed; learn.auto_allow is on, ` +
+                `so a real run would auto-allow it without asking (repos.json stays untouched)`
+            : `  [dry-run] ${entryLabel(entry)} — repo not reviewed yet; a real run would ask first`,
+        );
       }
     } else {
       const verdict = repoDecision(home, entry.cwd, {
         ...opts,
         interactive: summary.interactive,
+        autoAllow,
         ask: opts.ask ?? (() => null),
       });
       if (verdict === "deny") {
@@ -1020,7 +1089,8 @@ export function drainPass(opts: DrainPassOpts): DrainSummary {
         note(
           skipKey(entry),
           `  skip ${entryLabel(entry)} — the allow prompt could not be answered; ` +
-            `continuing non-interactively`,
+            `continuing non-interactively (set \`learn.auto_allow: true\` or pass ` +
+            `--auto-allow to drain unreviewed repos without a terminal)`,
         );
         summary.skipped++;
         summary.interactive = false;

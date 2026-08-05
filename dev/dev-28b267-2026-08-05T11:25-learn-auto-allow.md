@@ -7,7 +7,8 @@ from: null
 status: in-progress
 owner: /devx-2026-08-05T1128-99202
 blocked_by: []
-branch: null
+branch: feat/dev-28b267
+pr: 119
 ---
 
 ## Goal
@@ -92,6 +93,62 @@ under `nohup` and still drain.
   pending 2026-08-02 entries above). Owner asked for the watcher to stop
   needing a human at the prompt. Manual stopgap applied the same day:
   `~/.claude/devx/repos.json` hand-written with `allow` for this repo.
+- 2026-08-05T11:30 — phase 2: spec ACs direct (v2 native); 8 ACs;
+  workstream=none; red-artifacts=none.
+- 2026-08-05T11:36 — phase 3: `learn.auto_allow` threaded through
+  `learnConfigFrom` → `repoDecision` / `pickReady` / `drainPass` →
+  `resolveLearnEnv` + `--auto-allow`; schema + CONFIG.md + devx.config.yaml +
+  sample-config-full fixture updated. +64 tests (learn-watch 161→225,
+  learn-config 16→20).
+- 2026-08-05T11:44 — phase 4: single-pass adversarial review (surface is
+  629 insertions but ~100 are logic; the rest tests + docs). Subagents not
+  used — this session carries an explicit "do not call the Agent tool unless
+  requested" instruction, so the 3-agent parallel shape was substituted with
+  a rigorous single pass. 3 findings (1 HIGH, 2 MED); ALL fixed in-place.
+  Most load-bearing: the `key === ""` keyless-cwd guard sat BELOW the new
+  `autoAllow` arm, so a cwd nobody could name would have returned `allow`
+  instead of `unknown` — hoisted above every arm, and the pin widened to
+  `""`/`"   "`/`null`/`undefined`/`42`. Also: both skip notes now name
+  `learn.auto_allow` / `--auto-allow` (the discoverability failure that let
+  two sessions sit pending for three days), and `autoAllow: autoAllow` →
+  shorthand. Re-review clean.
+- 2026-08-05T13:12 — phase 5: local CI **green on everything this diff
+  touches**, red on four pre-existing files this diff does not touch.
+  Green: `npm run build`, `npm run typecheck`, `node test/schema-smoke.mjs`
+  (validates the edited `devx.config.yaml` + `sample-config-full.yaml`),
+  `tsx test/config-validate.test.ts`, and the two owned suites at 245/245
+  (`learn-watch` 225, `learn-config` 20).
+  Red: `manage-spawn`, `manage-spawn-integration`, `loop-worker`,
+  `manage-crash-restart-loop` — every failure a bare `Test timed out in
+  5000ms` on real-child-process tests, on a box running four peer
+  worktrees (full suite took 24 and 29 min across two runs).
+  **Proven not mine**: with this diff stashed (`git stash push -u` → run →
+  `pop`) the clean tree failed 7 and the dirty tree 6; the diff touches only
+  `src/lib/learn/*`, which none of those files import. In isolation
+  `manage-crash-restart-loop` passed outright and `loop-worker` fell from
+  many failures to one — the rest is contention. Filed as
+  `debug/debug-ecdcda` + DEBUG.md row rather than absorbed.
+  Also emitted `test/test-28b267-qa-walkthrough.md` + its TEST.md row: 5
+  machine checks executed inline with real captured output (help text, the
+  policy-off control, `--auto-allow`, the config-only path, and
+  `repos.json` never being written), 2 human checks left for an actual
+  unattended overnight drain and the recorded-`deny` case.
+  Coverage: YOLO → informational, not a gate.
+- 2026-08-05T13:16 — phase 7: PR #119 opened; remote CI **success** on both
+  runners (devx-ci run 31038425217, macos-latest + ubuntu-latest / node 20).
+  macOS passing on CI independently confirms the phase-5 local reds were
+  machine contention, not this diff — the same `manage-spawn` tests are green
+  there. `check-hold` → `{"hold":false}`.
+- 2026-08-05T13:20 — phase 8 correction: first `devx merge-gate 28b267` exited
+  2 — `hash '28b267' resolves to 2 spec files`, because the QA walkthrough was
+  emitted as `test/test-28b267-qa-walkthrough.md`, reusing the STORY's hash.
+  That is the known `debug-ea4f41` bug verbatim (the skill's Phase 5
+  instruction is the outlier; every existing TEST.md row uses a fresh
+  own-hash). Applied that spec's documented workaround: renamed to
+  `test/test-ebf8c4-2026-08-05T13:20-28b267-qa-walkthrough.md` with canonical
+  frontmatter, and updated the TEST.md row. Supersedes the
+  `test/test-28b267-qa-walkthrough.md` path named in the phase-5 line above.
+  Third recorded occurrence — ea4f41 is still ready and unfixed.
 - 2026-08-05T11:28:56-06:00 — claimed by /devx in session /devx-2026-08-05T1128-99202
 
 ## Links

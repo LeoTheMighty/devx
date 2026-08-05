@@ -534,6 +534,135 @@ describe("repoDecision", () => {
     expect(calls).toEqual([]);
     expect(existsSync(reposPath(home))).toBe(false);
   });
+
+  // --- auto_allow (28b267) -------------------------------------------------
+  //
+  // The evaluation ORDER is the contract: recorded verdict > autoAllow >
+  // prompt. Each case below pins one edge of it.
+
+  it("autoAllow serves an unreviewed repo with no terminal and no prompt", () => {
+    const { ask, calls } = asker("y");
+    expect(
+      repoDecision(home, "/repo/a", {
+        interactive: false,
+        autoAllow: true,
+        ask,
+        gitExec,
+        promptable: () => false,
+      }),
+    ).toBe("allow");
+    expect(calls).toEqual([]);
+  });
+
+  it("a recorded deny BEATS autoAllow — the policy never un-denies a human's refusal", () => {
+    recordRepoDecision(home, "/repo/a", "deny", { gitExec });
+    const { ask, calls } = asker("y");
+    expect(
+      repoDecision(home, "/repo/sub", {
+        interactive: false,
+        autoAllow: true,
+        ask,
+        gitExec,
+        promptable: () => true,
+      }),
+    ).toBe("deny");
+    expect(calls).toEqual([]);
+  });
+
+  it("a recorded allow still short-circuits under autoAllow (same answer, same path)", () => {
+    recordRepoDecision(home, "/repo/a", "allow", { gitExec });
+    const before = readFileSync(reposPath(home), "utf8");
+    const { ask, calls } = asker("n");
+    expect(
+      repoDecision(home, "/repo/sub", {
+        interactive: false,
+        autoAllow: true,
+        ask,
+        gitExec,
+        promptable: () => true,
+      }),
+    ).toBe("allow");
+    expect(calls).toEqual([]);
+    expect(readFileSync(reposPath(home), "utf8")).toBe(before);
+  });
+
+  it("autoAllow does NOT write repos.json — a policy is not a decision", () => {
+    // The load-bearing property. If the policy recorded, flipping the knob
+    // back off would leave every repo the watcher ever touched permanently
+    // allowed, and there would be no way back short of hand-editing the file.
+    expect(existsSync(reposPath(home))).toBe(false);
+    for (const cwd of ["/repo/a", "/repo/b", "/elsewhere"]) {
+      expect(
+        repoDecision(home, cwd, {
+          interactive: false,
+          autoAllow: true,
+          ask: () => null,
+          gitExec,
+        }),
+      ).toBe("allow");
+    }
+    // Absent before, absent after: not merely "no new keys" — no file at all.
+    expect(existsSync(reposPath(home))).toBe(false);
+    expect(readRepos(home)).toEqual({});
+  });
+
+  it("autoAllow leaves an EXISTING repos.json byte-identical", () => {
+    recordRepoDecision(home, "/repo/a", "deny", { gitExec });
+    const before = readFileSync(reposPath(home), "utf8");
+    repoDecision(home, "/elsewhere", {
+      interactive: false,
+      autoAllow: true,
+      ask: () => null,
+      gitExec,
+    });
+    expect(readFileSync(reposPath(home), "utf8")).toBe(before);
+  });
+
+  it("autoAllow: false / undefined leaves the prompt path exactly as it was", () => {
+    for (const autoAllow of [false, undefined]) {
+      const { ask, calls } = asker("y");
+      expect(
+        repoDecision(home, "/repo/a", {
+          interactive: false,
+          autoAllow,
+          ask,
+          gitExec,
+          promptable: () => true,
+        }),
+      ).toBe("unknown");
+      expect(calls).toEqual([]);
+    }
+  });
+
+  it("autoAllow outranks the prompt: an interactive run never asks either", () => {
+    // Not just a non-interactive shortcut — the policy means "don't ask",
+    // full stop, so a foreground watcher with the knob on stops prompting too.
+    const { ask, calls } = asker("n");
+    expect(
+      repoDecision(home, "/repo/a", {
+        interactive: true,
+        autoAllow: true,
+        ask,
+        gitExec,
+        promptable: () => true,
+      }),
+    ).toBe("allow");
+    expect(calls).toEqual([]);
+    expect(existsSync(reposPath(home))).toBe(false);
+  });
+
+  it("a keyless cwd still defers UNDER autoAllow — the policy answers 'is this repo allowed'", () => {
+    // A cwd-less entry is retired as error-malformed upstream of here, but if
+    // it ever reached this path the policy must not become the thing that
+    // says "yes, spawn a retro" for an entry whose working directory nobody
+    // could name. The keyless guard sits above every arm, not just the prompt.
+    for (const cwd of ["", "   ", null, undefined, 42]) {
+      expect(
+        repoDecision(home, cwd, { interactive: false, autoAllow: true, ask: () => null, gitExec }),
+      ).toBe("unknown");
+    }
+    expect(existsSync(reposPath(home))).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -686,6 +815,54 @@ describe("pickReady", () => {
     queued({ session_id: "two", cwd: "/repo/a" });
     recordRepoDecision(home, "/repo/a", "allow", { gitExec });
     expect(pick().entry?.lineIndex).toBe(1);
+  });
+
+  // --- auto_allow (28b267) -------------------------------------------------
+
+  it("autoAllow makes an unreviewed repo servable to a NON-interactive run", () => {
+    // THE regression this story exists to prevent. Without autoAllow reaching
+    // pickReady the entry is filtered into `unservable` here and never gets as
+    // far as repoDecision — so a version that only taught repoDecision the
+    // policy would drain exactly as many entries as before, silently.
+    queued({ session_id: "unreviewed", cwd: "/elsewhere" });
+    const got = pick({ interactive: false, autoAllow: true });
+    expect(got.entry?.session_id).toBe("unreviewed");
+    expect(got.unservable).toEqual([]);
+  });
+
+  it("autoAllow keeps queue ORDER — the head entry is served, not leapfrogged", () => {
+    queued({ session_id: "unreviewed", cwd: "/elsewhere" });
+    queued({ session_id: "recorded", cwd: "/repo/a" });
+    recordRepoDecision(home, "/repo/a", "allow", { gitExec });
+    expect(pick({ interactive: false, autoAllow: true }).entry?.session_id).toBe("unreviewed");
+  });
+
+  it("autoAllow still yields a denied repo as the pick, so the drain can retire it", () => {
+    queued({ session_id: "denied", cwd: "/repo/a" });
+    recordRepoDecision(home, "/repo/a", "deny", { gitExec });
+    // Unchanged from the non-policy path: `deny` is not "unservable", it is a
+    // decision the drain files as `skipped-denied-repo`.
+    expect(pick({ interactive: false, autoAllow: true }).entry?.session_id).toBe("denied");
+  });
+
+  it("autoAllow does not promote a malformed entry past the classification arm", () => {
+    queued({ session_id: "no-cwd", cwd: null });
+    queued({ session_id: "servable", cwd: "/elsewhere" });
+    const got = pick({ interactive: false, autoAllow: true });
+    expect(got.entry?.session_id).toBe("no-cwd");
+    expect(got.unservable).toEqual([]);
+  });
+
+  it("autoAllow does not override readiness — a live session still waits", () => {
+    queued({ session_id: "live", cwd: "/elsewhere" }, 60_000);
+    expect(pick({ interactive: false, autoAllow: true }).entry).toBeNull();
+  });
+
+  it("autoAllow: false leaves the unservable arm exactly as it was", () => {
+    queued({ session_id: "unreviewed", cwd: "/elsewhere" });
+    const got = pick({ interactive: false, autoAllow: false });
+    expect(got.entry).toBeNull();
+    expect(sids(got.unservable)).toEqual(["unreviewed"]);
   });
 });
 
@@ -1804,6 +1981,140 @@ describe("drainPass", () => {
     expect(served).toBe(1);
     expect(readQueue(home).map((e) => e.session_id)).toEqual([SID_B]);
   });
+
+  // --- auto_allow (28b267) -------------------------------------------------
+  //
+  // Asserted at the DRAIN level on purpose: the knob has to survive two gates
+  // (pickReady's unservable filter, then repoDecision's verdict) and a unit
+  // test of either one alone passes while the watcher still drains nothing.
+
+  it("autoAllow drains an unreviewed repo end to end with no terminal", () => {
+    // The 2026-08-05 shape exactly: nobody at a prompt, nothing in repos.json.
+    // Before the knob this pass served 0 entries and noted a skip forever.
+    queueReady(SID_A);
+    const { calls, spawn } = fakeSpawn("spawned");
+
+    const summary = drainPass(
+      drainOpts({ autoAllow: true, spawn, awaitMarkerFn: () => "0\n" }),
+    );
+
+    expect(calls).toEqual([SID_A]);
+    expect(summary.retired).toBe(1);
+    expect(summary.skipped).toBe(0);
+    expect(outcomes()).toEqual([`${SID_A}:completed`]);
+    expect(readQueue(home)).toEqual([]);
+  });
+
+  it("without autoAllow the same pass serves nothing and notes the skip (the bug)", () => {
+    // The control. A "policy works" assertion is worth little without proof
+    // the same inputs failed before it.
+    queueReady(SID_A);
+    const { calls, spawn } = fakeSpawn("spawned");
+    const summary = drainPass(drainOpts({ spawn, awaitMarkerFn: () => "0\n" }));
+    expect(calls).toEqual([]);
+    expect(summary.retired).toBe(0);
+    expect(summary.skipped).toBe(1);
+    expect(readQueue(home).map((e) => e.session_id)).toEqual([SID_A]);
+    // …and the skip line names the escape hatch, so a human reading an
+    // unattended log can discover the policy without reading source.
+    expect(printed.join("\n")).toContain("auto_allow");
+  });
+
+  it("an auto-allowed spawn leaves repos.json ABSENT when it was absent", () => {
+    queueReady(SID_A);
+    expect(existsSync(reposPath(home))).toBe(false);
+    drainPass(drainOpts({ autoAllow: true, spawn: fakeSpawn().spawn, awaitMarkerFn: () => "0" }));
+    expect(existsSync(reposPath(home))).toBe(false);
+  });
+
+  it("an auto-allowed spawn leaves an existing repos.json byte-identical", () => {
+    recordRepoDecision(home, "/other/repo", "allow", { gitExec });
+    const before = readFileSync(reposPath(home), "utf8");
+    queueReady(SID_A);
+    drainPass(drainOpts({ autoAllow: true, spawn: fakeSpawn().spawn, awaitMarkerFn: () => "0" }));
+    expect(readFileSync(reposPath(home), "utf8")).toBe(before);
+  });
+
+  it("a recorded deny still retires under autoAllow", () => {
+    recordRepoDecision(home, REPO, "deny", { gitExec });
+    queueReady(SID_A);
+    const { calls, spawn } = fakeSpawn("spawned");
+    const summary = drainPass(drainOpts({ autoAllow: true, spawn }));
+    expect(calls).toEqual([]);
+    expect(summary.retired).toBe(1);
+    expect(outcomes()).toEqual([`${SID_A}:skipped-denied-repo`]);
+  });
+
+  it("autoAllow never drops the run to non-interactive, and never asks", () => {
+    // `unknown` is what downgraded the 2026-08-05 run to non-interactive and
+    // then walked past everything behind it. Under the policy repoDecision
+    // cannot return it, so an interactive run stays interactive — and the
+    // prompt seam is never reached at all.
+    queueReady(SID_A);
+    queueReady(SID_B);
+    const summary = drainPass(
+      drainOpts({
+        interactive: true,
+        autoAllow: true,
+        promptable: () => true,
+        ask: () => {
+          throw new Error("autoAllow must not reach the prompt");
+        },
+        spawn: fakeSpawn().spawn,
+        awaitMarkerFn: () => "0",
+      }),
+    );
+    expect(summary.interactive).toBe(true);
+    expect(summary.retired).toBe(2);
+    expect(summary.skipped).toBe(0);
+    expect(printed.join("\n")).not.toContain("could not be answered");
+  });
+
+  it("autoAllow drains a MULTI-repo backlog in one pass, unattended", () => {
+    queueReady(SID_A, "/repo/one");
+    queueReady(SID_B, "/repo/two");
+    const { calls, spawn } = fakeSpawn("spawned");
+    const summary = drainPass(drainOpts({ autoAllow: true, spawn, awaitMarkerFn: () => "0" }));
+    expect(calls).toEqual([SID_A, SID_B]);
+    expect(summary.skipped).toBe(0);
+    expect(readQueue(home)).toEqual([]);
+  });
+
+  it("dry-run says 'would auto-allow', not 'a real run would ask first'", () => {
+    // Under the policy that sentence is a lie, and it would send a human to a
+    // foreground terminal they don't need.
+    queueReady(SID_A);
+    drainPass(drainOpts({ dryRun: true, autoAllow: true }));
+    const text = printed.join("\n");
+    expect(text).toContain("learn.auto_allow is on");
+    expect(text).toContain("auto-allow");
+    expect(text).not.toContain("a real run would ask first");
+    expect(text).toContain("[dry-run] would spawn");
+  });
+
+  it("dry-run keeps the ask-first wording when the policy is off", () => {
+    queueReady(SID_A);
+    drainPass(drainOpts({ dryRun: true }));
+    const text = printed.join("\n");
+    expect(text).toContain("a real run would ask first");
+    expect(text).not.toContain("learn.auto_allow");
+  });
+
+  it("dry-run + autoAllow still writes nothing at all", () => {
+    queueReady(SID_A);
+    const before = snapshot();
+    const summary = drainPass(drainOpts({ dryRun: true, autoAllow: true }));
+    expect(summary.retired).toBe(0);
+    expect(snapshot()).toBe(before);
+  });
+
+  it("dry-run + autoAllow still reports a recorded deny as a skip", () => {
+    recordRepoDecision(home, REPO, "deny", { gitExec });
+    queueReady(SID_A);
+    const summary = drainPass(drainOpts({ dryRun: true, autoAllow: true }));
+    expect(summary.printed).toBe(0);
+    expect(printed.join("\n")).toContain("would skip");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1972,6 +2283,39 @@ describe("resolveLearnEnv", () => {
     });
     expect(env.home).toBe("/from/env");
   });
+
+  // --- auto_allow precedence: flag > config > default (28b267) --------------
+
+  it("reads auto_allow from the merged config", () => {
+    expect(resolveLearnEnv({ merged: { learn: { auto_allow: true } } }).autoAllow).toBe(true);
+    expect(resolveLearnEnv({ merged: { learn: { auto_allow: false } } }).autoAllow).toBe(false);
+  });
+
+  it("defaults auto_allow to false with no learn: block", () => {
+    expect(resolveLearnEnv({ merged: {} }).autoAllow).toBe(false);
+  });
+
+  it("--auto-allow overrides a config that says false", () => {
+    expect(
+      resolveLearnEnv({ merged: { learn: { auto_allow: false } }, autoAllow: true }).autoAllow,
+    ).toBe(true);
+  });
+
+  it("an absent flag defers to config rather than forcing the policy off", () => {
+    // `--auto-allow` is a boolean switch: commander gives `false` for both
+    // "not passed" and "passed --no-auto-allow", so absence MUST mean "defer".
+    // Turning the policy off for one run is a config edit — the safe direction
+    // to make harder.
+    for (const flag of [false, undefined]) {
+      expect(
+        resolveLearnEnv({ merged: { learn: { auto_allow: true } }, autoAllow: flag }).autoAllow,
+      ).toBe(true);
+    }
+  });
+
+  it("a malformed auto_allow still resolves to the default, not a crash", () => {
+    expect(resolveLearnEnv({ merged: { learn: { auto_allow: "yes" } } }).autoAllow).toBe(false);
+  });
 });
 
 describe("runLearnWatch", () => {
@@ -2049,6 +2393,66 @@ describe("runLearnWatch", () => {
     // Per-run state, created once and handed to every pass.
     expect(passOpts.seen).toBeInstanceOf(Set);
     expect(passOpts.noted).toBeInstanceOf(Set);
+  });
+
+  // --- auto_allow wiring (28b267) -----------------------------------------
+
+  it("forwards the resolved auto_allow policy into every drain pass", async () => {
+    let passOpts: Record<string, unknown> = {};
+    await runLearnWatch(
+      cliOpts({
+        merged: { learn: { auto_allow: true } },
+        drainPassFn: (o: Record<string, unknown>) => {
+          passOpts = o;
+          return drainSummaryStub();
+        },
+      }),
+    );
+    expect(passOpts.autoAllow).toBe(true);
+  });
+
+  it("--auto-allow reaches the drain even when config says false", async () => {
+    let passOpts: Record<string, unknown> = {};
+    await runLearnWatch(
+      cliOpts({
+        merged: { learn: { auto_allow: false } },
+        autoAllow: true,
+        drainPassFn: (o: Record<string, unknown>) => {
+          passOpts = o;
+          return drainSummaryStub();
+        },
+      }),
+    );
+    expect(passOpts.autoAllow).toBe(true);
+  });
+
+  it("hands the drain autoAllow: false when nothing turned it on", async () => {
+    let passOpts: Record<string, unknown> = {};
+    await runLearnWatch(
+      cliOpts({
+        drainPassFn: (o: Record<string, unknown>) => {
+          passOpts = o;
+          return drainSummaryStub();
+        },
+      }),
+    );
+    expect(passOpts.autoAllow).toBe(false);
+  });
+
+  it("names the policy at startup so an unattended log says why it never prompted", async () => {
+    queueReady(REAL_SID);
+    await runLearnWatch(
+      cliOpts({ merged: { learn: { auto_allow: true } }, drainPassFn: () => drainSummaryStub() }),
+    );
+    expect(text()).toContain("learn.auto_allow");
+    expect(text()).toContain("a recorded `deny` still wins");
+    expect(text()).toContain("repos.json is never written");
+  });
+
+  it("says nothing about the policy when it is off", async () => {
+    queueReady(REAL_SID);
+    await runLearnWatch(cliOpts({ drainPassFn: () => drainSummaryStub() }));
+    expect(text()).not.toContain("auto_allow");
   });
 
   it("every line it writes carries its own newline — the log is readable while it runs", async () => {
@@ -2353,5 +2757,15 @@ describe("learn-watch registration", () => {
     expect(cmd, "devx learn-watch must be wired into src/cli.ts").toBeDefined();
     expect(cmd?.commands.map((c) => c.name()).sort()).toEqual(["list", "requeue"]);
     expect(cmd?.options.some((o) => o.long === "--dry-run")).toBe(true);
+  });
+
+  it("exposes --auto-allow, defaulting to off (28b267)", () => {
+    const program = buildProgram();
+    const cmd = program.commands.find((c) => c.name() === "learn-watch");
+    const flag = cmd?.options.find((o) => o.long === "--auto-allow");
+    expect(flag, "devx learn-watch --auto-allow must be registered").toBeDefined();
+    expect(flag?.defaultValue).toBe(false);
+    // The per-run skip-set caveat belongs somewhere a human will read it.
+    expect(flag?.description).toContain("restart");
   });
 });

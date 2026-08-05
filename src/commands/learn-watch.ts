@@ -9,6 +9,9 @@
 //   devx learn-watch              # drain the queue, serially, until Ctrl-C
 //   devx learn-watch --dry-run    # print spawn commands; changes nothing, and
 //                                 # is NOT refused while a real watcher runs
+//   devx learn-watch --auto-allow # serve unreviewed repos without asking, so
+//                                 # `nohup devx learn-watch &` actually drains
+//                                 # (28b267; = `learn.auto_allow: true`)
 //   devx learn-watch list         # pending + readiness · last processed + outcomes
 //   devx learn-watch requeue <sid>  # put a processed session back on the queue
 //
@@ -68,20 +71,28 @@ export interface ResolvedLearnEnv {
   home: string;
   idleSeconds: number;
   retroTimeoutMs: number;
+  /** `learn.auto_allow`, with `--auto-allow` layered over it. */
+  autoAllow: boolean;
 }
 
 /**
- * Resolve the learn home and the two time knobs: `DEVX_LEARN_HOME` >
- * `learn.*` in the merged config > the design defaults.
+ * Resolve the learn home, the two time knobs, and the auto-allow policy:
+ * `DEVX_LEARN_HOME` > `learn.*` in the merged config > the design defaults.
  *
  * Config reads are best-effort. This command is user-global — it drains
  * sessions from every hooked repo — so a syntactically broken
  * `devx.config.yaml` in whatever directory the human happened to launch from
  * must degrade to the defaults, not refuse to drain a queue that has nothing
  * to do with that repo.
+ *
+ * `autoAllow` precedence is **flag > config > default**, and the flag is
+ * one-directional by construction: `--auto-allow` is a boolean switch, so its
+ * absence is indistinguishable from `--no-auto-allow` and must therefore mean
+ * "defer to config" rather than "force off". Turning the policy OFF for a
+ * single run is a config edit, which is the safe direction to make harder.
  */
 export function resolveLearnEnv(
-  opts: { home?: string; merged?: unknown; env?: LearnEnv } = {},
+  opts: { home?: string; merged?: unknown; env?: LearnEnv; autoAllow?: boolean } = {},
 ): ResolvedLearnEnv {
   let merged: unknown = opts.merged;
   if (merged === undefined) {
@@ -96,6 +107,7 @@ export function resolveLearnEnv(
     home: opts.home ?? resolveLearnHome(merged, opts.env ?? process.env),
     idleSeconds: cfg.idleMinutes * 60,
     retroTimeoutMs: cfg.retroTimeoutMinutes * 60_000,
+    autoAllow: opts.autoAllow === true || cfg.autoAllow,
   };
 }
 
@@ -135,6 +147,8 @@ function readLineSync(): string | null {
 export interface WatchCmdOpts extends LearnWatchIO {
   /** `--dry-run`: print-only, and exempt from the singleton. */
   dryRun?: boolean;
+  /** `--auto-allow`: force `learn.auto_allow` on for this run. */
+  autoAllow?: boolean;
   /** Home override (test seam; the CLI resolves it from env + config). */
   home?: string;
   /** Merged-config seam. */
@@ -201,7 +215,7 @@ export async function runLearnWatch(opts: WatchCmdOpts = {}): Promise<number> {
   const out = opts.out ?? ((line: string) => process.stdout.write(line));
   const err = opts.err ?? ((line: string) => process.stderr.write(line));
   const log = (line: string): void => out(`${line}\n`);
-  const { home, idleSeconds, retroTimeoutMs } = resolveLearnEnv(opts);
+  const { home, idleSeconds, retroTimeoutMs, autoAllow } = resolveLearnEnv(opts);
   const dryRun = opts.dryRun === true;
 
   // Claimed before anything is printed: a refusal should read as a refusal,
@@ -229,6 +243,15 @@ export async function runLearnWatch(opts: WatchCmdOpts = {}): Promise<number> {
   );
   if (dryRun) {
     log("(--dry-run: printing spawn commands only — the queue and done log are left alone)");
+  }
+  // Named at startup so an unattended watcher's log answers "why did it never
+  // prompt?" from the log alone — the question the 2026-08-05 triage had to
+  // answer by reading source.
+  if (autoAllow) {
+    log(
+      "(learn.auto_allow: unreviewed repos are served without asking — a recorded `deny` " +
+        "still wins, and repos.json is never written by the policy)",
+    );
   }
 
   const readLine = opts.readLine ?? readLineSync;
@@ -260,6 +283,7 @@ export async function runLearnWatch(opts: WatchCmdOpts = {}): Promise<number> {
         home,
         dryRun,
         interactive,
+        autoAllow,
         idleSeconds,
         retroTimeoutMs,
         log,
@@ -391,11 +415,19 @@ export function register(program: Command): void {
       "Print the spawn command for every ready session and change nothing (no marker, no done-log row, no queue rewrite); allowed while another watcher is draining",
       false,
     )
+    .option(
+      "--auto-allow",
+      "Treat a repo nobody has reviewed as allowed instead of asking, so an unattended watcher (`nohup`) drains instead of walking past it. A recorded `deny` still wins and repos.json is never written. Same as `learn.auto_allow: true`; the flag only turns it on. NOTE: entries a running watcher already skipped stay skipped for the life of that run — restart it to pick them up",
+      false,
+    )
     // A typo'd subcommand (`learn-watch lst`) must not silently start a real
     // drain, so excess arguments are a usage error rather than ignored.
     .allowExcessArguments(false)
-    .action(async (opts: { dryRun?: boolean }) => {
-      const code = await runLearnWatch({ dryRun: opts.dryRun === true });
+    .action(async (opts: { dryRun?: boolean; autoAllow?: boolean }) => {
+      const code = await runLearnWatch({
+        dryRun: opts.dryRun === true,
+        autoAllow: opts.autoAllow === true,
+      });
       if (code !== 0) process.exit(code);
     });
 

@@ -338,6 +338,7 @@ learn:
   idle_minutes: 15
   retro_timeout_minutes: 360
   home: ~/.claude/devx
+  auto_allow: false
 
 # ---------------------------------------------------------------------------
 # Stack — monorepo shape (mutually exclusive with single `stack:` block).

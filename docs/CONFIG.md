@@ -463,6 +463,7 @@ learn:
   idle_minutes: 15               # transcript quiet window = "session over"
   retro_timeout_minutes: 360     # spawned retro past this retires as `timeout`
   home: ~/.claude/devx           # queue home (user-global, one per human)
+  auto_allow: false              # unreviewed repos serve instead of prompting
 ```
 
 Consumed by `devx learn-watch` (rtl102) and the `/devx-init` hook install
@@ -475,6 +476,40 @@ wrapper's signal trap can't cover) — past it the entry retires with outcome
 `timeout`. Non-positive / non-finite / wrong-typed values fall back to the
 default **per key**: a half-typed edit degrades the watcher, it doesn't wedge
 it.
+
+**`auto_allow` (28b267) is what makes the watcher servable unattended.** The
+watcher asks once per repo — `allow retros for <repo>? [y/N]` — and records the
+answer in `<home>/repos.json`. With nobody at a terminal that prompt can never
+be answered: `repoDecision` returns `unknown`, the run drops to
+non-interactive, and every remaining unreviewed entry is walked past on every
+pass, forever. (Observed 2026-08-05: two sessions pending since 2026-08-02
+behind exactly that gate.) Setting `auto_allow: true` — or passing
+`devx learn-watch --auto-allow`, which forces it on for one run — reads an
+unreviewed repo as allowed, so `nohup devx learn-watch &` actually drains.
+
+Two properties make it a *policy* rather than a blanket decision, and both are
+asserted in the suite:
+
+- **a recorded `deny` still wins.** The lookup in `repos.json` short-circuits
+  ahead of the policy, so a repo you deliberately refused stays refused.
+- **it never writes `repos.json`.** That file remains the record of what a
+  *human* reviewed, so turning the knob back off restores prompting instead of
+  leaving every repo the watcher ever touched permanently allowed.
+
+Non-boolean values (`"yes"`, `1`, `null`) fall back to `false` rather than
+being read as truthy — YAML already produces real booleans for `true`/`yes`/
+`on`, so a value that arrives as a string or a number is a typo, and "allow
+every unreviewed repo" is the wrong direction to guess. Note also that a
+running watcher's skip-set is per-*run*: flipping the knob does not rescue
+entries an already-running watcher walked past, so restart it.
+
+**All of `learn:` is read from the watcher's launch cwd**, via the same
+`loadMerged()` walk every other section uses — the watcher is user-global but
+its config is not. Launching it from a different repo (or from `~`) picks up
+that directory's `devx.config.yaml`, or the defaults if there isn't one. This
+is a known wrinkle, not a bug to rediscover: put `auto_allow`, `idle_minutes`,
+and `retro_timeout_minutes` in the config of whatever directory you actually
+launch the watcher from, or pass `--auto-allow` explicitly.
 
 **Home precedence — `DEVX_LEARN_HOME` env > `learn.home` > `~/.claude/devx`.**
 The env var wins everywhere and is what tests and hook installs use to redirect

@@ -47,6 +47,9 @@ describe("learnConfigFrom", () => {
     expect(LEARN_DEFAULTS.idleMinutes).toBe(15);
     expect(LEARN_DEFAULTS.retroTimeoutMinutes).toBe(360);
     expect(LEARN_DEFAULTS.home).toBe("~/.claude/devx");
+    // 28b267: OFF by default. The watcher prompts once per repo until a human
+    // opts into the unattended policy.
+    expect(LEARN_DEFAULTS.autoAllow).toBe(false);
   });
 
   it("reads a fully-populated learn: block", () => {
@@ -55,12 +58,14 @@ describe("learnConfigFrom", () => {
         idle_minutes: 3,
         retro_timeout_minutes: 45,
         home: "/tmp/learn-home",
+        auto_allow: true,
       },
     });
     expect(cfg).toEqual({
       idleMinutes: 3,
       retroTimeoutMinutes: 45,
       home: "/tmp/learn-home",
+      autoAllow: true,
     });
   });
 
@@ -111,6 +116,44 @@ describe("learnConfigFrom", () => {
     expect(learnConfigFrom({ learn: { home: "  /tmp/h  " } }).home).toBe(
       "/tmp/h",
     );
+  });
+
+  it("reads auto_allow only from a real boolean (28b267)", () => {
+    expect(learnConfigFrom({ learn: { auto_allow: true } }).autoAllow).toBe(true);
+    expect(learnConfigFrom({ learn: { auto_allow: false } }).autoAllow).toBe(false);
+  });
+
+  it("falls back to false for every non-boolean auto_allow", () => {
+    // Fails CLOSED, deliberately. YAML already yields real booleans for
+    // `true`/`yes`/`on`, so a string or a number here is a typo — and reading
+    // a typo as "allow every unreviewed repo" is the one direction this knob
+    // must never guess in.
+    for (const bad of [
+      "yes",
+      "true",
+      "1",
+      1,
+      0,
+      null,
+      undefined,
+      [],
+      {},
+      Number.NaN,
+    ]) {
+      expect(learnConfigFrom({ learn: { auto_allow: bad } }).autoAllow).toBe(false);
+    }
+    // Absent entirely → the default, same as every other key.
+    expect(learnConfigFrom({ learn: {} }).autoAllow).toBe(false);
+  });
+
+  it("keeps auto_allow when a SIBLING key is malformed (per-key fallback)", () => {
+    // The whole point of per-key fallback: a typo'd idle_minutes must not
+    // quietly re-arm the prompt on an unattended watcher.
+    const cfg = learnConfigFrom({
+      learn: { idle_minutes: "nope", auto_allow: true },
+    });
+    expect(cfg.idleMinutes).toBe(LEARN_DEFAULTS.idleMinutes);
+    expect(cfg.autoAllow).toBe(true);
   });
 
   it("does not mutate LEARN_DEFAULTS across calls", () => {
