@@ -364,6 +364,10 @@ learn:
   idle_minutes: 15               # transcript quiet window = "session over"
   retro_timeout_minutes: 360     # spawned retro past this retires as `timeout`
   home: ~/.claude/devx           # user-global: one watcher serves many repos
+  auto_allow: false              # true = unreviewed repos serve without a prompt
+                                 # (needed for `nohup devx learn-watch &`; a
+                                 #  recorded `deny` still wins, and the policy
+                                 #  never writes repos.json)
 
 # ---------------------------------------------------------------------------
 # Stack — what /devx Phase 5 (local CI) runs.
