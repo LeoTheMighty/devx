@@ -6,7 +6,8 @@ title: "mark-done helper + Phase-8 rewrite (merge-cleanup mechanical host)"
 from: plan/plan-62bcd1-2026-08-02T09:00-story-graph.md
 plan: _devx/workstreams/story-graph
 phase: 5
-status: ready
+status: in-progress
+owner: /devx-2026-08-05T1113-94741
 blocked_by: [sgr104]
 branch: feat/dev-sgr105
 ---
@@ -62,3 +63,4 @@ flip green.
 ## Status log
 
 - 2026-08-02T13:57 — emitted by /devx-plan RED stage (workstream 62bcd1).
+- 2026-08-05T11:13:48-06:00 — claimed by /devx in session /devx-2026-08-05T1113-94741
