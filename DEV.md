@@ -250,5 +250,5 @@ re-run `devx graph`.
 - [x] `dev/dev-sgr104-2026-08-02T13:57-regen-hooks-claim-emission.md` — Regen hooks — claim + RED emission keep GRAPH.md fresh. Status: done. Blocked-by: sgr103. PR: https://github.com/LeoTheMighty/devx/pull/114 (merged 6527aea)
 - [/] `dev/dev-sgr105-2026-08-02T13:57-mark-done-phase8.md` — mark-done helper + Phase-8 rewrite (E-5 goes green). Status: in-progress. Blocked-by: sgr104.
 - [/] `dev/dev-sgr106-2026-08-02T13:57-graph-backfill.md` — Backfill — adds-only idempotent edge completion + attended devx-repo run (E-6). Attended-only: loop must `--exclude`. Status: in-progress. Blocked-by: sgr103. Parallel-safe with sgr104/sgr105/sgr107.
-- [/] `dev/dev-sgr107-2026-08-02T13:57-downstream-portability.md` — Downstream portability — packaged CLI proof + MANUAL.md handoff (E-7). Status: in-progress. Blocked-by: sgr103. Parallel-safe with sgr104/sgr105/sgr106.
+- [x] `dev/dev-sgr107-2026-08-02T13:57-downstream-portability.md` — Downstream portability — packaged CLI proof + MANUAL.md handoff (E-7). Status: done. Blocked-by: sgr103. Parallel-safe with sgr104/sgr105/sgr106. PR: https://github.com/LeoTheMighty/devx/pull/117 (merged 119f933)
 - [ ] `dev/dev-sgrret-2026-08-02T14:00-retro-story-graph.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: sgr101, sgr102, sgr103, sgr104, sgr105, sgr106, sgr107.

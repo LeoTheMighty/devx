@@ -121,3 +121,4 @@ the file passes in isolation at the same commit.
 ## Links
 
 - Found during: `dev/dev-tur101-2026-08-04T10:00-retire-review-tour.md`
+- 2026-08-05T11:47 — sgr107 Phase 5 corroboration: full `npm test` red 4 files / 20 tests (loop-worker, manage-spawn, manage-spawn-integration, manage-crash-restart-loop — all real-child-process spawners) under parallel suite load; same 4 files 61/61 green re-run in isolation at the same commit. Diff under test (standalone eval + MANUAL.md prose) imports none of them. Same macOS spawn-cost-under-load signature.
