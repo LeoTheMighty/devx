@@ -4,8 +4,8 @@ type: dev
 created: 2026-08-05T11:25:00-06:00
 title: learn.auto_allow — the retro watcher stops needing a human at the prompt
 from: null
-status: in-progress
-owner: /devx-2026-08-05T1128-99202
+status: done
+owner: null
 blocked_by: []
 branch: feat/dev-28b267
 pr: 119
@@ -150,6 +150,12 @@ under `nohup` and still drain.
   `test/test-28b267-qa-walkthrough.md` path named in the phase-5 line above.
   Third recorded occurrence — ea4f41 is still ready and unfixed.
 - 2026-08-05T11:28:56-06:00 — claimed by /devx in session /devx-2026-08-05T1128-99202
+
+- 2026-08-05T13:32 — merged via PR #119 (squash → bc7fe84). Remote CI green on
+  both runners at 993ac8e. Gate needed two corrections first: the QA
+  walkthrough's hash collision (debug-ea4f41, renamed to ebf8c4) and the
+  empty `branch:` frontmatter `devx devx-helper claim` leaves behind, which
+  makes `devx merge-gate` report "no PR yet" until it is hand-written.
 
 ## Links
 

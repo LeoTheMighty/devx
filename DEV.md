@@ -30,7 +30,7 @@ terminal to answer it. Owner-requested: the watcher should drain
 unattended, and the retros it spawns should carry their findings to a
 merged change instead of stopping at an unread evidence table.
 
-- [/] `dev/dev-28b267-2026-08-05T11:25-learn-auto-allow.md` — `learn.auto_allow`: unreviewed repos serve instead of blocking an unattended watcher (recorded `deny` still wins; the policy never writes `repos.json`). Status: in-progress. From: 2026-08-05 triage session.
+- [x] `dev/dev-28b267-2026-08-05T11:25-learn-auto-allow.md` — `learn.auto_allow`: unreviewed repos serve instead of blocking an unattended watcher (recorded `deny` still wins; the policy never writes `repos.json`). Status: done. From: 2026-08-05 triage session. PR: https://github.com/LeoTheMighty/devx/pull/119 (merged bc7fe84)
 - [ ] `dev/dev-c808b1-2026-08-05T11:25-devx-learn-unattended-apply.md` — `/devx-learn` unattended mode: auto-prune rule, `devx learn-helper route` apply-vs-propose predicate (wedge paths can't be edited in an unattended tab), applied rows through the normal PR + merge gate, durable report. Status: ready. Blocked-by: 28b267. **Carries an owner ruling** — whether locked machinery (gate logic, refusal paths, verdict vocabulary, append-only disciplines) stays proposal-only in auto mode.
 
 ### Self-healing state reconciliation (from loop-2026-07-24 post-mortem)
