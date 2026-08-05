@@ -366,6 +366,22 @@ loop can read.
     one round-trip. If a re-trigger also produces nothing, escalate to (c);
     a repo where PR CI silently does not fire breaks the merge gate for every
     future story, not just this one.
+  → Answer: (a), on the user's "finish it". Closing and reopening PR #118
+    re-triggered the workflow immediately — run 31042124974, devx-ci,
+    conclusion **success**. Merged on that real signal (squash `4928dd9`);
+    no subset-merge was needed.
+  → Note: CI green on the full suite also settles `debug-620337` one way —
+    those `loop-worker` / `manage-crash-restart-loop` failures do NOT
+    reproduce on a clean runner, so they are worktree/host-local, not a code
+    defect. `debug-620337`'s AC 3 (a worktree `npm test` green on an
+    unmodified checkout) still stands.
+  → Note: the residual question is unanswered and worth watching — why did
+    the `pull_request` event not fire on OPEN, when peers `feat/dev-sgr106`
+    and `feat/dev-28b267` got runs within minutes and the `on:` filter
+    matches? One occurrence, self-healed by reopen, so not filed as a spec.
+    If a second PR opens with no run, file it: `devx merge-gate` returned
+    `{"merge":true}` throughout the outage because it cannot tell "CI green"
+    from "CI never ran", so a silent trigger gap silently disables the gate.
   - **Resolved (2026-08-05, /devx sgr105 resume session):** root cause proven
     mechanically — `gh pr view 118 --json mergeable` returned `CONFLICTING`
     (`mergeStateStatus: DIRTY`). GitHub cannot build the merge ref for a
