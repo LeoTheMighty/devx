@@ -3,8 +3,8 @@ hash: 62bcd1
 type: plan
 created: 2026-08-02T09:00:15-06:00
 title: Story Graph
-status: in-progress
-stage: executing
+status: done
+stage: done
 entered_at: prd
 gate_status:
   prd_validated: true
@@ -12,8 +12,8 @@ gate_status:
   plan_verified: true
   evals_red: true
 outcome:
-  status: null
-  measure_by: null
+  status: pending
+  measure_by: 2026-09-20
 workstream: _devx/workstreams/story-graph
 gate_verdicts:
   prd: PASS
@@ -72,3 +72,11 @@ Workstream 'Story Graph' — PRD stage next. Artifacts live in `_devx/workstream
   + sgrret (emit-retro-story), DEV.md § Epic — story-graph in dependency
   order, todo.md Stage: Execute pointers, PLAN.md checkbox flipped;
   validate-emit story-graph ok.
+- 2026-08-06T10:05 — workstream closed by sgrret: 7/7 phases merged (PRs
+  #110/#111/#112/#114/#117/#118/#120, last merge 2026-08-05), E-1…E-7 all
+  GREEN at their phase's merge; status/stage → done; outcome armed,
+  measure-by 2026-09-20 (G-3's date; G-1 + G-2 score at the same sitting —
+  G-2's attended legs are MANUAL.md MV-sgr107.1–.3). Retro:
+  `_devx/workstreams/story-graph/RETRO-2026-08-06.md`; LEARN.md §
+  epic-story-graph E1–E10 + 1 cross-epic promotion (honest-RED) + 3
+  cross-epic row updates.
