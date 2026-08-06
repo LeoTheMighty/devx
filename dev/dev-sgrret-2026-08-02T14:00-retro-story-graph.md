@@ -5,7 +5,8 @@ created: 2026-08-02T14:00:49-06:00
 title: Retro + LEARN.md updates (interim retro discipline)
 from: plan/plan-62bcd1-2026-08-02T09:00-story-graph.md
 plan: plan/plan-62bcd1-2026-08-02T09:00-story-graph.md
-status: ready
+status: in-progress
+owner: /devx-2026-08-06T0958-25102
 blocked_by: [sgr101, sgr102, sgr103, sgr104, sgr105, sgr106, sgr107]
 branch: feat/dev-sgrret
 ---
@@ -31,3 +32,4 @@ Run the native retro stage (`/devx retro` — the `## Stage: Retro` section of `
 ## Status log
 
 - 2026-08-02T14:00:49-06:00 — created by /devx-plan
+- 2026-08-06T09:58:19-06:00 — claimed by /devx in session /devx-2026-08-06T0958-25102
