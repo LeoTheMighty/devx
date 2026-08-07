@@ -189,14 +189,32 @@ Steps:
    surfaces (>500 changed lines / multi-regex / marker-bearing), run the
    3-agent parallel shape — Blind Hunter (fresh eyes, semantics bugs),
    Edge Case Hunter (boundaries + branches), Acceptance Auditor (diff vs
-   ACs) — as parallel subagents; otherwise a rigorous single pass.
+   ACs) — as parallel subagents. Below the threshold, a rigorous single
+   pass is correct and sufficient.
+2b. **When the parallel shape is unavailable** — a harness with no subagent
+   fan-out, an agent type that won't spawn, a session policy that forbids
+   it — an above-threshold surface does NOT collapse to a plain single
+   pass. That substitution is measured, not theorized: mlc105 single-passed
+   a +1,513/13-file surface and returned **4** findings against a 3-agent
+   peer median of **16** on comparable diffs. Use one of the two sanctioned
+   compensations instead (LEARN.md § Cross-epic patterns, environmental-
+   fallback sub-pattern; validated at sgrret across 5 stories):
+   - **Sequential multi-lens** — run the same three lenses one at a time,
+     each as its own pass with a context reset between them, so the second
+     lens is not anchored by the first. sgr105: 7 findings on ~800 lines.
+   - **Empirical real-repo leg** — pair a single pass with running the
+     change against real data (a live repo, an attended dry run) and diff
+     the before/after. sgr106: 14 findings, and the dry run caught the two
+     most serious.
+   Record which shape you used and why in the Phase 4 status-log line —
+   the deviation is stated, never silent.
 3. Review is **adversarial** — find 3–10 specific issues minimum on
    substantial surfaces. A zero-finding review of a big diff is a failed
    review; re-run with stricter framing.
 4. For ALL findings (HIGH, MEDIUM, LOW): **fix them automatically** — do
    NOT ask the user or create action items. Fix forward, in this item.
 5. After fixing, re-review the changed hunks to verify fixes are clean.
-6. **A status-log line MUST be appended after Phase 4 completes, regardless of issue count.** Omission is a regression: the line is the audit trail that proves adversarial self-review actually ran. Zero issues writes `phase 4: clean review (0 issues; re-ran with stricter framing — confirmed clean)`. Non-zero findings record the count and disposition: `phase 4: <N>-agent <single-pass|parallel adversarial> review; <X> findings (<H> HIGH, <M> MED, <L> LOW); ALL fixed in-place — <one-line summary of the most load-bearing fix>; re-review clean`.
+6. **A status-log line MUST be appended after Phase 4 completes, regardless of issue count.** Omission is a regression: the line is the audit trail that proves adversarial self-review actually ran. Zero issues writes `phase 4: clean review (0 issues; re-ran with stricter framing — confirmed clean)`. Non-zero findings record the count and disposition: `phase 4: <N>-agent <single-pass|sequential multi-lens|single-pass + real-repo leg|parallel adversarial> review; <X> findings (<H> HIGH, <M> MED, <L> LOW); ALL fixed in-place — <one-line summary of the most load-bearing fix>; re-review clean`. When an above-threshold surface used anything other than the parallel shape, the line MUST also say why the parallel shape was unavailable (per step 2b) — an unexplained single-pass on a big diff reads as a skipped compensation.
 
    The explicit-zero form (per CLAUDE.md "Self-review is non-skippable" + LEARN.md § epic-merge-gate-modes E7) is required because the failure mode dvx103 forecloses is silent omission — dvx102's status log is the motivating example (phase-2 + phase-7 lines were written but the phase-4 line was left implicit, losing the audit). `test/devx-status-log-discipline.test.ts` asserts every shipped non-retro non-grandfathered dev spec has a `phase 4:` line in its status log; new specs that ship without one will fail the assertion.
 
@@ -259,6 +277,18 @@ Steps:
    - If a machine item fails, that's a Phase 5 gate failure: fix the root cause and re-run (step 5), don't downgrade the item to `human`.
    - Append a row to `TEST.md`: `` - [ ] `test/test-<hash>-qa-walkthrough.md` — QA walkthrough for <spec title>; <n> human check(s) outstanding. Status: ready. From: <hash>. ``
    - The walkthrough file commits **with the story** in Phase 6 — it is part of the item's diff, not a follow-up.
+
+**Run the gate in the worktree, and prove it ran there.** A `/devx` run
+straddles two working trees on purpose — code lives in
+`.worktrees/<type>-<hash>/`, backlog and spec edits target the main
+checkout — so the shell's cwd moves between them all run. A gate command
+that lands in the wrong tree tests `main`, not your branch, and reports a
+green that means nothing. Before recording ANY gate result, check the
+runner's own echo of its root (vitest prints `RUN vX.Y.Z <root>`; `npm
+test` inherits cwd) and confirm it is the worktree path. A test count that
+shifts between two "identical" runs is the same symptom. Cheapest habit:
+`cd <worktree-abs-path> && <gate command>` as one command every time,
+rather than relying on cwd persisting from an earlier call.
 
 **Prose-bearing diffs: finish editing before you start the gate.** The skill-body discipline tests (`devx-skill-phase*.test.ts`, `skills-sync.test.ts`, `devx-status-log-discipline.test.ts`) read their subject files from disk at test time, so editing `.claude/commands/*.md`, `skills/*.md`, or a spec while the suite is running produces a red that reflects a torn read, not a real failure — and on a long suite that red costs a full re-run to disprove. Batch every prose fix first, run the targeted discipline files (sub-second), and only then start the full gate. If a prose fix becomes necessary after the gate is underway, let the run finish, apply it, and re-run the affected files rather than racing it.
 

@@ -286,6 +286,16 @@ Full contract: `.claude/commands/devx.md`.
   story to apply the threshold heuristic for single-pass on a 290-LoC
   surface). See `LEARN.md § Cross-epic patterns` row "3-agent parallel
   adversarial review."
+  **When the parallel shape is unavailable** (no subagent fan-out in the
+  harness, agent type won't spawn, session policy forbids it), an
+  above-threshold surface does NOT fall back to a plain single pass —
+  mlc105 measured that substitution at 4 findings vs a peer median of 16.
+  Compensate with **sequential multi-lens** (the same three lenses, one
+  pass each, context reset between) or an **empirical real-repo leg**
+  (single pass + running the change against real data and diffing
+  before/after); both out-caught plain single-pass across 5 sgr stories.
+  State which shape you used, and why the parallel one was unavailable, in
+  the Phase 4 status-log line. See `/devx` Phase 4 step 2b.
 
 ---
 
