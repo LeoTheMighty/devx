@@ -60,6 +60,7 @@ function emptySnapshot(): RepoSnapshot {
     todoDrift: [],
     drift: [],
     warnings: [],
+    allRows: [],
   };
 }
 
@@ -2207,5 +2208,166 @@ describe("row 1 — loop scope rendering", () => {
   it("an unscoped loop in a multi-loop list renders 'all'", () => {
     const d = decideRepoNext(liveLoop([inst("r1", null), inst("r2", "epic:beta-ray")]));
     expect(d.detail).toContain("r1 (all, idle)");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// `devx next --all-rows` (learn 2026-08-07, R5)
+// ---------------------------------------------------------------------------
+//
+// The diagnostic view exists so a change to the shared row grammar
+// (src/lib/backlog/parse.ts) can be diffed against the verdicts it moves.
+// Its whole value is that it reports the SAME predicate the dispatcher uses
+// — so the tests below pin that equivalence, not just the output shape.
+
+describe("devx next --all-rows", () => {
+  const specFor = (type: string, hash: string, status: string): string =>
+    [
+      "---",
+      `hash: ${hash}`,
+      `type: ${type}`,
+      `status: ${status}`,
+      "---",
+      "",
+      "## Goal",
+      "",
+      "x",
+      "",
+    ].join("\n");
+
+  const repoWithChain = (): ReturnType<typeof makeEngineRepo> => {
+    const repo = makeEngineRepo();
+    repo.write("dev/dev-aaa111-2026-08-07T09:00-a.md", specFor("dev", "aaa111", "done"));
+    repo.write("dev/dev-bbb222-2026-08-07T09:00-b.md", specFor("dev", "bbb222", "ready"));
+    repo.write("dev/dev-ccc333-2026-08-07T09:00-c.md", specFor("dev", "ccc333", "ready"));
+    repo.write(
+      "DEV.md",
+      [
+        "# DEV",
+        "",
+        "- [x] `dev/dev-aaa111-2026-08-07T09:00-a.md` — A. Status: done.",
+        // settled blocker → resolved
+        "- [ ] `dev/dev-bbb222-2026-08-07T09:00-b.md` — B. Status: ready. Blocked-by: aaa111. Parallel-safe with ccc333.",
+        // unsettled + unknown blockers → unresolved, both reported separately
+        "- [ ] `dev/dev-ccc333-2026-08-07T09:00-c.md` — C. Status: ready. Blocked-by: bbb222, zzz999.",
+        "",
+      ].join("\n"),
+    );
+    return repo;
+  };
+
+  const rowsFrom = (repo: ReturnType<typeof makeEngineRepo>): Record<string, any> => {
+    const io = captureIo();
+    const code = runNext(["--all-rows"], {
+      ...io,
+      projectPath: repo.configPath,
+      now: () => NOW,
+    });
+    expect(code).toBe(0);
+    const j = JSON.parse(io.stdout().trim()) as { rows: Record<string, any>[] };
+    return Object.fromEntries(j.rows.map((r) => [r.hash, r]));
+  };
+
+  it("reports every row's verdict, splitting unknown from unsettled blockers", () => {
+    const repo = repoWithChain();
+    try {
+      const rows = rowsFrom(repo);
+      expect(Object.keys(rows).sort()).toEqual(["aaa111", "bbb222", "ccc333"]);
+
+      expect(rows.bbb222.blockersResolved).toBe(true);
+      expect(rows.bbb222.unknownBlockers).toEqual([]);
+      expect(rows.bbb222.unsettledBlockers).toEqual([]);
+      // The new grammar field rides along — it is the other thing a parser
+      // change silently moves.
+      expect(rows.bbb222.parallel_with).toEqual(["ccc333"]);
+
+      expect(rows.ccc333.blockersResolved).toBe(false);
+      // bbb222 exists but is ready; zzz999 names no row at all.
+      expect(rows.ccc333.unsettledBlockers).toEqual(["bbb222"]);
+      expect(rows.ccc333.unknownBlockers).toEqual(["zzz999"]);
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("agrees with the dispatcher: a row it calls unresolved is not the pick", () => {
+    // The equivalence that makes the diagnostic trustworthy. ccc333 is
+    // unresolved per --all-rows, so `devx next` must route to bbb222.
+    const repo = repoWithChain();
+    try {
+      const rows = rowsFrom(repo);
+      expect(rows.ccc333.blockersResolved).toBe(false);
+      expect(rows.bbb222.blockersResolved).toBe(true);
+
+      const io = captureIo();
+      expect(
+        runNext(["--no-gh"], { ...io, projectPath: repo.configPath, now: () => NOW }),
+      ).toBe(0);
+      const decision = JSON.parse(io.stdout().trim()) as Record<string, unknown>;
+      expect(decision.command).toBe("/devx bbb222");
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("excludes struck rows — they are settled and never claimable", () => {
+    const repo = makeEngineRepo();
+    try {
+      repo.write("dev/dev-ddd444-2026-08-07T09:00-d.md", specFor("dev", "ddd444", "ready"));
+      repo.write(
+        "DEV.md",
+        [
+          "# DEV",
+          "",
+          "- [x] ~~`dev/dev-eee555-2026-08-07T09:00-e.md` — Gone.~~",
+          "- [ ] `dev/dev-ddd444-2026-08-07T09:00-d.md` — D. Status: ready.",
+          "",
+        ].join("\n"),
+      );
+      const rows = rowsFrom(repo);
+      expect(Object.keys(rows)).toEqual(["ddd444"]);
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("a struck blocker still counts as settled for its dependent", () => {
+    // Struck rows are absent from the output but must not silently hold a
+    // dependent — the gatherer folds them into the status map on purpose.
+    const repo = makeEngineRepo();
+    try {
+      repo.write("dev/dev-fff666-2026-08-07T09:00-f.md", specFor("dev", "fff666", "ready"));
+      repo.write(
+        "DEV.md",
+        [
+          "# DEV",
+          "",
+          "- [x] ~~`dev/dev-ggg777-2026-08-07T09:00-g.md` — Abandoned.~~",
+          "- [ ] `dev/dev-fff666-2026-08-07T09:00-f.md` — F. Status: ready. Blocked-by: ggg777.",
+          "",
+        ].join("\n"),
+      );
+      const rows = rowsFrom(repo);
+      expect(rows.fff666.blockersResolved).toBe(true);
+      expect(rows.fff666.unknownBlockers).toEqual([]);
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("rejects --all-rows on the workstream form rather than ignoring it", () => {
+    const repo = makeEngineRepo();
+    try {
+      const io = captureIo();
+      const code = runNext(["somehash", "--all-rows"], {
+        ...io,
+        projectPath: repo.configPath,
+        now: () => NOW,
+      });
+      expect(code).toBe(2);
+      expect(io.stderr()).toContain("--all-rows");
+    } finally {
+      repo.cleanup();
+    }
   });
 });

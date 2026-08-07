@@ -23,6 +23,13 @@
 //   --session-token <token>   — enables the row-5 "claimed by me" check
 //                               (same token shape as devx-helper verify-claim).
 //   --no-gh                   — skip the gh PR probe (offline / hermetic runs).
+//   --all-rows                — diagnostic. Emits {rows, warnings} INSTEAD of
+//                               the decision: every parsed backlog row with
+//                               its blocker-resolution verdict, from the same
+//                               predicate the dispatcher uses. Implies
+//                               --no-gh. Diff two runs across a change to
+//                               src/lib/backlog/parse.ts to see exactly which
+//                               rows the grammar change blocked or unblocked.
 //
 // Exit codes:
 //   0 — decision printed.
@@ -72,6 +79,7 @@ interface ParsedArgs {
   preferPlan: boolean;
   sessionToken: string | undefined;
   skipGh: boolean;
+  allRows: boolean;
   error: string | null;
 }
 
@@ -81,6 +89,7 @@ function parseNextArgs(args: string[]): ParsedArgs {
     preferPlan: false,
     sessionToken: undefined,
     skipGh: false,
+    allRows: false,
     error: null,
   };
   const positional: string[] = [];
@@ -106,6 +115,8 @@ function parseNextArgs(args: string[]): ParsedArgs {
       i++;
     } else if (a === "--no-gh") {
       parsed.skipGh = true;
+    } else if (a === "--all-rows") {
+      parsed.allRows = true;
     } else if (a.startsWith("--")) {
       parsed.error = `unknown flag '${a}'`;
       return parsed;
@@ -114,7 +125,8 @@ function parseNextArgs(args: string[]): ParsedArgs {
     }
   }
   if (positional.length > 1) {
-    parsed.error = "usage: devx next [<hash>] [--prefer plan] [--session-token <token>] [--no-gh]";
+    parsed.error =
+      "usage: devx next [<hash>] [--prefer plan] [--session-token <token>] [--no-gh] [--all-rows]";
     return parsed;
   }
   parsed.hash = positional[0] ?? null;
@@ -123,10 +135,13 @@ function parseNextArgs(args: string[]): ParsedArgs {
   // effect — reject instead (adversarial-review EC#11).
   if (
     parsed.hash !== null &&
-    (parsed.preferPlan || parsed.sessionToken !== undefined || parsed.skipGh)
+    (parsed.preferPlan ||
+      parsed.sessionToken !== undefined ||
+      parsed.skipGh ||
+      parsed.allRows)
   ) {
     parsed.error =
-      "--prefer/--session-token/--no-gh apply to the repo-level form only (drop the <hash> argument)";
+      "--prefer/--session-token/--no-gh/--all-rows apply to the repo-level form only (drop the <hash> argument)";
     return parsed;
   }
   return parsed;
@@ -173,8 +188,21 @@ function runRepoNext(
     exec: opts.exec,
     now: opts.now,
     sessionToken: parsed.sessionToken,
-    skipGh: parsed.skipGh,
+    // --all-rows reports blocker verdicts, which are derived from backlog
+    // rows + spec frontmatter alone. The PR/CI probe would add seconds and
+    // a network dependency to a diagnostic whose output it cannot change.
+    skipGh: parsed.skipGh || parsed.allRows,
   });
+  // Diagnostic view: every parsed row with the SAME blocker verdict the
+  // dispatcher computes. Emitted INSTEAD of the decision so the decision's
+  // JSON contract (consumed by the /devx skill body) never grows a field,
+  // and so a before/after diff over a grammar change is a clean two-file
+  // comparison. `gh` is not consulted — the verdict is backlog + spec
+  // frontmatter only, so this stays fast and offline-safe.
+  if (parsed.allRows) {
+    out(`${JSON.stringify({ rows: snapshot.allRows, warnings: snapshot.warnings })}\n`);
+    return 0;
+  }
   const decision = decideRepoNext(snapshot, { preferPlan: parsed.preferPlan });
   out(
     `${JSON.stringify({
@@ -341,10 +369,19 @@ export function register(program: Command): void {
     .option("--prefer <what>", "prefer 'plan' — evaluate workstream stages (row 9) before DEV.md execution (row 8)")
     .option("--session-token <token>", "current session's token for the row-5 claimed-by-me check")
     .option("--no-gh", "skip the gh PR probe (offline / hermetic runs)")
+    .option(
+      "--all-rows",
+      "diagnostic: emit every backlog row with its blocker-resolution verdict instead of the decision (no gh probe). Diff before/after a change to the row grammar.",
+    )
     .action(
       (
         hash: string | undefined,
-        options: { prefer?: string; sessionToken?: string; gh?: boolean },
+        options: {
+          prefer?: string;
+          sessionToken?: string;
+          gh?: boolean;
+          allRows?: boolean;
+        },
       ) => {
         const args: string[] = [];
         if (hash !== undefined) args.push(hash);
@@ -354,6 +391,7 @@ export function register(program: Command): void {
         }
         // commander's --no-gh sets options.gh === false.
         if (options.gh === false) args.push("--no-gh");
+        if (options.allRows === true) args.push("--all-rows");
         const code = runNext(args);
         if (code !== 0) process.exit(code);
       },

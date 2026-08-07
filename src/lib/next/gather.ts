@@ -78,6 +78,7 @@ import {
   type QaWalkthroughSignal,
   type ReadyItemSignal,
   type RepoSnapshot,
+  type RowVerdict,
   type WorkstreamSignal,
   type WorkstreamTodoDrift,
 } from "./decide.js";
@@ -304,18 +305,45 @@ export function gatherRepoSnapshot(opts: GatherOpts): RepoSnapshot {
   for (const [hash, status] of struckStatusByHash) {
     if (!statusByHash.has(hash)) statusByHash.set(hash, status);
   }
-  const blockersResolved = (row: DevRow): boolean => {
+  // Split into classify + predicate so `--all-rows` can report WHICH
+  // blockers held a row without forking the rule that decides it. The
+  // predicate below is the sole definition of "runnable"; the diagnostic
+  // view is a projection of the same call, never a second implementation.
+  const classifyBlockers = (
+    row: DevRow,
+  ): { unknown: string[]; unsettled: string[] } => {
+    const unknown: string[] = [];
+    const unsettled: string[] = [];
     for (const blocker of row.blocked_by) {
       const st = statusByHash.get(blocker);
       // Unknown blocker → conservative "unresolved" (same posture as
       // mgr103 reconcile + pln103 validate-emit).
-      if (st === undefined) return false;
-      if (st !== "done" && st !== "deleted" && st !== "superseded") {
-        return false;
+      if (st === undefined) unknown.push(blocker);
+      else if (st !== "done" && st !== "deleted" && st !== "superseded") {
+        unsettled.push(blocker);
       }
     }
-    return true;
+    return { unknown, unsettled };
   };
+  const blockersResolved = (row: DevRow): boolean => {
+    const { unknown, unsettled } = classifyBlockers(row);
+    return unknown.length === 0 && unsettled.length === 0;
+  };
+  const allRows: RowVerdict[] = resolved.map((r) => {
+    const { unknown, unsettled } = classifyBlockers(r.row);
+    return {
+      hash: r.row.hash,
+      backlog: r.backlog,
+      status: r.effectiveStatus,
+      lineIndex: r.row.lineIndex,
+      blocked_by: r.row.blocked_by,
+      parallel_with: r.row.parallel_with ?? [],
+      epicSlug: r.row.epicSlug ?? null,
+      unknownBlockers: unknown,
+      unsettledBlockers: unsettled,
+      blockersResolved: unknown.length === 0 && unsettled.length === 0,
+    };
+  });
 
   // ── Ready + blocked signals ─────────────────────────────────────────────
   const devReady: ReadyItemSignal[] = [];
@@ -442,6 +470,7 @@ export function gatherRepoSnapshot(opts: GatherOpts): RepoSnapshot {
     todoDrift,
     drift,
     warnings,
+    allRows,
   };
 }
 

@@ -286,6 +286,44 @@ export interface RepoSnapshot {
   drift: DriftEntry[];
   /** Degradations the gatherer hit (gh unavailable, unreadable spec, …). */
   warnings: string[];
+  /**
+   * EVERY parsed backlog row with its blocker-resolution verdict — the
+   * diagnostic view behind `devx next --all-rows`.
+   *
+   * Exists because a change to the shared row grammar
+   * (`src/lib/backlog/parse.ts`) silently moves these verdicts, and there
+   * was no way to see that: `devx next` emits one decision, and
+   * `devx graph --format json` deliberately renders edges without
+   * re-computing any resolver's runnable verdict ("a map, not a
+   * dispatcher"). sgr101 had to re-implement `blockersResolved` in a
+   * throwaway script to satisfy its own AC — forking resolver logic the
+   * repo's working agreements say not to fork. These rows come from the
+   * SAME loop and the SAME predicate the decision uses, so a before/after
+   * diff cannot drift from what `devx next` actually does.
+   *
+   * Struck (`~~…~~`) rows are absent: they are settled by definition and
+   * never claimable, so the dispatcher's own row set excludes them too.
+   */
+  allRows: RowVerdict[];
+}
+
+/** One backlog row's blocker-resolution verdict (`devx next --all-rows`). */
+export interface RowVerdict {
+  hash: string;
+  backlog: string;
+  /** Spec frontmatter status when readable, else the row checkbox status. */
+  status: string;
+  /** 0-indexed line in its backlog file — disambiguates a duplicated hash. */
+  lineIndex: number;
+  blocked_by: string[];
+  parallel_with: string[];
+  epicSlug: string | null;
+  /** Blockers naming a hash no backlog row declares — held conservatively. */
+  unknownBlockers: string[];
+  /** Blockers that resolve to a row that is not done/deleted/superseded. */
+  unsettledBlockers: string[];
+  /** True iff every blocker is settled — the predicate the dispatcher uses. */
+  blockersResolved: boolean;
 }
 
 export interface RepoNextDecision {
