@@ -4,7 +4,7 @@
 
 # Story graph
 
-194 specs across 22 groups — 12 blocked · 124 done · 4 in-progress · 54 ready; 394 edges.
+195 specs across 22 groups — 12 blocked · 124 done · 5 in-progress · 54 ready; 394 edges.
 
 ## Legend
 
@@ -140,6 +140,7 @@ flowchart TD
     357d0c["357d0c Loop instance registry: crash-orphan-thro…"]
     3b9e07["3b9e07 `devx loop` never emits the mandatory `ph…"]
     494590["494590 Loop token accounting implausibly low — b…"]
+    4d1a9c["4d1a9c claim commits on whatever branch the main…"]
     4d9c1a["4d9c1a QA walkthrough — sgr104 regen hooks (clai…"]
     5c8b21["5c8b21 loop-concurrency G-1 test sits ~1.3x unde…"]
     620337["620337 loop-worker + manage-crash-restart-loop f…"]
@@ -482,6 +483,7 @@ flowchart TD
   class 357d0c ready
   class 3b9e07 ready
   class 494590 done
+  class 4d1a9c wip
   class 4d9c1a ready
   class 5c8b21 ready
   class 620337 ready

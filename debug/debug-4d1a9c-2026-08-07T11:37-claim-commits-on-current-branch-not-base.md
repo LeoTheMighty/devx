@@ -5,8 +5,8 @@ created: 2026-08-07T11:37:00-06:00
 title: claim commits on whatever branch the main worktree has checked out, and reports exit 0 though origin never moved
 from: null
 spawned: []
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-08-07T1138-44048
 branch: null
 ---
 
@@ -124,3 +124,4 @@ guard belongs beside it.
 - 2026-08-07T11:37 — filed from the downstream `friend-finder-mesh` report
   (`debug-3fa71c`); reproduced against `455f02c` with a throwaway fixture
   before filing, root-caused to `claim.ts:1071` + `claim.ts:1097`.
+- 2026-08-07T11:38:44-06:00 — claimed by /devx in session /devx-2026-08-07T1138-44048
