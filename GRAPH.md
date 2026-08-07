@@ -4,7 +4,7 @@
 
 # Story graph
 
-194 specs across 22 groups — 12 blocked · 122 done · 6 in-progress · 54 ready; 394 edges.
+194 specs across 22 groups — 12 blocked · 124 done · 4 in-progress · 54 ready; 394 edges.
 
 ## Legend
 
@@ -65,15 +65,7 @@ flowchart TD
     rtlret["rtlret Retro + LEARN.md updates (interim retro d…"]
   end
   subgraph sg_story_graph["story-graph (workstream)"]
-    62bcd1["62bcd1 Story Graph"]
-    sgr101["sgr101 Parser completion + hardening (splitHashe…"]
-    sgr102["sgr102 Graph model — buildGraphModel nodes/edges…"]
-    sgr103["sgr103 Renderer + devx graph CLI (write/stdout/c…"]
-    sgr104["sgr104 Regen hooks — claim + RED emission keep G…"]
-    sgr105["sgr105 mark-done helper + Phase-8 rewrite (merge…"]
-    sgr106["sgr106 Backfill — adds-only idempotent edge comp…"]
-    sgr107["sgr107 Downstream portability — packaged CLI pro…"]
-    sgrret["sgrret Retro + LEARN.md updates (interim retro d…"]
+    grp_story_graph["story-graph — 9/9 done, last merged 2026-08-06"]
   end
   subgraph sg_usage_window_governor["usage-window-governor (workstream)"]
     c8e2d4["c8e2d4 Vision-gap Track 2 — Usage-window governo…"]
@@ -220,14 +212,6 @@ flowchart TD
   620c74 -.-> rtl105
   620c74 -.-> rtl106
   620c74 -.-> rtlret
-  62bcd1 -.-> sgr101
-  62bcd1 -.-> sgr102
-  62bcd1 -.-> sgr103
-  62bcd1 -.-> sgr104
-  62bcd1 -.-> sgr105
-  62bcd1 -.-> sgr106
-  62bcd1 -.-> sgr107
-  62bcd1 -.-> sgrret
   7a2d1f -.-> a10ret
   7a2d1f -.-> b20ret
   7a2d1f -.-> c30ret
@@ -392,36 +376,18 @@ flowchart TD
   rtlret --> rtl104
   rtlret --> rtl105
   rtlret --> rtl106
-  sgr102 --> sgr101
-  sgr103 -.-> 3b9e07
-  sgr103 -.-> 97f6d8
-  sgr103 -.-> ea4f41
-  sgr103 --> sgr102
-  sgr104 -.-> 4d9c1a
-  sgr104 -.-> 5c8b21
-  sgr104 -.-> 7e2b56
-  sgr104 --> sgr103
-  sgr104 --- |par| sgr106
-  sgr104 --- |par| sgr107
-  sgr105 -.-> 620337
-  sgr105 -.-> 8a9586
-  sgr105 -.-> 8b9165
-  sgr105 -.-> c94f14
-  sgr105 --> sgr104
-  sgr105 --- |par| sgr106
-  sgr105 --- |par| sgr107
-  sgr106 -.-> 9f24c7
-  sgr106 --> sgr103
-  sgr106 --- |par| sgr107
-  sgr107 -.-> d7e8e5
-  sgr107 --> sgr103
-  sgrret --> sgr101
-  sgrret --> sgr102
-  sgrret --> sgr103
-  sgrret --> sgr104
-  sgrret --> sgr105
-  sgrret --> sgr106
-  sgrret --> sgr107
+  grp_story_graph -.-> 3b9e07
+  grp_story_graph -.-> 97f6d8
+  grp_story_graph -.-> ea4f41
+  grp_story_graph -.-> 4d9c1a
+  grp_story_graph -.-> 5c8b21
+  grp_story_graph -.-> 7e2b56
+  grp_story_graph -.-> 620337
+  grp_story_graph -.-> 8a9586
+  grp_story_graph -.-> 8b9165
+  grp_story_graph -.-> c94f14
+  grp_story_graph -.-> 9f24c7
+  grp_story_graph -.-> d7e8e5
   grp_os_supervisor_scaffold --> grp_devx_cli_skeleton
   tur101 -.-> 7c1e93
   v2d101 --> v2x101
@@ -473,15 +439,7 @@ flowchart TD
   class rtl105 done
   class rtl106 done
   class rtlret ready
-  class 62bcd1 wip
-  class sgr101 done
-  class sgr102 done
-  class sgr103 done
-  class sgr104 done
-  class sgr105 done
-  class sgr106 done
-  class sgr107 done
-  class sgrret wip
+  class grp_story_graph collapsed
   class c8e2d4 ready
   class c30001 ready
   class c30002 ready

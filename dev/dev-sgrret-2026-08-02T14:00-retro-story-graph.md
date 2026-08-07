@@ -5,7 +5,7 @@ created: 2026-08-02T14:00:49-06:00
 title: Retro + LEARN.md updates (interim retro discipline)
 from: plan/plan-62bcd1-2026-08-02T09:00-story-graph.md
 plan: plan/plan-62bcd1-2026-08-02T09:00-story-graph.md
-status: in-progress
+status: done
 owner: /devx-2026-08-06T0958-25102
 blocked_by: [sgr101, sgr102, sgr103, sgr104, sgr105, sgr106, sgr107]
 branch: feat/dev-sgrret
@@ -39,3 +39,4 @@ Run the native retro stage (`/devx retro` — the `## Stage: Retro` section of `
 - 2026-08-06T10:14 — phase 5: targeted gates green — `devx-status-log-discipline` + `engine-prose-budget` + `skills-sync` (3 files / 30 tests, 323ms), the three suites that read this diff's file classes from disk. Full local suite not re-run: prose-only diff (zero .ts touched), the full gate is documented baseline-red from agent worktrees (`debug-620337`), and remote CI is ground truth for the PR. workstream-evals project intersected only via the added RETRO prose — evals are fixture-self-contained tsx scripts, unaffected. No QA walkthrough: no user-visible surface (retro bookkeeping prose only).
 - 2026-08-06T10:16 — phase 7: PR #121 opened (https://github.com/LeoTheMighty/devx/pull/121; body rendered by `devx pr-body`, no unresolved placeholders).
 - 2026-08-06T16:45 — phase 7 (CI): success — devx-ci (run 31118895156) after a 4-attempt saga: attempts 1–3 lost to GitHub's major partial outage (ubuntu runner "Failed to resolve action download info" ×2, then cancelled at 0 steps; macOS green throughout; diff is prose-only), rerun-4 dispatched on status-page recovery and green on all jobs. phase 7: CI success — devx-ci (run 31118895156).
+- 2026-08-06T18:15:43-06:00 — merged via PR #121 (squash → 8eb64bf)

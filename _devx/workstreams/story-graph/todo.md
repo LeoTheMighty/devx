@@ -36,7 +36,7 @@
   - [x] `devx gate evals 62bcd1` PASS — evals_red flipped, stage → executing
   - [x] sgr101–sgr107 + sgrret emitted; DEV.md epic section; validate-emit ok
 - [x] Gate: evals
-- [ ] Stage: Execute
+- [x] Stage: Execute
   - [x] Phase 1: Parser completion + hardening → sgr101
   - [x] Phase 2: Graph model → sgr102
   - [x] Phase 3: Renderer + `devx graph` CLI → sgr103
@@ -47,5 +47,5 @@
     - [x] T7.1 pack-and-run harness (npm pack leg) + fs-audit preload in E-7; fix fixture cycle bug
     - [x] T7.2 E-7 RED → green; fix surfaced portability gaps (expected none)
     - [x] T7.3 MANUAL.md rows (global update + /devx-init refresh + per-repo backfill + render/commit, dated for G-2)
-- [ ] Stage: Retro
+- [x] Stage: Retro
 - [ ] Stage: Outcome
