@@ -632,6 +632,44 @@ export async function claimSpec(
       : null;
   const worktreeBase = integrationBranch ?? pushTarget;
 
+  // Branch-posture guard (4d1a9c). Step 4 commits with `cwd: opts.repoRoot`
+  // and no assertion about what HEAD points at, and Step 5's
+  // `git push origin <pushTarget>` pushes the LOCAL ref of that name. So when
+  // the main worktree sits on any other branch — a `chore/learn-…` left
+  // checked out by a peer /devx-learn session is the observed shape — the
+  // claim commit lands on THAT branch while the push is a silent no-op
+  // ("Everything up-to-date", exit 0). `isRejectedPush` never fires, no
+  // rollback runs, and the helper returns a claimSha for a commit that
+  // reached nothing; the item's worktree then bases off the unmoved target,
+  // so the spec inside the branch that becomes the PR still reads
+  // `status: ready`.
+  //
+  // Refuse rather than repair. The alternatives — checkout/restore around the
+  // claim, or commit-tree onto the target behind HEAD's back — both touch a
+  // working tree a live peer may be mid-edit in, which is precisely the
+  // hazard the originating incident carried (a concurrent session was writing
+  // DEBUG.md in that tree while the claim ran).
+  //
+  // Positioned BEFORE resolveInheritedBranch (which may fetch and create a
+  // branch) and before the backlog lock, so a refusal costs nothing and
+  // mutates nothing. Indeterminate readings skip the guard, matching the
+  // canonical-root assertion above: only positive evidence blocks a claim.
+  const posture = readHeadPosture(exec, opts.repoRoot);
+  if (posture.kind === "branch" && posture.branch !== pushTarget) {
+    throw new ClaimError(
+      "validate",
+      `the main worktree at ${opts.repoRoot} is on branch '${posture.branch}', but the claim commit must land on '${pushTarget}' and reach origin/${pushTarget}. ` +
+        `Nothing was mutated — check out '${pushTarget}' (\`git -C ${opts.repoRoot} checkout ${pushTarget}\`) and re-run.`,
+    );
+  }
+  if (posture.kind === "detached") {
+    throw new ClaimError(
+      "validate",
+      `the main worktree at ${opts.repoRoot} has a detached HEAD, but the claim commit must land on '${pushTarget}' and reach origin/${pushTarget}. ` +
+        `Nothing was mutated — check out '${pushTarget}' (\`git -C ${opts.repoRoot} checkout ${pushTarget}\`) and re-run.`,
+    );
+  }
+
   const lockPath = join(
     opts.repoRoot,
     ".devx-cache",
@@ -1236,7 +1274,32 @@ export async function claimSpec(
         cwd: opts.repoRoot,
       });
     }
-    if (pushResult.exitCode !== 0) {
+    // 4d1a9c: make "exit 0 ⇒ the claim is on origin" true by construction
+    // rather than by argument. The branch guard closes the KNOWN route to a
+    // green-but-empty push (`git push origin main` from another branch pushes
+    // the unmoved local ref and prints "Everything up-to-date"); this is the
+    // backstop for any other route to one.
+    //
+    // `merge-base --is-ancestor` exits 1 only on definitive evidence that the
+    // pushed ref does NOT contain our commit. Exit 0 (contained) and every
+    // other exit — bad ref, failing seam, the fake execs in the unit tests —
+    // leave the claim alone: rolling back a commit that IS durable on origin
+    // would be strictly worse than not checking.
+    let pushUnverified: string | null = null;
+    if (pushResult.exitCode === 0) {
+      const trackingRef = `refs/remotes/origin/${pushTarget}`;
+      const contains = exec(
+        "git",
+        ["merge-base", "--is-ancestor", "HEAD", trackingRef],
+        { cwd: opts.repoRoot },
+      );
+      if (contains.exitCode === 1) {
+        pushUnverified =
+          `git push origin ${pushTarget} reported success, but ${trackingRef} does not contain the claim commit — ` +
+          `nothing reached origin/${pushTarget}`;
+      }
+    }
+    if (pushResult.exitCode !== 0 || pushUnverified !== null) {
       // Pre-push commit is local-only; reverting is safe and matches the
       // party-mode locked decision (a) "reset local DEV.md to the pre-claim
       // state via `git reset HEAD~1` if the claim commit hasn't been pushed".
@@ -1263,7 +1326,7 @@ export async function claimSpec(
         // the claim commit, and rewriting the files under it would leave a
         // confusing HEAD-vs-tree mismatch on top of the failed reset.
         process.stderr.write(
-          `devx claim: WARN — git push origin ${pushTarget} failed AND the rollback reset failed (exit ${resetResult.exitCode}): ${resetResult.stderr.trim()}; ` +
+          `devx claim: WARN — ${pushUnverified !== null ? `git push origin ${pushTarget} did not reach origin` : `git push origin ${pushTarget} failed`} AND the rollback reset failed (exit ${resetResult.exitCode}): ${resetResult.stderr.trim()}; ` +
             `local main has the claim commit at HEAD. Run \`git reset --soft HEAD~1\` (or restore origin) by hand.\n`,
         );
       } else {
@@ -1315,6 +1378,14 @@ export async function claimSpec(
         }
       }
       releaseLock();
+      // A push that exited 0 without carrying the commit is never contention
+      // — no peer rejected us, the refspec simply moved nothing. Classify it
+      // as a broken claim so the driver's systemic budget sees it, and check
+      // it FIRST: with exitCode 0 the race predicates below read empty stderr
+      // and would fall through to a "failed (exit 0)" message.
+      if (pushUnverified !== null) {
+        throw new ClaimError("git-push", pushUnverified);
+      }
       // Classification is by the FINAL failure (review BH-2): contended
       // only when the last push was itself race-shaped, or the pull-rebase
       // failed after a race-shaped rejection. A non-race terminal failure
@@ -1397,6 +1468,48 @@ export async function claimSpec(
 
 function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+/**
+ * What the main worktree's HEAD points at, as POSITIVE evidence only
+ * (4d1a9c).
+ *
+ * `indeterminate` is not a failure — it is "this exec seam did not tell us",
+ * and it deliberately covers the fake execs every claim unit test injects
+ * (they blanket-return exit 0 with empty stdout). Blocking on a
+ * can't-determine reading would fail closed on legitimate claims, so the
+ * guard fails open, exactly like the canonical-root assertion in claimSpec.
+ */
+export type HeadPosture =
+  | { kind: "branch"; branch: string }
+  | { kind: "detached" }
+  | { kind: "indeterminate" };
+
+/**
+ * Read HEAD's posture in `repoRoot` — the MAIN worktree, which is where the
+ * claim commits; never the caller's cwd.
+ *
+ * `git symbolic-ref --quiet --short HEAD` prints the branch name on a branch
+ * and exits non-zero (silently, thanks to --quiet) on a detached HEAD. A
+ * non-zero exit alone can't distinguish "detached" from "not a repo" or a
+ * failing seam, so detached is only reported when HEAD independently resolves
+ * to a commit — otherwise we stay indeterminate.
+ */
+export function readHeadPosture(exec: Exec, repoRoot: string): HeadPosture {
+  const sym = exec("git", ["symbolic-ref", "--quiet", "--short", "HEAD"], {
+    cwd: repoRoot,
+  });
+  const name = sym.stdout.trim();
+  if (sym.exitCode === 0) {
+    return name === "" ? { kind: "indeterminate" } : { kind: "branch", branch: name };
+  }
+  const head = exec("git", ["rev-parse", "--verify", "--quiet", "HEAD"], {
+    cwd: repoRoot,
+  });
+  if (head.exitCode === 0 && /^[0-9a-f]{7,40}$/i.test(head.stdout.trim())) {
+    return { kind: "detached" };
+  }
+  return { kind: "indeterminate" };
 }
 
 /**
