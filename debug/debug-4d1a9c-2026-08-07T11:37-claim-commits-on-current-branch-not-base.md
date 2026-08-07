@@ -5,7 +5,7 @@ created: 2026-08-07T11:37:00-06:00
 title: claim commits on whatever branch the main worktree has checked out, and reports exit 0 though origin never moved
 from: null
 spawned: []
-status: in-progress
+status: done
 owner: /devx-2026-08-07T1138-44048
 branch: feat/debug-4d1a9c
 ---
@@ -187,3 +187,4 @@ guard belongs beside it.
   reached. Proven: `gh pr list --head null` returns `[]`, and setting the
   field flips the gate to `{"merge":true}`. Filed as its own debug spec; this
   spec now records its branch explicitly, which is the convention anyway.
+- 2026-08-07T14:15:15-06:00 — merged via PR #123 (squash → 782f81e)

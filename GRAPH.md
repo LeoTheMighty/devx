@@ -4,7 +4,7 @@
 
 # Story graph
 
-195 specs across 22 groups — 12 blocked · 124 done · 5 in-progress · 54 ready; 394 edges.
+196 specs across 22 groups — 12 blocked · 124 done · 4 in-progress · 56 ready; 394 edges.
 
 ## Legend
 
@@ -140,13 +140,14 @@ flowchart TD
     357d0c["357d0c Loop instance registry: crash-orphan-thro…"]
     3b9e07["3b9e07 `devx loop` never emits the mandatory `ph…"]
     494590["494590 Loop token accounting implausibly low — b…"]
-    4d1a9c["4d1a9c claim commits on whatever branch the main…"]
+    4d1a9c["4d1a9c QA walkthrough for the claim branch-postu…"]
     4d9c1a["4d9c1a QA walkthrough — sgr104 regen hooks (clai…"]
     5c8b21["5c8b21 loop-concurrency G-1 test sits ~1.3x unde…"]
     620337["620337 loop-worker + manage-crash-restart-loop f…"]
     6a913f["6a913f hash→spec resolution hardcodes dev/ acros…"]
     74632d["74632d loop-driver fixture teardown races on mac…"]
     7a2d1f["7a2d1f Mobile companion v0.1 through real-time s…"]
+    7b3e2a["7b3e2a `merge-gate`'s hand-rolled `readFrontmatt…"]
     7c1e93["7c1e93 loop-concurrency G-1 harness times out un…"]
     7e2b56["7e2b56 emit-retro-story writes its artifacts to…"]
     8a9586["8a9586 Loop merge tail leaves GRAPH.md stale — F…"]
@@ -483,13 +484,14 @@ flowchart TD
   class 357d0c ready
   class 3b9e07 ready
   class 494590 done
-  class 4d1a9c wip
+  class 4d1a9c ready
   class 4d9c1a ready
   class 5c8b21 ready
   class 620337 ready
   class 6a913f done
   class 74632d ready
   class 7a2d1f wip
+  class 7b3e2a ready
   class 7c1e93 ready
   class 7e2b56 ready
   class 8a9586 ready
