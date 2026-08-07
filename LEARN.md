@@ -602,6 +602,42 @@ transient-gh-401 merge tail; `debug-7c1e93` spawn-flake corroboration).
   2 prose says to read the phase's RED artifacts as the contract regardless
   of verification type. — pending; no code or skill change made.
 
+## session-learn candidates (learn 2026-08-07, for the next retro)
+
+*Added by a `/devx-learn` run over the sgr101 session (PR #110), user-pruned.
+`epic-story-graph` had already retroed (sgrret, PR #121), so these have no
+epic section to land in — the next retro promotes, merges, or strikes them
+against its own evidence. Candidates only; do not treat as promoted rows.
+The same run's two framework findings were applied directly (see the
+`fw/learn-2026-08-07-…` PR) and are NOT repeated here.*
+
+- [C1] [med] [docs] **On a change to a SHARED grammar, capture the live
+  before-snapshot before writing code — it changes the design, not just the
+  review.** sgr101's AC 6 asked for a before/after verdict diff as
+  verification. Taking the "before" first instead turned it into a design
+  input: implementing AC 1 literally (strip trailing punctuation) was
+  measured to newly block two rows in this repo's own DEV.md
+  (`Blocked-by: hfi101, hfi102 (both done).` gaining `both` + `done`), which
+  is what produced the parenthetical-exclusion rule rather than a
+  post-hoc discovery in review. Distinct from the sgrret E4 "empirical
+  real-repo leg", which is a review-stage compensation: this is the same
+  instrument used one stage earlier, as a design gate. Generalization for
+  `/devx-plan`: a phase whose surface is a shared parser/grammar should
+  carry its live before/after AC as a Phase-2 step, not only as
+  verification. — pending (candidate).
+- [C2] [med] [code+docs] **An existing regression test pins the code path it
+  was written against; a new branch routed around it is unpinned, so a fixed
+  bug can be reintroduced with the suite still green.** sgr101 widened epic
+  heading detection with a new linkage-parenthetical branch. The mlc106
+  EC#7 fixture (`Epic — devx (v2) engine`) kept passing the entire time,
+  while the new branch would have truncated
+  `Epic — devx (workstreams overview) engine` to `devx` — the exact
+  epic-collapse bug EC#7 exists to prevent. Only adversarial self-review
+  caught it; a second fixture now pins the new path. Generalization: when
+  widening a matcher, re-run the FIXTURES OF PAST BUGS in that function
+  through the new branch specifically — a green suite proves the old path
+  still works, not that the new one is safe. — pending (candidate).
+
 ---
 
 ## Cross-epic patterns
