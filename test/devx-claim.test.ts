@@ -41,6 +41,7 @@ import {
   claimSpec,
   findSpecForHash,
   flipDevMdRow,
+  readHeadPosture,
   updateSpecForClaim,
 } from "../src/lib/devx/claim.js";
 import {
@@ -1192,6 +1193,303 @@ describe("claimSpec — canonical-root assertion (mlc101 AC 4)", () => {
       calls.push({ cmd, args });
       if (cmd === "git" && args[0] === "rev-parse" && args[1] === "--git-dir") {
         return { stdout: "", stderr: "fatal: not a git repository", exitCode: 128 };
+      }
+      if (cmd === "git" && args[0] === "rev-parse" && args[1] === "HEAD") {
+        return { stdout: "abc123def456\n", stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "", exitCode: 0 };
+    };
+    const result = await claimSpec("dvx101", { ...baseOpts, fs, exec });
+    expect(result.claimSha).toBe("abc123def456");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch-posture guard (4d1a9c)
+//
+// The bug: Step 4 commits with no assertion about HEAD and Step 5 pushes the
+// LOCAL ref named by pushTarget, so claiming from a main worktree parked on
+// some other branch put the claim commit on THAT branch while the push printed
+// "Everything up-to-date" and exited 0 — a claimSha for a commit that reached
+// nothing. Verified against real git before the fix; these pin the guard.
+// ---------------------------------------------------------------------------
+
+/**
+ * Fake exec whose HEAD posture is scriptable. `head` is the branch name, or
+ * "detached", or "indeterminate" (the blanket exit-0/empty-stdout shape every
+ * other fixture in this file uses).
+ */
+function headPostureExec(head: string | "detached" | "indeterminate") {
+  const calls: ExecCall[] = [];
+  const exec = (cmd: string, args: string[]): ExecResult => {
+    calls.push({ cmd, args });
+    if (cmd === "git" && args[0] === "symbolic-ref") {
+      if (head === "indeterminate") {
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+      if (head === "detached") {
+        // `--quiet` makes git exit 1 with no stderr on a detached HEAD.
+        return { stdout: "", stderr: "", exitCode: 1 };
+      }
+      return { stdout: `${head}\n`, stderr: "", exitCode: 0 };
+    }
+    if (
+      cmd === "git" &&
+      args[0] === "rev-parse" &&
+      args[1] === "--verify" &&
+      args[2] === "--quiet"
+    ) {
+      // HEAD resolves to a commit — what separates "detached" from "no repo".
+      return { stdout: "abc123def456\n", stderr: "", exitCode: 0 };
+    }
+    if (cmd === "git" && args[0] === "rev-parse" && args[1] === "HEAD") {
+      return { stdout: "abc123def456\n", stderr: "", exitCode: 0 };
+    }
+    return { stdout: "", stderr: "", exitCode: 0 };
+  };
+  return { exec, calls };
+}
+
+describe("readHeadPosture (4d1a9c)", () => {
+  it("reads a branch name as positive evidence", () => {
+    const { exec } = headPostureExec("chore/learn-2026-07-31");
+    expect(readHeadPosture(exec, REPO)).toEqual({
+      kind: "branch",
+      branch: "chore/learn-2026-07-31",
+    });
+  });
+
+  it("reports detached only when HEAD independently resolves to a commit", () => {
+    const { exec } = headPostureExec("detached");
+    expect(readHeadPosture(exec, REPO)).toEqual({ kind: "detached" });
+  });
+
+  it("stays indeterminate when symbolic-ref succeeds with empty stdout", () => {
+    const { exec } = headPostureExec("indeterminate");
+    expect(readHeadPosture(exec, REPO)).toEqual({ kind: "indeterminate" });
+  });
+
+  it("stays indeterminate when the seam fails outright (not a repo)", () => {
+    const exec = (): ExecResult => ({
+      stdout: "",
+      stderr: "fatal: not a git repository",
+      exitCode: 128,
+    });
+    expect(readHeadPosture(exec, REPO)).toEqual({ kind: "indeterminate" });
+  });
+
+  it("reads HEAD in the passed repoRoot, not the caller's cwd", () => {
+    // Load-bearing: the claim commits in the MAIN worktree, so a probe that
+    // silently used process.cwd() would read the agent's worktree posture and
+    // wave through exactly the case this guard exists to catch.
+    const seen: Array<string | undefined> = [];
+    const cwdExec = (
+      _cmd: string,
+      _args: string[],
+      o?: { cwd?: string },
+    ): ExecResult => {
+      seen.push(o?.cwd);
+      return { stdout: "main\n", stderr: "", exitCode: 0 };
+    };
+    expect(readHeadPosture(cwdExec, "/some/main/checkout")).toEqual({
+      kind: "branch",
+      branch: "main",
+    });
+    expect(seen).toEqual(["/some/main/checkout"]);
+  });
+});
+
+describe("claimSpec — branch-posture guard (4d1a9c)", () => {
+  const LOCK = `${REPO}/.devx-cache/locks/spec-dvx101.lock`;
+
+  it("refuses when the main worktree is on a branch other than the push target", async () => {
+    const { fs, baseOpts } = makeFixture();
+    const { exec } = headPostureExec("chore/learn-2026-07-31-ffm102-session");
+    await expect(
+      claimSpec("dvx101", { ...baseOpts, fs, exec }),
+    ).rejects.toMatchObject({ name: "ClaimError", stage: "validate" });
+  });
+
+  it("names both the current branch and the expected one in the refusal", async () => {
+    const { fs, baseOpts } = makeFixture();
+    const { exec } = headPostureExec("chore/learn-2026-07-31-ffm102-session");
+    await expect(
+      claimSpec("dvx101", { ...baseOpts, fs, exec }),
+    ).rejects.toThrow(/chore\/learn-2026-07-31-ffm102-session[\s\S]*'main'/);
+  });
+
+  it("mutates NOTHING when it refuses — no lock, no backlog flip, no spec flip, no commit", async () => {
+    const { fs, state, baseOpts } = makeFixture();
+    const devMdBefore = state.files.get(`${REPO}/DEV.md`);
+    const specKey = `${REPO}/dev/dev-dvx101-2026-04-28T19:30-devx-claim-atomic.md`;
+    const specBefore = state.files.get(specKey);
+    const { exec, calls } = headPostureExec("chore/peer-session");
+
+    await expect(
+      claimSpec("dvx101", { ...baseOpts, fs, exec }),
+    ).rejects.toMatchObject({ stage: "validate" });
+
+    expect(state.files.has(LOCK)).toBe(false);
+    expect(state.files.get(`${REPO}/DEV.md`)).toBe(devMdBefore);
+    expect(state.files.get(specKey)).toBe(specBefore);
+    // A peer session may be mid-edit in this tree: the guard must not have
+    // reached any writing git verb, nor the inherited-branch fetch/create.
+    const verbs = calls.map((c) => c.args[0]);
+    expect(verbs).not.toContain("commit");
+    expect(verbs).not.toContain("push");
+    expect(verbs).not.toContain("worktree");
+    expect(verbs).not.toContain("fetch");
+    expect(verbs).not.toContain("branch");
+    expect(verbs).not.toContain("add");
+  });
+
+  it("refuses a detached HEAD rather than falling through", async () => {
+    const { fs, state, baseOpts } = makeFixture();
+    const { exec } = headPostureExec("detached");
+    await expect(
+      claimSpec("dvx101", { ...baseOpts, fs, exec }),
+    ).rejects.toThrow(/detached HEAD/);
+    expect(state.files.has(LOCK)).toBe(false);
+  });
+
+  it("proceeds when the main worktree IS on the push target", async () => {
+    const { fs, baseOpts } = makeFixture();
+    const { exec } = headPostureExec("main");
+    const result = await claimSpec("dvx101", { ...baseOpts, fs, exec });
+    expect(result.branch).toBe("feat/dev-dvx101");
+    expect(result.claimSha).toBe("abc123def456");
+  });
+
+  it("compares against default_branch, not the integration branch, on a split-branch project", async () => {
+    // The claim commit always lands on default_branch (DEV.md lives there)
+    // even when feature branches fork off develop — so `develop` checked out
+    // is still a refusal, and `main` is still the happy path.
+    const { fs, baseOpts } = makeFixture();
+    const splitConfig = {
+      git: {
+        default_branch: "main",
+        branch_prefix: "develop/",
+        integration_branch: "develop",
+      },
+    };
+    await expect(
+      claimSpec("dvx101", {
+        ...baseOpts,
+        config: splitConfig,
+        fs,
+        exec: headPostureExec("develop").exec,
+      }),
+    ).rejects.toMatchObject({ stage: "validate" });
+
+    const fresh = makeFixture();
+    const ok = await claimSpec("dvx101", {
+      ...fresh.baseOpts,
+      config: splitConfig,
+      fs: fresh.fs,
+      exec: headPostureExec("main").exec,
+    });
+    expect(ok.branch).toBe("develop/dev-dvx101");
+  });
+
+  it("skips the guard when the posture is indeterminate (fails open, like the canonical-root probe)", async () => {
+    const { fs, baseOpts } = makeFixture();
+    const { exec } = headPostureExec("indeterminate");
+    const result = await claimSpec("dvx101", { ...baseOpts, fs, exec });
+    expect(result.claimSha).toBe("abc123def456");
+  });
+});
+
+describe("claimSpec — push reached origin (4d1a9c AC 4)", () => {
+  /**
+   * Exec whose push exits 0 but whose `merge-base --is-ancestor` says the
+   * pushed ref does NOT contain the commit — i.e. the "Everything
+   * up-to-date" no-op, modelled without real git.
+   */
+  function noOpPushExec() {
+    const calls: ExecCall[] = [];
+    const exec = (cmd: string, args: string[]): ExecResult => {
+      calls.push({ cmd, args });
+      if (cmd === "git" && args[0] === "symbolic-ref") {
+        return { stdout: "main\n", stderr: "", exitCode: 0 };
+      }
+      if (cmd === "git" && args[0] === "merge-base") {
+        // exit 1 === definitively not an ancestor
+        return { stdout: "", stderr: "", exitCode: 1 };
+      }
+      if (cmd === "git" && args[0] === "push") {
+        return { stdout: "Everything up-to-date\n", stderr: "", exitCode: 0 };
+      }
+      if (cmd === "git" && args[0] === "rev-parse" && args[1] === "HEAD") {
+        return { stdout: "abc123def456\n", stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "", exitCode: 0 };
+    };
+    return { exec, calls };
+  }
+
+  it("fails the claim when a green push did not carry the commit to origin", async () => {
+    const { fs, baseOpts } = makeFixture();
+    const { exec } = noOpPushExec();
+    await expect(
+      claimSpec("dvx101", { ...baseOpts, fs, exec }),
+    ).rejects.toMatchObject({ name: "ClaimError", stage: "git-push" });
+  });
+
+  it("classifies it as broken, not contended — no peer rejected anything", async () => {
+    const { fs, baseOpts } = makeFixture();
+    const { exec } = noOpPushExec();
+    await expect(
+      claimSpec("dvx101", { ...baseOpts, fs, exec }),
+    ).rejects.not.toMatchObject({ name: "ClaimContendedError" });
+    const { fs: fs2, baseOpts: opts2 } = makeFixture();
+    await expect(
+      claimSpec("dvx101", { ...opts2, fs: fs2, exec: noOpPushExec().exec }),
+    ).rejects.toThrow(/does not contain the claim commit/);
+  });
+
+  it("rolls back: lock released, backlog and spec restored, no worktree created", async () => {
+    const { fs, state, baseOpts } = makeFixture();
+    const devMdBefore = state.files.get(`${REPO}/DEV.md`);
+    const specKey = `${REPO}/dev/dev-dvx101-2026-04-28T19:30-devx-claim-atomic.md`;
+    const specBefore = state.files.get(specKey);
+    const { exec, calls } = noOpPushExec();
+
+    await expect(
+      claimSpec("dvx101", { ...baseOpts, fs, exec }),
+    ).rejects.toMatchObject({ stage: "git-push" });
+
+    expect(
+      state.files.has(`${REPO}/.devx-cache/locks/spec-dvx101.lock`),
+    ).toBe(false);
+    expect(state.files.get(`${REPO}/DEV.md`)).toBe(devMdBefore);
+    expect(state.files.get(specKey)).toBe(specBefore);
+    expect(calls.map((c) => c.args[0])).not.toContain("worktree");
+    // The local claim commit was unwound too.
+    expect(
+      calls.some(
+        (c) => c.args[0] === "reset" && c.args.includes("--soft"),
+      ),
+    ).toBe(true);
+  });
+
+  it("leaves a genuinely-pushed claim alone (is-ancestor exit 0)", async () => {
+    const { fs, baseOpts } = makeFixture();
+    const { exec } = headPostureExec("main"); // merge-base → blanket exit 0
+    const result = await claimSpec("dvx101", { ...baseOpts, fs, exec });
+    expect(result.claimSha).toBe("abc123def456");
+  });
+
+  it("does not roll back a durable claim on an indeterminate ancestry probe", async () => {
+    // A bad-ref / broken-seam exit (128) must NOT be read as "not an
+    // ancestor" — unwinding a commit that IS on origin is worse than not
+    // checking at all.
+    const { fs, baseOpts } = makeFixture();
+    const exec = (cmd: string, args: string[]): ExecResult => {
+      if (cmd === "git" && args[0] === "symbolic-ref") {
+        return { stdout: "main\n", stderr: "", exitCode: 0 };
+      }
+      if (cmd === "git" && args[0] === "merge-base") {
+        return { stdout: "", stderr: "fatal: bad revision", exitCode: 128 };
       }
       if (cmd === "git" && args[0] === "rev-parse" && args[1] === "HEAD") {
         return { stdout: "abc123def456\n", stderr: "", exitCode: 0 };
