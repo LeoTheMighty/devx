@@ -581,6 +581,26 @@ transient-gh-401 merge tail; `debug-7c1e93` spawn-flake corroboration).
   line, and the post-merge `dist/` rebuild (the mlcret correctness-window
   finding). — applied: cross-reference appended to b931a1's status log in
   this PR; re-prioritization left to the user/ManageAgent.
+- [E11] [low] [docs] **When the planning artifacts leave a contract
+  undefined, the RED evals are the operative specification — read them for
+  the contract, not only to watch them fail.** *(Post-retro addition: filed
+  by a `/devx-learn` over the sgr102 session on 2026-08-07, after sgrret
+  closed. Not weighed by the retro; a single observation.)* `heading-fallback`
+  is named in sgr102's ACs, in design.md's four-code warning union, and in
+  plan.md's Phase-2 success criteria — but defined in none of them. Its
+  meaning was recoverable only from E-4's *negative* assertion ("ffm heading
+  variant fell back instead of resolving its workstream hash"), which fixes
+  it as "an epic heading that declares a section but names no linkage hash."
+  The same read settled two more underspecified points the prose never
+  stated: blocking-edge direction (`from` is the BLOCKED spec) and the
+  drift rule (fires only where BOTH sources name blockers — E-4 pins pal444
+  as warning and pal111 as must-not-warn). Distinct from the honest-RED row
+  below, which governs *why* a red is red; this is about the eval as the
+  definition of record. `/devx` Phase 2 already says to locate the RED
+  artifacts, but frames re-running them as a `tests-first` obligation —
+  sgr102 was `tests-after` and read them anyway. Candidate corrective: Phase
+  2 prose says to read the phase's RED artifacts as the contract regardless
+  of verification type. — pending; no code or skill change made.
 
 ---
 
