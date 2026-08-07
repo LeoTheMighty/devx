@@ -123,6 +123,7 @@ The three specs partition cleanly: ee7049 wraps the release path that goes
 ## Status log
 
 - 2026-07-29T10:15 — created by mlcret (retro finding E1/E2/E3/E5).
+- 2026-08-06T10:03 — sgrret cross-reference: sgr105 (PR #118) shipped `devx devx-helper mark-done` — the structural half of defect 1 (bookkeeping flips under the backlog lock + explicit-pathspec return, Phase 8 after-merge prose rewritten to invoke it) plus the status-log splice extraction this spec's status-log AC describes. Before starting, re-cut this spec's ACs against what landed: remaining scope is spec-lock release (consume ee7049), the clock-stamped merge line, and the dist-freshness step — do not re-implement the flips or the staging rule. See `LEARN.md § epic-story-graph` E10.
 
 ## Links
 
