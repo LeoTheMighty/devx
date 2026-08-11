@@ -22,7 +22,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/build-info.mjs",
     "postinstall": "node scripts/postinstall.js",
-    "test": "node test/schema-smoke.mjs && tsx test/config-io.test.ts && tsx test/config-validate.test.ts && npm run build && npm run typecheck && vitest run",
+    "test": "node test/schema-smoke.mjs && tsx test/config-io.test.ts && tsx test/config-validate.test.ts && npm run build && npm run typecheck && npm run test:parallel && npm run test:blocking",
+    "test:parallel": "vitest run --config vitest.parallel.config.ts",
+    "test:blocking": "vitest run --config vitest.blocking.config.ts",
     "test:schema": "node test/schema-smoke.mjs",
     "test:config-io": "tsx test/config-io.test.ts",
     "test:config-validate": "tsx test/config-validate.test.ts",
