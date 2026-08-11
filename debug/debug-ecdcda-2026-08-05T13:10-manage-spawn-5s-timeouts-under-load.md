@@ -4,8 +4,8 @@ type: debug
 created: 2026-08-05T13:10:00-06:00
 title: manage-spawn / manage-spawn-integration time out at a fixed 5s whenever the box is loaded
 from: dev/dev-28b267-2026-08-05T11:25-learn-auto-allow.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-08-11T1434-73239
 blocked_by: []
 branch: null
 ---
@@ -103,6 +103,7 @@ touches only `src/lib/learn/*`, which neither file imports.
   24 and 29 minutes) plus an isolated 4-file run (6 failed / 61) plus the
   decisive clean-tree stash run (7 failed / 33). Every failure message is
   `Test timed out in 5000ms`; no assertion failures among them.
+- 2026-08-11T14:34:21-06:00 — claimed by /devx in session /devx-2026-08-11T1434-73239
 
 ## Links
 
