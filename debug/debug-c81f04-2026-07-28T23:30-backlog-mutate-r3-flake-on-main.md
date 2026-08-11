@@ -74,6 +74,7 @@ accounting during claims, not lost updates.
   baseline surfaced 2 failures in the last 4 main runs, both this test.
   Not filed anywhere else at time of writing (grepped DEBUG.md + debug/).
 - 2026-08-04T15:19:50-06:00 — claimed by /devx in session /devx-loop-2026-08-04T19-52-58-179-34486
+- 2026-08-05T17:14:13.178Z — loop stopped mid-item (stopped by signal); worktree + claim preserved
 
 ## Links
 

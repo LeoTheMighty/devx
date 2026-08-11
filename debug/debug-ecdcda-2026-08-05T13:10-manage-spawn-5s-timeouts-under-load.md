@@ -105,6 +105,12 @@ touches only `src/lib/learn/*`, which neither file imports.
   `Test timed out in 5000ms`; no assertion failures among them.
 - 2026-08-11T14:34:21-06:00 — claimed by /devx in session /devx-2026-08-11T1434-73239
 
+- 2026-08-11 — investigation (no code change yet). Scoping the "async exec seam" fix found that its PREMISE IS WRONG, so it is recorded before any refactor is spent on it:
+  - The blocking that matters is TEST-SIDE, not src-side. `test/helpers/loop-git-fixture.ts:18` builds every loop fixture with `execFileSync("git", ...)`, and `test/manage-spawn-integration.test.ts:316` uses `spawnSync(node, [CLI_DIST, "manage", "--once"])`. Converting `src/lib/exec.ts`'s `realExec` to async would not touch either, so it would NOT fix `loop-driver`'s 561s nor its unenforceable caps.
+  - Corrected target for the mechanism fix: promisify the TEST fixtures' git helpers (`g()` and peers) and await them, so a fixture build yields the loop. Blast radius is test-only (no production risk) but wide — every fixture call site in the 26 blocking files becomes `await`.
+  - The two residual failures from PR #124 are a DIFFERENT, smaller bug: `tick 1 spawn → child exits → tick 2` and `does not resurrect a dead PID` are ALREADY async (`await runManagerOnce`). They sit in pass 2 only because their file contains one unrelated `spawnSync` test at :316. The partition is per-FILE while blocking is per-TEST, so a mostly-async file is misclassified by a single sync test. Fix is either splitting that file (sync test → pass 2, async rest → pass 1) or a measured cap (debug-5c8b21), not the exec seam.
+  - `realExec` is also duplicated: `src/lib/exec.ts:27`, `src/lib/devx/claim.ts:189`, `src/lib/devx/await-remote-ci.ts:178`, `src/commands/split.ts:87` each define their own. Any seam change has to reckon with four definitions, not one.
+
 ## Links
 
 - `test/manage-spawn.test.ts`, `test/manage-spawn-integration.test.ts`
