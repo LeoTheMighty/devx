@@ -5,7 +5,7 @@ created: 2026-08-04T10:45:00-06:00
 title: loop-concurrency G-1 harness times out under full-suite parallel load
 from: tur101
 spawned: []
-status: in-progress
+status: done
 owner: /devx-2026-08-11T1348-23414
 branch: null
 ---
@@ -118,6 +118,19 @@ the file passes in isolation at the same commit.
   test` gate costs ~30 min on this machine for work CI does in ~30s, which
   is a developer-experience problem in its own right.
 - 2026-08-11T13:48:33-06:00 — claimed by /devx in session /devx-2026-08-11T1348-23414
+
+- 2026-08-11 — phase 3 (root cause, with evidence). Hypothesis → check → result, one line each:
+  - H1 "reproduces from an agent worktree at baseline" (debug-620337's premise) → ran the 3 named files from the main checkout vs a linked worktree at the same commit → REFUTED: 19.39s vs 19.42s, 55/55 green in both. Worktrees are irrelevant.
+  - H2 "worker oversubscription (11 local workers vs CI's 3-4)" → full suite at `--minWorkers=1 --maxWorkers=4` → REFUTED: still red (12 tests), 936s vs 947s. With every worker blocking, 4 saturate as well as 11.
+  - H3 "the real `claude` CLI is on local PATH and absent in CI, so tests spawn it for real" → read the stubs → REFUTED: `loop-worker` passes `claudeBin: process.execPath`; `loop-driver` injects a `WorkerRunFn` outright.
+  - H4 "host is slow (spawn / git / fs / gpg signing)" → measured → REFUTED: node spawn 36ms, 20 fixture git commits 0.81s, no `commit.gpgsign`, no hooksPath.
+  - H5 "CI is green because it skips these tests" → `gh run view --log` + grep for CI guards → REFUTED: CI runs all 136 files (32.0s ubuntu / 98.5s macOS wall; 69s / 158s cumulative test time). No guard in any suspect file.
+  - H6 "the driver's real backoff sleeps dominate" → read the fixture → REFUTED: `MERGED.loop.backoff_ms = [1, 2, 3]` and an `instantSleep` helper exists.
+  - ROOT CAUSE (confirmed): `realExec` (`src/lib/exec.ts:28`) is `spawnSync`. Every real-git call blocks its test process's event loop for the call's full duration. Vitest runs one process per file (`pool: 'forks'`), which splits this into two distinct faults: (1) CROSS-PROCESS CPU STARVATION — ~11 concurrent blocking processes saturate 12 cores, so genuinely-async tests elsewhere miss their deadlines and fail exactly on their cap (5.0s/15.0s/30.0s); (2) UNENFORCEABLE TIMEOUTS INSIDE A BLOCKING FILE — a blocked loop cannot run its own timeout callback, so `loop-driver`'s slowest test ran 233.8s under the 5,000ms default and REPORTED PASSED (12.5s even in isolation). The AC's deadlock reading is EXCLUDED: no test hangs, every file passes alone, and the failures are timeout-shaped rather than never-returning.
+  - Fault (2) is a FALSE-GREEN class, worse than the red: at least ten of the slowest tests currently have caps that cannot fire. It is out of scope here (the exec seam is debug-ecdcda/debug-620337; measured caps are debug-5c8b21) and is recorded so the next spec inherits it, not lost.
+- 2026-08-11 — phase 3 (fix). Fault (1) fixed by partitioning the suite, not by widening any timeout: `npm test` now runs `test:parallel` (110 async-sensitive files, full parallelism) then `test:blocking` (26 sync-blocking files, `maxForks: 2`). Membership is mechanical — a file belongs to pass 2 iff it calls a synchronous child-process API or imports a `test/helpers/` fixture that does — and `test/vitest-split.test.ts` pins the list against the tree so a new blocker cannot silently rejoin pass 1. Selector precision mattered: matching bare identifiers picked up prose mentions, and following local imports transitively selected 86 of ~110 files (importing a module is not executing its sync branch), so the marker is anchored on call-site punctuation and resolution is one hop through `test/helpers/` only.
+
+- 2026-08-11 — merged via PR #124 (squash → 10a0105). CI green both runners. Partial by design: fault (1) fixed (10 of 12 failures); fault (2) — unenforceable caps inside blocking files, incl. the 2 residual manage-spawn-integration failures and the +10% wall-clock — carried to debug-ecdcda/debug-620337 (exec seam) and debug-5c8b21 (measured caps).
 
 ## Links
 
