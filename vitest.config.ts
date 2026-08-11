@@ -1,5 +1,13 @@
 // Vitest config for @devx/cli (cli301).
 //
+// This is the DEFAULT config — it includes every test file, so ad-hoc runs
+// (`npx vitest run test/foo.test.ts`) keep working unchanged.
+//
+// `npm test` does NOT use this one. It runs two passes instead
+// (vitest.parallel.config.ts then vitest.blocking.config.ts) so that
+// sync-blocking files cannot CPU-starve the async-sensitive majority — see
+// vitest.shared.ts for the measurements behind that split (debug-7c1e93).
+//
 // Coverage threshold is sourced from devx.config.yaml → coverage.threshold via
 // the existing cfg203 validator (loadValidatedConfig), so this file stays a
 // thin reflection of the canonical config. Coverage is informational at YOLO
@@ -11,35 +19,7 @@
 // Spec: dev/dev-cli301-2026-04-26T19:35-cli-package-scaffold.md
 
 import { defineConfig } from "vitest/config";
-import { loadValidatedConfig } from "./src/lib/config-validate.js";
 
-const config = loadValidatedConfig() as {
-  coverage?: { threshold?: number; enabled?: boolean };
-};
-const thresholdFraction = config.coverage?.threshold ?? 0;
-const thresholdPct = Math.round(thresholdFraction * 100);
+import { baseTest } from "./vitest.shared.js";
 
-export default defineConfig({
-  test: {
-    include: ["test/**/*.test.ts"],
-    // cfg202/cfg203 ship their own zero-dep tsx-runner test files; vitest
-    // would discover them but find no `describe`/`it` and fail. Skip them
-    // here — they're invoked directly by the `test:config-*` npm scripts.
-    // Future tests written against vitest live under test/ with `.test.ts`.
-    exclude: [
-      "**/node_modules/**",
-      "test/config-io.test.ts",
-      "test/config-validate.test.ts",
-    ],
-    coverage: {
-      provider: "v8",
-      reporter: ["text", "lcov"],
-      thresholds: {
-        lines: thresholdPct,
-        functions: thresholdPct,
-        branches: thresholdPct,
-        statements: thresholdPct,
-      },
-    },
-  },
-});
+export default defineConfig({ test: { ...baseTest } });
