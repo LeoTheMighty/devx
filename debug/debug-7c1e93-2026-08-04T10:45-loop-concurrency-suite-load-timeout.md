@@ -5,8 +5,8 @@ created: 2026-08-04T10:45:00-06:00
 title: loop-concurrency G-1 harness times out under full-suite parallel load
 from: tur101
 spawned: []
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-08-11T1348-23414
 branch: null
 ---
 
@@ -117,6 +117,7 @@ the file passes in isolation at the same commit.
   local spawn-cost starvation. Worth noting separately: the local `npm
   test` gate costs ~30 min on this machine for work CI does in ~30s, which
   is a developer-experience problem in its own right.
+- 2026-08-11T13:48:33-06:00 — claimed by /devx in session /devx-2026-08-11T1348-23414
 
 ## Links
 
