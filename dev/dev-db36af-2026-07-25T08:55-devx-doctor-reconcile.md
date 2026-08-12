@@ -58,7 +58,27 @@ were established (see debug-dc7514's Evidence).
       2026-07-24 shape (blocked spec + dead owner + bookkeeping worktree)
       self-heals and the loop proceeds to claim the item — end-to-end
       test.
-- [ ] Full suite green (`npm test`, typecheck included).
+- [ ] **Source fix — stop the leak doctor would otherwise sweep forever.**
+      `devx devx-helper mark-done` releases `spec-<hash>.lock` as part of
+      the closing flip, exactly as `claim` acquires it in the opening one.
+      Today nothing releases a `done` spec's lock: reaping only fires on a
+      contending claim for the same hash, which never comes once the item
+      is closed. This absorbs `dev-ee7049` (guarded release CLI) and
+      `dev-b931a1` AC 3 — build the release primitive once, call it from
+      mark-done, the loop merge tail, and `doctor --fix`. A detector that
+      cleans up after a bug we know how to prevent is a mop, not a fix.
+- [ ] **New detector — dead-blocker** (not in the original AC list; found
+      by the 2026-08-12 audit): a `blocked_by:` / `Blocked-by:` naming a
+      hash that is (a) absent from disk, (b) already `done`, or (c) struck
+      `~~superseded~~` in its backlog. Report-only with the specific
+      reason — the fix (re-root vs retire) is judgment. Motivating case:
+      8 of 10 blocked PLAN.md rows sat behind `c4f1a2`, superseded
+      2026-07-05, so their blocker could never clear and nothing noticed
+      for five weeks.
+- [ ] Full suite green (`npm test`, typecheck included). **Precondition:
+      the suite is RED at `d5336ff`** — 3 failures in
+      `manage-spawn-integration.test.ts` (`debug-ecdcda`). Land ecdcda
+      first or this AC cannot be met; see Status log 2026-08-12.
 
 ## Technical notes
 
@@ -82,3 +102,39 @@ were established (see debug-dc7514's Evidence).
 - 2026-07-25T08:55 — filed from the loop-2026-07-24 post-mortem: the
   hand-reset in main commit 5f83f3e was 100% mechanical — evidence this
   belongs to a CLI, not a session. Part of the skill/loop fixups track.
+- 2026-08-12 — second, larger dataset from a full manual reconciliation
+  pass (commit `9e1d9d3`). Every class in the AC list was present in the
+  wild, and the pass took a session of forensics to do by hand — the same
+  argument as 5f83f3e, now with counts:
+  - **stale-lock: 14 instances.** `.devx-cache/locks/` held 16 locks; 14
+    were on `done` specs with dead PIDs, the oldest from 2026-07-26 (16
+    days). Because the sole reaper fires on a contending claim, a closed
+    item's lock is immortal. Detection is two lines (spec `status` +
+    `kill -0`); nobody was running them.
+  - **dead-owner: 2 instances, and they needed OPPOSITE verdicts** — which
+    is the strongest argument for the report-only boundary already in the
+    ACs. `ecdcda` had a dead owner and a worktree with no commits and no
+    dirty files (its findings had gone straight to main), so releasing it
+    was pure gain. `c81f04` had an equally dead owner but 132 uncommitted
+    insertions in its worktree — a compare-and-delete guard for lock
+    reaping, unprotected by git. Same detector signature, opposite action.
+    A `--fix` that treated dead-owner as mechanical would have destroyed
+    real work. Keep dead-owner + orphan-worktree report-only; the
+    discriminator is worktree contents, not owner liveness.
+  - **mirror-drift: 2 instances** (`e0a67e`, `620c74` — PLAN.md `[x]` over
+    `in-progress` frontmatter, both rows' own Status prose reading
+    "executing", so the checkbox alone was wrong). Note `devx next`
+    ALREADY reports this on its `drift[]` channel and did, correctly, for
+    weeks — nothing acted on it. The detect half exists; the fix half and
+    the "somebody actually runs this" half do not. Proof it works: during
+    this very pass, `devx next` caught the author flipping a DEBUG.md row
+    to `[x]` without the matching frontmatter flip, one command later.
+  - **dead-blocker: 8 instances**, a class the original ACs missed
+    entirely — hence the new detector AC above.
+  - **orphan-worktree: 2 instances**, both correctly report-only.
+- 2026-08-12 — sequencing note: the final AC ("full suite green") cannot be
+  met at `d5336ff`. `npm test` gives `Test Files 1 failed | 25 passed (26)`
+  / `Tests 3 failed | 723 passed (726)`, all three the
+  `Test timed out in 5000ms` shape in `manage-spawn-integration.test.ts`.
+  That is `debug-ecdcda`, now precisely scoped (per-FILE vs per-TEST
+  partition misclassification, not the exec seam). Land ecdcda first.

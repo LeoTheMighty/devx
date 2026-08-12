@@ -4,7 +4,7 @@
 
 # Story graph
 
-195 specs across 22 groups — 12 blocked · 126 done · 4 in-progress · 53 ready; 393 edges.
+194 specs across 22 groups — 12 blocked · 126 done · 4 in-progress · 52 ready; 392 edges.
 
 ## Legend
 
@@ -26,7 +26,6 @@ flowchart TD
   end
   subgraph sg_mid_story_split["mid-story-split (workstream)"]
     e0a67e["e0a67e Mid Story Split"]
-    ee7049["ee7049 Guarded spec-lock release CLI for the Pha…"]
     mss101["mss101 Split primitive (lib + CLI)"]
     mss102["mss102 Claim branch inheritance"]
     mss103["mss103 Loop split integration (INTERVIEW Q＃15)"]
@@ -340,7 +339,6 @@ flowchart TD
   mss102 --- |par| mss103
   mss103 -.-> c81f04
   mss103 --> mss101
-  mss104 -.-> ee7049
   mss104 --> mss102
   mss104 --> mss103
   mssret --> mss101
@@ -408,7 +406,6 @@ flowchart TD
   classDef collapsed fill:#eee,stroke:#777,color:#222
   class grp_harness_fold_in collapsed
   class e0a67e wip
-  class ee7049 ready
   class mss101 done
   class mss102 done
   class mss103 done
