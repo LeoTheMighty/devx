@@ -4,8 +4,8 @@ type: debug
 created: 2026-08-05T13:10:00-06:00
 title: manage-spawn / manage-spawn-integration time out at a fixed 5s whenever the box is loaded
 from: dev/dev-28b267-2026-08-05T11:25-learn-auto-allow.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-08-12T1559-70162
 blocked_by: []
 branch: null
 ---
@@ -113,6 +113,7 @@ touches only `src/lib/learn/*`, which neither file imports.
 - 2026-08-12 — reconciliation audit: the 2026-08-11T14:34 claim's owner PID (73239) is dead and its worktree held no commits and no dirty files (the investigation above was committed straight to `main` as `d5336ff`). Claim released, worktree + `feat/debug-ecdcda` removed, `status` reset `in-progress` → `ready`. No work was discarded.
 - 2026-08-12 — still reproduces at `d5336ff`: full `npm test` gave `Test Files 1 failed | 25 passed (26)`, `Tests 3 failed | 723 passed (726)`, all three the `Test timed out in 5000ms` shape in `manage-spawn-integration.test.ts`, alongside a sibling in the same file passing at 52,131ms. Confirms the per-FILE-vs-per-TEST misclassification reading above, not the exec seam.
 - 2026-08-12 — absorbed `debug-620337` (loop-worker + manage-crash-restart-loop red from an agent worktree). Its worktree premise was refuted by 7c1e93's H1 (19.39s main vs 19.42s linked worktree, 55/55 green both) and both of its named files passed in the 2026-08-12 full run. Whatever residue it had is this item's test-side blocking plus `debug-5c8b21`'s measured caps.
+- 2026-08-12T15:59:13-06:00 — claimed by /devx in session /devx-2026-08-12T1559-70162
 
 ## Links
 
