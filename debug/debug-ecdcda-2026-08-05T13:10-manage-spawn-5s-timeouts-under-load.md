@@ -4,8 +4,8 @@ type: debug
 created: 2026-08-05T13:10:00-06:00
 title: manage-spawn / manage-spawn-integration time out at a fixed 5s whenever the box is loaded
 from: dev/dev-28b267-2026-08-05T11:25-learn-auto-allow.md
-status: in-progress
-owner: /devx-2026-08-11T1434-73239
+status: ready
+owner: null
 blocked_by: []
 branch: null
 ---
@@ -110,6 +110,9 @@ touches only `src/lib/learn/*`, which neither file imports.
   - Corrected target for the mechanism fix: promisify the TEST fixtures' git helpers (`g()` and peers) and await them, so a fixture build yields the loop. Blast radius is test-only (no production risk) but wide — every fixture call site in the 26 blocking files becomes `await`.
   - The two residual failures from PR #124 are a DIFFERENT, smaller bug: `tick 1 spawn → child exits → tick 2` and `does not resurrect a dead PID` are ALREADY async (`await runManagerOnce`). They sit in pass 2 only because their file contains one unrelated `spawnSync` test at :316. The partition is per-FILE while blocking is per-TEST, so a mostly-async file is misclassified by a single sync test. Fix is either splitting that file (sync test → pass 2, async rest → pass 1) or a measured cap (debug-5c8b21), not the exec seam.
   - `realExec` is also duplicated: `src/lib/exec.ts:27`, `src/lib/devx/claim.ts:189`, `src/lib/devx/await-remote-ci.ts:178`, `src/commands/split.ts:87` each define their own. Any seam change has to reckon with four definitions, not one.
+- 2026-08-12 — reconciliation audit: the 2026-08-11T14:34 claim's owner PID (73239) is dead and its worktree held no commits and no dirty files (the investigation above was committed straight to `main` as `d5336ff`). Claim released, worktree + `feat/debug-ecdcda` removed, `status` reset `in-progress` → `ready`. No work was discarded.
+- 2026-08-12 — still reproduces at `d5336ff`: full `npm test` gave `Test Files 1 failed | 25 passed (26)`, `Tests 3 failed | 723 passed (726)`, all three the `Test timed out in 5000ms` shape in `manage-spawn-integration.test.ts`, alongside a sibling in the same file passing at 52,131ms. Confirms the per-FILE-vs-per-TEST misclassification reading above, not the exec seam.
+- 2026-08-12 — absorbed `debug-620337` (loop-worker + manage-crash-restart-loop red from an agent worktree). Its worktree premise was refuted by 7c1e93's H1 (19.39s main vs 19.42s linked worktree, 55/55 green both) and both of its named files passed in the 2026-08-12 full run. Whatever residue it had is this item's test-side blocking plus `debug-5c8b21`'s measured caps.
 
 ## Links
 

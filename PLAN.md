@@ -10,6 +10,16 @@ Conventions per [`docs/DESIGN.md § Checkbox conventions`](./docs/DESIGN.md#chec
 
 Each maps to a phase in [`ROADMAP.md`](./docs/ROADMAP.md). Pick one off the top once its blockers clear; `/devx-plan` expands it into `dev/*.md` sub-specs that flow into `DEV.md`.
 
+> **2026-08-12 re-root.** `d01000`, `e01000`, `f01000` and `a03000` were all
+> `Blocked-by: c4f1a2` — a plan struck as SUPERSEDED on 2026-07-05. A blocker
+> that no longer exists can never clear, so those four sat permanently
+> unreachable and transitively froze `a02000` → `b02000` → `d02000` → `e02000`:
+> 8 of 10 blocked plans behind a dead root. The dead dependency is removed. They
+> stay `[-]` because a real blocker replaces it — none has been re-scoped under
+> `v2/06-phases.md`, which re-cut Phases 2+ — but the reason is now true and
+> actionable. `d01000` in particular is mostly absorbed already (locks →
+> `20eb6f`, shipped; capacity → `c8e2d4`).
+
 - [x] `plan/plan-a01000-2026-04-26T19:30-foundation.md` — Phase 0 — Foundation (`/devx-init`, config schema, OS supervisor scaffolds, CLI skeleton, BMAD audit). Status: planned (25 dev specs spawned across 5 epics; tracked in DEV.md § Phase 0). Blocked-by: —.
 - [x] `plan/plan-b01000-2026-04-26T19:30-single-agent-loop.md` — Phase 1 — Single-agent core loop (`/devx-plan`, `/devx`, minimal `/devx-manage`). Status: done (closed 2026-07-05, 5/5 epics). Blocked-by: a01000.
 - ~~`plan/plan-c4f1a2-2026-04-26T19:00-control-plane.md` — Phase 2 — Full control plane.~~ Status: superseded 2026-07-05 — scope absorbed by the v2 migration (`v2/04-overnight-loop.md` + `v2/05-dispatcher.md`; restart-from-status-log falls out of the iteration contract). Kept for audit.
@@ -17,9 +27,9 @@ Each maps to a phase in [`ROADMAP.md`](./docs/ROADMAP.md). Pick one off the top 
 ## v2 — Native engine migration (2026-07-05)
 
 - [x] `v2/` — BMAD → native engine, review tours, universal dispatcher, overnight loop. Status: done (closed 2026-07-05, PRs #59–#68 in one day; retro: `_devx/retros/v2-migration-2026-07-05.md`; outcome scored: v2x101 keep 3/3). Source of truth: `v2/06-phases.md`; decisions: `v2/07-decisions.md`.
-- [-] `plan/plan-d01000-2026-04-26T19:30-parallelism.md` — Phase 3 — Parallelism & coordination (locks, intents, capacity, permissions). Status: deferred. Blocked-by: c4f1a2. Note 2026-07-14: capacity-management slice re-homed to c8e2d4 (vision-gap Track 2). Note 2026-07-28: locks/coordination slice re-homed to 20eb6f (multi-loop concurrency).
-- [-] `plan/plan-e01000-2026-04-26T19:30-observability-surfaces.md` — Phase 4 — Observability surfaces (TUI, web dashboard, mobile relay). Status: deferred. Blocked-by: c4f1a2. Parallel-with: f01000. Note 2026-07-14: interim notification slice re-homed to e5a9c0 (vision-gap Track 3).
-- [-] `plan/plan-f01000-2026-04-26T19:30-test-debug-learn.md` — Phase 5 — Test, debug, retro, learn. Status: deferred. Blocked-by: c4f1a2.
+- [-] `plan/plan-d01000-2026-04-26T19:30-parallelism.md` — Phase 3 — Parallelism & coordination (locks, intents, capacity, permissions). Status: deferred. Blocked-by: — (was c4f1a2, SUPERSEDED by the v2 migration 2026-07-05; that dependency can never clear, so it is not a real blocker). Re-blocked on: re-scoping under `v2/06-phases.md`, which re-cut Phases 2+. Note 2026-07-14: capacity-management slice re-homed to c8e2d4 (vision-gap Track 2). Note 2026-07-28: locks/coordination slice re-homed to 20eb6f (multi-loop concurrency).
+- [-] `plan/plan-e01000-2026-04-26T19:30-observability-surfaces.md` — Phase 4 — Observability surfaces (TUI, web dashboard, mobile relay). Status: deferred. Blocked-by: — (was c4f1a2, SUPERSEDED by the v2 migration 2026-07-05; that dependency can never clear, so it is not a real blocker). Re-blocked on: re-scoping under `v2/06-phases.md`, which re-cut Phases 2+. Parallel-with: f01000. Note 2026-07-14: interim notification slice re-homed to e5a9c0 (vision-gap Track 3).
+- [-] `plan/plan-f01000-2026-04-26T19:30-test-debug-learn.md` — Phase 5 — Test, debug, retro, learn. Status: deferred. Blocked-by: — (was c4f1a2, SUPERSEDED by the v2 migration 2026-07-05; that dependency can never clear, so it is not a real blocker). Re-blocked on: re-scoping under `v2/06-phases.md`, which re-cut Phases 2+.
 - [-] `plan/plan-a02000-2026-04-26T19:30-focus-group.md` — Phase 6 — Focus group (persistent persona panel). Status: deferred. Blocked-by: f01000.
 - [-] `plan/plan-b02000-2026-04-26T19:30-exploratory-qa.md` — Phase 7 — Exploratory QA (browser-use subprocesses). Status: deferred. Blocked-by: e01000, a02000.
 - [-] `plan/plan-d02000-2026-04-26T19:30-modes-and-gates.md` — Phase 9 — Modes & full gate cascade. Status: deferred. Blocked-by: b02000.
@@ -55,9 +65,9 @@ CLI primitive shared by interactive `/devx` and the `devx loop` driver
 cold. Merge-first preferred, branch-handoff fallback. Kills the hfi102
 abandoned-while-done class.
 
-- [x] `plan/plan-e0a67e-2026-07-28T12:15-mid-story-split.md` — Mid-story split: split primitive + carried-forward context contract, loop split paths + `split` outcome, Handoff Snippet retirement + skills/docs sweep, state-hygiene invariants. Status: executing (all 4 gates passed 2026-07-28; RED artifacts observed right-reason; emitted mss101–mss104 + mssret to DEV.md). Blocked-by: —. Related: mlc103 (spec-lock lifecycle), db36af (doctor), lpf101 (preflight).
+- [/] `plan/plan-e0a67e-2026-07-28T12:15-mid-story-split.md` — Mid-story split: split primitive + carried-forward context contract, loop split paths + `split` outcome, Handoff Snippet retirement + skills/docs sweep, state-hygiene invariants. Status: executing (all 4 gates passed 2026-07-28; RED artifacts observed right-reason; emitted mss101–mss104 + mssret to DEV.md). Blocked-by: —. Related: mlc103 (spec-lock lifecycle), db36af (doctor), lpf101 (preflight).
 
-- [x] `plan/plan-620c74-2026-07-29T11:56-retro-listener.md` — Retro listener: auto-spawn `/devx-learn` from the friction nudge (port of `mycase/8am-harness` PR #36 — Stop/SessionEnd listener hook, serial `devx learn-watch` drainer with tmux/Terminal fork-spawn, wire-protocol pin, `/devx-init` hook distribution, five-outlet routing rework; phase-2 unattended retros out of scope). Status: executing (all 4 gates passed 2026-07-30; RED artifacts observed right-reason; emitted rtl101–rtl106 + rtlret to DEV.md). Blocked-by: —. Related: eac479 (harness fold-in — the nudge + /devx-learn this listens for).
+- [/] `plan/plan-620c74-2026-07-29T11:56-retro-listener.md` — Retro listener: auto-spawn `/devx-learn` from the friction nudge (port of `mycase/8am-harness` PR #36 — Stop/SessionEnd listener hook, serial `devx learn-watch` drainer with tmux/Terminal fork-spawn, wire-protocol pin, `/devx-init` hook distribution, five-outlet routing rework; phase-2 unattended retros out of scope). Status: executing (all 4 gates passed 2026-07-30; RED artifacts observed right-reason; emitted rtl101–rtl106 + rtlret to DEV.md). Blocked-by: —. Related: eac479 (harness fold-in — the nudge + /devx-learn this listens for).
 
 - [x] `plan/plan-62bcd1-2026-08-02T09:00-story-graph.md` — Story Graph: auto-generated GRAPH.md (Mermaid DAG of all specs grouped by workstream/epic), edge-source union + tokenizer hardening, loop regeneration hooks, assisted backfill porting friend-finder-mesh + palateful. Status: done (all 7 phases merged PRs #110/#111/#112/#114/#117/#118/#120 by 2026-08-05; retro 2026-08-06 `RETRO-2026-08-06.md`; outcome armed, measure-by 2026-09-20; G-2 attended legs = MANUAL.md MV-sgr107.1–.3). Blocked-by: —. Related: db36af (doctor owns drift *fixing*; graph only warns).
 
@@ -65,8 +75,8 @@ abandoned-while-done class.
 
 Independent of phase sequencing — pick up once their named blockers clear.
 
-- [-] `plan/plan-f02000-2026-04-26T19:30-thoroughness-axis.md` — Wire `thoroughness` (`send-it`/`balanced`/`thorough`) through every command. Status: deferred. Blocked-by: a01000.
-- [-] `plan/plan-a03000-2026-04-26T19:30-realtime-live-activities.md` — Mobile v0.3.5: Cloudflare DO stream + iOS Live Activities + Android persistent notification. Status: deferred. Blocked-by: c4f1a2, 7a2d1f.
+- [-] `plan/plan-f02000-2026-04-26T19:30-thoroughness-axis.md` — Wire `thoroughness` (`send-it`/`balanced`/`thorough`) through every command. Status: deferred. Blocked-by: — (a01000 closed 2026-04-27; blocker cleared 2026-08-12). Deferred by owner choice, not by dependency — promote to `[ ]` ready when you want it scheduled.
+- [-] `plan/plan-a03000-2026-04-26T19:30-realtime-live-activities.md` — Mobile v0.3.5: Cloudflare DO stream + iOS Live Activities + Android persistent notification. Status: deferred. Blocked-by: 7a2d1f (c4f1a2 dropped — SUPERSEDED by the v2 migration 2026-07-05).
 - [x] `plan/plan-eac479-2026-07-24T09:57-harness-fold-in.md` — Harness fold-in: per-workstream `todo.md` working memory, `/devx-learn` self-learning skill, gate-verdict persistence (ported shapes from `mycase/8am-harness` PRs #20–#27; no Confluence/Jira/eval-manifests). Status: done (all 5 phases merged PRs #80–#86 by 2026-07-25; retro 2026-07-26 `RETRO-2026-07-26.md`; outcome armed, measure-by 2026-08-21). Blocked-by: —.
 
 ## Mobile (Phase 8 — runs parallel from Phase 2 onward)

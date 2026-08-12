@@ -4,7 +4,7 @@
 
 # Story graph
 
-196 specs across 22 groups — 12 blocked · 125 done · 5 in-progress · 54 ready; 394 edges.
+195 specs across 22 groups — 12 blocked · 126 done · 4 in-progress · 53 ready; 393 edges.
 
 ## Legend
 
@@ -143,7 +143,6 @@ flowchart TD
     4d1a9c["4d1a9c QA walkthrough for the claim branch-postu…"]
     4d9c1a["4d9c1a QA walkthrough — sgr104 regen hooks (clai…"]
     5c8b21["5c8b21 loop-concurrency G-1 test sits ~1.3x unde…"]
-    620337["620337 loop-worker + manage-crash-restart-loop f…"]
     6a913f["6a913f hash→spec resolution hardcodes dev/ acros…"]
     74632d["74632d loop-driver fixture teardown races on mac…"]
     7a2d1f["7a2d1f Mobile companion v0.1 through real-time s…"]
@@ -384,7 +383,6 @@ flowchart TD
   grp_story_graph -.-> 4d9c1a
   grp_story_graph -.-> 5c8b21
   grp_story_graph -.-> 7e2b56
-  grp_story_graph -.-> 620337
   grp_story_graph -.-> 8a9586
   grp_story_graph -.-> 8b9165
   grp_story_graph -.-> c94f14
@@ -487,9 +485,8 @@ flowchart TD
   class 4d1a9c ready
   class 4d9c1a ready
   class 5c8b21 ready
-  class 620337 ready
   class 6a913f done
-  class 74632d ready
+  class 74632d done
   class 7a2d1f wip
   class 7b3e2a ready
   class 7c1e93 done
@@ -526,7 +523,7 @@ flowchart TD
   class ea4f41 ready
   class eac611 ready
   class ebf8c4 ready
-  class ecdcda wip
+  class ecdcda ready
   class f01000 blocked
   class f02000 blocked
   class f1d6b2 blocked

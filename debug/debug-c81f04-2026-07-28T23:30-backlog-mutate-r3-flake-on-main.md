@@ -75,6 +75,8 @@ accounting during claims, not lost updates.
   Not filed anywhere else at time of writing (grepped DEBUG.md + debug/).
 - 2026-08-04T15:19:50-06:00 — claimed by /devx in session /devx-loop-2026-08-04T19-52-58-179-34486
 - 2026-08-05T17:14:13.178Z — loop stopped mid-item (stopped by signal); worktree + claim preserved
+- 2026-08-12 — reconciliation audit: owner PID 34486 is DEAD, so this claim is a dead-owner hold, not a live one. **Deliberately left claimed** — unlike the sibling ecdcda claim, this worktree is not empty: `.worktrees/debug-c81f04` holds 132 uncommitted insertions across `src/lib/locks/classify.ts`, `src/lib/manage/lock.ts`, and `test/manage-lock-mgr106.test.ts` implementing a compare-and-delete guard for lock reaping (the `stale` verdict carries the exact bytes it was computed from, so a reap can confirm the file still holds them before unlinking). That is a plausible R3 root cause — a lock re-acquired between classify and unlink is exactly a lost update — and it is uncommitted, so `git` is not protecting it. Owner decision needed: commit it on `feat/debug-c81f04` and resume, or discard. Do not reap this lock mechanically.
+- 2026-08-12 — `test/backlog-mutate.test.ts` passed under full parallel suite load at `d5336ff`. Not a clearance: the reported failures were macos-latest CI timing, which a local green does not disprove.
 
 ## Links
 

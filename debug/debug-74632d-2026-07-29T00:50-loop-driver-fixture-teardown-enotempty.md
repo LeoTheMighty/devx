@@ -4,7 +4,7 @@ type: debug
 created: 2026-07-29T00:50:00-06:00
 title: "loop-driver fixture teardown races on macOS: ENOTEMPTY rmdir origin.git"
 from: dev/dev-mlc106-2026-07-28T09:02-scope-model-flags.md
-status: ready
+status: done
 owner: null
 branch: null
 ---
@@ -75,6 +75,18 @@ until evidence says so.
   test and its fixture both arrived with mss103, and the failure is on the
   teardown path, not in anything mlc106 touched). mlc106's own CI re-run
   (30463113330) was green, so this is intermittent rather than a hard break.
+- 2026-08-12 — phase 4: closed by reconciliation audit, not by a fix authored
+  here. Root cause WAS addressed, and not by swallowing the teardown error
+  (the spec's explicit prohibition): `mlcret` (PR #103) added
+  `gc.auto=0` / `receive.autogc=false` / `maintenance.auto=false` to BOTH
+  fixture sides in `test/helpers/loop-git-fixture.ts`, eliminating the
+  background `git gc --auto` fired on the origin's receive path — that daemon
+  was the handle outliving `rmSync`. The `maxRetries: 10, retryDelay: 50` in
+  `afterEach` is belt-and-braces layered on top of the root-cause fix, not in
+  place of it. Verification: full `npm test` at `d5336ff` on macOS ran
+  `loop-driver.test.ts` 62/62 green under full parallel suite load, no
+  ENOTEMPTY. Sibling `test/test-b7f2c1` stays OPEN — its AC 1–2 are this same
+  fix, but its AC 3–4 (persistent failure-detail reporting) are untouched.
 
 ## Links
 
