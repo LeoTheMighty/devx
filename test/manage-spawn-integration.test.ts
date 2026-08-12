@@ -1,5 +1,13 @@
 // Integration test for runManagerOnce + spawnWorker (mgr104 AC #5 + #6).
 //
+// ASYNC ONLY — keep it that way. The built-CLI spawnSync smoke that used to
+// live at the bottom of this file moved to test/manage-spawn-cli-e2e.test.ts
+// (debug-ecdcda): one sync test pinned this whole file into the low-
+// concurrency pass 2, where these `await runManagerOnce(...)` tests were
+// starved into 5,000ms timeouts by unrelated blockers. Adding a synchronous
+// child-process call back into this file re-creates that, and
+// test/vitest-split.test.ts will fail to say so.
+//
 // The full tick-1 → child exit → tick-2 cycle:
 //   - Fixture DEV.md has one ready spec.
 //   - Stub `claude` binary is a shell script that sleeps + exits 0.
@@ -21,31 +29,22 @@
 // spawnFn and asserting it's never invoked when the loop sees the
 // guard fire.
 
-import {
-  type ChildProcess,
-  spawnSync,
-} from "node:child_process";
+import { type ChildProcess } from "node:child_process";
 import {
   chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runManagerOnce } from "../src/lib/manage/loop.js";
 import { type SpawnFn } from "../src/lib/manage/spawn.js";
 import { readManagerState, writeManagerState } from "../src/lib/manage/state.js";
-
-const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(HERE, "..");
-const CLI_DIST = join(REPO_ROOT, "dist", "cli.js");
 
 let tmpRoot: string;
 let cacheDir: string;
@@ -287,48 +286,4 @@ describe("runManagerOnce + spawn integration (mgr104 AC #6)", () => {
     expect(result.outcome).toBe("maintained");
     expect(spawnFnCalls).toBe(0);
   });
-});
-
-// End-to-end smoke against the built CLI: a fixture DEV.md + stub claude
-// in a tmpdir, with `devx manage --once` invoked there. Skipped if
-// dist/cli.js doesn't exist (running vitest before `npm run build`).
-const cliExists = existsSync(CLI_DIST);
-const cliDescribe = cliExists ? describe : describe.skip;
-
-cliDescribe("`devx manage --once` end-to-end with fixture DEV.md (mgr104 AC #6)", () => {
-  it("tick 1 spawns a stub worker and writes worker log", () => {
-    const cwd = mkdtempSync(join(tmpdir(), "devx-mgr-e2e-"));
-    try {
-      const stub = join(cwd, "stub-claude.sh");
-      writeFileSync(stub, "#!/bin/sh\necho stub-args: $@\nsleep 0.05\nexit 0\n", "utf8");
-      chmodSync(stub, 0o755);
-
-      writeFileSync(
-        join(cwd, "DEV.md"),
-        "### Epic\n- [ ] `dev/dev-e2ee2e-2026-05-07T11:00-e2e.md` — fixture. Status: ready.\n",
-        "utf8",
-      );
-
-      // Worker logs go under HOME/Library/Logs/devx (or platform-equiv) by
-      // default; we don't have a way to override via CLI today, so we cap
-      // testing to: PID was recorded + summary line shape. Worker-log path
-      // assertion is covered by the in-process integration tests above.
-      const r = spawnSync("node", [CLI_DIST, "manage", "--once"], {
-        cwd,
-        encoding: "utf8",
-        env: { ...process.env, DEVX_CLAUDE_BIN: stub },
-      });
-
-      expect(r.status).toBe(0);
-      expect(r.stdout).toMatch(/^tick 1: spawned e2ee2e\n$/);
-
-      const state = JSON.parse(
-        readFileSync(join(cwd, ".devx-cache", "state", "manager.json"), "utf8"),
-      );
-      expect(state.roster?.length).toBeGreaterThanOrEqual(0); // race: child may have exited already
-      expect(state.generation).toBe(1);
-    } finally {
-      rmSync(cwd, { recursive: true, force: true });
-    }
-  }, 10000);
 });
