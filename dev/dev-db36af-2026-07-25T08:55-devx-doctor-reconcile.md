@@ -138,3 +138,5 @@ were established (see debug-dc7514's Evidence).
   `Test timed out in 5000ms` shape in `manage-spawn-integration.test.ts`.
   That is `debug-ecdcda`, now precisely scoped (per-FILE vs per-TEST
   partition misclassification, not the exec seam). Land ecdcda first.
+
+- 2026-08-13 — the SOURCE-FIX AC demonstrated itself, unprompted, one day after being written. `debug-ecdcda` shipped through the full attended `/devx` loop (PR #125, merged a3ad57f). `devx devx-helper mark-done ecdcda --pr 125 --type debug` returned exit 0 with `paths: ["DEBUG.md", "<spec>", "GRAPH.md"]` — and left `.devx-cache/locks/spec-ecdcda.lock` on disk. So the 14 stale locks cleared in `9e1d9d3` were not historical debris from an older, buggier era: the leak is live in the current code path, and it reproduces on every clean, green, correctly-executed run. Lock #15 was created and orphaned inside the same session that documented why #1-14 existed. Released by hand again; that hand-release is the thing this AC deletes.
