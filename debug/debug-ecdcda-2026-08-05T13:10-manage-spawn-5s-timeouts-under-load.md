@@ -4,7 +4,7 @@ type: debug
 created: 2026-08-05T13:10:00-06:00
 title: manage-spawn / manage-spawn-integration time out at a fixed 5s whenever the box is loaded
 from: dev/dev-28b267-2026-08-05T11:25-learn-auto-allow.md
-status: in-progress
+status: done
 owner: /devx-2026-08-12T1559-70162
 blocked_by: []
 branch: feat/debug-ecdcda
@@ -128,6 +128,7 @@ touches only `src/lib/learn/*`, which neither file imports.
 - 2026-08-12 — phase 4: single-pass adversarial review; 1 finding (0 HIGH, 0 MED, 1 LOW); fixed in-place — the new file's measurement table described the PRE-SPLIT 6-test file without saying so, which would read as stale the moment the file had one test; relabelled so both rows name the same population. Re-review clean. Single pass is the correct shape here per the Phase 4 threshold rule: +118/−60 across 4 files, no regex, no markers — well under the >500-line/multi-regex bar that mandates the 3-agent shape. Checks run and passing: trimmed imports vs remaining usages (`existsSync` retained at :116, `readFileSync`/`spawnSync`/`dirname`/`resolve`/`fileURLToPath` removed — typecheck clean); the `describe.skip` no-dist path; `SYNC_BLOCKING_TESTS` still sorted and still 26 entries (one-for-one swap, so the "26-file set" comments stay true); the pin's disjoint-and-covering assertion; whether the 3-line `HERE`/`REPO_ROOT`/`CLI_DIST` re-derivation counts as duplication (it does not — same idiom as `vitest-split.test.ts`, path derivation not business logic); and whether 5 real-child async tests landing in pass 1 could starve it (~900ms total across 111 files — negligible, and the full green run confirms).
 
 - 2026-08-13 — phase 8: `devx merge-gate ecdcda` returned exit 2 `{"merge":false,"reason":"no PR yet"}` against an OPEN, CI-green PR #125 — **`debug-7b3e2a` reproducing live, on a real merge**. Confirmed on the spot: `gh pr list --head feat/debug-ecdcda` → `[{"number":125,"state":"OPEN"}]`, `gh pr list --head null` → `[]`. The hand-rolled `readFrontmatter` (merge-gate.ts:117) stores YAML `branch: null` as the STRING "null", the guard at :333 accepts it as a real branch, and `deriveBranch` never runs. Unblocked by setting this spec's `branch:` to its true value rather than by touching merge-gate — that fix belongs to 7b3e2a, not here. Note the escalation from 7b3e2a's original evidence: this is no longer a hypothetical unattended cost, it stranded an attended merge.
+- 2026-08-13T08:45:37-06:00 — merged via PR #125 (squash → a3ad57f)
 
 ## Links
 
