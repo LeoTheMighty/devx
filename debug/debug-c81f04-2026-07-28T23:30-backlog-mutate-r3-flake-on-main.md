@@ -78,6 +78,14 @@ accounting during claims, not lost updates.
 - 2026-08-12 — reconciliation audit: owner PID 34486 is DEAD, so this claim is a dead-owner hold, not a live one. **Deliberately left claimed** — unlike the sibling ecdcda claim, this worktree is not empty: `.worktrees/debug-c81f04` holds 132 uncommitted insertions across `src/lib/locks/classify.ts`, `src/lib/manage/lock.ts`, and `test/manage-lock-mgr106.test.ts` implementing a compare-and-delete guard for lock reaping (the `stale` verdict carries the exact bytes it was computed from, so a reap can confirm the file still holds them before unlinking). That is a plausible R3 root cause — a lock re-acquired between classify and unlink is exactly a lost update — and it is uncommitted, so `git` is not protecting it. Owner decision needed: commit it on `feat/debug-c81f04` and resume, or discard. Do not reap this lock mechanically.
 - 2026-08-12 — `test/backlog-mutate.test.ts` passed under full parallel suite load at `d5336ff`. Not a clearance: the reported failures were macos-latest CI timing, which a local green does not disprove.
 
+- 2026-08-13 — **reproduced on main again, and the platform claim in this spec's title/Goal is now WRONG.** Run 31711774250, commit `34dfa52`, job `cli (ubuntu-latest / node 20)`: `flips lost under concurrency despite the backlog lock: w1k0a, w1k1a: expected [ 'w1k0a', 'w1k1a' ] to deeply equal []`. `Test Files 1 failed | 111 passed (112)` / `Tests 1 failed | 2522 passed (2523)`, 24.37s.
+  Three things this run establishes that earlier evidence did not:
+  1. **Not macOS-specific.** Every prior instance was macos-latest; this is ubuntu-latest. Any hypothesis resting on macOS fs/scheduler behaviour is dead. The remaining candidates are a real lost-update window in `withBacklogLock` or a genuinely racy harness — same two the spec opened with, minus the platform escape hatch.
+  2. **The commit was markdown-only** (`dev/dev-db36af-*.md`, prose). The diff cannot have caused it; this is the flake in isolation, with no code change anywhere near it.
+  3. **The very next commit passed the same suite** (`10907cd`, success). Intermittent, not a deterministic break — consistent with a race rather than a broken assertion.
+  Cost, exactly as this spec predicted: main was red for one commit and the reflex is to re-run. It also means `lpf101`'s loop preflight would have refused to start an overnight run against that tip.
+  Note the preserved worktree's uncommitted compare-and-delete guard reads as a candidate fix for reading (1) — a lock re-acquired between `classifyExistingLock` and the unlink IS a lost update — which raises the value of deciding what to do with that work rather than leaving it uncommitted.
+
 ## Links
 
 - Found during: `dev/dev-mss103-2026-07-28T13:43-loop-split-integration.md`
