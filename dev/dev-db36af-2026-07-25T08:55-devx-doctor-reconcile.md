@@ -75,10 +75,12 @@ were established (see debug-dc7514's Evidence).
       8 of 10 blocked PLAN.md rows sat behind `c4f1a2`, superseded
       2026-07-05, so their blocker could never clear and nothing noticed
       for five weeks.
-- [ ] Full suite green (`npm test`, typecheck included). **Precondition:
-      the suite is RED at `d5336ff`** — 3 failures in
-      `manage-spawn-integration.test.ts` (`debug-ecdcda`). Land ecdcda
-      first or this AC cannot be met; see Status log 2026-08-12.
+- [ ] Full suite green (`npm test`, typecheck included). **Precondition
+      CLEARED 2026-08-13**: the 3 `manage-spawn-integration.test.ts`
+      failures that blocked this AC were `debug-ecdcda`, shipped via PR
+      #125 (merged `a3ad57f`). Pass 2 is now 26 files / 721 tests / 0
+      failures. This AC is achievable as written; no known red remains.
+      Budget ~15 min for the gate — pass 2 alone runs ~850s.
 
 ## Technical notes
 
