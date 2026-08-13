@@ -12,10 +12,20 @@
 //
 // Raising it buys no wall-clock and costs correctness, because this pass's
 // duration is intrinsic to the files (loop-driver.test.ts alone is 561s in
-// isolation) rather than scheduling-bound. The residual failures are all in
-// manage-spawn-integration.test.ts, which is BOTH a blocker and an
-// async-waiting victim — it starves itself, so no partition can rescue it.
-// That one needs the exec-seam fix.
+// isolation) rather than scheduling-bound.
+//
+// CORRECTION (debug-ecdcda, 2026-08-12). This file previously read: "The
+// residual failures are all in manage-spawn-integration.test.ts, which is
+// BOTH a blocker and an async-waiting victim — it starves itself, so no
+// partition can rescue it. That one needs the exec-seam fix." That was
+// wrong on the evidence, and it sent the next reader at an expensive
+// refactor. Measured at the same commit: the ENTIRE file, its sync test
+// included, runs 6 tests in 1.32s in isolation — so its self-inflicted
+// share cannot be what holds a 355ms sibling past 5,000ms. The starvation
+// was cross-file, and a partition did rescue it: the one sync test moved to
+// test/manage-spawn-cli-e2e.test.ts (still pass 2) and the five async tests
+// went to pass 1. The general per-FILE-vs-per-TEST mismatch is real and
+// still worth the exec-seam work, but it was not this failure's cause.
 //
 // Honest cost: `npm test` is now ~23s (pass 1) + ~1,024s (pass 2) ≈ 1,048s
 // against 947s for the old undivided run — a ~10% wall-clock regression

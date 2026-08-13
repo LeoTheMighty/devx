@@ -93,7 +93,7 @@ export const SYNC_BLOCKING_TESTS = [
   "test/loop-iteration.test.ts",
   "test/loop-preflight.test.ts",
   "test/manage-loop.test.ts",
-  "test/manage-spawn-integration.test.ts",
+  "test/manage-spawn-cli-e2e.test.ts",
   "test/postinstall.test.ts",
   "test/repo-root.test.ts",
   "test/skills-packaging.test.ts",
