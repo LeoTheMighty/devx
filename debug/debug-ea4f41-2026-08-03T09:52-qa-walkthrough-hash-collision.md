@@ -4,8 +4,8 @@ type: debug
 created: 2026-08-03T09:52:00-06:00
 title: "QA-walkthrough naming `test/test-<story-hash>-…` collides with spec-hash resolution"
 from: dev/dev-sgr103-2026-08-02T13:57-graph-render-cli.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-loop-2026-08-13T17-20-48-923-23705
 branch: null
 ---
 
@@ -85,3 +85,4 @@ failed"}`. `devx tour gather` (Phase 7.5) fails the same way. Both surface
 
 - 2026-08-03T09:52 — filed from sgr103 (PR #112) after `devx tour gather` and
   `devx merge-gate` both failed to resolve the story's own hash.
+- 2026-08-13T11:20:49-06:00 — claimed by /devx in session /devx-loop-2026-08-13T17-20-48-923-23705
