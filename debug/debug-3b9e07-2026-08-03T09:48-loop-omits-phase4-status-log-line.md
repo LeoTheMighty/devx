@@ -4,8 +4,8 @@ type: debug
 created: 2026-08-03T09:48:00-06:00
 title: "`devx loop` never emits the mandatory `phase 4:` status-log line — reddens main on the merge-tail commit"
 from: dev/dev-sgr103-2026-08-02T13:57-graph-render-cli.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-loop-2026-08-13T17-20-48-923-23705
 branch: null
 ---
 
@@ -102,3 +102,4 @@ neither `phase 5:` nor `phase 7:`, so it remains uncatchable before merge.
 
 - 2026-08-03T09:48 — filed from sgr103 (PR #112) after `main` sat red for
   three consecutive runs and blocked every open PR.
+- 2026-08-13T15:33:49-06:00 — claimed by /devx in session /devx-loop-2026-08-13T17-20-48-923-23705
