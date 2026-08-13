@@ -106,6 +106,30 @@ describe("engine templates (v2s101)", () => {
     expect(Math.floor(fences / 2)).toBeGreaterThanOrEqual(machine.length);
   });
 
+  // ea4f41 AC 2: the emitted walkthrough is a spec, not a loose markdown
+  // file — it needs a hash of its OWN (reusing the story's makes the story
+  // unresolvable by every by-hash CLI) plus the fields the backlog tooling
+  // reads. Pinned on the template because that is what the emission step
+  // copies.
+  it("qa-walkthrough template opens with canonical spec frontmatter", () => {
+    const body = readFileSync(join(engineDir, "qa-walkthrough.md"), "utf8");
+    expect(body.startsWith("---\n")).toBe(true);
+    const fm = body.slice(4, body.indexOf("\n---", 4));
+    for (const field of [
+      "hash:",
+      "type: test",
+      "created:",
+      "title:",
+      "from:",
+      "status: ready",
+    ]) {
+      expect(fm, `frontmatter missing ${field}`).toContain(field);
+    }
+    // The whole point of the field: the placeholder must not invite the
+    // story's hash back in.
+    expect(fm).toMatch(/never the story's/);
+  });
+
   it("workstreams root exists", () => {
     expect(existsSync(join(repoRoot, "_devx", "workstreams", ".gitkeep"))).toBe(true);
   });

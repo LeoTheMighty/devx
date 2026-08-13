@@ -270,12 +270,17 @@ Steps:
    - Re-run until green.
 6. Do NOT proceed to commit until every required gate passes for the touched surface.
 7. **Emit the QA walkthrough** (stories with a user-visible surface only — a screen, a route, a CLI output, an email, anything a person perceives; pure-internal refactors skip this step and say so in the status log):
-   - Author `test/test-<hash>-qa-walkthrough.md` from `_devx/templates/engine/qa-walkthrough.md`. One file per story; `<hash>` is the spec hash.
+   - **Mint a FRESH hash for the walkthrough — never reuse the story's.** A bare hash resolves across every dir in `SPEC_TYPE_DIRS`, and the resolver fails closed on a duplicate, so a `test/test-<story-hash>-…` file makes the STORY unresolvable: `devx merge-gate <hash>` — Phase 8's own gate — returns `{"merge":false,"reason":"spec resolution failed"}`, and it surfaces only after the work is pushed (debug-ea4f41, hit live on sgr103/PR #112 and again on 4d1a9c/PR #123). Mint and collision-check in one line, from the repo root:
+     ```bash
+     while h=$(openssl rand -hex 3); ls */*-"$h"-*.md >/dev/null 2>&1; do :; done; echo "$h"
+     ```
+   - Author `test/test-<new-hash>-<ts>-<slug>.md` from `_devx/templates/engine/qa-walkthrough.md` — canonical spec form, identical to every other `TEST.md` row. `<ts>` is ISO-8601 local time to the minute; `<slug>` is `<story-hash>-qa-walkthrough`, which keeps the `test/*-qa-walkthrough.md` glob that `/devx-test` and the consumer evals read. One file per story.
+   - Fill the template's frontmatter so it indexes like a spec rather than as a bare markdown file: `hash:` the fresh hash · `type: test` · `created:` · `title:` · `from:` the story's spec path · `status: ready` · `owner: null` · `branch: null`.
    - Every check is a checkbox line tagged `machine` or `human`.
    - **Execute every `machine` item inline, right here.** The gates just ran, the services are up, and the evidence is freshest at Phase 5 — that is why emission lives here and not at commit time. Run the command, paste the real output into its fenced evidence block, and check the box `[x]`. An unchecked machine item means the walkthrough is unfinished, not that the check is optional.
    - Leave every `human` item unchecked, and give each one an inline `how to verify:` hint — where to look and what you should see, in one line, so the reviewer never has to re-read the diff.
    - If a machine item fails, that's a Phase 5 gate failure: fix the root cause and re-run (step 5), don't downgrade the item to `human`.
-   - Append a row to `TEST.md`: `` - [ ] `test/test-<hash>-qa-walkthrough.md` — QA walkthrough for <spec title>; <n> human check(s) outstanding. Status: ready. From: <hash>. ``
+   - Append a row to `TEST.md`: `` - [ ] `test/test-<new-hash>-<ts>-<slug>.md` — QA walkthrough for <spec title>; <n> human check(s) outstanding. Status: ready. From: <story-hash>. ``
    - The walkthrough file commits **with the story** in Phase 6 — it is part of the item's diff, not a follow-up.
 
 **Run the gate in the worktree, and prove it ran there.** A `/devx` run
@@ -296,7 +301,7 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
 
 ### Phase 6: Commit
 
-1. Stage only files relevant to this item — use `git add <specific files>`, never `git add -A`. The Phase 5 walkthrough (`test/test-<hash>-qa-walkthrough.md`) and its `TEST.md` row are part of this item; stage them with it.
+1. Stage only files relevant to this item — use `git add <specific files>`, never `git add -A`. The Phase 5 walkthrough (`test/test-<new-hash>-<ts>-<slug>.md`) and its `TEST.md` row are part of this item; stage them with it.
 2. Commit with message:
    ```
    <type>: <spec-hash> — <spec title>

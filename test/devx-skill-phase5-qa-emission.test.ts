@@ -9,9 +9,15 @@
 // Pins:
 //   • The emission step lives in Phase 5, not Phase 6 — asserted by slicing
 //     the Phase 5 body and looking for it there.
-//   • The `test/test-<hash>-qa-walkthrough.md` path and the engine-template
-//     path appear VERBATIM (roc101 pattern — a paraphrased path is a path the
-//     consumer-side eval can't glob).
+//   • The emitted path and the engine-template path appear VERBATIM (roc101
+//     pattern — a paraphrased path is a path the consumer-side eval can't
+//     glob). The emitted path is canonical spec form with the walkthrough's
+//     OWN fresh hash (`test/test-<new-hash>-<ts>-<slug>.md`); reusing the
+//     story's hash is debug-ea4f41 — it makes the story unresolvable by every
+//     by-hash CLI, `devx merge-gate` included. Cross-checked repo-wide by
+//     test/spec-hash-uniqueness.test.ts.
+//   • The walkthrough carries canonical spec frontmatter, so it indexes like
+//     every other TEST.md row instead of as a bare markdown file.
 //   • Both halves of the item contract survive: machine items are EXECUTED at
 //     emission (checked, evidence pasted), human items stay unchecked with an
 //     inline "how to verify:" hint. Losing either half produces a walkthrough
@@ -58,15 +64,36 @@ describe("devx skill — Phase 5 emits the QA walkthrough (bqa103 AC #2)", () =>
     expect(phaseBody(skill, 5)).toMatch(/QA walkthrough/i);
     // Phase 6 may *stage* the file, but it must not be where authoring lives —
     // that's the regression the supersession exists to foreclose.
-    expect(phaseBody(skill, 6)).not.toMatch(/Author `?test\/test-<hash>/);
+    expect(phaseBody(skill, 6)).not.toMatch(/Author `?test\/test-</);
   });
 
   it("names the emitted path and the source template verbatim", () => {
     const body = phaseBody(loadSkill(), 5);
     // The consumer eval globs `test/test-*-qa-walkthrough.md`; the template
     // installs at the engine path. Both are literal contracts, not prose.
-    expect(body).toContain("test/test-<hash>-qa-walkthrough.md");
+    expect(body).toContain("test/test-<new-hash>-<ts>-<slug>.md");
     expect(body).toContain("_devx/templates/engine/qa-walkthrough.md");
+    // …and the slug keeps the suffix that glob depends on.
+    expect(body).toContain("<story-hash>-qa-walkthrough");
+  });
+
+  it("mints a fresh hash for the walkthrough rather than reusing the story's (ea4f41 AC 1)", () => {
+    const body = phaseBody(loadSkill(), 5);
+    expect(body).toMatch(/FRESH hash[\s\S]*never reuse the story's/);
+    // The reason has to survive too — an instruction whose cost isn't stated
+    // is the first one an agent optimizes away under time pressure.
+    expect(body).toMatch(/spec resolution failed/);
+    // A mechanical minting step, not "pick something random": the collision
+    // check is the half that actually holds the invariant.
+    expect(body).toMatch(/openssl rand -hex 3/);
+  });
+
+  it("requires canonical spec frontmatter on the emitted walkthrough (ea4f41 AC 2)", () => {
+    const body = phaseBody(loadSkill(), 5);
+    expect(body).toMatch(/frontmatter/);
+    for (const field of ["`type: test`", "`status: ready`", "`from:`"]) {
+      expect(body, `frontmatter field ${field} unnamed`).toContain(field);
+    }
   });
 
   it("scopes emission to user-visible surfaces", () => {
@@ -108,7 +135,7 @@ describe("devx skill — Phase 5 emits the QA walkthrough (bqa103 AC #2)", () =>
 describe("devx skill — the walkthrough commits with the story (bqa103 AC #2)", () => {
   it("Phase 6 stages the walkthrough as part of the item", () => {
     const body = phaseBody(loadSkill(), 6);
-    expect(body).toContain("test/test-<hash>-qa-walkthrough.md");
+    expect(body).toContain("test/test-<new-hash>-<ts>-<slug>.md");
     expect(body).toMatch(/stage them with it|part of this item/);
   });
 
@@ -123,7 +150,8 @@ describe("devx skill — the packaged mirror carries the emission step", () => {
     // Byte-identity is asserted by test/skills-sync.test.ts; asserted here
     // independently so a mirror that ships without the step fails by name.
     const mirror = readFileSync(MIRROR_PATH, "utf8");
-    expect(mirror).toContain("test/test-<hash>-qa-walkthrough.md");
+    expect(mirror).toContain("test/test-<new-hash>-<ts>-<slug>.md");
     expect(mirror).toMatch(/Execute every `machine` item inline/);
+    expect(mirror).toMatch(/FRESH hash[\s\S]*never reuse the story's/);
   });
 });

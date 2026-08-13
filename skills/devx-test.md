@@ -90,8 +90,10 @@ One surface per invocation. Resolve in this order and **say the call out
 loud** before driving anything:
 
 1. **A surface name** (`/devx-test recipe import`) → that surface.
-2. **A story hash** (`/devx-test bqa104`) → its walkthrough at
-   `test/test-<hash>-qa-walkthrough.md`. Its unchecked `human` items are
+2. **A story hash** (`/devx-test bqa104`) → its walkthrough, which carries
+   its OWN hash and ends in the story's: `test/*-<hash>-qa-walkthrough.md`
+   (never `test/test-<hash>-…` — that would collide with the story spec and
+   is what debug-ea4f41 closed). Its unchecked `human` items are
    the pass's checklist; its `machine` items already ran at emission
    (`/devx` Phase 5) — do not re-run them here.
 3. **No argument** → the top unclaimed `test/*-qa-walkthrough.md` entry
@@ -212,8 +214,8 @@ filing the finding is this skill's whole job. Fixes go through `/devx`.
 
 ## Pairs with
 
-- **/devx** — Phase 5 emits the `test/test-<hash>-qa-walkthrough.md` this
-  skill consumes, and Phase 5 + CI own the scripted Layer 1 suite.
+- **/devx** — Phase 5 emits the `test/*-qa-walkthrough.md` this skill
+  consumes, and Phase 5 + CI own the scripted Layer 1 suite.
 - **`devx next`** — surfaces unclaimed walkthrough entries in `TEST.md`
   and points here.
 - **`docs/QA.md`** — the two-layer split, the cadence/cap table, and the
