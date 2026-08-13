@@ -86,6 +86,17 @@ accounting during claims, not lost updates.
   Cost, exactly as this spec predicted: main was red for one commit and the reflex is to re-run. It also means `lpf101`'s loop preflight would have refused to start an overnight run against that tip.
   Note the preserved worktree's uncommitted compare-and-delete guard reads as a candidate fix for reading (1) — a lock re-acquired between `classifyExistingLock` and the unlink IS a lost update — which raises the value of deciding what to do with that work rather than leaving it uncommitted.
 
+- 2026-08-13 — **second red on main in a row, with a DIFFERENT signature that names the race directly.** Run 31712187479, commit `1a12194` (again markdown-only), job `cli (ubuntu-latest / node 20)` failed while `cli (macos-latest / node 20)` PASSED the same commit — the platform inversion of every earlier observation:
+```
+AssertionError: worker failed: devx lock: lock at
+  /tmp/devx-r3-locked-Cz8Md8/.devx-cache/locks/backlog.lock
+  vanished between EEXIST and read; retrying
+```
+  This is NOT the `flips lost under concurrency` assertion. So R3 has (at least) two distinct failure modes, and this second one is far more diagnostic: the string is emitted verbatim by `classifyExistingLock` (`src/lib/locks/classify.ts`) on the branch where the lock file disappears between the `O_EXCL` EEXIST and the follow-up read. A worker is dying on that path instead of retrying through it.
+  **That is exactly the window the preserved worktree's uncommitted diff targets** — it makes the `stale` verdict carry the bytes it was computed from so a reap can compare-and-delete rather than blind-unlink. Read together: worker A classifies the lock stale, worker B re-acquires it in the gap, A unlinks B's lock, and the next reader finds the file vanished. That is a single coherent mechanism producing BOTH signatures — a genuine lost update, not a racy harness. AC 1's two candidate readings can now be decided in favour of "real lost-update window in the reap path".
+  Tally for AC 4 (10 consecutive green): 2 of the last 4 main runs red, both today, both on markdown-only commits. The rate is not improving, and main is red as of this entry — `lpf101` preflight would refuse an overnight run right now.
+  **Recommendation to the owner:** commit the worktree's guard on `feat/debug-c81f04` and resume this item rather than discarding. It is no longer a speculative direction; it addresses the mechanism the run log just named.
+
 ## Links
 
 - Found during: `dev/dev-mss103-2026-07-28T13:43-loop-split-integration.md`
