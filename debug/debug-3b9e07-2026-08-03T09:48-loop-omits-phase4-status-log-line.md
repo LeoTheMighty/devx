@@ -4,8 +4,7 @@ type: debug
 created: 2026-08-03T09:48:00-06:00
 title: "`devx loop` never emits the mandatory `phase 4:` status-log line — reddens main on the merge-tail commit"
 from: dev/dev-sgr103-2026-08-02T13:57-graph-render-cli.md
-status: in-progress
-owner: /devx-loop-2026-08-13T17-20-48-923-23705
+status: ready
 branch: null
 ---
 
@@ -103,3 +102,7 @@ neither `phase 5:` nor `phase 7:`, so it remains uncatchable before merge.
 - 2026-08-03T09:48 — filed from sgr103 (PR #112) after `main` sat red for
   three consecutive runs and blocked every open PR.
 - 2026-08-13T15:33:49-06:00 — claimed by /devx in session /devx-loop-2026-08-13T17-20-48-923-23705
+- 2026-08-14T19:33:09.723Z — [FAIL] loop abandoned 3b9e07: 3 consecutive failures on this item; no real work was preserved — bookkeeping-only worktree discarded, item left ready
+  - Learning: iteration 1 [ERROR]: worker report unparseable after retry (no JSON object found in the output); worker exited 1: …w implementing. Starting with the report contract: Now the validation, on its own error path: Now the prompt contract: API Error: Your computer went to sleep mid-response. The response above may be incomplete. API Error: Your computer went to sleep mid-response. The response above may be incomplete.
+  - Learning: iteration 2 [FAIL]: No work was completed — the iteration was interrupted by a machine sleep before any investigation or edits landed.
+  - Learning: iteration 3 [FAIL]: The previous iteration made no contribution — it errored out ('computer went to sleep mid-response') immediately after announcing it would read the spec, before any file was read or modified.
