@@ -4,7 +4,8 @@ type: debug
 created: 2026-08-05T11:47:00-06:00
 title: "Loop merge tail leaves GRAPH.md stale — FR-4's third flow has no unattended host"
 from: sgr105
-status: ready
+status: in-progress
+owner: /devx-loop-2026-08-13T17-20-48-923-23705
 ---
 
 ## Goal
@@ -68,3 +69,4 @@ paths into the commit. `markDone`'s single happy path does not cover those.
 ## Status log
 
 - 2026-08-05T11:47 — filed from sgr105 Phase 4 self-review (out-of-scope gap).
+- 2026-08-15T13:42:10-06:00 — claimed by /devx in session /devx-loop-2026-08-13T17-20-48-923-23705

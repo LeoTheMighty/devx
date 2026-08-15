@@ -477,7 +477,7 @@ flowchart TD
   class 28b267 done
   class 2e7b45 ready
   class 357d0c ready
-  class 3b9e07 wip
+  class 3b9e07 ready
   class 494590 done
   class 4d1a9c ready
   class 4d9c1a ready
@@ -488,7 +488,7 @@ flowchart TD
   class 7b3e2a ready
   class 7c1e93 done
   class 7e2b56 ready
-  class 8a9586 ready
+  class 8a9586 wip
   class 8b9165 ready
   class 97f6d8 ready
   class 9b9be5 done
