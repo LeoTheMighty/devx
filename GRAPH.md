@@ -488,7 +488,7 @@ flowchart TD
   class 7b3e2a ready
   class 7c1e93 done
   class 7e2b56 ready
-  class 8a9586 wip
+  class 8a9586 ready
   class 8b9165 ready
   class 97f6d8 ready
   class 9b9be5 done
@@ -510,7 +510,7 @@ flowchart TD
   class cf65aa done
   class d01000 blocked
   class d02000 blocked
-  class d7e8e5 ready
+  class d7e8e5 wip
   class db36af ready
   class dc7514 done
   class e01000 blocked

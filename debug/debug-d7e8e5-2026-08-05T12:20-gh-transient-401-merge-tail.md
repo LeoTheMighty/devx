@@ -4,7 +4,8 @@ type: debug
 created: 2026-08-05T12:20:00-06:00
 title: "Merge-tail helpers treat transient gh GraphQL 401s as terminal — no retry"
 from: dev/dev-sgr107-2026-08-02T13:57-downstream-portability.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-08-13T17-20-48-923-23705
 ---
 
 ## Goal
@@ -41,3 +42,4 @@ with no state change. Attended cost: a human retry loop. Unattended cost
 ## Status log
 
 - 2026-08-05T12:20 — filed by /devx sgr107 Phase 8 (out-of-scope observation; fix-forward not applicable — helper code untouched by sgr107).
+- 2026-08-16T22:21:28-06:00 — claimed by /devx in session /devx-loop-2026-08-13T17-20-48-923-23705
