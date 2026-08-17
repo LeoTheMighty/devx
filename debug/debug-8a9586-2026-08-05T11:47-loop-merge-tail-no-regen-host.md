@@ -4,8 +4,7 @@ type: debug
 created: 2026-08-05T11:47:00-06:00
 title: "Loop merge tail leaves GRAPH.md stale — FR-4's third flow has no unattended host"
 from: sgr105
-status: in-progress
-owner: /devx-loop-2026-08-13T17-20-48-923-23705
+status: ready
 ---
 
 ## Goal
@@ -70,3 +69,7 @@ paths into the commit. `markDone`'s single happy path does not cover those.
 
 - 2026-08-05T11:47 — filed from sgr105 Phase 4 self-review (out-of-scope gap).
 - 2026-08-15T13:42:10-06:00 — claimed by /devx in session /devx-loop-2026-08-13T17-20-48-923-23705
+- 2026-08-17T04:21:25.635Z — [FAIL] loop abandoned 8a9586: 3 consecutive failures on this item; no real work was preserved — bookkeeping-only worktree discarded, item left ready
+  - Learning: iteration 1 [FAIL]: The previous iteration produced no work — the session was interrupted by an API error immediately after starting, before the spec was read or any file was changed.
+  - Learning: iteration 2 [FAIL]: No work was performed — the iteration failed before reading the spec due to an API interruption (machine sleep).
+  - Learning: iteration 3 [ERROR]: worker report unparseable after retry (no JSON object found in the output); worker exited 1: …t me make the changes. First, export `isGitIgnored`: Now the driver imports and seam: Now the merge-tail regen itself: API Error: Your computer went to sleep mid-response. The response above may be incomplete. API Error: Your computer went to sleep mid-response. The response above may be incomplete.
