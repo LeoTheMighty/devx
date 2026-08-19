@@ -100,6 +100,7 @@ import {
   type IterationReport,
   type PriorAttempt,
   type ReportValidationError,
+  type ReviewEvidence,
   type SplitRequest,
 } from "./iteration.js";
 import {
@@ -139,6 +140,7 @@ import {
 import {
   appendStatusEntryToFile,
   clearSpecOwner,
+  composeLoopPhase4Line,
   hasPhase4StatusLine,
   markBacklogRowDone,
   setBacklogRowState,
@@ -1314,6 +1316,12 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
    *  payloads carry them into the follow-up spec (mss103); failed
    *  iterations' learnings already flow through failureNotes. */
   const itemLearnings: string[] = [];
+  /** Review evidence accumulated across SUCCESSFUL iterations (debug-3b9e07)
+   *  — composeLoopPhase4Line turns these into the mandatory `phase 4:`
+   *  status-log line at ship time. Failed iterations' evidence is dropped
+   *  with the rest of their work: a review of rolled-back changes proves
+   *  nothing about what ships. */
+  const reviewEvidence: ReviewEvidence[] = [];
   let pendingRepair: string | null = null;
   let lastFailure: string | null = null;
   /** Loop-owned WARN lines that must reach the morning report (lock-release
@@ -2351,6 +2359,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     const acceptReport = (v: {
       report: IterationReport;
       splitRequestErrors?: ReportValidationError[];
+      reviewErrors?: ReportValidationError[];
     }): IterationReport => {
       if (v.splitRequestErrors !== undefined) {
         event("iteration:split-request-invalid", {
@@ -2359,6 +2368,19 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         });
         out(
           `loop: WARN — ${pick.hash} iteration ${iteration} sent a malformed split_request — ignored (${v.splitRequestErrors.map((e) => e.message).join("; ")})`,
+        );
+      }
+      // debug-3b9e07: malformed review evidence rides the same posture —
+      // already stripped by the validator; surface it so a review that DID
+      // run but reported garbage doesn't silently degrade the item's
+      // `phase 4:` line to the explicit-zero form.
+      if (v.reviewErrors !== undefined) {
+        event("iteration:review-evidence-invalid", {
+          iteration,
+          errors: v.reviewErrors,
+        });
+        out(
+          `loop: WARN — ${pick.hash} iteration ${iteration} sent malformed review evidence — dropped (${v.reviewErrors.map((e) => e.message).join("; ")})`,
         );
       }
       return v.report;
@@ -2540,6 +2562,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         prior.push({ iteration, success: true, summary: report!.summary });
         changeSummaries.push(...report!.key_changes_made);
         itemLearnings.push(...report!.key_learnings);
+        if (report!.review !== undefined) reviewEvidence.push(report!.review);
         out(`loop: ${pick.hash} iteration ${iteration} ok — ${report!.summary}`);
         if (report!.acs_met) {
           return await completeItem();
@@ -2701,6 +2724,32 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
   // bookkeeping on a merged tail; still filed — blocked until the PR lands
   // — on a handed-off tail, whose outcome stays "handed-off").
   async function completeItem(splitRequest?: SplitRequest): Promise<RunItemResult> {
+    // debug-3b9e07 (AC 1/AC 2): append the composed `phase 4:` line
+    // BRANCH-SIDE, before the push and the PR, so the audit line rides the
+    // feature branch into PR CI — including on handed-off tails and orphaned
+    // PRs a human merges interactively after the loop dies (the rtl104/
+    // rtl106 path, which finalizeMerged never reaches). Best-effort: on
+    // failure the finalizeMerged fallback below still covers the merged
+    // path, and the event is the breadcrumb for the rest.
+    try {
+      if (!hasPhase4StatusLine(readFileSync(worktreeSpecPath, "utf8"))) {
+        appendStatusEntryToFile(worktreeSpecPath, {
+          iso: now().toISOString(),
+          prefix: "",
+          head: composeLoopPhase4Line(reviewEvidence),
+        });
+        // Bookkeeping-prefixed like every recordIteration commit, so
+        // isBookkeepingOnlyWorktree's discard predicate keeps seeing this
+        // for what it is (dc7514 wrap-don't-duplicate).
+        commitAll(
+          exec,
+          worktree,
+          `${LOOP_BOOKKEEPING_COMMIT_PREFIX}phase-4 audit line for ${pick.hash}`,
+        );
+      }
+    } catch (e) {
+      event("item:phase4-branch-append-failed", { error: serializeError(e) });
+    }
     try {
       pushCurrentBranch(exec, worktree);
     } catch (e) {
@@ -2932,15 +2981,14 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       }
       // dvx103 (cf65aa): the interactive /devx skill writes the mandatory
       // `phase 4:` status-log line itself, but in the loop the orchestrator
-      // owns the Status log and workers may not touch it — so the merge tail
-      // appends the line when it's missing, or every loop-shipped spec reds
+      // owns the Status log and workers may not touch it. completeItem
+      // appends the composed line branch-side before the PR opens
+      // (debug-3b9e07); this is the fallback for the case where that write
+      // failed — without it, a loop-shipped spec reds
       // test/devx-status-log-discipline.test.ts on the next branch cut.
       try {
         if (!hasPhase4StatusLine(readFileSync(mainSpecPath, "utf8"))) {
-          appendMainEntry(
-            "",
-            "phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103",
-          );
+          appendMainEntry("", composeLoopPhase4Line(reviewEvidence));
         }
       } catch (e) {
         event("item:phase4-append-failed", { error: serializeError(e) });
