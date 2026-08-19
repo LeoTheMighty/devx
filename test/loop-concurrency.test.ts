@@ -28,7 +28,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { runLoop } from "../src/lib/loop/driver.js";
 import { readEvents } from "../src/lib/loop/state.js";
@@ -228,66 +228,123 @@ function track(fx: Fixture): Fixture {
 // ---------------------------------------------------------------------------
 
 async function runBaseline(): Promise<{ devMd: string; merged: string[] }> {
-  const fx = track(makeFixture());
-  const r = await runLoop(loopOpts(fx, "baseline", mulberry32(1)));
-  expect(r.exitCode).toBe(0);
-  const merged = mergedHashes(r.summary).sort();
-  expect(merged).toEqual([...HASHES].sort());
-  return { devMd: readFileSync(join(fx.repoRoot, "DEV.md"), "utf8"), merged };
+  // NOT track()ed: this runs in `beforeAll`, and the afterEach sweeper would
+  // delete the fixture out from under the seed cases that follow. Owns its
+  // own cleanup instead — the caller keeps only the strings.
+  const fx = makeFixture();
+  try {
+    const r = await runLoop(loopOpts(fx, "baseline", mulberry32(1)));
+    expect(r.exitCode).toBe(0);
+    const merged = mergedHashes(r.summary).sort();
+    expect(merged).toEqual([...HASHES].sort());
+    return { devMd: readFileSync(join(fx.repoRoot, "DEV.md"), "utf8"), merged };
+  } finally {
+    rmSync(fx.base, { recursive: true, force: true });
+  }
 }
 
+// G-1 SEEDS and G1_CASE_TIMEOUT_MS: the assertion set is unchanged from
+// mlc104 (merged union == serial baseline, DEV.md byte-equal, 0 contention
+// aborts, >=3 seeds) — only its packaging is. Each seed is its own `it`, and
+// the serial baseline is a `beforeAll`, so each case is bounded by its own
+// cap instead of four fixtures sharing one.
+//
+// WHY (debug-5c8b21). This was a single `it` covering baseline + 3 seeds
+// under a 600s cap, and it timed out inside a full-suite run:
+//
+//   isolated, idle machine, 2026-08-03 ....... 122s  (4.9x under the cap)
+//   full suite, same machine+commit .......... 467s  (1.3x under the cap)
+//   full suite, same machine, ~1h later ...... >600s TIMEOUT
+//
+// The load amplification was uniform (~1.71x) across changed and unchanged
+// files in that run — `claim-contention.test.ts`, byte-identical across both,
+// slowed by the same factor — so the failure was machine load, not a diff.
+// The defect was the ~1.3x margin: at that headroom the verdict is a function
+// of machine speed, not of correctness.
+//
+// Two things fixed it. (a) debug-7c1e93 partitioned `npm test` so the
+// sync-blocking files (this one included) run in their own maxForks:2 pass
+// instead of ~11-wide against the async majority. (b) this split, which
+// divides the wall-clock of the largest case by ~4.
+//
+// Re-measured on this tree, isolated (2026-08-19, 12-core macOS):
+//
+//   whole file, before the split ........ 15.7s / 9 tests
+//   the old single G-1 case ............. 10.4s  (58x under the old 600s cap)
+//   whole file, after the split ......... 16.1s / 11 tests
+//   ONE seed case, after the split ...... ~2.6s  (115x under the 300s cap)
+//
+// The cap below is therefore both a TIGHTENING (600s -> 300s, so a genuinely
+// wedged case fails in half the time and the file's worst-case wall-clock
+// stops being one 600s block for four fixtures' work) and a headroom increase.
+// Sizing it against the WORST case ever measured rather than today's fast
+// box: the 2026-08-03 machine's ~30s per fixture run (122s / 4) x that run's
+// 1.71x load amplification = ~52s, so 300s leaves ~5.8x even there, and ~115x
+// here. Do NOT collapse these back into one case, and do NOT raise the global
+// testTimeout instead — that hides the same fragility everywhere else
+// (debug-c81f04, debug-74632d are the same class). `scripts/timeout-headroom.mjs`
+// is the suite-wide audit for that class.
+const G1_SEEDS = [11, 22, 33] as const;
+const G1_CASE_TIMEOUT_MS = 300_000;
+
 describe("two overlapping in-process loops over one fixture (G-1 harness)", () => {
-  it("merged union == serial baseline, DEV.md byte-equal, 0 contention aborts — across ≥3 seeds", async () => {
-    const baseline = await runBaseline();
+  let baseline: { devMd: string; merged: string[] };
 
-    for (const seed of [11, 22, 33]) {
-      const fx = track(makeFixture());
-      const rand = mulberry32(seed);
-      // Loop B: staggered start + skewed clock (distinct runId — newRunId
-      // is pid+timestamp and both loops share this process's pid).
-      const bStartDelay = 1 + Math.floor(rand() * 25);
-      const [a, b] = await Promise.all([
-        runLoop(loopOpts(fx, `loop-A-${seed}`, mulberry32(seed * 7 + 1))),
-        (async () => {
-          await wait(bStartDelay);
-          return runLoop(
-            loopOpts(fx, `loop-B-${seed}`, mulberry32(seed * 13 + 2), {
-              now: () => new Date(Date.now() + 60_000),
-            }),
-          );
-        })(),
-      ]);
+  // One serial baseline for all seeds — the reference bytes are seed-
+  // independent, so re-running it per case would be pure cost.
+  beforeAll(async () => {
+    baseline = await runBaseline();
+  }, G1_CASE_TIMEOUT_MS);
 
-      // 0 contention aborts: neither run aborted, neither stopped on the
-      // systemic-claim-failures rail, no hard claim failures at all.
-      for (const r of [a, b]) {
-        expect(r.exitCode, `seed ${seed}`).toBe(0);
-        expect(r.summary?.abortReason ?? null, `seed ${seed}`).toBeNull();
-        expect(r.summary?.stopReason ?? "").not.toMatch(/systemic claim problem/);
-        expect(
-          (r.summary?.items ?? []).filter((i) => i.outcome === "claim-failed"),
-          `seed ${seed}`,
-        ).toEqual([]);
-      }
+  for (const seed of G1_SEEDS) {
+    it(
+      `seed ${seed}: merged union == serial baseline, DEV.md byte-equal, 0 contention aborts`,
+      async () => {
+        const fx = track(makeFixture());
+        const rand = mulberry32(seed);
+        // Loop B: staggered start + skewed clock (distinct runId — newRunId
+        // is pid+timestamp and both loops share this process's pid).
+        const bStartDelay = 1 + Math.floor(rand() * 25);
+        const [a, b] = await Promise.all([
+          runLoop(loopOpts(fx, `loop-A-${seed}`, mulberry32(seed * 7 + 1))),
+          (async () => {
+            await wait(bStartDelay);
+            return runLoop(
+              loopOpts(fx, `loop-B-${seed}`, mulberry32(seed * 13 + 2), {
+                now: () => new Date(Date.now() + 60_000),
+              }),
+            );
+          })(),
+        ]);
 
-      // Merged union == serial baseline, disjoint between the two loops.
-      const aMerged = mergedHashes(a.summary);
-      const bMerged = mergedHashes(b.summary);
-      const union = [...aMerged, ...bMerged].sort();
-      expect(union, `seed ${seed}: no double-merge`).toEqual(baseline.merged);
+        // 0 contention aborts: neither run aborted, neither stopped on the
+        // systemic-claim-failures rail, no hard claim failures at all.
+        for (const r of [a, b]) {
+          expect(r.exitCode, `seed ${seed}`).toBe(0);
+          expect(r.summary?.abortReason ?? null, `seed ${seed}`).toBeNull();
+          expect(r.summary?.stopReason ?? "").not.toMatch(/systemic claim problem/);
+          expect(
+            (r.summary?.items ?? []).filter((i) => i.outcome === "claim-failed"),
+            `seed ${seed}`,
+          ).toEqual([]);
+        }
 
-      // Final DEV.md byte-equal to the serial baseline's.
-      const devMd = readFileSync(join(fx.repoRoot, "DEV.md"), "utf8");
-      expect(devMd, `seed ${seed}`).toBe(baseline.devMd);
-      for (const hash of HASHES) {
-        expect(devMd).toContain(`PR: ${prUrlFor(hash)}`);
-      }
-    }
-    // Real-git fixtures × (1 baseline + 3 dual runs) — slow solo and
-    // slower under full-suite worker contention (a 360s ceiling was
-    // starved past its budget on a fast machine); the generous ceiling
-    // is deliberate.
-  }, 600_000);
+        // Merged union == serial baseline, disjoint between the two loops.
+        const aMerged = mergedHashes(a.summary);
+        const bMerged = mergedHashes(b.summary);
+        const union = [...aMerged, ...bMerged].sort();
+        expect(union, `seed ${seed}: no double-merge`).toEqual(baseline.merged);
+
+        // Final DEV.md byte-equal to the serial baseline's.
+        const devMd = readFileSync(join(fx.repoRoot, "DEV.md"), "utf8");
+        expect(devMd, `seed ${seed}`).toBe(baseline.devMd);
+        for (const hash of HASHES) {
+          expect(devMd).toContain(`PR: ${prUrlFor(hash)}`);
+        }
+      },
+      G1_CASE_TIMEOUT_MS,
+    );
+  }
 });
 
 // ---------------------------------------------------------------------------
