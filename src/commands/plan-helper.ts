@@ -16,7 +16,8 @@
 //     0  — success; derived value printed on stdout. Partial-but-acceptable
 //          outcomes (emit-retro-story's "spec wrote, DEV.md rename
 //          failed") are also exit 0 with `WARN:` on stderr.
-//     1  — invalid input or pre-write failure. No fs side-effects.
+//     1  — invalid input, linked-worktree repo root (see below), or
+//          pre-write failure. No fs side-effects.
 //     2  — commander usage error (handled by commander itself).
 //
 //   validate-emit:
@@ -26,10 +27,27 @@
 //          /devx-plan skill body can route a typo'd slug back to the user
 //          rather than aborting forward progress per locked decision #8).
 //
+// Linked-worktree posture (7e2b56) — emit-retro-story REFUSES; it does NOT
+// retarget the main checkout the way `devx graph` does. Why refuse: an
+// emission is a planning act on `main` — it writes a new `dev/<spec>`,
+// splices DEV.md, and regenerates GRAPH.md — so silently retargeting would
+// write three files into a checkout the operator's cwd says nothing about,
+// while retargeting graph only ever rewrites one derived artifact. Refusing
+// matches `claimSpec`'s mlc101 canonical-root assertion (`src/lib/devx/
+// claim.ts`) and `devx split`, and costs nothing in practice: `/devx-plan`
+// runs from the main checkout, and "worktrees are isolation, not staging"
+// (CLAUDE.md) already forbids the other case. The classification comes from
+// the shared `resolveRepoRoot` primitive (`src/lib/repo-root.ts`) that
+// `resolveGraphRoot` uses — not a second config walk. An indeterminate probe
+// (non-git dir, git missing) skips the check rather than blocking a
+// legitimate emission, the same posture claim and split take.
+//
 // Specs:
 //   dev/dev-pln101-2026-04-28T19:30-plan-derive-branch.md  (derive-branch)
 //   dev/dev-pln102-2026-04-28T19:30-plan-emit-retro.md     (emit-retro-story)
 //   dev/dev-pln103-2026-04-28T19:30-plan-validate-emit.md  (validate-emit)
+//   debug/debug-7e2b56-2026-08-03T14:40-emit-retro-worktree-root.md
+//                                                    (worktree refusal)
 // Epic: _bmad-output/planning-artifacts/epic-devx-plan-skill.md
 
 import { dirname, relative } from "node:path";
@@ -48,6 +66,7 @@ import {
   emitRetroStory,
   writeRetroAtomically,
 } from "../lib/plan/emit-retro-story.js";
+import { type RepoRootInfo, resolveRepoRoot } from "../lib/repo-root.js";
 import {
   type ValidateEmitFs,
   type ValidationIssue,
@@ -234,6 +253,26 @@ export function runEmitRetroStory(
   // The repoRoot is the directory containing devx.config.yaml — that's
   // where DEV.md lives.
   const repoRoot = opts.repoRoot ?? dirname(projectConfigPath);
+
+  // Canonical-root assertion (7e2b56). `findProjectConfig()` walks up from
+  // cwd, so a run from inside `.worktrees/<type>-<hash>/` finds the
+  // WORKTREE's devx.config.yaml and forks the spec + DEV.md + GRAPH.md onto
+  // a feature branch where `devx next` and `devx graph --check` never see
+  // them. Refuse rather than retarget — see the file header for why this
+  // surface takes claim's posture and not graph's.
+  let rootInfo: RepoRootInfo | null;
+  try {
+    rootInfo = resolveRepoRoot(repoRoot);
+  } catch {
+    rootInfo = null;
+  }
+  if (rootInfo !== null && rootInfo.isLinkedWorktree) {
+    err(
+      `devx plan-helper emit-retro-story: repo root ${repoRoot} is a linked worktree — ` +
+        `emissions must run against the canonical main checkout at ${rootInfo.root}\n`,
+    );
+    return 1;
+  }
 
   let merged: DeriveBranchConfig & {
     mode?: string;
