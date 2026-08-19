@@ -28,6 +28,7 @@ import { readFileSync } from "node:fs";
 import { writeAtomic } from "../supervisor-internal.js";
 import { blankFencedLines } from "../backlog/parse.js";
 import { replaceFrontmatterStatus } from "../manage/loop.js";
+import { type ReviewEvidence } from "./iteration.js";
 
 // ---------------------------------------------------------------------------
 // Status-log entries
@@ -126,6 +127,69 @@ export function hasPhase4StatusLine(content: string): boolean {
   const section = content.match(/^## Status log\s*\n([\s\S]*?)(?=\n## |$(?![\r\n]))/m);
   const body = section ? section[1] : "";
   return /^- .*\bphase 4:/m.test(body);
+}
+
+/**
+ * Compose the merge tail's `phase 4:` status-log head from the review
+ * evidence workers reported across the item's iterations (debug-3b9e07).
+ * Three honest shapes, mirroring `.claude/commands/devx.md` Phase 4 step 6:
+ *
+ *   - evidence present, findings > 0 — the canonical non-zero form: shape
+ *     descriptor, finding count, disposition, most load-bearing fix.
+ *   - evidence present, 0 findings   — the canonical explicit-zero
+ *     ("clean review") form, loop-adapted.
+ *   - NO evidence                    — the line states plainly that no
+ *     review pass was reported, rather than being omitted (the contract's
+ *     whole point: silence is indistinguishable from a skipped review) and
+ *     rather than claiming a clean review that never ran (the rtl106
+ *     lesson: never invent findings — or their absence).
+ *
+ * Pure; the returned head goes through composeStatusEntry, but worker-derived
+ * text (shape/summary) is sanitized here too so direct callers can't be
+ * forged into multi-line log entries.
+ */
+export function composeLoopPhase4Line(evidence: ReviewEvidence[]): string {
+  const provenance = "line composed by the loop merge tail per dvx103 (debug-3b9e07)";
+  if (evidence.length === 0) {
+    return (
+      "phase 4: NO adversarial-review pass was reported by any loop iteration — " +
+      "explicit-zero rather than omission; per-iteration verification (build/tests, " +
+      `see the iteration lines above) is the only review signal on this item; ${provenance}`
+    );
+  }
+  const findings = evidence.reduce((n, e) => n + e.findings, 0);
+  const fixed = evidence.reduce((n, e) => n + e.fixed, 0);
+  const shapes = [
+    ...new Set(
+      evidence
+        .map((e) => (e.shape === undefined ? "" : sanitizeLine(e.shape)))
+        .filter((s) => s !== ""),
+    ),
+  ];
+  const shapeText = shapes.length > 0 ? shapes.join(" + ") : "self-review";
+  const passes = `${evidence.length} review pass${evidence.length === 1 ? "" : "es"}`;
+  if (findings === 0) {
+    return `phase 4: clean review (0 issues across ${passes}; ${shapeText}); ${provenance}`;
+  }
+  // Most-recent non-empty summary = the most load-bearing fix the item's
+  // final review state reflects (the canonical form's tail).
+  let summary = "";
+  for (let i = evidence.length - 1; i >= 0; i--) {
+    const s = evidence[i].summary;
+    if (s !== undefined && sanitizeLine(s) !== "") {
+      summary = sanitizeLine(s);
+      break;
+    }
+  }
+  const disposition =
+    fixed >= findings
+      ? "ALL fixed in-place"
+      : `${fixed} fixed in-place, ${findings - fixed} recorded unfixed in the iteration lines above`;
+  return (
+    `phase 4: ${shapeText} review (${passes} across loop iterations); ` +
+    `${findings} finding${findings === 1 ? "" : "s"}; ${disposition}` +
+    `${summary !== "" ? ` — ${summary}` : ""}; ${provenance}`
+  );
 }
 
 /** Read-modify-write a spec file: append one status entry. Atomic

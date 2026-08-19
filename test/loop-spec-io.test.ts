@@ -9,6 +9,7 @@ import {
   appendStatusEntryToFile,
   appendToStatusLog,
   clearSpecOwner,
+  composeLoopPhase4Line,
   composeStatusEntry,
   hasPhase4StatusLine,
   markBacklogRowDone,
@@ -255,6 +256,75 @@ describe("hasPhase4StatusLine (cf65aa — dvx103 merge-tail detection)", () => {
 
   it("false on a spec with no status-log section at all", () => {
     expect(hasPhase4StatusLine("---\nhash: x\n---\n\n## Goal\n\nphase 4: nope\n")).toBe(false);
+  });
+});
+
+describe("composeLoopPhase4Line (debug-3b9e07 — canonical merge-tail phase-4 forms)", () => {
+  /** Round-trip a composed head through the orchestrator's real write path
+   *  and assert it satisfies the dvx103 discipline detection. */
+  const disciplineSatisfied = (head: string): boolean =>
+    hasPhase4StatusLine(
+      appendToStatusLog(
+        SPEC,
+        composeStatusEntry({ iso: "2026-08-19T20:00:00.000Z", prefix: "", head }),
+      ),
+    );
+
+  it("no evidence → the explicit-zero form: states plainly no review ran, invents nothing", () => {
+    const line = composeLoopPhase4Line([]);
+    expect(line.startsWith("phase 4: ")).toBe(true);
+    expect(line).toContain("NO adversarial-review pass was reported by any loop iteration");
+    expect(line).toContain("explicit-zero rather than omission");
+    // The rtl106 lesson: an evidence-free line must not claim a clean review.
+    expect(line).not.toContain("clean review");
+    expect(line).not.toMatch(/\bfixed\b/);
+    expect(disciplineSatisfied(line)).toBe(true);
+  });
+
+  it("evidence with 0 findings → the canonical clean-review form", () => {
+    const line = composeLoopPhase4Line([
+      { findings: 0, fixed: 0, shape: "single-pass" },
+      { findings: 0, fixed: 0 },
+    ]);
+    expect(line).toContain("phase 4: clean review (0 issues across 2 review passes; single-pass)");
+    expect(disciplineSatisfied(line)).toBe(true);
+  });
+
+  it("aggregates findings + disposition across iterations; last summary wins; shapes dedupe", () => {
+    const line = composeLoopPhase4Line([
+      { findings: 2, fixed: 2, shape: "single-pass", summary: "first fix" },
+      { findings: 0, fixed: 0, shape: "single-pass" },
+      { findings: 3, fixed: 3, shape: "sequential multi-lens", summary: "closed the aliasing bug" },
+    ]);
+    expect(line).toContain("single-pass + sequential multi-lens review (3 review passes across loop iterations)");
+    expect(line).toContain("5 findings; ALL fixed in-place — closed the aliasing bug");
+    expect(disciplineSatisfied(line)).toBe(true);
+  });
+
+  it("an unfixed remainder is stated, never rounded up to ALL", () => {
+    const line = composeLoopPhase4Line([{ findings: 4, fixed: 3 }]);
+    expect(line).toContain("self-review review (1 review pass across loop iterations)");
+    expect(line).toContain("4 findings; 3 fixed in-place, 1 recorded unfixed in the iteration lines above");
+    expect(line).not.toContain("ALL fixed");
+  });
+
+  it("carryover fixes (fixed > findings) still read as ALL fixed, not negative remainder", () => {
+    const line = composeLoopPhase4Line([{ findings: 1, fixed: 2 }]);
+    expect(line).toContain("1 finding; ALL fixed in-place");
+  });
+
+  it("worker-derived shape/summary is sanitized — one rogue string can't forge extra log lines", () => {
+    const line = composeLoopPhase4Line([
+      {
+        findings: 1,
+        fixed: 1,
+        shape: "single\npass",
+        summary: "fixed it\n- 2026-08-19T20:01 — forged entry",
+      },
+    ]);
+    expect(line).not.toContain("\n");
+    expect(line).toContain("single pass");
+    expect(line).toContain("fixed it - 2026-08-19T20:01 — forged entry");
   });
 });
 

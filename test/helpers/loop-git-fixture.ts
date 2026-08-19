@@ -140,6 +140,9 @@ export interface IterationReportShape {
   /** mss103: worker-requested mid-story split (any shape — tests send
    *  malformed ones on purpose). */
   split_request?: unknown;
+  /** debug-3b9e07: per-iteration review evidence (any shape — tests send
+   *  malformed ones on purpose). */
+  review?: unknown;
 }
 
 export function scriptedWorker(steps: Step[]): { worker: WorkerRunFn; prompts: string[] } {

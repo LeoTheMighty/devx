@@ -40,7 +40,9 @@ bucket's destination, one at a time.
 
 Every kept row goes to **exactly one** outlet. Walk the five in order and
 stop at the **first match** — the walk is the decision, not a menu, so the
-same judgment is never asked twice. The order runs widest blast radius
+same judgment is never asked twice. The one exception is a genuine tie:
+a tie is not a first match, so keep walking and settle it with the
+coin-flip rule below. The order runs widest blast radius
 first, each step down affecting fewer people, so a row lands at the widest
 outlet its evidence actually reaches and no wider.
 

@@ -131,7 +131,11 @@ describe("buildReportRetryPrompt", () => {
     const retry = buildReportRetryPrompt("x".repeat(10_000), [
       { code: "no-json-found", message: "no JSON object found" },
     ]);
-    expect(retry.length).toBeLessThan(6_000);
+    // Tail cap is 4000 chars; the rest is the shared schema block +
+    // boilerplate. Bound raised 6000 → 6500 when the review field joined
+    // OUTPUT_FIELD_LINES (debug-3b9e07) — the pin is that a 10k output
+    // never rides wholesale, not the exact overhead size.
+    expect(retry.length).toBeLessThan(6_500);
   });
 });
 
@@ -310,6 +314,86 @@ describe("hasFinalReport (LOW-12 — the grace-kill's positional seam invariant)
 // ---------------------------------------------------------------------------
 // E-4: worker-requested split (mid-story-split phase 3 — mss103)
 //
+// review evidence (debug-3b9e07): the optional audit channel the merge
+// tail's mandatory `phase 4:` status-log line is composed from. Rides the
+// same own-error-path posture as split_request — malformed evidence is
+// stripped + surfaced, never failing an otherwise-honest report.
+// ---------------------------------------------------------------------------
+
+describe("review evidence (debug-3b9e07)", () => {
+  it("copies well-formed review evidence through (trimmed), with no reviewErrors", () => {
+    const r = validateIterationReport({
+      ...VALID,
+      review: {
+        findings: 3,
+        fixed: 3,
+        shape: "  sequential multi-lens  ",
+        summary: "  fixed an aliasing bug in the skip set  ",
+      },
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.report.review).toEqual({
+        findings: 3,
+        fixed: 3,
+        shape: "sequential multi-lens",
+        summary: "fixed an aliasing bug in the skip set",
+      });
+      expect(r.reviewErrors).toBeUndefined();
+    }
+  });
+
+  it("accepts counts-only evidence (shape/summary optional)", () => {
+    const r = validateIterationReport({ ...VALID, review: { findings: 0, fixed: 0 } });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.report.review).toEqual({ findings: 0, fixed: 0 });
+      expect(r.reviewErrors).toBeUndefined();
+    }
+  });
+
+  it("malformed evidence never fails the report: stripped + typed errors surfaced", () => {
+    for (const [bad, field] of [
+      [{ findings: -1, fixed: 0 }, "review.findings"],
+      [{ findings: 1.5, fixed: 0 }, "review.findings"],
+      [{ findings: 2 }, "review.fixed"],
+      [{ findings: 2, fixed: "2" }, "review.fixed"],
+      [{ findings: 2, fixed: 2, shape: "multi\nline" }, "review.shape"],
+      [{ findings: 2, fixed: 2, summary: "   " }, "review.summary"],
+      ["not an object", "review"],
+      [["array"], "review"],
+    ] as const) {
+      const r = validateIterationReport({ ...VALID, review: bad });
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.report.review).toBeUndefined();
+        expect(r.reviewErrors!.length).toBeGreaterThanOrEqual(1);
+        expect(r.reviewErrors!.map((e) => e.field)).toContain(field);
+      }
+    }
+  });
+
+  it("absent or falsy review → no evidence, no errors (a negative answer is not a WARN)", () => {
+    for (const value of [VALID, { ...VALID, review: null }, { ...VALID, review: false }]) {
+      const r = validateIterationReport(value);
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.report.review).toBeUndefined();
+        expect(r.reviewErrors).toBeUndefined();
+      }
+    }
+  });
+
+  it("prompt contract names review with the never-invent instruction", () => {
+    const prompt = buildIterationPrompt(params);
+    expect(prompt).toContain("- review (optional):");
+    expect(prompt).toContain("ran an adversarial self-review pass");
+    expect(prompt).toContain("`phase 4:` status-log line");
+    expect(prompt).toContain("never invent a review that did not run");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // split_request rides its OWN error path: a malformed request is stripped +
 // surfaced (never failing the report, never wedging the item); a
 // well-formed one is explicitly copied through validateIterationReport's

@@ -206,11 +206,13 @@ describe("runLoop scenarios", () => {
     const spec = readFileSync(join(fixture.repoRoot, fixture.specRel({ hash: "aaa111" })), "utf8");
     expect(spec).toContain("status: done");
     expect(spec).toContain("merged via devx loop — PR https://github.com/x/y/pull/99");
-    // cf65aa: the merge tail appends the dvx103 `phase 4:` line (workers are
-    // barred from the Status log), before the merged line, in the exact shape
-    // test/devx-status-log-discipline.test.ts detects.
-    expect(spec).toMatch(/^- .*\bphase 4: loop-shipped/m);
-    expect(spec.indexOf("phase 4: loop-shipped")).toBeLessThan(
+    // cf65aa + debug-3b9e07: the loop appends the dvx103 `phase 4:` line
+    // (workers are barred from the Status log), before the merged line, in
+    // the exact shape test/devx-status-log-discipline.test.ts detects. No
+    // iteration reported review evidence, so the line must be the honest
+    // explicit-zero form — never a claimed review that didn't run (AC 2).
+    expect(spec).toMatch(/^- .*\bphase 4: NO adversarial-review pass was reported/m);
+    expect(spec.indexOf("phase 4:")).toBeLessThan(
       spec.indexOf("merged via devx loop"),
     );
     expect(existsSync(join(fixture.cacheDir, "locks", "spec-aaa111.lock"))).toBe(false);
@@ -257,7 +259,93 @@ describe("runLoop scenarios", () => {
     expect(r.summary?.items[0]?.outcome).toBe("merged");
     const spec = readFileSync(specAbs, "utf8");
     expect(spec.match(/^- .*\bphase 4:/gm)).toHaveLength(1);
-    expect(spec).not.toContain("phase 4: loop-shipped");
+    expect(spec).not.toContain("line composed by the loop merge tail");
+  });
+
+  it("review evidence composes the canonical `phase 4:` line, lands BRANCH-SIDE before the PR, and satisfies the dvx103 discipline check (debug-3b9e07 AC 1/AC 3)", async () => {
+    fixture = makeFixture([{ hash: "rev111" }]);
+    const { worker } = scriptedWorker([
+      {
+        kind: "report",
+        files: { "a.txt": "a\n" },
+        report: {
+          summary: "step 1",
+          key_changes_made: ["a.txt"],
+          review: { findings: 3, fixed: 3, shape: "sequential multi-lens", summary: "fixed the frobnicator aliasing bug" },
+        },
+      },
+      {
+        kind: "report",
+        files: { "b.txt": "b\n" },
+        report: {
+          summary: "step 2",
+          key_changes_made: ["b.txt"],
+          acs_met: true,
+          review: { findings: 1, fixed: 1, summary: "fixed the final off-by-one" },
+        },
+      },
+    ]);
+    const r = await runLoop(baseOpts(fixture, { worker, tail: mergedTail().tail }));
+    expect(r.summary?.items[0]?.outcome).toBe("merged");
+
+    // The line rode the FEATURE BRANCH into the push that precedes the PR —
+    // the rtl104/rtl106 hole: a handed-off or orphaned PR merged by a human
+    // must already carry the audit line (finalizeMerged never runs there).
+    const specRel = fixture.specRel({ hash: "rev111" });
+    const branchSpec = g(fixture.origin, "show", `feat/dev-rev111:${specRel}`);
+    expect(branchSpec).toMatch(/^- .*\bphase 4: sequential multi-lens review \(2 review passes across loop iterations\); 4 findings; ALL fixed in-place — fixed the final off-by-one/m);
+
+    // The reconciled main spec carries it too, and satisfies the EXACT
+    // section-bounded detection test/devx-status-log-discipline.test.ts
+    // runs (its parseSpec regexes — kept in lockstep by hasPhase4StatusLine,
+    // pinned in test/loop-spec-io.test.ts), on a spec that reached ship
+    // stage (`status: done`), so the two contracts verify each other.
+    const spec = readFileSync(join(fixture.repoRoot, specRel), "utf8");
+    expect(spec).toContain("status: done");
+    const statusLogBody =
+      spec.match(/^## Status log\s*\n([\s\S]*?)(?=\n## |$(?![\r\n]))/m)?.[1] ?? "";
+    expect(/^- .*\bphase 4:/m.test(statusLogBody)).toBe(true);
+    // Exactly one line — the merge-tail fallback must not duplicate the
+    // branch-side append. (The scripted tail never really merges the branch
+    // into origin/main, so main's copy comes from the fallback here; the
+    // count is over the whole spec either way.)
+    expect(spec.match(/^- .*\bphase 4:/gm)).toHaveLength(1);
+  });
+
+  it("malformed review evidence is dropped with a WARN; a handed-off tail still gets the explicit-zero line branch-side (debug-3b9e07 AC 2)", async () => {
+    fixture = makeFixture([{ hash: "rev222" }]);
+    const { worker } = scriptedWorker([
+      {
+        kind: "report",
+        files: { "c.txt": "c\n" },
+        report: { summary: "did it", key_changes_made: ["c.txt"], acs_met: true, review: { findings: "many" } },
+      },
+    ]);
+    const tail: TailFn = async () => ({
+      outcome: "handed-off",
+      kind: "handed-off-ok",
+      prUrl: "https://github.com/x/y/pull/13",
+      prNumber: 13,
+      detail: "remote CI concluded 'failure' — not merging",
+    });
+    const lines: string[] = [];
+    const r = await runLoop(baseOpts(fixture, { worker, tail, out: (l) => lines.push(l) }));
+    const item = r.summary!.items[0];
+    expect(item.outcome).toBe("handed-off");
+    expect(lines.join("\n")).toContain("malformed review evidence");
+    const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
+    expect(events).toContain("iteration:review-evidence-invalid");
+
+    // Stripped evidence must not fabricate a review: the branch-side line is
+    // the explicit-zero form, present on the pushed branch even though the
+    // tail handed off and finalizeMerged never ran.
+    const specRel = fixture.specRel({ hash: "rev222" });
+    const branchSpec = g(fixture.origin, "show", `feat/dev-rev222:${specRel}`);
+    expect(branchSpec).toMatch(/^- .*\bphase 4: NO adversarial-review pass was reported/m);
+    expect(branchSpec.match(/^- .*\bphase 4:/gm)).toHaveLength(1);
+    // Main's copy stays untouched — the item is still in flight.
+    const mainSpec = readFileSync(join(fixture.repoRoot, specRel), "utf8");
+    expect(mainSpec).not.toContain("phase 4:");
   });
 
   it("3 consecutive reported failures after REAL work abandon the item: [-] blocked, lock released, worktree PRESERVED", async () => {

@@ -175,6 +175,18 @@ describe("hfi104 — /devx-learn skill body carries the pinned sections (static)
     expect(ROUTING).toMatch(/in order/i);
   });
 
+  // 3b9e07 AC 4 — the retrospective review of PR #109 found the walk and the
+  // coin-flip rule contradicting each other: the intro said "stop at the first
+  // match" unconditionally, so a reader who routed straight off the numbered
+  // list never reached the tie-break and could ship a framework edit that was
+  // really one person's taste. The intro now forward-references the exception;
+  // this pin keeps the two paragraphs from drifting apart again.
+  it("pins the tie exception inside the first-match framing", () => {
+    const intro = ROUTING.slice(0, ROUTING.indexOf("1. **Framework fix**"));
+    expect(intro).toMatch(/a tie is not a first match/i);
+    expect(intro).toMatch(/coin-flip rule below/i);
+  });
+
   it("pins the five outlets in order", () => {
     const outlets = [
       /^1\. \*\*Framework fix\*\*/m,
