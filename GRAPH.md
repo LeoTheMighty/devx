@@ -4,7 +4,7 @@
 
 # Story graph
 
-194 specs across 22 groups — 12 blocked · 127 done · 6 in-progress · 49 ready; 392 edges.
+196 specs across 23 groups — 12 blocked · 129 done · 5 in-progress · 50 ready; 393 edges.
 
 ## Legend
 
@@ -21,6 +21,9 @@
 
 ```mermaid
 flowchart TD
+  subgraph sg_execute_rehome_bmad_eject["execute-rehome-bmad-eject (workstream)"]
+    bd5b5e["bd5b5e Execute Rehome Bmad Eject"]
+  end
   subgraph sg_harness_fold_in["harness-fold-in (workstream)"]
     grp_harness_fold_in["harness-fold-in — 7/7 done, last merged 2026-07-26"]
   end
@@ -139,9 +142,10 @@ flowchart TD
     357d0c["357d0c Loop instance registry: crash-orphan-thro…"]
     3b9e07["3b9e07 `devx loop` never emits the mandatory `ph…"]
     494590["494590 Loop token accounting implausibly low — b…"]
-    4d1a9c["4d1a9c QA walkthrough for the claim branch-postu…"]
+    4d1a9c["4d1a9c claim commits on whatever branch the main…"]
     4d9c1a["4d9c1a QA walkthrough — sgr104 regen hooks (clai…"]
     5c8b21["5c8b21 loop-concurrency G-1 test sits ~1.3x unde…"]
+    67a7e8["67a7e8 QA walkthrough — claim branch-posture gua…"]
     6a913f["6a913f hash→spec resolution hardcodes dev/ acros…"]
     74632d["74632d loop-driver fixture teardown races on mac…"]
     7a2d1f["7a2d1f Mobile companion v0.1 through real-time s…"]
@@ -205,6 +209,7 @@ flowchart TD
   20eb6f -.-> mlcret
   28b267 -.-> ebf8c4
   28b267 -.-> ecdcda
+  4d1a9c -.-> 67a7e8
   620c74 -.-> rtl101
   620c74 -.-> rtl102
   620c74 -.-> rtl103
@@ -404,6 +409,7 @@ flowchart TD
   classDef dropped fill:#eee,stroke:#aaa,color:#444
   classDef unknownStatus fill:#fff,stroke:#777,color:#222
   classDef collapsed fill:#eee,stroke:#777,color:#222
+  class bd5b5e wip
   class grp_harness_fold_in collapsed
   class e0a67e wip
   class mss101 done
@@ -479,9 +485,10 @@ flowchart TD
   class 357d0c ready
   class 3b9e07 ready
   class 494590 done
-  class 4d1a9c ready
+  class 4d1a9c done
   class 4d9c1a ready
   class 5c8b21 ready
+  class 67a7e8 ready
   class 6a913f done
   class 74632d done
   class 7a2d1f wip
@@ -510,14 +517,14 @@ flowchart TD
   class cf65aa done
   class d01000 blocked
   class d02000 blocked
-  class d7e8e5 wip
+  class d7e8e5 ready
   class db36af ready
   class dc7514 done
   class e01000 blocked
   class e02000 blocked
   class e3f1c2 done
   class e5a9c0 ready
-  class ea4f41 wip
+  class ea4f41 done
   class eac611 ready
   class ebf8c4 ready
   class ecdcda done

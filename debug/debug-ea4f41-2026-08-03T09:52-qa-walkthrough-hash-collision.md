@@ -4,9 +4,9 @@ type: debug
 created: 2026-08-03T09:52:00-06:00
 title: "QA-walkthrough naming `test/test-<story-hash>-…` collides with spec-hash resolution"
 from: dev/dev-sgr103-2026-08-02T13:57-graph-render-cli.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-08-13T17-20-48-923-23705
-branch: null
+branch: feat/debug-ea4f41
 ---
 
 ## Goal
@@ -97,3 +97,7 @@ failed"}`. `devx tour gather` (Phase 7.5) fails the same way. Both surface
   - Learning: `devx graph`/`--check` operates on the MAIN worktree, not the current one — it reported 'up to date' from inside this worktree even after TEST.md changed here. Don't try to regen GRAPH.md from a worktree; the merge tail owns it.
   - Learning: There is no CLI primitive for minting a fresh spec hash (generateHash is library-only, used by `devx split` and `devx workstream new`), so the skill instruction has to carry a shell one-liner. A `devx devx-helper new-hash` would be the structural version of this fix.
   - Learning: This machine is under heavy concurrent load: the full suite took ~4h wall-clock (vs ~17min nominal) and even `ps` timed out at 120s. Budget for that, and never read the pipeline exit code — `npm test | tail` returns tail's status; the proof is the final stage's own 'Test Files … passed' summary plus the fact that && chaining means it ran at all.
+- 2026-08-19T11:37:00-06:00 — merge tail (attended takeover). The owning loop run `loop-2026-08-13T17-20-48-923-23705` aborted 2026-08-17 and its PID (23705) was dead, so the `in-progress` claim was orphaned, not live; ownership verified per CLAUDE.md before touching the worktree. Rebased `feat/debug-ea4f41` onto main (6 chore commits, no conflicts), re-ran CI, merged via PR #126 (squash `22e748c`).
+  - Finding: the 2026-08-13 CI red was NOT this diff. It was `test/init-failure-append-race.test.ts:118` losing one bullet (`race-kind-w0-k4`) with all 4 workers exiting 0 — a genuine lost-update signature in the same class as `debug-c81f04`, latent in main. Identical commit content passed both jobs on re-run. Left to `c81f04` rather than expanding this item's scope.
+  - Finding: this spec carried `branch: null`, so `devx merge-gate ea4f41` would have failed closed with `no PR yet` exit 2 regardless of CI — a live instance of `debug-7b3e2a`. Set to `feat/debug-ea4f41` in this commit; the class is still open.
+  - Note: no `phase 4:` line exists above — the loop wrote `loop iteration 1:` instead, which is `debug-3b9e07`. Not backfilled, because inventing a self-review record after the fact would be false; the loop's own Change/Learning bullets are the honest audit trail. `test/devx-status-log-discipline.test.ts` scans `dev/` only, so this debug spec does not trip it.
