@@ -1,5 +1,5 @@
 ---
-hash: v2x101
+hash: bd5b5e
 type: plan
 created: 2026-07-05T10:49:46-06:00
 title: Execute Rehome Bmad Eject
@@ -28,4 +28,5 @@ Workstream 'Execute Rehome Bmad Eject' — PRD stage next. Artifacts live in `_d
 - 2026-07-05T11:30 — E-1 eval refined pre-implementation (same Verified-by path): archival `_bmad-output/` pointer lines exempted per the spec AC's explicit exemption list; live-reference scan unchanged. Re-run RED: still fails for the right reason (7 live-ref files + 51 skill dirs at refinement time).
 - 2026-07-05T11:55 — E-1 second refinement (same path): src/lib/config-validate.ts exempted wholesale — it hosts the FR-3 deprecation shim; the detector cannot be a violation of the thing it detects. E-1 GREEN + E-2 GREEN post-implementation; checkpoint phase-1 PASS.
 - 2026-07-05T12:10 — workstream closed: phase 1 verified (checkpoint PASS), PR #64 merged. First workstream through the full engine, PRD→merged.
+- 2026-08-13 — rehashed `v2x101` → `bd5b5e` (file renamed with it) by `debug-ea4f41`. This spec was scaffolded under the hash of its own execute story (`dev/dev-v2x101-…`), so `v2x101` resolved to two files and every by-hash CLI — `devx merge-gate` included — failed closed on it. Nothing referenced this file by path; the work is still called v2x101 everywhere, and that name now resolves to the dev spec. Guarded going forward by `test/spec-hash-uniqueness.test.ts`.
 - 2026-07-05T17:05 — outcome armed (`devx outcome arm v2x101 --measure-by 2026-08-02`) then scored ahead of the window (deterministic evals): **verdict keep, 3/3 goals hit** — G-1=0 live BMAD refs (E-1 eval exit 0), G-2 engine block validates (E-2 eval exit 0), G-3=1974 tests ≥1571 (comparator-derived). First real verdict through the v2o101 outcome loop; RESULTS.md written from the shipped template. (Status-log trace appended by the /devx session — the CLI writes frontmatter + RESULTS.md only, the same split as the gate CLIs.)

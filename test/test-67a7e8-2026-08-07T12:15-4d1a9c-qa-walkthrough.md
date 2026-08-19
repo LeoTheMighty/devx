@@ -1,3 +1,13 @@
+---
+hash: 67a7e8
+type: test
+created: 2026-08-07T12:15:00-06:00
+title: "QA walkthrough — claim branch-posture guard (4d1a9c)"
+from: debug/debug-4d1a9c-2026-08-07T11:37-claim-commits-on-current-branch-not-base.md
+status: ready
+owner: null
+branch: null
+---
 # QA walkthrough — Story `4d1a9c`
 
 > `devx devx-helper claim` now refuses, with a typed `validate` error and zero

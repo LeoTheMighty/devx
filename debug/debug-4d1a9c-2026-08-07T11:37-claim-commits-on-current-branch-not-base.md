@@ -188,3 +188,10 @@ guard belongs beside it.
   field flips the gate to `{"merge":true}`. Filed as its own debug spec; this
   spec now records its branch explicitly, which is the convention anyway.
 - 2026-08-07T14:15:15-06:00 — merged via PR #123 (squash → 782f81e)
+- 2026-08-13 — post-merge, by `debug-ea4f41`: this story's QA walkthrough was
+  renamed out of the hash collision it created —
+  `test/test-4d1a9c-qa-walkthrough.md` →
+  `test/test-67a7e8-2026-08-07T12:15-4d1a9c-qa-walkthrough.md`, with canonical
+  spec frontmatter and the `TEST.md` row repointed. The earlier log lines that
+  name the old path are left as written (append-only); `4d1a9c` now resolves
+  to this spec alone.

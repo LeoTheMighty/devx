@@ -177,7 +177,7 @@ The flow chart that fixes it:
 
 **Required wiring (lands as a `dev/` story under E5 of any future planning run):**
 
-1. `/dev` Phase 6 (commit) inspects the story file for a `## QA walkthrough` section. If present and non-empty, it auto-files a `test/test-<spec-hash>-qa-walkthrough.md` spec + appends to `TEST.md`.
+1. `/devx` Phase 5 (local CI, while the evidence is still fresh) emits a walkthrough for any story with a user-visible surface, and Phase 6 commits it with the story. It is a canonical spec — `test/test-<new-hash>-<ts>-<story-hash>-qa-walkthrough.md`, with its OWN fresh hash and spec frontmatter — plus a `TEST.md` row. Naming it after the story's hash makes the story unresolvable to every by-hash CLI (debug-ea4f41); `test/spec-hash-uniqueness.test.ts` holds that line repo-wide.
 2. `/dev-test` (TestAgent) prefers `test/*-qa-walkthrough.md` items as its top-priority work — these are the freshest signal of what to actually test.
 3. `/dev-focus` (FocusAgent) maintains a rolling persona-prompt library under `qa/prompts/` that ingests new QA walkthroughs nightly. Today's exploratory run benefits from yesterday's shipped stories.
 

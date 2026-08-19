@@ -1,11 +1,23 @@
-# QA walkthrough — Story `<hash>`
+---
+hash: <FRESH 6-hex hash — never the story's; a duplicate under a second type
+  dir makes the story itself unresolvable by every by-hash CLI>
+type: test
+created: <ISO-8601 local time, e.g. 2026-08-07T12:15:00-06:00>
+title: "QA walkthrough — <what changed> (<story-hash>)"
+from: <path to the story spec this walkthrough documents>
+status: ready
+owner: null
+branch: null
+---
+# QA walkthrough — Story `<story-hash>`
 
 > <One-sentence scope: what changed, which user-visible surfaces it touches,
 > and what this walkthrough deliberately does NOT cover.>
 
 <!-- Emitted by /devx Phase 5 for any story with a user-visible surface, and
      committed with the story in Phase 6. Lives at
-     test/test-<hash>-qa-walkthrough.md.
+     test/test-<new-hash>-<ts>-<story-hash>-qa-walkthrough.md — canonical spec
+     form with its OWN fresh hash, never the story's.
 
      Item contract (parsed by tooling — keep the shape exact):
      - Every check is a checkbox line tagged `machine` or `human`.
