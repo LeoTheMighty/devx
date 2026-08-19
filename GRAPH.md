@@ -4,7 +4,7 @@
 
 # Story graph
 
-196 specs across 23 groups — 12 blocked · 129 done · 5 in-progress · 50 ready; 393 edges.
+196 specs across 23 groups — 12 blocked · 130 done · 4 in-progress · 50 ready; 393 edges.
 
 ## Legend
 
@@ -511,7 +511,7 @@ flowchart TD
   class b41f7c done
   class b7f2c1 ready
   class c808b1 ready
-  class c81f04 wip
+  class c81f04 done
   class c94f14 ready
   class c98aee ready
   class cf65aa done

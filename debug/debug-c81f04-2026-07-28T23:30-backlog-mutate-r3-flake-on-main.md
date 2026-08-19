@@ -3,7 +3,7 @@ hash: c81f04
 type: debug
 created: 2026-07-28T23:30:00-06:00
 title: "backlog-mutate R3 concurrency test is flaky on CI (reds main intermittently)"
-status: in-progress
+status: done
 from: dev/dev-mss103-2026-07-28T13:43-loop-split-integration.md
 branch: feat/debug-c81f04
 owner: /devx-loop-2026-08-04T19-52-58-179-34486
@@ -111,3 +111,4 @@ AssertionError: worker failed: devx lock: lock at
   - AC 3 — not applicable as written (the cause was the lock, not the harness), but its intent is met: `still reaps when the stale lock is untouched` pins that the identity check NARROWS the reap rather than disabling it, so a genuinely dead lock is still reclaimed.
   - AC 4 — **documented lower bound, per the AC's own escape clause.** 10 consecutive CI runs is not purchasable in one PR. Substituted: 36 local runs of `backlog-mutate` + `init-failure-append-race` under 3-way concurrent contention, 0 failures; plus both CI jobs on this PR. The stronger argument is that AC 4 was a proxy for "is it really fixed" back when the cause was unknown — it is now pinned by a deterministic test, which a green-run tally never was.
   - Learning: the `init-failure-append-race` red that stalled PR #126 (ea4f41) on 2026-08-13 is very likely this same mechanism — a bullet lost with all workers exiting 0 is the append-side signature of two holders. Both suites are in this PR's local runs; if that flake stops recurring, this is why.
+- 2026-08-19T11:58:37-06:00 — merged via https://github.com/LeoTheMighty/devx/pull/127 (squash `03a3ace`); both CI jobs green on `b2c0605`. Worktree removed, branch deleted, stale lock `spec-c81f04.lock` (dead owner PID 34486) dropped. The 2026-08-12 audit note "do not reap this lock mechanically" is now discharged: the work it protected is committed and shipped.
