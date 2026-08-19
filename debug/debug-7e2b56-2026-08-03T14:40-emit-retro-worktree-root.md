@@ -4,7 +4,7 @@ type: debug
 created: 2026-08-03T14:40:00-06:00
 title: "emit-retro-story writes its artifacts to a linked worktree's root"
 from: sgr104
-status: in-progress
+status: done
 owner: /devx-loop-2026-08-19T19-39-20-483-20983
 ---
 
@@ -78,3 +78,5 @@ out:
   - Learning: test/worktree-refusal.test.ts is already the canonical multi-surface home for this class (loop + manage) and is already listed in SYNC_BLOCKING_TESTS in vitest.shared.ts, so real-git + process.chdir cases can be added there with no vitest config change and no partition risk.
   - Learning: Every existing plan-helper/emit-retro test uses non-git mkdtemp roots, so the indeterminate-probe skip means the 58 pre-existing tests are untouched by the guard — that is what makes 'no change to the non-worktree path' cheap to guarantee here.
   - Learning: resolveRepoRoot has a side effect on the refusal path: it mkdirs `.devx-cache` at the canonical root when that root has a devx.config.yaml. Harmless (gitignored, and loop/manage already do it) but worth knowing before asserting 'refusal writes nothing' too literally in future tests.
+- 2026-08-19T21:30:29.225Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-08-19T21:30:29.225Z — merged via devx loop — PR https://github.com/LeoTheMighty/devx/pull/129
