@@ -4,7 +4,7 @@ type: debug
 created: 2026-08-03T16:20:00-06:00
 title: "loop-concurrency G-1 test sits ~1.3x under the 600s cap; parallel load reds it"
 from: sgr104
-status: in-progress
+status: done
 owner: /devx-loop-2026-08-19T19-39-20-483-20983
 ---
 
@@ -96,3 +96,5 @@ teardown ENOTEMPTY) — concurrency tests whose pass/fail depends on timing.
   - Learning: Vitest 2.x makes per-test timeouts invisible to reporters: @vitest/runner's `withTimeout` closes over the cap when wrapping the handler and never writes it to the task object. A reporter-only headroom tool silently reports the 5,000ms default for a test declared at 300,000ms — caps must be parsed from source and joined on task.location.
   - Learning: The suite's real timing defect is not thin margins but absent enforcement: 16 tests exceed their own cap and still report PASSED, one by 44x. Every one is in the sync-blocking set, and no test in the 2,540-test parallel pass is under 2x — so the audit's conclusion is that the partition fixed the async majority and the blocking set has no enforcement at all until the exec seam goes async.
   - Learning: The (file, line) join makes the sweep artifact tree-specific: editing a test file between collection and analysis shifts every test below the edit onto the wrong cap, and the failure is quiet — a 300,000ms case gets scored against the 5,000ms default and reads as a false 'thin headroom' hit. Hit this live and documented it.
+- 2026-08-19T22:14:16.105Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-08-19T22:14:16.105Z — merged via devx loop — PR https://github.com/LeoTheMighty/devx/pull/130
