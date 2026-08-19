@@ -44,3 +44,31 @@ export const realExec: Exec = (cmd, args, opts) => {
     exitCode: r.status,
   };
 };
+
+/**
+ * Is `relPath` excluded by the repo's ignore rules?
+ *
+ * `git check-ignore -q` exits 0 when the path IS ignored, 1 when it is not,
+ * and >1 on error. Anything that is not a clean "yes" answers false: a repo
+ * without git, a spawn failure, or an unexpected exit code must not silently
+ * drop a derived artifact from a commit — the caller's `git add` is the
+ * backstop and a WARN there beats a missing artifact here.
+ *
+ * Hosts: devx/mark-done.ts (the attended cleanup commit) and
+ * loop/driver.ts's merge tail (debug-8a9586) — both ask the same question
+ * about the same file, GRAPH.md.
+ */
+export function isGitIgnored(
+  exec: Exec,
+  repoRoot: string,
+  relPath: string,
+): boolean {
+  try {
+    return (
+      exec("git", ["check-ignore", "-q", "--", relPath], { cwd: repoRoot })
+        .exitCode === 0
+    );
+  } catch {
+    return false;
+  }
+}

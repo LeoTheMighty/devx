@@ -74,6 +74,7 @@ import {
 import { type DeriveBranchConfig } from "../plan/derive-branch.js";
 import { performSplit, type SplitPayload } from "../devx/split.js";
 import { extractAcChecklist } from "../pr-body.js";
+import { isGitIgnored } from "../exec.js";
 
 import {
   heartbeatIntervalMsFrom,
@@ -166,7 +167,13 @@ import {
   scopeMasks,
   validateScope,
 } from "./scope.js";
-import { engineConfigFrom } from "../engine/config.js";
+import { type EngineConfig, engineConfigFrom } from "../engine/config.js";
+import {
+  GRAPH_FILENAME,
+  type RegenFn,
+  type RegenResult,
+  regenerateGraph,
+} from "../graph/regen.js";
 import {
   realEngineFs,
   resolveSpecWorkstream,
@@ -243,6 +250,9 @@ export interface RunLoopOpts {
   /** CI polling knobs forwarded to the tail. */
   ciPollMs?: number;
   ciTimeoutMs?: number;
+  /** GRAPH.md regen seam for the merge tail (debug-8a9586). Defaults to
+   *  `regenerateGraph`; tests inject a failing/throwing one. */
+  regen?: RegenFn;
 }
 
 export interface RunLoopResult {
@@ -536,6 +546,7 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
   // or spawned: a typo'd `--epic` must exit 4, not run an empty night.
   const scope = flags.scope ?? emptyScope();
   const engineCfg = engineConfigFrom(merged);
+  const regen: RegenFn = opts.regen ?? regenerateGraph;
   const specWorkstreamCache = new Map<string, string | null>();
   // One shared plan/ index for the whole run — resolving 120 rows would
   // otherwise re-scan the plan dir 120 times, all before any lock is taken.
@@ -1066,6 +1077,8 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
           focus: scope.focus,
           ciPollMs: opts.ciPollMs,
           ciTimeoutMs: opts.ciTimeoutMs,
+          engine: engineCfg,
+          regen,
         });
       } catch (e) {
         // BH-LOW-10: an unexpected throw out of runItem must not vanish the
@@ -1256,6 +1269,11 @@ interface RunItemArgs {
   focus?: string | null;
   ciPollMs?: number;
   ciTimeoutMs?: number;
+  /** Engine knobs the merge tail's GRAPH.md regen renders under
+   *  (debug-8a9586) — resolved once per run, not per item. */
+  engine: EngineConfig;
+  /** GRAPH.md regen hook for the merge tail (debug-8a9586). */
+  regen: RegenFn;
 }
 
 interface RunItemResult {
