@@ -56,6 +56,29 @@ export interface IterationReport {
    *  its own error path: a malformed request is stripped and surfaced via
    *  `splitRequestErrors`, never failing the whole report. */
   split_request?: SplitRequest;
+  /** Optional review evidence (debug-3b9e07): present when this iteration
+   *  ran an adversarial self-review pass. The driver accumulates these and
+   *  the merge tail composes the mandatory `phase 4:` status-log line from
+   *  them (dvx103 discipline) — finding count + disposition, or the
+   *  explicit-zero form when no iteration reported one. Same own-error-path
+   *  posture as split_request: malformed evidence is stripped and surfaced
+   *  via `reviewErrors`, never failing the report. */
+  review?: ReviewEvidence;
+}
+
+export interface ReviewEvidence {
+  /** Actionable findings the review pass surfaced (non-negative integer). */
+  findings: number;
+  /** How many findings were fixed in-place before reporting (non-negative
+   *  integer; may exceed `findings` when the pass also cleared carryover
+   *  findings from an earlier iteration's review). */
+  fixed: number;
+  /** Review shape, e.g. "single-pass", "sequential multi-lens" — feeds the
+   *  canonical line's shape descriptor. Optional single-line string. */
+  shape?: string;
+  /** One-line summary of the most load-bearing fix (the canonical non-zero
+   *  form's tail). Optional single-line string. */
+  summary?: string;
 }
 
 export interface SplitRequest {
@@ -99,6 +122,11 @@ export type ValidateReportResult =
        *  fails the report) and these errors say why. The driver events
        *  `iteration:split-request-invalid` + WARNs, then continues. */
       splitRequestErrors?: ReportValidationError[];
+      /** Present iff the report carried MALFORMED review evidence
+       *  (debug-3b9e07): stripped from `report` on its own error path,
+       *  same posture as splitRequestErrors — a bad audit decoration must
+       *  never fail an otherwise-honest iteration. */
+      reviewErrors?: ReportValidationError[];
     }
   | { ok: false; errors: ReportValidationError[] };
 
@@ -178,6 +206,17 @@ export function validateIterationReport(value: unknown): ValidateReportResult {
     else splitRequestErrors = v.errors;
   }
 
+  // review evidence (debug-3b9e07): same own-error-path posture — falsy
+  // reads as "no review reported" (a model answering the optional field
+  // negatively must not fire a WARN), malformed is stripped + surfaced.
+  let review: ReviewEvidence | undefined;
+  let reviewErrors: ReportValidationError[] | undefined;
+  if (obj.review) {
+    const v = validateReviewEvidence(obj.review);
+    if (v.review !== undefined) review = v.review;
+    else reviewErrors = v.errors;
+  }
+
   return {
     ok: true,
     report: {
@@ -187,8 +226,67 @@ export function validateIterationReport(value: unknown): ValidateReportResult {
       key_learnings: obj.key_learnings as string[],
       acs_met: obj.acs_met as boolean,
       ...(splitRequest !== undefined ? { split_request: splitRequest } : {}),
+      ...(review !== undefined ? { review } : {}),
     },
     ...(splitRequestErrors !== undefined ? { splitRequestErrors } : {}),
+    ...(reviewErrors !== undefined ? { reviewErrors } : {}),
+  };
+}
+
+/**
+ * Validate the optional review-evidence shape (debug-3b9e07). Counts must be
+ * non-negative integers — a fractional or negative "findings" is decoration
+ * gone wrong, and folding it into the phase-4 audit line would forge the
+ * trail the line exists to keep honest. shape/summary must be single-line
+ * (they land verbatim inside one status-log bullet).
+ */
+function validateReviewEvidence(raw: unknown): {
+  review?: ReviewEvidence;
+  errors: ReportValidationError[];
+} {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {
+      errors: [
+        {
+          code: "wrong-type",
+          field: "review",
+          message: "review must be a JSON object",
+        },
+      ],
+    };
+  }
+  const o = raw as Record<string, unknown>;
+  const errors: ReportValidationError[] = [];
+  const isCount = (v: unknown): v is number =>
+    typeof v === "number" && Number.isInteger(v) && v >= 0;
+  for (const field of ["findings", "fixed"] as const) {
+    if (!isCount(o[field])) {
+      errors.push({
+        code: field in o ? "wrong-type" : "missing-field",
+        field: `review.${field}`,
+        message: `review.${field} must be a non-negative integer`,
+      });
+    }
+  }
+  for (const field of ["shape", "summary"] as const) {
+    const v = o[field];
+    if (v !== undefined && (typeof v !== "string" || v.trim() === "" || /[\n\r]/.test(v))) {
+      errors.push({
+        code: "wrong-type",
+        field: `review.${field}`,
+        message: `review.${field}, when present, must be a non-empty single-line string`,
+      });
+    }
+  }
+  if (errors.length > 0) return { errors };
+  return {
+    review: {
+      findings: o.findings as number,
+      fixed: o.fixed as number,
+      ...(o.shape !== undefined ? { shape: (o.shape as string).trim() } : {}),
+      ...(o.summary !== undefined ? { summary: (o.summary as string).trim() } : {}),
+    },
+    errors: [],
   };
 }
 
@@ -444,6 +542,7 @@ const OUTPUT_FIELD_LINES = [
   "- key_learnings: an array of new learnings that were surprising, weren't captured by the Status log, and would inform future iterations.",
   "- acs_met: set to true ONLY when every acceptance criterion in the spec is met and verified. This routes the item to the PR/CI/merge tail — it is a claim, not acceptance; CI still gates the merge.",
   '- split_request (optional): request a mid-story split ONLY at a clean seam — the done portion is committed, coherent, and green on the done portion (your success=true report is what the loop commits) — and only when the remaining acceptance criteria need more room than the remaining iteration budget allows. An object {"title": "<follow-up title>", "remaining_acs": ["<one AC per entry>"], "learnings": ["<optional>"]}: single-line strings, non-empty remaining_acs, no \';\' in the title. Only meaningful with success=true and acs_met=false; the loop (never you) files the follow-up spec and backlog row.',
+  '- review (optional): include ONLY when this iteration ran an adversarial self-review pass. An object {"findings": <count surfaced>, "fixed": <count fixed in-place>, "shape": "<e.g. single-pass | sequential multi-lens>", "summary": "<one line on the most load-bearing fix>"}: findings/fixed non-negative integers; shape/summary optional single-line strings. The loop composes the mandatory `phase 4:` status-log line from these at merge time — never invent a review that did not run.',
 ];
 
 /**
