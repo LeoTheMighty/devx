@@ -107,6 +107,13 @@ export const SYNC_BLOCKING_TESTS = [
  *  devx.config.yaml via the cfg203 validator (informational at YOLO). */
 export const baseTest = {
   include: ["test/**/*.test.ts"],
+  // Source-line tags on every task. `scripts/timeout-headroom.mjs`
+  // (debug-5c8b21 AC 3) joins a runtime test to its source-DECLARED timeout on
+  // (file, line) — vitest 2.x bakes a per-test cap into the wrapped handler
+  // and never stores it on the task, so there is nothing for a reporter to
+  // read. There is no CLI flag for this and it costs a stack capture per
+  // test, so it turns on only for a sweep run.
+  includeTaskLocation: process.env.DEVX_HEADROOM_OUT != null,
   // cfg202/cfg203 ship their own zero-dep tsx-runner test files; vitest
   // would discover them but find no `describe`/`it` and fail. Skip them
   // here — they're invoked directly by the `test:config-*` npm scripts.
