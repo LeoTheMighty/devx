@@ -35,7 +35,18 @@ interface LockBody {
 
 export type LockClassification =
   | { kind: "held" }
-  | { kind: "stale"; message: string };
+  | {
+      kind: "stale";
+      message: string;
+      /**
+       * The EXACT bytes this verdict was computed from, so the caller can
+       * confirm the file still holds them before unlinking — a reap is only
+       * ever safe against the lock we actually classified (debug-c81f04).
+       * `null` means the file had already vanished, i.e. there is nothing
+       * this verdict authorizes the caller to delete.
+       */
+      raw: string | null;
+    };
 
 /**
  * Grace window for the recycling cross-check: `ps -o etime=` has 1-second
@@ -67,6 +78,7 @@ export function classifyExistingLock(
       return {
         kind: "stale",
         message: `lock at ${path} vanished between EEXIST and read; retrying`,
+        raw: null,
       };
     }
     // EACCES, EIO etc. — can't determine, treat as held (conservative).
@@ -89,12 +101,14 @@ export function classifyExistingLock(
     return {
       kind: "stale",
       message: `lock at ${path} is unparseable; deleting and retrying`,
+      raw,
     };
   }
   if (!pidAlive(body.pid)) {
     return {
       kind: "stale",
       message: `lock at ${path} holds pid ${body.pid} (not running); deleting and retrying`,
+      raw,
     };
   }
   // PID alive — cross-check against PID-recycling: a holder that started
@@ -114,6 +128,7 @@ export function classifyExistingLock(
         `lock at ${path} holds pid ${body.pid} but its process started ` +
         `${startedAt.toISOString()} (after acquired_at ${body.acquired_at}); ` +
         `pid recycled — deleting and retrying`,
+      raw,
     };
   }
   return { kind: "held" };

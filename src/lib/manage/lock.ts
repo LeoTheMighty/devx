@@ -19,7 +19,7 @@
 // at most one cleanup pass before we surface the held error
 // (ManagerLockHeldError for the manager path, PathLockHeldError generically).
 
-import { closeSync, mkdirSync, openSync, unlinkSync, writeSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { classifyExistingLock, defaultPidAlive } from "../locks/classify.js";
@@ -128,15 +128,38 @@ export function acquirePathLock(
       }
       // stale (unparseable / dead-pid / recycled) — WARN + unlink + retry.
       warn(decision.message);
-      try {
-        unlinkSync(path);
-      } catch (unlinkErr) {
-        const ucode = (unlinkErr as NodeJS.ErrnoException).code;
-        // ENOENT = a peer already removed it (benign — proceed to retry).
-        // Anything else means we can't reclaim the lock; surface as held
-        // so the operator sees a real error rather than an infinite loop.
-        if (ucode !== "ENOENT") {
-          throw heldError(path);
+      // Reap ONLY the lock we actually classified (debug-c81f04). Between
+      // the classify read and this unlink the holder can release and a
+      // THIRD process acquire; an unconditional unlink then deletes a LIVE
+      // peer's brand-new lock and both of us proceed into the critical
+      // section → the R3 lost update the lock exists to prevent. The window
+      // is not exotic: "vanished between EEXIST and read" is the verdict
+      // every contended release produces, so this fired in normal operation
+      // and reddened main intermittently. Re-read and compare the bytes; a
+      // `raw: null` verdict (already vanished) authorizes no deletion at
+      // all — just retry the open.
+      //
+      // This NARROWS the window rather than closing it: POSIX has no
+      // atomic compare-and-delete, so a peer can still land between the
+      // re-read and the unlink. The reduction is what matters — the
+      // pre-fix window spanned a JSON parse, a pidAlive check, and (on
+      // the recycling path) a `ps` SUBPROCESS SPAWN, i.e. milliseconds;
+      // what remains is two adjacent syscalls. `src/lib/devx/spec-lock.ts`
+      // (releaseSpecLockGuarded) already took this posture for spec locks
+      // and closes its residual by holding the backlog mutation lock
+      // across read→unlink; acquirePathLock has no such outer lock to
+      // stand on, which is why it is narrowed and not eliminated.
+      if (decision.raw !== null && readLockRaw(path) === decision.raw) {
+        try {
+          unlinkSync(path);
+        } catch (unlinkErr) {
+          const ucode = (unlinkErr as NodeJS.ErrnoException).code;
+          // ENOENT = a peer already removed it (benign — proceed to retry).
+          // Anything else means we can't reclaim the lock; surface as held
+          // so the operator sees a real error rather than an infinite loop.
+          if (ucode !== "ENOENT") {
+            throw heldError(path);
+          }
         }
       }
       staleRetries++;
@@ -189,6 +212,17 @@ export function acquirePathLock(
         }
       },
     };
+  }
+}
+
+/** Re-read the lock body for the pre-unlink identity check. Any read
+ *  failure (vanished, EACCES) degrades to `null`, which never compares
+ *  equal to a classified body — i.e. we decline to reap when unsure. */
+function readLockRaw(path: string): string | null {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
   }
 }
 
