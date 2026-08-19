@@ -4,7 +4,8 @@ type: debug
 created: 2026-08-03T14:40:00-06:00
 title: "emit-retro-story writes its artifacts to a linked worktree's root"
 from: sgr104
-status: ready
+status: in-progress
+owner: /devx-loop-2026-08-19T19-39-20-483-20983
 ---
 
 ## Goal
@@ -68,3 +69,4 @@ out:
 - 2026-08-03T14:40 — filed from sgr104's Phase 4 self-review (out of scope
   there: sgr104 adds a file to an existing misresolution rather than causing
   it).
+- 2026-08-19T14:57:55-06:00 — claimed by /devx in session /devx-loop-2026-08-19T19-39-20-483-20983
