@@ -4,7 +4,7 @@ type: debug
 created: 2026-08-03T09:48:00-06:00
 title: "`devx loop` never emits the mandatory `phase 4:` status-log line — reddens main on the merge-tail commit"
 from: dev/dev-sgr103-2026-08-02T13:57-graph-render-cli.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-08-19T19-39-20-483-20983
 branch: null
 ---
@@ -135,3 +135,5 @@ neither `phase 5:` nor `phase 7:`, so it remains uncatchable before merge.
   - Learning: The ROUTING slice's apparent fragility (indexOf returning -1 degrading the scope to a whole-body match) is not actually a live risk: a sibling test independently pins `^## Repo predicate$`, so the end anchor cannot vanish silently. Worth checking sibling assertions before reporting slice-anchor findings in this test file.
   - Learning: The full npm test gate takes ~25 minutes on this worktree, not the ~17 recorded in memory — test/loop-driver.test.ts alone runs 1,224s in the blocking config (one split-fallback case is 218s, one repair case 206s). Budget a single backgrounded run per iteration and poll; there is no room for a second full run.
   - Learning: Both vitest configs must be checked when confirming a green gate: `test:parallel` (113 files) and `test:blocking` (26 files) print separate 'Test Files' summaries, so tailing the log shows only the blocking total and understates coverage.
+- 2026-08-19T20:57:53.605Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-08-19T20:57:53.606Z — merged via devx loop — PR https://github.com/LeoTheMighty/devx/pull/128
