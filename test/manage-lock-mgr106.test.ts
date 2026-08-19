@@ -12,11 +12,19 @@
 //   - unparseable JSON in the lock file → treated as stale, reaped
 //   - WARN messages cite the failing condition
 
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { classifyExistingLock } from "../src/lib/locks/classify.js";
 import {
   ManagerLockHeldError,
   acquireManagerLock,
@@ -267,6 +275,80 @@ describe("acquireManagerLock — race-with-peer hardening (BH-H3)", () => {
     });
     expect(handle).toBeDefined();
     handle.release();
+  });
+});
+
+describe("acquirePathLock — reap only the classified lock (debug-c81f04)", () => {
+  // The mgr106 reap was classify → WARN → unconditional unlink. Between the
+  // classify read and the unlink, the holder can release and a THIRD process
+  // acquire; the unlink then deletes a LIVE peer's brand-new lock and both
+  // processes enter the critical section — the R3 lost update the backlog
+  // lock exists to prevent. Reproduced on macOS by
+  // test/backlog-mutate.test.ts's cross-process R3 case, which reddened main
+  // intermittently; the WARN that always accompanied a lost flip was
+  // "vanished between EEXIST and read", i.e. the verdict every CONTENDED
+  // RELEASE produces, so the window was hit in normal operation.
+  //
+  // `warn` is the deterministic interleave point: acquirePathLock calls it
+  // after classify and before the unlink, exactly where the peer lands.
+
+  it("does not delete a lock that changed between classify and reap", () => {
+    plantLock({ pid: 99999, acquired_at: new Date().toISOString() });
+    const peerBody =
+      JSON.stringify({ pid: process.pid, acquired_at: new Date().toISOString() }) + "\n";
+    let swapped = 0;
+    expect(() =>
+      acquireManagerLock(cacheDir, {
+        pidAlive: (pid) => pid !== 99999, // the planted holder is dead → stale
+        pidStartedAt: () => null,
+        warn: () => {
+          // The dead holder's file is released and a LIVE peer acquires,
+          // right in the classify→unlink window.
+          if (swapped++ === 0) writeFileSync(managerLockPath(cacheDir), peerBody, "utf8");
+        },
+      }),
+    ).toThrow(ManagerLockHeldError);
+    // The load-bearing assertion: the peer still holds its lock. Before the
+    // fix this file was unlinked and the acquire SUCCEEDED — two holders.
+    expect(readFileSync(managerLockPath(cacheDir), "utf8")).toBe(peerBody);
+  });
+
+  it("still reaps when the stale lock is untouched (no regression)", () => {
+    // Same shape as above minus the peer — the reap must still happen, so
+    // the identity check narrows the reap rather than disabling it.
+    plantLock({ pid: 99999, acquired_at: new Date().toISOString() });
+    const handle = acquireManagerLock(cacheDir, {
+      pidAlive: (pid) => pid !== 99999,
+      pidStartedAt: () => null,
+      warn: () => {},
+    });
+    expect(existsSync(managerLockPath(cacheDir))).toBe(true);
+    expect(JSON.parse(readFileSync(managerLockPath(cacheDir), "utf8")).pid).toBe(process.pid);
+    handle.release();
+  });
+
+  it("a vanished lock authorizes no deletion at all (raw === null)", () => {
+    // The verdict behind the observed flake. It carries no bytes, so there
+    // is nothing the caller may unlink — it must simply retry the open.
+    const missing = join(cacheDir, "locks", "nope.lock");
+    const verdict = classifyExistingLock(
+      missing,
+      () => true,
+      () => null,
+    );
+    expect(verdict.kind).toBe("stale");
+    expect(verdict.kind === "stale" && verdict.raw).toBeNull();
+  });
+
+  it("a reapable verdict echoes the exact bytes it was computed from", () => {
+    const body = JSON.stringify({ pid: 99999, acquired_at: new Date().toISOString() });
+    const path = plantLock(body);
+    const verdict = classifyExistingLock(
+      path,
+      () => false,
+      () => null,
+    );
+    expect(verdict.kind === "stale" && verdict.raw).toBe(body);
   });
 });
 
