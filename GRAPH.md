@@ -4,7 +4,7 @@
 
 # Story graph
 
-196 specs across 23 groups — 12 blocked · 132 done · 5 in-progress · 47 ready; 393 edges.
+197 specs across 23 groups — 12 blocked · 133 done · 5 in-progress · 47 ready; 394 edges.
 
 ## Legend
 
@@ -145,6 +145,7 @@ flowchart TD
     4d1a9c["4d1a9c claim commits on whatever branch the main…"]
     4d9c1a["4d9c1a QA walkthrough — sgr104 regen hooks (clai…"]
     5c8b21["5c8b21 loop-concurrency G-1 test sits ~1.3x unde…"]
+    5e1a77["5e1a77 16 tests run past their own timeout and s…"]
     67a7e8["67a7e8 QA walkthrough — claim branch-posture gua…"]
     6a913f["6a913f hash→spec resolution hardcodes dev/ acros…"]
     74632d["74632d loop-driver fixture teardown races on mac…"]
@@ -210,6 +211,7 @@ flowchart TD
   28b267 -.-> ebf8c4
   28b267 -.-> ecdcda
   4d1a9c -.-> 67a7e8
+  5c8b21 -.-> 5e1a77
   620c74 -.-> rtl101
   620c74 -.-> rtl102
   620c74 -.-> rtl103
@@ -487,7 +489,8 @@ flowchart TD
   class 494590 done
   class 4d1a9c done
   class 4d9c1a ready
-  class 5c8b21 wip
+  class 5c8b21 done
+  class 5e1a77 ready
   class 67a7e8 ready
   class 6a913f done
   class 74632d done
@@ -495,7 +498,7 @@ flowchart TD
   class 7b3e2a ready
   class 7c1e93 done
   class 7e2b56 done
-  class 8a9586 ready
+  class 8a9586 wip
   class 8b9165 ready
   class 97f6d8 ready
   class 9b9be5 done
