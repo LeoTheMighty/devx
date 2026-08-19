@@ -4,7 +4,8 @@ type: debug
 created: 2026-08-03T16:20:00-06:00
 title: "loop-concurrency G-1 test sits ~1.3x under the 600s cap; parallel load reds it"
 from: sgr104
-status: ready
+status: in-progress
+owner: /devx-loop-2026-08-19T19-39-20-483-20983
 ---
 
 ## Goal
@@ -84,3 +85,4 @@ teardown ENOTEMPTY) — concurrency tests whose pass/fail depends on timing.
   timeout; isolated re-run green at 122s (4.9x headroom), and a control file
   with unchanged code slowed by the same 1.71x, so the failure is
   environmental and the headroom is the real bug.
+- 2026-08-19T15:30:31-06:00 — claimed by /devx in session /devx-loop-2026-08-19T19-39-20-483-20983
