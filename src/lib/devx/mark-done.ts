@@ -52,6 +52,7 @@ import { TODO_FILENAME } from "../engine/todo-truth.js";
 import { resolveSpecWorkstream } from "../engine/workstream.js";
 import { GRAPH_FILENAME, type RegenFn, regenerateGraph } from "../graph/regen.js";
 import { PROJECT_FILENAME } from "../config-io.js";
+import { isGitIgnored } from "../exec.js";
 import { parseRepoSlug } from "../init-gh.js";
 import { REV_PARSE_ARGS, interpretRevParse } from "../repo-root.js";
 import { parseFrontmatterValue } from "../plan/validate-emit.js";
@@ -321,26 +322,6 @@ function linkedWorktreeRoot(exec: Exec, repoRoot: string): string | null {
   if (lines.length !== 3) return null;
   const info = interpretRevParse(lines[0], lines[1], lines[2], repoRoot);
   return info.isLinkedWorktree ? info.root : null;
-}
-
-/**
- * Is `relPath` excluded by the repo's ignore rules?
- *
- * `git check-ignore -q` exits 0 when the path IS ignored, 1 when it is not,
- * and >1 on error. Anything that is not a clean "yes" answers false: a repo
- * without git, a spawn failure, or an unexpected exit code must not silently
- * drop the board from the commit — the caller's `git add` is the backstop and
- * a WARN there beats a missing artifact here.
- */
-function isGitIgnored(exec: Exec, repoRoot: string, relPath: string): boolean {
-  try {
-    return (
-      exec("git", ["check-ignore", "-q", "--", relPath], { cwd: repoRoot })
-        .exitCode === 0
-    );
-  } catch {
-    return false;
-  }
 }
 
 // ---------------------------------------------------------------------------

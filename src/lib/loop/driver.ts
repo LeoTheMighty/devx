@@ -64,6 +64,7 @@ import {
   LockHeldError,
   claimSpec,
   type ClaimSpecResult,
+  realFs,
 } from "../devx/claim.js";
 import {
   SPEC_LOCK_LIVE_WARN_MS,
@@ -74,6 +75,7 @@ import {
 import { type DeriveBranchConfig } from "../plan/derive-branch.js";
 import { performSplit, type SplitPayload } from "../devx/split.js";
 import { extractAcChecklist } from "../pr-body.js";
+import { isGitIgnored } from "../exec.js";
 
 import {
   heartbeatIntervalMsFrom,
@@ -166,7 +168,13 @@ import {
   scopeMasks,
   validateScope,
 } from "./scope.js";
-import { engineConfigFrom } from "../engine/config.js";
+import { type EngineConfig, engineConfigFrom } from "../engine/config.js";
+import {
+  GRAPH_FILENAME,
+  type RegenFn,
+  type RegenResult,
+  regenerateGraph,
+} from "../graph/regen.js";
 import {
   realEngineFs,
   resolveSpecWorkstream,
@@ -243,6 +251,9 @@ export interface RunLoopOpts {
   /** CI polling knobs forwarded to the tail. */
   ciPollMs?: number;
   ciTimeoutMs?: number;
+  /** GRAPH.md regen seam for the merge tail (debug-8a9586). Defaults to
+   *  `regenerateGraph`; tests inject a failing/throwing one. */
+  regen?: RegenFn;
 }
 
 export interface RunLoopResult {
@@ -536,6 +547,7 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
   // or spawned: a typo'd `--epic` must exit 4, not run an empty night.
   const scope = flags.scope ?? emptyScope();
   const engineCfg = engineConfigFrom(merged);
+  const regen: RegenFn = opts.regen ?? regenerateGraph;
   const specWorkstreamCache = new Map<string, string | null>();
   // One shared plan/ index for the whole run — resolving 120 rows would
   // otherwise re-scan the plan dir 120 times, all before any lock is taken.
@@ -1066,6 +1078,8 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
           focus: scope.focus,
           ciPollMs: opts.ciPollMs,
           ciTimeoutMs: opts.ciTimeoutMs,
+          engine: engineCfg,
+          regen,
         });
       } catch (e) {
         // BH-LOW-10: an unexpected throw out of runItem must not vanish the
@@ -1256,6 +1270,11 @@ interface RunItemArgs {
   focus?: string | null;
   ciPollMs?: number;
   ciTimeoutMs?: number;
+  /** Engine knobs the merge tail's GRAPH.md regen renders under
+   *  (debug-8a9586) — resolved once per run, not per item. */
+  engine: EngineConfig;
+  /** GRAPH.md regen hook for the merge tail (debug-8a9586). */
+  regen: RegenFn;
 }
 
 interface RunItemResult {
@@ -1613,6 +1632,69 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         `main is ahead of origin — push failed after a loop-owned commit: ${firstLineOf(push.stderr) || "(no stderr)"}`,
       );
     }
+  };
+
+  /**
+   * Regenerate GRAPH.md after the merge tail's state flips and return the
+   * pathspec extras the cleanup commit should carry ([] when the board must
+   * not ride along). Never throws — a bad render is an event (plus an item
+   * warning when the board actually went stale), because the merge this
+   * closes is already on origin.
+   *
+   * AC 4 (debug-8a9586), DECIDED AND RECORDED — the loop tail keeps its own
+   * implementation and calls the shared `regenerateGraph` PRIMITIVE rather
+   * than routing through `markDone`. `markDone`'s single happy path cannot
+   * express three things the tail needs: the split-failure branch flips `[-]`
+   * blocked instead of `[x]` done (markDone has no blocked mode at all — it
+   * flips to done or throws on the state mismatch), the dvx103 `phase 4:`
+   * fallback line the orchestrator
+   * writes because workers may not touch the Status log, and the follow-up
+   * spec path carried into the cleanup commit's pathspec. Forcing them into
+   * markDone would widen a helper whose whole value is one narrow contract.
+   * What sgr105 actually removed was duplicated REGEN logic, and that is what
+   * this shares: one `regenerateGraph`, one `isGitIgnored` (hoisted to
+   * `src/lib/exec.ts`), one warn-and-continue posture. The flip sequencing
+   * stays separate on purpose.
+   */
+  const regenerateBoardForMergeTail = (): string[] => {
+    const extras: string[] = [];
+    backlogLockBestEffort("regen-graph", () => {
+      let result: RegenResult;
+      try {
+        result = args.regen(realFs, repoRoot, args.engine);
+      } catch (e) {
+        // The seam is injectable and only the DEFAULT carries the
+        // never-throws guarantee; contain an injected one so a throw here
+        // cannot skip the commit that closes the item.
+        result = {
+          ok: false,
+          warning: `${GRAPH_FILENAME} not regenerated: the regen hook threw (${firstLineOf(e instanceof Error ? e.message : String(e))})`,
+        };
+      }
+      if (!result.ok) {
+        event("item:graph-regen-failed", { warning: result.warning });
+        itemWarnings.push(
+          `${result.warning} — the board is now stale against ${backlogRel(pick.type)}; run \`devx graph\` (\`devx graph --check\` is the gate that catches it)`,
+        );
+        return;
+      }
+      // A project gitignoring its generated board is an ordinary choice, and
+      // `git add` refuses an ignored path for the WHOLE pathspec — so naming
+      // GRAPH.md there would drop the follow-up spec alongside it and lose
+      // the done-flip commit's extras. Same call the attended cleanup makes.
+      const relGraph = relToRepo(result.path, repoRoot);
+      if (isGitIgnored(exec, repoRoot, relGraph)) {
+        // Event, NOT an item warning — unlike `mark-done`, which fires once
+        // per attended cleanup, this runs on every merged item of every
+        // night, and a project that deliberately ignores its generated board
+        // would get the same paragraph in every morning report forever. The
+        // event is the durable record.
+        event("item:graph-regen-gitignored", { path: relGraph });
+        return;
+      }
+      extras.push(relGraph);
+    });
+    return extras;
   };
 
   /**
@@ -3005,12 +3087,25 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
           event("item:backlog-done-flip-failed", { error: serializeError(e) });
         }
       }
+      // ---- FR-4's fourth regen host: the loop's own merge tail ----
+      // (debug-8a9586). Every flip above is a state change the board must
+      // reflect — the `[x]` done row AND the split-failed `[-]` blocked row
+      // (AC 3) — and until this ran, an overnight merge left GRAPH.md stale
+      // until the next attended claim or emission happened to refresh it.
+      // sgr104 hooked the claim + the RED emission, sgr105 the interactive
+      // cleanup; this tail is the flow neither touched.
+      //
+      // Warn-and-continue, identical posture to claim/emission/mark-done: the
+      // merge has ALREADY landed on origin, so a cycle in the board or a full
+      // disk must never take the bookkeeping commit down with it. `devx graph
+      // --check` (E-2) is the backstop.
+      const graphExtras = regenerateBoardForMergeTail();
       releaseSpecLock();
       commitOnMain(
         splitFailed
           ? `chore(loop): ${pick.hash} merged at reduced scope via ${prUrl} but its split failed — left blocked`
           : `chore: mark ${pick.hash} done after loop merge (${prUrl})`,
-        followUpSpecPath !== null ? [followUpSpecPath] : [],
+        [...(followUpSpecPath !== null ? [followUpSpecPath] : []), ...graphExtras],
       );
       pushMain();
     });
