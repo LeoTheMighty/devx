@@ -38,8 +38,11 @@ import {
   makeFixture,
   mergedTail,
   scriptedWorker,
+  armRejectingHook,
+  writeHookScript,
   type Fixture,
 } from "./helpers/loop-git-fixture.js";
+import { GIT } from "./helpers/git-bin.js";
 
 let fixture: Fixture | null = null;
 afterEach(() => {
@@ -76,6 +79,44 @@ function baseOpts(fx: Fixture, extra: Partial<Parameters<typeof runLoop>[0]> = {
     ...extra,
   };
 }
+
+/**
+ * Explicit cap for the tests that make real git EXEC A HOOK FILE (debug-5e1a77
+ * AC 2 / AC 4). No assertion here is weakened to fit a number; the number is
+ * declared because the cost is measured and is not devx's.
+ *
+ * On macOS a `git` command that execs an executable at a locally-created path
+ * pays a per-process security assessment: ~3.5s the FIRST time in a fresh
+ * vitest worker and ~0.5s every time after, against ~52ms for the same push
+ * with no hook (test/helpers/git-hooks.ts carries the table). It does not
+ * cache across processes, and under the blocking pass's concurrent workers the
+ * assessments queue against each other — which is why these tests measure
+ * ~1.5-1.8s alone and 10-13.4s inside the full suite.
+ *
+ * The cheap form is a SYMLINK to a system binary (54ms flat, `armRejectingHook`),
+ * and every always-fail hook in this file already uses it. The six below cannot:
+ * each needs a real PREDICATE — let the claim's push to main through, reject
+ * only `refs/heads/feat/*`; or fail commits only inside a worktree, only while
+ * a flag file exists. A symlink cannot express that, and rewriting the
+ * scenarios to arm/disarm one mid-run would change what they test.
+ *
+ * The amplification is the whole reason this is not just "make it fast": the
+ * split-failure case (the pre-receive hook, on the bare ORIGIN, so the cost is
+ * paid by `git-receive-pack`) measures 1.5s alone and 48.2s / 48.4s in two
+ * consecutive full blocking passes — 32x, in line with the 36x debug-5e1a77 iteration 2 measured
+ * on devx-claim's hook test. Isolation numbers systematically understate these
+ * tests; the ~1.71x uniform slowdown `scripts/timeout-headroom.mjs` assumes
+ * does not apply to them.
+ *
+ * 120s against a worst measured 48.2s is ~2.5x headroom. Unlike every cap that
+ * came before it in this file, this one can actually FIRE — driver.ts runs the
+ * async seam since debug-5e1a77, proven by negative control in
+ * test/loop-driver-timeout-enforcement.test.ts — so a real hang here is a red
+ * build, not a slow green. That is what makes a measured number legitimate
+ * here and illegitimate in a file that still blocks.
+ */
+const HOOK_TEST_TIMEOUT_MS = 120_000;
+
 
 // ---------------------------------------------------------------------------
 // parseUntil + pickNextItem units
@@ -194,7 +235,7 @@ describe("runLoop scenarios", () => {
     expect(prompts[0]).toContain("iteration 1 of at most 4 on spec `aaa111`");
 
     // Branch pushed to origin BEFORE the tail ran.
-    const remoteRefs = execFileSync("git", ["ls-remote", "--heads", fixture.origin], {
+    const remoteRefs = execFileSync(GIT, ["ls-remote", "--heads", fixture.origin], {
       encoding: "utf8",
     });
     expect(remoteRefs).toContain("refs/heads/feat/dev-aaa111");
@@ -392,7 +433,7 @@ describe("runLoop scenarios", () => {
     // (LOW-11: no loop-owned main commit may be left unpushed silently).
     expect(g(fixture.repoRoot, "log", "-1", "--format=%s")).toContain("abandon bbb222");
     expect(
-      execFileSync("git", ["--git-dir", fixture.origin, "log", "-1", "--format=%s"], {
+      execFileSync(GIT, ["--git-dir", fixture.origin, "log", "-1", "--format=%s"], {
         encoding: "utf8",
       }),
     ).toContain("abandon bbb222");
@@ -542,7 +583,7 @@ describe("runLoop scenarios", () => {
     );
     expect(g(fixture.repoRoot, "status", "--porcelain")).toBe("");
     expect(
-      execFileSync("git", ["--git-dir", fixture.origin, "log", "-1", "--format=%s"], {
+      execFileSync(GIT, ["--git-dir", fixture.origin, "log", "-1", "--format=%s"], {
         encoding: "utf8",
       }),
     ).toContain("jjj000 in progress at loop exit");
@@ -553,13 +594,12 @@ describe("runLoop scenarios", () => {
     // A pre-push hook that rejects feature branches but lets the claim's
     // main push through.
     const hooksDir = join(fixture.base, "hooks");
-    execFileSync("mkdir", ["-p", hooksDir]);
     // NB: a HEAD push reports local_ref as literal "HEAD" — match on the
     // resolved remote_ref instead.
-    writeFileSync(
-      join(hooksDir, "pre-push"),
+    writeHookScript(
+      hooksDir,
+      "pre-push",
       `#!/bin/sh\nwhile read local_ref local_sha remote_ref remote_sha; do\n  case "$remote_ref" in refs/heads/feat/*) echo "feature pushes rejected" >&2; exit 1;; esac\ndone\nexit 0\n`,
-      { mode: 0o755 },
     );
     g(fixture.repoRoot, "config", "core.hooksPath", hooksDir);
 
@@ -580,7 +620,7 @@ describe("runLoop scenarios", () => {
     const wt = join(fixture.repoRoot, ".worktrees", "dev-kkk111");
     expect(existsSync(join(wt, "k.txt"))).toBe(true);
     expect(g(wt, "status", "--porcelain")).toBe("");
-  });
+  }, HOOK_TEST_TIMEOUT_MS);
 
   it("handed-off items keep claim + worktree and surface the tail detail", async () => {
     fixture = makeFixture([{ hash: "lll222" }]);
@@ -863,11 +903,10 @@ describe("runLoop review-fix scenarios", () => {
     // pre-commit hook fails only inside worktrees while the flag exists.
     const hooksDir = join(fixture.base, "hooks");
     const flagPath = join(fixture.base, "commit-blocked");
-    execFileSync("mkdir", ["-p", hooksDir]);
-    writeFileSync(
-      join(hooksDir, "pre-commit"),
+    writeHookScript(
+      hooksDir,
+      "pre-commit",
       `#!/bin/sh\ncase "$PWD" in *".worktrees/"*) [ -f "${flagPath}" ] && { echo "hook says no" >&2; exit 1; } ;; esac\nexit 0\n`,
-      { mode: 0o755 },
     );
     writeFileSync(flagPath, "1", "utf8");
     g(fixture.repoRoot, "config", "core.hooksPath", hooksDir);
@@ -898,7 +937,7 @@ describe("runLoop review-fix scenarios", () => {
     expect(prompts[2]).not.toContain("REPAIR-ONLY");
     expect(r.summary!.items[0].outcome).toBe("merged");
     expect(r.summary!.items[0].iterationsFailed).toBe(2);
-  });
+  }, HOOK_TEST_TIMEOUT_MS);
 
   it("repair-iteration failure salvages the preserved work via a commit re-attempt (MED-2)", async () => {
     fixture = makeFixture([{ hash: "sal001" }]);
@@ -906,11 +945,10 @@ describe("runLoop review-fix scenarios", () => {
     // the "transiently failing" commit seam.
     const hooksDir = join(fixture.base, "hooks");
     const flagPath = join(fixture.base, "commit-blocked");
-    execFileSync("mkdir", ["-p", hooksDir]);
-    writeFileSync(
-      join(hooksDir, "pre-commit"),
+    writeHookScript(
+      hooksDir,
+      "pre-commit",
       `#!/bin/sh\ncase "$PWD" in *".worktrees/"*) [ -f "${flagPath}" ] && { echo "hook says no" >&2; exit 1; } ;; esac\nexit 0\n`,
-      { mode: 0o755 },
     );
     writeFileSync(flagPath, "1", "utf8");
     g(fixture.repoRoot, "config", "core.hooksPath", hooksDir);
@@ -948,17 +986,16 @@ describe("runLoop review-fix scenarios", () => {
     expect(prompts[2]).not.toContain("REPAIR-ONLY");
     const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
     expect(events).toContain("iteration:repair-salvage-committed");
-  });
+  }, HOOK_TEST_TIMEOUT_MS);
 
   it("salvage re-attempt that ALSO fails resets and records the discarded-diff stat (MED-2)", async () => {
     fixture = makeFixture([{ hash: "sal002" }]);
     const hooksDir = join(fixture.base, "hooks");
-    execFileSync("mkdir", ["-p", hooksDir]);
     // Commits in worktrees fail unconditionally — the failure is permanent.
-    writeFileSync(
-      join(hooksDir, "pre-commit"),
+    writeHookScript(
+      hooksDir,
+      "pre-commit",
       `#!/bin/sh\ncase "$PWD" in *".worktrees/"*) echo "hook says no" >&2; exit 1;; esac\nexit 0\n`,
-      { mode: 0o755 },
     );
     g(fixture.repoRoot, "config", "core.hooksPath", hooksDir);
 
@@ -985,7 +1022,7 @@ describe("runLoop review-fix scenarios", () => {
     expect(wtSpec).toMatch(/salvage re-attempt also failed; discarded preserved work: \d+ tracked files/);
     const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
     expect(events).toContain("iteration:repair-salvage-failed");
-  });
+  }, HOOK_TEST_TIMEOUT_MS);
 
   it("abandoned items WITH committed progress don't trip the systemic 3-stop (MED-4)", async () => {
     fixture = makeFixture([
@@ -1270,23 +1307,20 @@ describe("runLoop review-fix scenarios", () => {
 
   it("main-push failure after a loop-owned commit is tolerated with a report WARN (LOW-11)", async () => {
     fixture = makeFixture([{ hash: "psh001" }]);
-    // pre-push hook: reject pushes once the flag exists (the claim's own
-    // push happens before the flag is created).
+    // The hooks dir starts EMPTY — the claim's own push (which happens before
+    // the worker runs) must succeed. The worker then arms a rejecting hook,
+    // so every push after it fails. A symlink to /usr/bin/false instead of a
+    // flag-file predicate script: same instant, same effect, ~13s cheaper
+    // (see test/helpers/git-hooks.ts).
     const hooksDir = join(fixture.base, "hooks");
-    const flagPath = join(fixture.base, "push-blocked");
-    execFileSync("mkdir", ["-p", hooksDir]);
-    writeFileSync(
-      join(hooksDir, "pre-push"),
-      `#!/bin/sh\n[ -f "${flagPath}" ] && { echo "origin down" >&2; exit 1; }\nexit 0\n`,
-      { mode: 0o755 },
-    );
+    mkdirSync(hooksDir, { recursive: true });
     g(fixture.repoRoot, "config", "core.hooksPath", hooksDir);
     const { worker } = scriptedWorker([
       { kind: "report", report: { success: false, summary: "doomed" } },
     ]);
     const flaggingWorker: WorkerRunFn = async (p, o) => {
       const res = await worker(p, o);
-      writeFileSync(flagPath, "1", "utf8");
+      armRejectingHook(hooksDir, "pre-push");
       return res;
     };
     const r = await runLoop(baseOpts(fixture, { worker: flaggingWorker, tail: mergedTail().tail }));
@@ -1723,7 +1757,7 @@ describe("E-3: budget-rail split (mss103)", () => {
     expect(existsSync(join(fixture.cacheDir, "locks", "spec-aaa111.lock"))).toBe(false);
     expect(g(fixture.repoRoot, "log", "-1", "--format=%s")).toContain("split aaa111");
     expect(
-      execFileSync("git", ["--git-dir", fixture.origin, "log", "-1", "--format=%s", "main"], {
+      execFileSync(GIT, ["--git-dir", fixture.origin, "log", "-1", "--format=%s", "main"], {
         encoding: "utf8",
       }),
     ).toContain("split aaa111");
@@ -1855,7 +1889,7 @@ describe("E-3: budget-rail split (mss103)", () => {
     const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
     expect(events).toContain("item:split-fallback");
     expect(events).not.toContain("item:split");
-  });
+  }, HOOK_TEST_TIMEOUT_MS);
 });
 
 // ---------------------------------------------------------------------------
@@ -1874,11 +1908,10 @@ describe("E-3: split rail progress oracle (mss103 review fixes)", () => {
     // the budget runs out before any repair iteration can land it.
     const hooksDir = join(fixture.base, "hooks");
     const flagPath = join(fixture.base, "commit-blocked");
-    execFileSync("mkdir", ["-p", hooksDir]);
-    writeFileSync(
-      join(hooksDir, "pre-commit"),
+    writeHookScript(
+      hooksDir,
+      "pre-commit",
       `#!/bin/sh\ncase "$PWD" in *".worktrees/"*) [ -f "${flagPath}" ] && { echo "hook says no" >&2; exit 1; } ;; esac\nexit 0\n`,
-      { mode: 0o755 },
     );
     g(fixture.repoRoot, "config", "core.hooksPath", hooksDir);
 
@@ -1918,7 +1951,7 @@ describe("E-3: split rail progress oracle (mss103 review fixes)", () => {
     expect(dev).toMatch(/- \[-\] `dev\/dev-dir111/);
     const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
     expect(events).not.toContain("item:split");
-  });
+  }, HOOK_TEST_TIMEOUT_MS);
 
   it("a learnings-only success is not splittable progress: budget exhaustion abandons rather than superseding a parent whose branch holds no product work (BH-4)", async () => {
     fixture = makeFixture([{ hash: "lrn111", title: "Learnings-only thing" }]);
@@ -2037,7 +2070,7 @@ describe("E-3: worker-requested split, non-merged tails (mss103 review fixes)", 
     // The follow-up was committed AND pushed, not left dirty on main.
     expect(g(fixture.repoRoot, "status", "--porcelain")).toBe("");
     expect(
-      execFileSync("git", ["--git-dir", fixture.origin, "ls-tree", "-r", "--name-only", "main"], {
+      execFileSync(GIT, ["--git-dir", fixture.origin, "ls-tree", "-r", "--name-only", "main"], {
         encoding: "utf8",
       }),
     ).toContain(followUpPath);

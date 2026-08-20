@@ -49,6 +49,8 @@ import {
   type RegenFs,
   regenerateGraph,
 } from "../src/lib/graph/regen.js";
+import { armRejectingHook } from "./helpers/git-hooks.js";
+import { GIT } from "./helpers/git-bin.js";
 
 const realRepoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TS = "2026-08-01T08:00";
@@ -63,7 +65,7 @@ const GIT_ENV = {
 };
 
 function git(cwd: string, ...args: string[]): string {
-  return execFileSync("git", args, { cwd, env: GIT_ENV, encoding: "utf8" }).trim();
+  return execFileSync(GIT, args, { cwd, env: GIT_ENV, encoding: "utf8" }).trim();
 }
 
 /** execFileSync throws on non-zero — claimSpec's seam wants {exitCode}. */
@@ -424,8 +426,8 @@ function makeClaimRepo(opts: { withGraph: boolean }): ClaimRepo {
   const base = mkRoot("graph-regen-claim-");
   const origin = join(base, "origin.git");
   const root = join(base, "repo");
-  execFileSync("git", ["init", "--bare", "-q", "-b", "main", origin], { env: GIT_ENV });
-  execFileSync("git", ["clone", "-q", origin, root], { env: GIT_ENV });
+  execFileSync(GIT, ["init", "--bare", "-q", "-b", "main", origin], { env: GIT_ENV });
+  execFileSync(GIT, ["clone", "-q", origin, root], { env: GIT_ENV });
   git(root, "config", "user.email", "t@example.com");
   git(root, "config", "user.name", "t");
   git(root, "config", "commit.gpgsign", "false");
@@ -562,10 +564,7 @@ describe("claim hook — GRAPH.md stays fresh (AC 2)", () => {
   /** Reject every push, so the claim fails AFTER the regen has written. */
   function rejectPushes(repo: ClaimRepo): void {
     const hooks = join(repo.base, "hooks");
-    mkdirSync(hooks, { recursive: true });
-    writeFileSync(join(hooks, "pre-push"), "#!/bin/sh\necho no >&2\nexit 1\n", {
-      mode: 0o755,
-    });
+    armRejectingHook(hooks, "pre-push");
     git(repo.root, "config", "core.hooksPath", hooks);
   }
 
@@ -718,7 +717,7 @@ describe("claim hook — GRAPH.md stays fresh (AC 2)", () => {
     // board, behind our back. That rewrites the summary banner — the line
     // our regen is about to rewrite too, from the same ancestor.
     const peer = join(repo.base, "peer");
-    execFileSync("git", ["clone", "-q", join(repo.base, "origin.git"), peer], {
+    execFileSync(GIT, ["clone", "-q", join(repo.base, "origin.git"), peer], {
       env: GIT_ENV,
     });
     git(peer, "config", "user.email", "peer@example.com");

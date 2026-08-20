@@ -24,6 +24,7 @@ import {
 import { readLoopState } from "../src/lib/loop/state.js";
 import { type WorkerRunFn } from "../src/lib/loop/worker.js";
 import { type TailFn } from "../src/lib/loop/tail.js";
+import { GIT } from "./helpers/git-bin.js";
 
 // ---------------------------------------------------------------------------
 // Probe units
@@ -76,9 +77,9 @@ const WITH_WORKFLOWS = {
 };
 
 describe("probeMainHealth", () => {
-  it("no workflow files → no-workflow, gh never called", () => {
+  it("no workflow files → no-workflow, gh never called", async () => {
     const { exec, calls } = ghExec({});
-    const h = probeMainHealth(
+    const h = await probeMainHealth(
       { exec, repoRoot: "/r", exists: () => false, readdir: () => [] },
       "main",
     );
@@ -86,67 +87,67 @@ describe("probeMainHealth", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("gh failure → unknown with stderr detail (uncertainty never blocks)", () => {
+  it("gh failure → unknown with stderr detail (uncertainty never blocks)", async () => {
     const { exec } = ghExec({ exitCode: 4, stderr: "HTTP 502\n" });
-    const h = probeMainHealth({ exec, repoRoot: "/r", ...WITH_WORKFLOWS }, "main");
+    const h = await probeMainHealth({ exec, repoRoot: "/r", ...WITH_WORKFLOWS }, "main");
     expect(h.state).toBe("unknown");
     expect(h.detail).toContain("HTTP 502");
   });
 
-  it("malformed gh JSON → unknown", () => {
+  it("malformed gh JSON → unknown", async () => {
     const { exec } = ghExec({ stdout: "not json" });
-    const h = probeMainHealth({ exec, repoRoot: "/r", ...WITH_WORKFLOWS }, "main");
+    const h = await probeMainHealth({ exec, repoRoot: "/r", ...WITH_WORKFLOWS }, "main");
     expect(h.state).toBe("unknown");
   });
 
-  it("empty run list → unknown", () => {
+  it("empty run list → unknown", async () => {
     const { exec } = ghExec({ stdout: "[]" });
-    const h = probeMainHealth({ exec, repoRoot: "/r", ...WITH_WORKFLOWS }, "main");
+    const h = await probeMainHealth({ exec, repoRoot: "/r", ...WITH_WORKFLOWS }, "main");
     expect(h.state).toBe("unknown");
     expect(h.detail).toContain("no workflow runs");
   });
 
-  it("newest run red → red with the failing run's identity", () => {
+  it("newest run red → red with the failing run's identity", async () => {
     const { exec } = ghExec({
       stdout: JSON.stringify([
         run({ databaseId: 9, conclusion: "failure", workflowName: "CI & Deploy", headSha: sha("b") }),
       ]),
     });
-    const h = probeMainHealth({ exec, repoRoot: "/r", ...WITH_WORKFLOWS }, "main");
+    const h = await probeMainHealth({ exec, repoRoot: "/r", ...WITH_WORKFLOWS }, "main");
     expect(h.state).toBe("red");
     expect(h.failing?.workflowName).toBe("CI & Deploy");
     expect(h.failing?.headSha).toBe(sha("b"));
   });
 
-  it("green sibling workflow does NOT shadow a red one (the arci1 blind spot)", () => {
+  it("green sibling workflow does NOT shadow a red one (the arci1 blind spot)", async () => {
     const { exec } = ghExec({
       stdout: JSON.stringify([
         run({ databaseId: 2, conclusion: "success", workflowName: "lint" }),
         run({ databaseId: 1, conclusion: "failure", workflowName: "test" }),
       ]),
     });
-    const h = probeMainHealth({ exec, repoRoot: "/r", ...WITH_WORKFLOWS }, "main");
+    const h = await probeMainHealth({ exec, repoRoot: "/r", ...WITH_WORKFLOWS }, "main");
     expect(h.state).toBe("red");
     expect(h.failing?.workflowName).toBe("test");
   });
 
-  it("a workflow's own newer green forgives its older red", () => {
+  it("a workflow's own newer green forgives its older red", async () => {
     const { exec } = ghExec({
       stdout: JSON.stringify([
         run({ databaseId: 2, conclusion: "success", workflowName: "ci" }),
         run({ databaseId: 1, conclusion: "failure", workflowName: "ci" }),
       ]),
     });
-    const h = probeMainHealth({ exec, repoRoot: "/r", ...WITH_WORKFLOWS }, "main");
+    const h = await probeMainHealth({ exec, repoRoot: "/r", ...WITH_WORKFLOWS }, "main");
     expect(h.state).toBe("green");
   });
 
-  it("everything in flight → unknown; cancelled proves nothing", () => {
+  it("everything in flight → unknown; cancelled proves nothing", async () => {
     const inFlight = ghExec({
       stdout: JSON.stringify([run({ status: "in_progress", conclusion: null })]),
     });
     expect(
-      probeMainHealth({ exec: inFlight.exec, repoRoot: "/r", ...WITH_WORKFLOWS }, "main").state,
+      (await probeMainHealth({ exec: inFlight.exec, repoRoot: "/r", ...WITH_WORKFLOWS }, "main")).state,
     ).toBe("unknown");
 
     const cancelled = ghExec({
@@ -156,20 +157,22 @@ describe("probeMainHealth", () => {
       ]),
     });
     expect(
-      probeMainHealth({ exec: cancelled.exec, repoRoot: "/r", ...WITH_WORKFLOWS }, "main").state,
+      (await probeMainHealth({ exec: cancelled.exec, repoRoot: "/r", ...WITH_WORKFLOWS }, "main")).state,
     ).toBe("green");
   });
 
-  it("timed_out / startup_failure / action_required all count as red", () => {
+  it("timed_out / startup_failure / action_required all count as red", async () => {
     for (const conclusion of ["timed_out", "startup_failure", "action_required"]) {
       const { exec } = ghExec({ stdout: JSON.stringify([run({ conclusion })]) });
-      expect(probeMainHealth({ exec, repoRoot: "/r", ...WITH_WORKFLOWS }, "main").state).toBe("red");
+      expect(
+        (await probeMainHealth({ exec, repoRoot: "/r", ...WITH_WORKFLOWS }, "main")).state,
+      ).toBe("red");
     }
   });
 });
 
-describe("baseBranchFrom / baselineLine / describeMainHealth", () => {
-  it("integration_branch wins over default_branch; fallback main", () => {
+describe("baseBranchFrom / baselineLine / describeMainHealth", async () => {
+  it("integration_branch wins over default_branch; fallback main", async () => {
     expect(baseBranchFrom({ git: { integration_branch: "develop", default_branch: "main" } })).toBe(
       "develop",
     );
@@ -180,7 +183,7 @@ describe("baseBranchFrom / baselineLine / describeMainHealth", () => {
     expect(baseBranchFrom(null)).toBe("main");
   });
 
-  it("baselineLine renders sha7 + workflow for red, null otherwise", () => {
+  it("baselineLine renders sha7 + workflow for red, null otherwise", async () => {
     const red: MainHealth = {
       state: "red",
       branch: "main",
@@ -199,7 +202,7 @@ describe("baseBranchFrom / baselineLine / describeMainHealth", () => {
     expect(baselineLine({ state: "unknown", branch: "main" })).toBeNull();
   });
 
-  it("describeMainHealth covers all states", () => {
+  it("describeMainHealth covers all states", async () => {
     expect(
       describeMainHealth({
         state: "red",
@@ -213,8 +216,8 @@ describe("baseBranchFrom / baselineLine / describeMainHealth", () => {
   });
 });
 
-describe("loopConfigFrom preflight knob", () => {
-  it("defaults to refuse; accepts refuse|warn|off; garbage falls back", () => {
+describe("loopConfigFrom preflight knob", async () => {
+  it("defaults to refuse; accepts refuse|warn|off; garbage falls back", async () => {
     expect(loopConfigFrom({}).preflightMainHealth).toBe("refuse");
     expect(loopConfigFrom({ loop: { preflight_main_health: "warn" } }).preflightMainHealth).toBe(
       "warn",
@@ -236,7 +239,7 @@ describe("loopConfigFrom preflight knob", () => {
 // ---------------------------------------------------------------------------
 
 function g(cwd: string, ...args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+  return execFileSync(GIT, args, { cwd, encoding: "utf8" }).trim();
 }
 
 interface Fixture {
@@ -249,8 +252,8 @@ function makeFixture(hash: string): Fixture {
   const base = mkdtempSync(join(tmpdir(), "devx-loop-preflight-"));
   const origin = join(base, "origin.git");
   const repoRoot = join(base, "repo");
-  execFileSync("git", ["init", "--bare", "-q", "-b", "main", origin], { encoding: "utf8" });
-  execFileSync("git", ["clone", "-q", origin, repoRoot], { encoding: "utf8" });
+  execFileSync(GIT, ["init", "--bare", "-q", "-b", "main", origin], { encoding: "utf8" });
+  execFileSync(GIT, ["clone", "-q", origin, repoRoot], { encoding: "utf8" });
   g(repoRoot, "config", "user.email", "loop@test");
   g(repoRoot, "config", "user.name", "loop");
   g(repoRoot, "config", "commit.gpgsign", "false");
@@ -381,7 +384,7 @@ afterEach(() => {
   fixture = null;
 });
 
-describe("runLoop preflight (lpf101)", () => {
+describe("runLoop preflight (lpf101)", async () => {
   it("red main + default posture → exit 5, nothing claimed, no state", async () => {
     fixture = makeFixture("aaa111");
     const { exec, ghCalls } = splitExec(() => ({ exitCode: 0, stdout: RED_PAYLOAD, stderr: "" }));

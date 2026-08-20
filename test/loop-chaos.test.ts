@@ -39,9 +39,10 @@ import {
 import { readInstance } from "../src/lib/loop/instances.js";
 import { type WorkerRunFn } from "../src/lib/loop/worker.js";
 import { type TailFn } from "../src/lib/loop/tail.js";
+import { GIT } from "./helpers/git-bin.js";
 
 function g(cwd: string, ...args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+  return execFileSync(GIT, args, { cwd, encoding: "utf8" }).trim();
 }
 
 let base: string | null = null;
@@ -54,8 +55,8 @@ function makeFixture(hash: string): { repoRoot: string; cacheDir: string; specRe
   base = mkdtempSync(join(tmpdir(), "devx-loop-chaos-"));
   const origin = join(base, "origin.git");
   const repoRoot = join(base, "repo");
-  execFileSync("git", ["init", "--bare", "-q", "-b", "main", origin]);
-  execFileSync("git", ["clone", "-q", origin, repoRoot]);
+  execFileSync(GIT, ["init", "--bare", "-q", "-b", "main", origin]);
+  execFileSync(GIT, ["clone", "-q", origin, repoRoot]);
   g(repoRoot, "config", "user.email", "loop@test");
   g(repoRoot, "config", "user.name", "loop");
   g(repoRoot, "config", "commit.gpgsign", "false");

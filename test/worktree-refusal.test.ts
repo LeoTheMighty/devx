@@ -23,6 +23,7 @@ import { runLoopCommand } from "../src/commands/loop.js";
 import { runManageCommand } from "../src/commands/manage.js";
 import { runEmitRetroStory } from "../src/commands/plan-helper.js";
 import type { runLoop } from "../src/lib/loop/driver.js";
+import { GIT } from "./helpers/git-bin.js";
 
 const GIT_ENV = {
   ...process.env,
@@ -34,7 +35,7 @@ const GIT_ENV = {
 };
 
 function git(cwd: string, ...args: string[]): void {
-  execFileSync("git", args, { cwd, env: GIT_ENV, stdio: "ignore" });
+  execFileSync(GIT, args, { cwd, env: GIT_ENV, stdio: "ignore" });
 }
 
 let root: string;

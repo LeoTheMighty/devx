@@ -42,13 +42,14 @@ import {
   claimSpec,
 } from "../src/lib/devx/claim.js";
 import { type RunSummary } from "../src/lib/loop/report.js";
+import { GIT } from "./helpers/git-bin.js";
 
 // ---------------------------------------------------------------------------
 // Fixture: bare origin + clone with N ready dev items
 // ---------------------------------------------------------------------------
 
 function g(cwd: string, ...args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+  return execFileSync(GIT, args, { cwd, encoding: "utf8" }).trim();
 }
 
 // 3 items: enough for a non-trivial 2/1 split between the loops while
@@ -79,8 +80,8 @@ function makeFixture(hashes: readonly string[] = HASHES): Fixture {
   const base = mkdtempSync(join(tmpdir(), "devx-loop-concurrency-"));
   const origin = join(base, "origin.git");
   const repoRoot = join(base, "repo");
-  execFileSync("git", ["init", "--bare", "-q", "-b", "main", origin], { encoding: "utf8" });
-  execFileSync("git", ["clone", "-q", origin, repoRoot], { encoding: "utf8" });
+  execFileSync(GIT, ["init", "--bare", "-q", "-b", "main", origin], { encoding: "utf8" });
+  execFileSync(GIT, ["clone", "-q", origin, repoRoot], { encoding: "utf8" });
   g(repoRoot, "config", "user.email", "loop@test");
   g(repoRoot, "config", "user.name", "loop");
   g(repoRoot, "config", "commit.gpgsign", "false");

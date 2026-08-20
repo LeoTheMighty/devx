@@ -47,6 +47,7 @@ import type { GhExec } from "../src/lib/init-gh.js";
 import type { GitExec, GitResult } from "../src/lib/init-state.js";
 import type { RepairSurface } from "../src/lib/init-upgrade.js";
 import { runNext } from "../src/commands/next.js";
+import { GIT } from "./helpers/git-bin.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures + helpers
@@ -70,13 +71,13 @@ function seedFixture(name: FixtureName): string {
 function gitInit(repoRoot: string, withCommit: boolean): void {
   // The host's global git config might trigger commit signing or other side
   // effects. Use a hermetic minimum config inside the test's repo.
-  execFileSync("git", ["init", "-q", "-b", "main"], { cwd: repoRoot });
-  execFileSync("git", ["config", "user.email", "ini508@test.local"], { cwd: repoRoot });
-  execFileSync("git", ["config", "user.name", "ini508 test"], { cwd: repoRoot });
-  execFileSync("git", ["config", "commit.gpgsign", "false"], { cwd: repoRoot });
+  execFileSync(GIT, ["init", "-q", "-b", "main"], { cwd: repoRoot });
+  execFileSync(GIT, ["config", "user.email", "ini508@test.local"], { cwd: repoRoot });
+  execFileSync(GIT, ["config", "user.name", "ini508 test"], { cwd: repoRoot });
+  execFileSync(GIT, ["config", "commit.gpgsign", "false"], { cwd: repoRoot });
   if (withCommit) {
-    execFileSync("git", ["add", "-A"], { cwd: repoRoot });
-    execFileSync("git", ["commit", "-q", "-m", "fixture: bootstrap"], { cwd: repoRoot });
+    execFileSync(GIT, ["add", "-A"], { cwd: repoRoot });
+    execFileSync(GIT, ["commit", "-q", "-m", "fixture: bootstrap"], { cwd: repoRoot });
   }
 }
 
@@ -124,7 +125,7 @@ function realGit(
   // Forward everything else to the real git, which is fine inside a tmp
   // repo we just `git init`-ed.
   try {
-    const stdout = execFileSync("git", args as string[], {
+    const stdout = execFileSync(GIT, args as string[], {
       cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
@@ -503,8 +504,8 @@ describe("ini508 — empty fixture", () => {
     // probe sees them. Without a HEAD commit, kind short-circuits to "empty"
     // regardless of devx.config.yaml — the realistic flow has the user (or
     // their CI) commit between runs, so we mirror that here.
-    execFileSync("git", ["add", "-A"], { cwd: repo });
-    execFileSync("git", ["commit", "-q", "-m", "devx: initial scaffold"], {
+    execFileSync(GIT, ["add", "-A"], { cwd: repo });
+    execFileSync(GIT, ["commit", "-q", "-m", "devx: initial scaffold"], {
       cwd: repo,
     });
 
@@ -914,7 +915,18 @@ describe("ini508 — failure-mode regressions", () => {
       readFileSync(join(repo, ".devx-cache", "pending-gh-ops.json"), "utf8"),
     ) as { ops: Array<{ kind: string }> };
     expect(pending.ops.some((o) => o.kind === "push-workflows")).toBe(true);
-  });
+    // debug-5e1a77 AC 2/AC 4: explicit, measured — 458ms alone, 5.4s in the
+    // full blocking pass (11.8x amplification; `runInit` drives a real git
+    // repo through scaffold + commit). No assertion is trimmed to fit it.
+    //
+    // Stated plainly because the distinction matters: this cap CANNOT FIRE
+    // yet. init-e2e's git seam is `execFileSync`, so the event loop is held
+    // and @vitest/runner's timeout timer never gets a tick — the same fault
+    // the loop driver just closed by adopting `realExecAsync`. The number
+    // below documents the measurement and bounds the intent; it does not
+    // enforce anything until this file's seam moves too. It is the last
+    // over-cap row left in the suite.
+  }, 30_000);
 });
 
 // ---------------------------------------------------------------------------

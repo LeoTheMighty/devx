@@ -30,6 +30,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { GRAPH_FILENAME, runGraph } from "../src/commands/graph.js";
 import type { GraphModel } from "../src/lib/graph/model.js";
+import { GIT } from "./helpers/git-bin.js";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TS = "2026-08-01T08:00";
@@ -44,7 +45,7 @@ const GIT_ENV = {
 };
 
 function git(cwd: string, ...args: string[]): string {
-  return execFileSync("git", args, { cwd, env: GIT_ENV, encoding: "utf8" });
+  return execFileSync(GIT, args, { cwd, env: GIT_ENV, encoding: "utf8" });
 }
 
 const madeDirs: string[] = [];

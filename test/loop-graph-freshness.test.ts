@@ -40,6 +40,7 @@ import {
   scriptedWorker,
   type Fixture,
 } from "./helpers/loop-git-fixture.js";
+import { GIT } from "./helpers/git-bin.js";
 
 /** The devx repo's own root — the source of the config the fixture copies,
  *  exactly as test/graph-cli.test.ts and the eval fixture do. Hand-rolling a
@@ -139,7 +140,7 @@ describe("loop merge tail — GRAPH.md freshness (debug-8a9586)", () => {
     expect(committed).toContain(GRAPH_FILENAME);
     // Pushed, too — the morning's `git status` on main must be clean.
     expect(
-      execFileSync("git", ["--git-dir", fixture.origin, "show", "--name-only", "--format=", "main"], {
+      execFileSync(GIT, ["--git-dir", fixture.origin, "show", "--name-only", "--format=", "main"], {
         encoding: "utf8",
       }),
     ).toContain(GRAPH_FILENAME);
@@ -231,7 +232,7 @@ describe("loop merge tail — GRAPH.md freshness (debug-8a9586)", () => {
     const followUpPath = r.summary!.items[0].followUpSpecPath;
     expect(followUpPath).toBeTruthy();
 
-    const committed = execFileSync("git", ["show", "--name-only", "--format=", "HEAD"], {
+    const committed = execFileSync(GIT, ["show", "--name-only", "--format=", "HEAD"], {
       cwd: fixture.repoRoot,
       encoding: "utf8",
     });
@@ -341,7 +342,7 @@ describe("loop merge tail — GRAPH.md freshness (debug-8a9586)", () => {
     expect(existsSync(join(fixture.repoRoot, GRAPH_FILENAME))).toBe(true);
     // … and it is not in the commit, because git would have refused it.
     expect(
-      execFileSync("git", ["show", "--name-only", "--format=", "HEAD"], {
+      execFileSync(GIT, ["show", "--name-only", "--format=", "HEAD"], {
         cwd: fixture.repoRoot,
         encoding: "utf8",
       }),

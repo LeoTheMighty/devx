@@ -20,6 +20,7 @@ import { runInit } from "../src/commands/init.js";
 import { appendDeferredDecisions, buildDefaultsAsk } from "../src/lib/init-defaults.js";
 import type { InitState } from "../src/lib/init-state.js";
 import type { AskContext } from "../src/lib/init-questions.js";
+import { GIT } from "./helpers/git-bin.js";
 
 const FIXED_NOW = () => new Date("2026-07-15T09:00:00.000Z");
 
@@ -37,10 +38,10 @@ const SKILLS = ["devx.md", "devx-plan.md", "devx-interview.md"];
 
 function makeRepo(): string {
   const repo = mkdtempSync(join(tmpdir(), "pin103-scaffold-"));
-  execFileSync("git", ["init", "-q", "-b", "main"], { cwd: repo });
-  execFileSync("git", ["config", "user.email", "pin103@test.local"], { cwd: repo });
-  execFileSync("git", ["config", "user.name", "pin103 test"], { cwd: repo });
-  execFileSync("git", ["config", "commit.gpgsign", "false"], { cwd: repo });
+  execFileSync(GIT, ["init", "-q", "-b", "main"], { cwd: repo });
+  execFileSync(GIT, ["config", "user.email", "pin103@test.local"], { cwd: repo });
+  execFileSync(GIT, ["config", "user.name", "pin103 test"], { cwd: repo });
+  execFileSync(GIT, ["config", "commit.gpgsign", "false"], { cwd: repo });
   return repo;
 }
 
