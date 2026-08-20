@@ -28,9 +28,9 @@
 // Spec: dev/dev-v2l101-2026-07-05T13:06-overnight-loop.md
 // Design: v2/04-overnight-loop.md §4
 
-import { type Exec, type ExecResult, realExec } from "../exec.js";
+import { type Exec, type ExecAsync, type ExecLike, type ExecResult, realExec, realExecAsync } from "../exec.js";
 
-export type { Exec, ExecResult } from "../exec.js";
+export type { Exec, ExecAsync, ExecLike, ExecResult } from "../exec.js";
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -93,17 +93,26 @@ function assertSafeRef(name: string, value: string): void {
 }
 
 /**
- * Run one git command via the injectable exec seam. Throws GitTxError on
+ * Run one git command via the injectable exec seam. Rejects with GitTxError on
  * non-zero exit. GIT_TERMINAL_PROMPT=0 is always injected; callers may add
  * more env (merged over process.env by the real exec).
+ *
+ * ASYNC SINCE debug-5e1a77, and the seam is typed `ExecLike` (`Exec |
+ * ExecAsync`) rather than `ExecAsync`. That is the point of the union: `await`
+ * on a non-promise is a no-op, so this whole module moved to the async seam
+ * without a single synchronous test fake changing. Production
+ * (`driver.ts` → `realExecAsync`) stops holding the event loop, which is what
+ * makes a test's declared timeout able to fire at all — `spawnSync` blocks the
+ * very timer @vitest/runner races the test against, so before this the caps in
+ * the blocking set could not fire at any value.
  */
-export function git(
-  exec: Exec,
+export async function git(
+  exec: ExecLike,
   cwd: string,
   args: string[],
   extraEnv?: Record<string, string>,
-): string {
-  const r = exec("git", args, {
+): Promise<string> {
+  const r = await exec("git", args, {
     cwd,
     env: { GIT_TERMINAL_PROMPT: "0", ...(extraEnv ?? {}) },
   });
@@ -137,21 +146,25 @@ export interface CommitResult {
  * shell-interpreted. A clean tree returns `{committed: false}` (the caller
  * decides whether clean-after-success means no-op).
  */
-export function commitAll(exec: Exec, cwd: string, message: string): CommitResult {
+export async function commitAll(
+  exec: ExecLike,
+  cwd: string,
+  message: string,
+): Promise<CommitResult> {
   if (typeof message !== "string" || message.trim() === "") {
     throw new Error("git-tx: commit message must be a non-empty string");
   }
-  git(exec, cwd, ["add", "-A"]);
+  await git(exec, cwd, ["add", "-A"]);
   // `diff --cached --quiet` exits 1 when there ARE staged changes.
-  const staged = exec("git", ["diff", "--cached", "--quiet"], {
+  const staged = await exec("git", ["diff", "--cached", "--quiet"], {
     cwd,
     env: { GIT_TERMINAL_PROMPT: "0" },
   });
   if (staged.exitCode === 0) {
-    return { committed: false, head: getHead(exec, cwd) };
+    return { committed: false, head: await getHead(exec, cwd) };
   }
   try {
-    git(exec, cwd, [
+    await git(exec, cwd, [
       "-c",
       "commit.gpgsign=false",
       "-c",
@@ -164,7 +177,7 @@ export function commitAll(exec: Exec, cwd: string, message: string): CommitResul
     if (e instanceof GitTxError) throw new CommitFailedError(e.detail, e);
     throw e;
   }
-  return { committed: true, head: getHead(exec, cwd) };
+  return { committed: true, head: await getHead(exec, cwd) };
 }
 
 /**
@@ -173,9 +186,9 @@ export function commitAll(exec: Exec, cwd: string, message: string): CommitResul
  * Committed work is untouched (preserve-don't-delete on failure applies to
  * commits; uncommitted failure output is exactly what this discards).
  */
-export function resetHard(exec: Exec, cwd: string): void {
-  git(exec, cwd, ["reset", "--hard", "HEAD"]);
-  git(exec, cwd, ["clean", "-fd"]);
+export async function resetHard(exec: ExecLike, cwd: string): Promise<void> {
+  await git(exec, cwd, ["reset", "--hard", "HEAD"]);
+  await git(exec, cwd, ["clean", "-fd"]);
 }
 
 /**
@@ -184,18 +197,18 @@ export function resetHard(exec: Exec, cwd: string): void {
  * Failure → PushFailedError; the driver preserves the local commit and
  * aborts the item.
  */
-export function pushCurrentBranch(exec: Exec, cwd: string): void {
+export async function pushCurrentBranch(exec: ExecLike, cwd: string): Promise<void> {
   let hasUpstream = true;
   try {
-    git(exec, cwd, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]);
+    await git(exec, cwd, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]);
   } catch {
     hasUpstream = false;
   }
   try {
     if (hasUpstream) {
-      git(exec, cwd, ["push"]);
+      await git(exec, cwd, ["push"]);
     } else {
-      git(exec, cwd, ["push", "-u", "origin", "HEAD"]);
+      await git(exec, cwd, ["push", "-u", "origin", "HEAD"]);
     }
   } catch (e) {
     if (e instanceof GitTxError) throw new PushFailedError(e.detail, e);
@@ -216,26 +229,30 @@ export interface GitSnapshot {
   dirty: boolean;
 }
 
-export function getHead(exec: Exec, cwd: string): string {
+export async function getHead(exec: ExecLike, cwd: string): Promise<string> {
   return git(exec, cwd, ["rev-parse", "HEAD"]);
 }
 
-export function getCurrentBranch(exec: Exec, cwd: string): string {
+export async function getCurrentBranch(exec: ExecLike, cwd: string): Promise<string> {
   try {
-    return git(exec, cwd, ["symbolic-ref", "--short", "HEAD"]);
+    return await git(exec, cwd, ["symbolic-ref", "--short", "HEAD"]);
   } catch {
-    return git(exec, cwd, ["rev-parse", "--abbrev-ref", "HEAD"]);
+    return await git(exec, cwd, ["rev-parse", "--abbrev-ref", "HEAD"]);
   }
 }
 
-export function hasUncommittedChanges(exec: Exec, cwd: string): boolean {
-  const out = git(exec, cwd, ["status", "--porcelain"]);
+export async function hasUncommittedChanges(exec: ExecLike, cwd: string): Promise<boolean> {
+  const out = await git(exec, cwd, ["status", "--porcelain"]);
   return out !== "";
 }
 
-export function getCommitCount(exec: Exec, cwd: string, baseRef: string): number {
+export async function getCommitCount(
+  exec: ExecLike,
+  cwd: string,
+  baseRef: string,
+): Promise<number> {
   assertSafeRef("baseRef", baseRef);
-  const out = git(exec, cwd, ["rev-list", "--count", "--first-parent", `${baseRef}..HEAD`]);
+  const out = await git(exec, cwd, ["rev-list", "--count", "--first-parent", `${baseRef}..HEAD`]);
   const n = Number.parseInt(out, 10);
   return Number.isFinite(n) ? n : 0;
 }
@@ -245,17 +262,17 @@ export function getCommitCount(exec: Exec, cwd: string, baseRef: string): number
  * Never throws — a snapshot failure must not look like an agent failure;
  * the error lands in the snapshot itself.
  */
-export function statusSnapshot(
-  exec: Exec,
+export async function statusSnapshot(
+  exec: ExecLike,
   cwd: string,
   baseRef?: string,
-): GitSnapshot | { error: string } {
+): Promise<GitSnapshot | { error: string }> {
   try {
     return {
-      head: getHead(exec, cwd),
-      branch: getCurrentBranch(exec, cwd),
-      commitCount: baseRef !== undefined ? getCommitCount(exec, cwd, baseRef) : 0,
-      dirty: hasUncommittedChanges(exec, cwd),
+      head: await getHead(exec, cwd),
+      branch: await getCurrentBranch(exec, cwd),
+      commitCount: baseRef !== undefined ? await getCommitCount(exec, cwd, baseRef) : 0,
+      dirty: await hasUncommittedChanges(exec, cwd),
     };
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
@@ -285,15 +302,15 @@ export const LOOP_BOOKKEEPING_COMMIT_RE = new RegExp(
  * empty-subject commit (which a bare `%s` listing renders as a blank,
  * filterable line) still counts as real work.
  */
-export function isBookkeepingOnlyWorktree(
-  exec: Exec,
+export async function isBookkeepingOnlyWorktree(
+  exec: ExecLike,
   cwd: string,
   baseRef: string,
-): boolean {
+): Promise<boolean> {
   try {
     assertSafeRef("baseRef", baseRef);
-    if (hasUncommittedChanges(exec, cwd)) return false;
-    const out = git(exec, cwd, ["log", "--format=%H%x09%s", `${baseRef}..HEAD`]);
+    if (await hasUncommittedChanges(exec, cwd)) return false;
+    const out = await git(exec, cwd, ["log", "--format=%H%x09%s", `${baseRef}..HEAD`]);
     return out
       .split("\n")
       .filter((l) => l.trim() !== "")
@@ -314,11 +331,15 @@ export interface DiffStat {
 }
 
 /** Diff stats for the morning report (base..HEAD). Never throws. */
-export function diffStat(exec: Exec, cwd: string, baseRef: string): DiffStat {
+export async function diffStat(
+  exec: ExecLike,
+  cwd: string,
+  baseRef: string,
+): Promise<DiffStat> {
   const empty: DiffStat = { filesChanged: 0, linesAdded: 0, linesDeleted: 0 };
   try {
     assertSafeRef("baseRef", baseRef);
-    const out = git(exec, cwd, ["diff", "--numstat", `${baseRef}..HEAD`]);
+    const out = await git(exec, cwd, ["diff", "--numstat", `${baseRef}..HEAD`]);
     const stat = { ...empty };
     for (const line of out.split("\n")) {
       if (line.trim() === "") continue;
@@ -335,4 +356,4 @@ export function diffStat(exec: Exec, cwd: string, baseRef: string): DiffStat {
   }
 }
 
-export { realExec };
+export { realExec, realExecAsync };

@@ -29,7 +29,7 @@ import {
   hasWorkflowFiles,
   parseGhRunList,
 } from "../devx/await-remote-ci.js";
-import { type Exec } from "./git-tx.js";
+import { type ExecLike } from "./git-tx.js";
 
 type GhRun = ReturnType<typeof parseGhRunList>[number];
 
@@ -81,14 +81,17 @@ export function baseBranchFrom(merged: unknown): string {
 }
 
 export interface ProbeMainHealthDeps {
-  exec: Exec;
+  exec: ExecLike;
   repoRoot: string;
   /** fs seams (tests). Default to the real fs. */
   exists?: (path: string) => boolean;
   readdir?: (path: string) => string[];
 }
 
-export function probeMainHealth(deps: ProbeMainHealthDeps, branch: string): MainHealth {
+export async function probeMainHealth(
+  deps: ProbeMainHealthDeps,
+  branch: string,
+): Promise<MainHealth> {
   const fs = {
     exists: deps.exists ?? ((p: string) => existsSync(p)),
     readdir: deps.readdir ?? ((p: string) => readdirSync(p)),
@@ -100,7 +103,7 @@ export function probeMainHealth(deps: ProbeMainHealthDeps, branch: string): Main
       detail: "no remote CI workflows configured — local gates are authoritative",
     };
   }
-  const r = deps.exec(
+  const r = await deps.exec(
     "gh",
     [
       "run",

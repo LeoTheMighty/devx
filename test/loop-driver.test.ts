@@ -80,6 +80,44 @@ function baseOpts(fx: Fixture, extra: Partial<Parameters<typeof runLoop>[0]> = {
   };
 }
 
+/**
+ * Explicit cap for the tests that make real git EXEC A HOOK FILE (debug-5e1a77
+ * AC 2 / AC 4). No assertion here is weakened to fit a number; the number is
+ * declared because the cost is measured and is not devx's.
+ *
+ * On macOS a `git` command that execs an executable at a locally-created path
+ * pays a per-process security assessment: ~3.5s the FIRST time in a fresh
+ * vitest worker and ~0.5s every time after, against ~52ms for the same push
+ * with no hook (test/helpers/git-hooks.ts carries the table). It does not
+ * cache across processes, and under the blocking pass's concurrent workers the
+ * assessments queue against each other — which is why these tests measure
+ * ~1.5-1.8s alone and 10-13.4s inside the full suite.
+ *
+ * The cheap form is a SYMLINK to a system binary (54ms flat, `armRejectingHook`),
+ * and every always-fail hook in this file already uses it. The six below cannot:
+ * each needs a real PREDICATE — let the claim's push to main through, reject
+ * only `refs/heads/feat/*`; or fail commits only inside a worktree, only while
+ * a flag file exists. A symlink cannot express that, and rewriting the
+ * scenarios to arm/disarm one mid-run would change what they test.
+ *
+ * The amplification is the whole reason this is not just "make it fast": the
+ * split-failure case (the pre-receive hook, on the bare ORIGIN, so the cost is
+ * paid by `git-receive-pack`) measures 1.5s alone and 48.2s / 48.4s in two
+ * consecutive full blocking passes — 32x, in line with the 36x debug-5e1a77 iteration 2 measured
+ * on devx-claim's hook test. Isolation numbers systematically understate these
+ * tests; the ~1.71x uniform slowdown `scripts/timeout-headroom.mjs` assumes
+ * does not apply to them.
+ *
+ * 120s against a worst measured 48.2s is ~2.5x headroom. Unlike every cap that
+ * came before it in this file, this one can actually FIRE — driver.ts runs the
+ * async seam since debug-5e1a77, proven by negative control in
+ * test/loop-driver-timeout-enforcement.test.ts — so a real hang here is a red
+ * build, not a slow green. That is what makes a measured number legitimate
+ * here and illegitimate in a file that still blocks.
+ */
+const HOOK_TEST_TIMEOUT_MS = 120_000;
+
+
 // ---------------------------------------------------------------------------
 // parseUntil + pickNextItem units
 // ---------------------------------------------------------------------------
@@ -582,7 +620,7 @@ describe("runLoop scenarios", () => {
     const wt = join(fixture.repoRoot, ".worktrees", "dev-kkk111");
     expect(existsSync(join(wt, "k.txt"))).toBe(true);
     expect(g(wt, "status", "--porcelain")).toBe("");
-  });
+  }, HOOK_TEST_TIMEOUT_MS);
 
   it("handed-off items keep claim + worktree and surface the tail detail", async () => {
     fixture = makeFixture([{ hash: "lll222" }]);
@@ -899,7 +937,7 @@ describe("runLoop review-fix scenarios", () => {
     expect(prompts[2]).not.toContain("REPAIR-ONLY");
     expect(r.summary!.items[0].outcome).toBe("merged");
     expect(r.summary!.items[0].iterationsFailed).toBe(2);
-  });
+  }, HOOK_TEST_TIMEOUT_MS);
 
   it("repair-iteration failure salvages the preserved work via a commit re-attempt (MED-2)", async () => {
     fixture = makeFixture([{ hash: "sal001" }]);
@@ -948,7 +986,7 @@ describe("runLoop review-fix scenarios", () => {
     expect(prompts[2]).not.toContain("REPAIR-ONLY");
     const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
     expect(events).toContain("iteration:repair-salvage-committed");
-  });
+  }, HOOK_TEST_TIMEOUT_MS);
 
   it("salvage re-attempt that ALSO fails resets and records the discarded-diff stat (MED-2)", async () => {
     fixture = makeFixture([{ hash: "sal002" }]);
@@ -984,7 +1022,7 @@ describe("runLoop review-fix scenarios", () => {
     expect(wtSpec).toMatch(/salvage re-attempt also failed; discarded preserved work: \d+ tracked files/);
     const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
     expect(events).toContain("iteration:repair-salvage-failed");
-  });
+  }, HOOK_TEST_TIMEOUT_MS);
 
   it("abandoned items WITH committed progress don't trip the systemic 3-stop (MED-4)", async () => {
     fixture = makeFixture([
@@ -1851,7 +1889,7 @@ describe("E-3: budget-rail split (mss103)", () => {
     const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
     expect(events).toContain("item:split-fallback");
     expect(events).not.toContain("item:split");
-  });
+  }, HOOK_TEST_TIMEOUT_MS);
 });
 
 // ---------------------------------------------------------------------------
@@ -1913,7 +1951,7 @@ describe("E-3: split rail progress oracle (mss103 review fixes)", () => {
     expect(dev).toMatch(/- \[-\] `dev\/dev-dir111/);
     const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
     expect(events).not.toContain("item:split");
-  });
+  }, HOOK_TEST_TIMEOUT_MS);
 
   it("a learnings-only success is not splittable progress: budget exhaustion abandons rather than superseding a parent whose branch holds no product work (BH-4)", async () => {
     fixture = makeFixture([{ hash: "lrn111", title: "Learnings-only thing" }]);

@@ -143,6 +143,18 @@ export type ExecAsync = (
 ) => Promise<ExecResult>;
 
 /**
+ * Either seam. A consumer that types its injected exec as `ExecLike` and
+ * `await`s every call works unchanged against BOTH — `await` on a
+ * non-promise is a no-op, so the hundreds of synchronous test fakes in this
+ * repo keep working verbatim while production runs on {@link realExecAsync}.
+ *
+ * That is the whole migration strategy for debug-5e1a77: the seam is what
+ * decides whether a test's declared timeout can fire, and it can only be
+ * flipped cheaply if the type does not force every fake to change too.
+ */
+export type ExecLike = Exec | ExecAsync;
+
+/**
  * Non-blocking `realExec`.
  *
  * WHY THIS EXISTS (debug-5e1a77). `realExec` is `spawnSync`, so for the whole

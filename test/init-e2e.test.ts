@@ -915,7 +915,18 @@ describe("ini508 — failure-mode regressions", () => {
       readFileSync(join(repo, ".devx-cache", "pending-gh-ops.json"), "utf8"),
     ) as { ops: Array<{ kind: string }> };
     expect(pending.ops.some((o) => o.kind === "push-workflows")).toBe(true);
-  });
+    // debug-5e1a77 AC 2/AC 4: explicit, measured — 458ms alone, 5.4s in the
+    // full blocking pass (11.8x amplification; `runInit` drives a real git
+    // repo through scaffold + commit). No assertion is trimmed to fit it.
+    //
+    // Stated plainly because the distinction matters: this cap CANNOT FIRE
+    // yet. init-e2e's git seam is `execFileSync`, so the event loop is held
+    // and @vitest/runner's timeout timer never gets a tick — the same fault
+    // the loop driver just closed by adopting `realExecAsync`. The number
+    // below documents the measurement and bounds the intent; it does not
+    // enforce anything until this file's seam moves too. It is the last
+    // over-cap row left in the suite.
+  }, 30_000);
 });
 
 // ---------------------------------------------------------------------------

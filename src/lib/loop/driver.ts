@@ -116,9 +116,11 @@ import {
   isBookkeepingOnlyWorktree,
   pushCurrentBranch,
   realExec,
+  realExecAsync,
   resetHard,
   statusSnapshot,
   type Exec,
+  type ExecLike,
 } from "./git-tx.js";
 import {
   afterItemAbandoned,
@@ -500,7 +502,24 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
   const cacheDir = opts.cacheDir ?? join(repoRoot, ".devx-cache");
   const now = opts.now ?? (() => new Date());
   const out = opts.out ?? ((line: string) => process.stdout.write(line + "\n"));
-  const exec = opts.exec ?? realExec;
+  // debug-5e1a77: production now runs the ASYNC seam. `spawnSync` holds the
+  // event loop for the whole life of a child, so a test driving runLoop
+  // through real git got ZERO timer ticks and its declared timeout could
+  // never fire — 16 tests ran past their own cap and reported PASSED.
+  // `await` on a non-promise is a no-op, so every synchronous fake injected
+  // through `opts.exec` keeps working verbatim.
+  const exec: ExecLike = opts.exec ?? realExecAsync;
+  // The SYNCHRONOUS seam, for the two call sites that cannot yield:
+  //   * work held under `withBacklogLock` — the lock is acquired and
+  //     released around a synchronous callback, so awaiting inside it would
+  //     release the lock while the child is still running (the lost-update
+  //     race the lock exists to prevent);
+  //   * `claimSpec`, which is still synchronous (claim.ts has not moved to
+  //     the async seam).
+  // Both are main-worktree bookkeeping — short, few, and not where the
+  // blocking hurt. The per-iteration worktree traffic, which is ~all of it,
+  // goes through the async seam above.
+  const execSync: Exec = opts.exec ?? realExec;
   const sleep = opts.sleep ?? defaultSleep;
   const signal = opts.signal;
   const flags = opts.flags ?? {};
@@ -660,7 +679,7 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
   // runs) never blocks the run — only a decisive red does.
   let mainHealth: MainHealth | null = null;
   if (cfg.preflightMainHealth !== "off") {
-    mainHealth = probeMainHealth({ exec, repoRoot }, baseBranchFrom(merged));
+    mainHealth = await probeMainHealth({ exec, repoRoot }, baseBranchFrom(merged));
   }
   const baseline = mainHealth !== null ? baselineLine(mainHealth) : null;
   const redForced =
@@ -814,7 +833,7 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
         // rejection strings; a localized git would misroute every real
         // race into the systemic-failure budget.
         exec: (cmd, args, o) =>
-          exec(cmd, args, {
+          execSync(cmd, args, {
             ...(o ?? {}),
             env: { GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
           }),
@@ -1059,6 +1078,7 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
           mode,
           sessionId,
           exec,
+          execSync,
           worker,
           tailFn,
           sleep,
@@ -1246,7 +1266,10 @@ interface RunItemArgs {
   /** The run's claim-owner token — abandon/finalize verify the spec lock
    *  still records it before mutating main-worktree state (roc101 posture). */
   sessionId: string;
-  exec: Exec;
+  /** Async seam — every worktree-side git call. See runLoop's note. */
+  exec: ExecLike;
+  /** Sync seam — the lock-held main-worktree bookkeeping only. */
+  execSync: Exec;
   worker: WorkerRunFn;
   tailFn: TailFn;
   sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
@@ -1294,6 +1317,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     repoRoot,
     cfg,
     exec,
+    execSync,
     worker,
     sleep,
     signal,
@@ -1355,7 +1379,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
   // match the claim's creation path or release becomes a no-op. The
   // manager lock + loop state honor cacheDir; the spec lock follows dvx101.
   const lockPath = join(repoRoot, ".devx-cache", "locks", `spec-${pick.hash}.lock`);
-  const baseSha = safeHead(exec, worktree);
+  const baseSha = await safeHead(exec, worktree);
 
   /**
    * mlc102: every main-checkout mutation below (spec status-log writes,
@@ -1432,7 +1456,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     // lock gone / unreadable / unattributable = claim no longer ours.
     specLockOwnedBy(lockPath, args.sessionId);
 
-  const baseItem = (): Omit<ItemResult, "outcome"> => ({
+  const baseItem = async (): Promise<Omit<ItemResult, "outcome">> => ({
     hash: pick.hash,
     type: pick.type,
     title: pick.title,
@@ -1444,19 +1468,19 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     // NB: same array reference on purpose — warnings pushed AFTER a
     // snapshot (e.g. during finalizeMerged) still reach the report.
     ...(itemWarnings.length > 0 ? { warnings: itemWarnings } : {}),
-    ...(baseSha !== null ? { diff: diffStat(exec, worktree, baseSha) } : {}),
+    ...(baseSha !== null ? { diff: await diffStat(exec, worktree, baseSha) } : {}),
   });
 
   // Loop-owned status entry on the WORKTREE spec copy + a commit that records
   // it on the feature branch. Best-effort at every layer — the JSONL log is
   // the fallback memory when the spec append itself fails.
-  const recordIteration = (
+  const recordIteration = async (
     prefix: EntryPrefix,
     head: string,
     changes: string[],
     learnings: string[],
     commit: boolean,
-  ): void => {
+  ): Promise<void> => {
     try {
       appendStatusEntryToFile(worktreeSpecPath, {
         iso: now().toISOString(),
@@ -1474,7 +1498,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       // Subject built from the SAME constant isBookkeepingOnlyWorktree
       // matches — rewording one side can't silently break the discard
       // predicate (dc7514 wrap-don't-duplicate).
-      commitAll(exec, worktree, `${LOOP_BOOKKEEPING_COMMIT_PREFIX}${iteration} for ${pick.hash}`);
+      await commitAll(exec, worktree, `${LOOP_BOOKKEEPING_COMMIT_PREFIX}${iteration} for ${pick.hash}`);
     } catch (e) {
       event("iteration:record-commit-failed", { error: serializeError(e) });
     }
@@ -1522,7 +1546,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
           // / backlog edits — which would have committed fine — are lost
           // behind a misleading commit-failed event. Drop the extras and
           // commit the tracked paths instead.
-          const add = exec("git", ["add", "--", ...paths], {
+          const add = execSync("git", ["add", "--", ...paths], {
             cwd: repoRoot,
             env: { GIT_TERMINAL_PROMPT: "0" },
           });
@@ -1534,7 +1558,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
             paths = [];
           }
         }
-        return exec(
+        return execSync(
         "git",
         [
           "-c",
@@ -1611,7 +1635,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     let push: ReturnType<Exec>;
     try {
       push = backlogLock("push-main", () =>
-        exec("git", ["push"], {
+        execSync("git", ["push"], {
           cwd: repoRoot,
           env: { GIT_TERMINAL_PROMPT: "0" },
         }),
@@ -1683,7 +1707,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       // GRAPH.md there would drop the follow-up spec alongside it and lose
       // the done-flip commit's extras. Same call the attended cleanup makes.
       const relGraph = relToRepo(result.path, repoRoot);
-      if (isGitIgnored(exec, repoRoot, relGraph)) {
+      if (isGitIgnored(execSync, repoRoot, relGraph)) {
         // Event, NOT an item warning — unlike `mark-done`, which fires once
         // per attended cleanup, this runs on every merged item of every
         // night, and a project that deliberately ignores its generated board
@@ -1712,13 +1736,13 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
    * Returns a note for the status-log entry, or null. Throws only when the
    * reset itself fails (caller abandons the item).
    */
-  const rollbackIteration = (): string | null => {
+  const rollbackIteration = async (): Promise<string | null> => {
     if (pendingRepair === null) {
-      resetHard(exec, worktree);
+      await resetHard(exec, worktree);
       return null;
     }
     try {
-      const res = commitAll(
+      const res = await commitAll(
         exec,
         worktree,
         `${pick.type === "debug" ? "fix" : "feat"}(${pick.hash}): salvage work preserved across a commit failure\n\nloop iteration ${iteration}; spec ${pick.path}`,
@@ -1729,12 +1753,12 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         return "prior iteration's preserved work committed via salvage re-attempt (original commit failure was transient)";
       }
       // Nothing to commit — the tree held no preserved work after all.
-      resetHard(exec, worktree);
+      await resetHard(exec, worktree);
       return null;
     } catch (e) {
       event("iteration:repair-salvage-failed", { iteration, error: serializeError(e) });
-      const discarded = uncommittedDiffNote(exec, worktree);
-      resetHard(exec, worktree);
+      const discarded = await uncommittedDiffNote(exec, worktree);
+      await resetHard(exec, worktree);
       pendingRepair = null;
       return discarded !== null
         ? `salvage re-attempt also failed; discarded preserved work: ${discarded}`
@@ -1787,7 +1811,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
    *  can't be proven safe (no base SHA, tip no longer a descendant), because
    *  leaving a stale branch is recoverable and deleting handed-off work is
    *  not. */
-  const rewindInheritedBranch = (): void => {
+  const rewindInheritedBranch = async (): Promise<void> => {
     const branch = args.claim.branch;
     const leaveIntact = (why: string): void => {
       event("item:inherited-branch-rewind-skipped", { branch, reason: why });
@@ -1799,7 +1823,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       leaveIntact("the claim's base SHA was never readable");
       return;
     }
-    const tip = exec("git", ["rev-parse", "--verify", `${branch}^{commit}`], {
+    const tip = await exec("git", ["rev-parse", "--verify", `${branch}^{commit}`], {
       cwd: repoRoot,
       env: { GIT_TERMINAL_PROMPT: "0" },
     });
@@ -1813,7 +1837,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       event("item:inherited-branch-preserved", { branch, sha: baseSha });
       return;
     }
-    const descends = exec(
+    const descends = await exec(
       "git",
       ["merge-base", "--is-ancestor", baseSha, branch],
       { cwd: repoRoot, env: { GIT_TERMINAL_PROMPT: "0" } },
@@ -1822,7 +1846,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       leaveIntact(`its tip no longer descends from the claim's base ${baseSha}`);
       return;
     }
-    const reset = exec("git", ["branch", "-f", branch, baseSha], {
+    const reset = await exec("git", ["branch", "-f", branch, baseSha], {
       cwd: repoRoot,
       env: { GIT_TERMINAL_PROMPT: "0" },
     });
@@ -1845,9 +1869,9 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
    *  re-attaches to exactly what it was handed. Returns true only when the
    *  worktree is actually gone — callers fall back to the preserve path on
    *  failure. */
-  const discardWorktree = (): boolean => {
+  const discardWorktree = async (): Promise<boolean> => {
     try {
-      const r = exec("git", ["worktree", "remove", "--force", worktree], {
+      const r = await exec("git", ["worktree", "remove", "--force", worktree], {
         cwd: repoRoot,
         env: { GIT_TERMINAL_PROMPT: "0" },
       });
@@ -1860,10 +1884,10 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       return false;
     }
     if (args.claim.attached) {
-      rewindInheritedBranch();
+      await rewindInheritedBranch();
       return true;
     }
-    const b = exec("git", ["branch", "-D", args.claim.branch], {
+    const b = await exec("git", ["branch", "-D", args.claim.branch], {
       cwd: repoRoot,
       env: { GIT_TERMINAL_PROMPT: "0" },
     });
@@ -1902,7 +1926,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       setBacklogRow(" ", "ready");
     });
 
-  const abandonItem = (reason: string): RunItemResult => {
+  const abandonItem = async (reason: string): Promise<RunItemResult> => {
     event("item:abandon", { hash: pick.hash, reason, worktree });
     if (!ownsClaim()) {
       // Someone took (or cleared) the claim mid-run — do NOT mutate spec /
@@ -1912,7 +1936,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       out(`loop: claim for ${pick.hash} is no longer this run's — leaving backlog state untouched`);
       return {
         item: {
-          ...baseItem(),
+          ...(await baseItem()),
           outcome: "abandoned",
           worktreePath: relToRepo(worktree, repoRoot),
           ...(lastFailure !== null ? { lastFailure } : {}),
@@ -1927,10 +1951,10 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     // the item back to ready (the failure stays recorded in the status log).
     // Snapshot before the discard (BH-MED-6 posture: diffStat needs the
     // worktree alive).
-    const snapshot = baseItem();
+    const snapshot = await baseItem();
     const bookkeepingOnly =
-      baseSha !== null && isBookkeepingOnlyWorktree(exec, worktree, baseSha);
-    if (bookkeepingOnly && discardWorktree()) {
+      baseSha !== null && await isBookkeepingOnlyWorktree(exec, worktree, baseSha);
+    if (bookkeepingOnly && (await discardWorktree())) {
       // The discarded worktree held the per-iteration [FAIL]/learning
       // entries — fold them into the main-spec entry so the next attempt
       // doesn't start blind.
@@ -1978,7 +2002,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     out(`loop: abandoned ${pick.hash} — ${reason}; worktree preserved at ${worktree}`);
     return {
       item: {
-        ...baseItem(),
+        ...(await baseItem()),
         outcome: "abandoned",
         leftState: "blocked",
         worktreePath: relToRepo(worktree, repoRoot),
@@ -2089,9 +2113,9 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
    *  split the branch is the preserved state (pushed + recorded on the
    *  follow-up spec), and a branch can only be checked out in one worktree:
    *  leaving the checkout parked would wedge the follow-up's claim. */
-  const removeWorktreeKeepBranch = (): void => {
+  const removeWorktreeKeepBranch = async (): Promise<void> => {
     try {
-      const r = exec("git", ["worktree", "remove", "--force", worktree], {
+      const r = await exec("git", ["worktree", "remove", "--force", worktree], {
         cwd: repoRoot,
         env: { GIT_TERMINAL_PROMPT: "0" },
       });
@@ -2116,14 +2140,14 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
    * main-worktree mutation, so the fallback to abandonItem is always safe
    * — the failed attempt left nothing half-split behind.
    */
-  const splitItem = (reason: string): RunItemResult => {
+  const splitItem = async (reason: string): Promise<RunItemResult> => {
     if (!ownsClaim()) {
       // abandonItem re-checks and takes its ownership-lost path (roc101).
-      return abandonItem(reason);
+      return await abandonItem(reason);
     }
     let res: { followUpHash: string; followUpSpecPath: string };
     try {
-      pushCurrentBranch(exec, worktree);
+      await pushCurrentBranch(exec, worktree);
       res = performSplit(pick.hash, {
         sessionToken: args.sessionId,
         repoRoot,
@@ -2144,7 +2168,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       out(
         `loop: split failed for ${pick.hash} — falling back to abandon (${firstLineOf(e instanceof Error ? e.message : String(e))})`,
       );
-      return abandonItem(reason);
+      return await abandonItem(reason);
     }
     event("item:split", {
       hash: pick.hash,
@@ -2155,8 +2179,8 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     });
     // Snapshot BEFORE the worktree goes away (diffStat needs it alive —
     // BH-MED-6 posture).
-    const snapshot = baseItem();
-    removeWorktreeKeepBranch();
+    const snapshot = await baseItem();
+    await removeWorktreeKeepBranch();
     backlogLockBestEffort("split-bookkeeping", () => {
       releaseSpecLock();
       commitOnMain(
@@ -2199,15 +2223,15 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
    *    BH-1, HIGH). Uncertainty (a throwing git status) reads as dirty.
    *  - not bookkeeping-only — the dc7514 oracle, unchanged.
    */
-  const hasCommittedProgress = (): boolean => {
+  const hasCommittedProgress = async (): Promise<boolean> => {
     if (goodWithFiles < 1 || baseSha === null) return false;
     if (pendingRepair !== null) return false;
     try {
-      if (hasUncommittedChanges(exec, worktree)) return false;
+      if (await hasUncommittedChanges(exec, worktree)) return false;
     } catch {
       return false;
     }
-    return !isBookkeepingOnlyWorktree(exec, worktree, baseSha);
+    return !(await isBookkeepingOnlyWorktree(exec, worktree, baseSha));
   };
 
   /**
@@ -2215,8 +2239,8 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
    * of abandoning; anything else takes today's abandon path verbatim
    * (E-3's zero-progress branch).
    */
-  const budgetExhausted = (reason: string): RunItemResult =>
-    hasCommittedProgress() ? splitItem(reason) : abandonItem(reason);
+  const budgetExhausted = async (reason: string): Promise<RunItemResult> =>
+    (await hasCommittedProgress()) ? splitItem(reason) : abandonItem(reason);
 
   /**
    * Worker-requested merge-first split: file the follow-up on main. Never
@@ -2266,14 +2290,14 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
    * shape) because a ready row with a surviving worktree/branch wedges the
    * next claim (EC-HIGH-2).
    */
-  const releaseItemToReady = (reason: string): RunItemResult => {
+  const releaseItemToReady = async (reason: string): Promise<RunItemResult> => {
     event("item:released-environment", { hash: pick.hash, reason, worktree });
     if (!ownsClaim()) {
       event("item:release-ownership-lost", { hash: pick.hash });
       out(`loop: claim for ${pick.hash} is no longer this run's — leaving backlog state untouched`);
       return {
         item: {
-          ...baseItem(),
+          ...(await baseItem()),
           outcome: "released",
           worktreePath: relToRepo(worktree, repoRoot),
           detail: `${reason}; claim ownership lost mid-run — spec/backlog left untouched`,
@@ -2281,10 +2305,10 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         loopAbort: null,
       };
     }
-    const snapshot = baseItem();
+    const snapshot = await baseItem();
     const bookkeepingOnly =
-      baseSha !== null && isBookkeepingOnlyWorktree(exec, worktree, baseSha);
-    const discarded = bookkeepingOnly && discardWorktree();
+      baseSha !== null && await isBookkeepingOnlyWorktree(exec, worktree, baseSha);
+    const discarded = bookkeepingOnly && await discardWorktree();
     if (!discarded) {
       // Real preserved work (or a failed discard): flipping the row to
       // ready while the worktree + branch survive would make the NEXT
@@ -2335,7 +2359,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     };
   };
 
-  const exitInProgress = (why: string): RunItemResult => {
+  const exitInProgress = async (why: string): Promise<RunItemResult> => {
     event("item:in-progress-at-exit", { hash: pick.hash, why, worktree });
     // Same roc101 ownership posture as abandonItem (review finding LOW-11):
     // if the claim was taken over / cleared mid-run, the main-worktree spec
@@ -2345,7 +2369,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       out(`loop: claim for ${pick.hash} is no longer this run's — leaving main spec untouched at exit`);
       return {
         item: {
-          ...baseItem(),
+          ...(await baseItem()),
           outcome: "in-progress-at-exit",
           worktreePath: relToRepo(worktree, repoRoot),
           ...(lastFailure !== null ? { lastFailure } : {}),
@@ -2364,7 +2388,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     });
     return {
       item: {
-        ...baseItem(),
+        ...(await baseItem()),
         outcome: "in-progress-at-exit",
         worktreePath: relToRepo(worktree, repoRoot),
         ...(lastFailure !== null ? { lastFailure } : {}),
@@ -2376,24 +2400,24 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
 
   while (true) {
     // ── Pre-iteration budget + stop checks ─────────────────────────────
-    if (signal?.aborted) return exitInProgress("stopped by signal");
+    if (signal?.aborted) return await exitInProgress("stopped by signal");
     if (args.untilDeadline !== null && now().getTime() >= args.untilDeadline.getTime()) {
-      return exitInProgress("--until deadline reached");
+      return await exitInProgress("--until deadline reached");
     }
     if (tokensTotal(args.totals) >= args.maxTotalTokens) {
-      return exitInProgress("total token budget exhausted");
+      return await exitInProgress("total token budget exhausted");
     }
     // Budget rungs charge only ATTRIBUTABLE iterations/spend — infra
     // iterations are environment losses and must not exhaust an innocent
     // item's budgets into an abandon (dc7514; the pure-infra case is
     // bounded by the 3-consecutive-infra run abort instead).
     if (good + failed >= cfg.maxIterationsPerItem) {
-      return budgetExhausted(
+      return await budgetExhausted(
         `iteration budget exhausted (${cfg.maxIterationsPerItem} iterations without acs_met)`,
       );
     }
     if (tokensTotal(itemTokens) - infraTokens >= cfg.maxTokensPerItem) {
-      return budgetExhausted(
+      return await budgetExhausted(
         `per-item token budget exhausted (${tokensTotal(itemTokens) - infraTokens}/${cfg.maxTokensPerItem})`,
       );
     }
@@ -2403,17 +2427,17 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     // ── Pre-flight: clean tree required (unless this is a repair pass) ──
     if (pendingRepair === null) {
       try {
-        if (hasUncommittedChanges(exec, worktree)) {
-          resetHard(exec, worktree);
+        if (await hasUncommittedChanges(exec, worktree)) {
+          await resetHard(exec, worktree);
           event("iteration:preflight-reset", { iteration });
         }
       } catch (e) {
-        return abandonItem(`git pre-flight failed: ${errorChainText(e)}`);
+        return await abandonItem(`git pre-flight failed: ${errorChainText(e)}`);
       }
     }
     event("iteration:start", {
       iteration,
-      git: statusSnapshot(exec, worktree, baseSha ?? undefined),
+      git: await statusSnapshot(exec, worktree, baseSha ?? undefined),
       repair: pendingRepair !== null,
     });
 
@@ -2565,17 +2589,17 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       // failure; roll back (salvaging any commit-failure-preserved work
       // first, review finding MED-2) and exit as stopped-mid-item.
       try {
-        rollbackIteration();
+        await rollbackIteration();
       } catch {
         // preserved dirty tree is the pre-flight's problem on resume
       }
-      return exitInProgress("stopped by signal");
+      return await exitInProgress("stopped by signal");
     }
 
     // ── Classify + transactional outcome ───────────────────────────────
     let filesChanged = false;
     try {
-      filesChanged = hasUncommittedChanges(exec, worktree);
+      filesChanged = await hasUncommittedChanges(exec, worktree);
     } catch (e) {
       workerError = workerError ?? new Error(`git status failed: ${errorChainText(e)}`);
     }
@@ -2593,9 +2617,9 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     let commitFailureDetail: string | null = null;
     if (cls === "success" && report !== null) {
       // Loop-owned commit: status entry first so it rides the same commit.
-      recordIteration("", `loop iteration ${iteration}: ${report.summary}`, report.key_changes_made, report.key_learnings, false);
+      await recordIteration("", `loop iteration ${iteration}: ${report.summary}`, report.key_changes_made, report.key_learnings, false);
       try {
-        commitAll(
+        await commitAll(
           exec,
           worktree,
           `${pick.type === "debug" ? "fix" : "feat"}(${pick.hash}): ${report.summary}\n\nloop iteration ${iteration}; spec ${pick.path}`,
@@ -2629,7 +2653,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       consecutiveErrors: itemState.consecutiveErrors,
       consecutiveInfraErrors: itemState.consecutiveInfraErrors,
       tokens: itemTokens,
-      git: statusSnapshot(exec, worktree, baseSha ?? undefined),
+      git: await statusSnapshot(exec, worktree, baseSha ?? undefined),
       ...(sleepGapMs > 0 ? { sleepGapMs } : {}),
       ...(workerError !== null ? { error: serializeError(workerError) } : {}),
     });
@@ -2661,7 +2685,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
           // and honoring it blindly would let an exploratory iteration that
           // changed nothing open a status-log-only PR, auto-merge it, and
           // mark the parent done. Same rail the budget path uses.
-          if (hasCommittedProgress()) {
+          if (await hasCommittedProgress()) {
             return await completeItem(report!.split_request);
           }
           event("iteration:split-request-ignored", {
@@ -2692,11 +2716,11 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         // against a clean tree).
         let note: string | null = null;
         try {
-          note = rollbackIteration();
+          note = await rollbackIteration();
         } catch (e) {
-          return abandonItem(`rollback failed: ${errorChainText(e)}`);
+          return await abandonItem(`rollback failed: ${errorChainText(e)}`);
         }
-        recordIteration(
+        await recordIteration(
           "[FAIL]",
           `loop iteration ${iteration}: ${summaryText}${note !== null ? ` (${note})` : ""}`,
           [],
@@ -2724,11 +2748,11 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         });
         let note: string | null = null;
         try {
-          note = rollbackIteration();
+          note = await rollbackIteration();
         } catch (e) {
-          return abandonItem(`rollback failed after infra-error: ${errorChainText(e)}`);
+          return await abandonItem(`rollback failed after infra-error: ${errorChainText(e)}`);
         }
-        recordIteration(
+        await recordIteration(
           "[ERROR]",
           `loop iteration ${iteration}: infra-error (environment failure, not charged to the item): ${msg}${note !== null ? ` (${note})` : ""}`,
           [],
@@ -2748,11 +2772,11 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         // Same salvage-before-reset + pendingRepair discipline as above.
         let note: string | null = null;
         try {
-          note = rollbackIteration();
+          note = await rollbackIteration();
         } catch (e) {
-          return abandonItem(`rollback failed after error: ${errorChainText(e)}`);
+          return await abandonItem(`rollback failed after error: ${errorChainText(e)}`);
         }
-        recordIteration(
+        await recordIteration(
           "[ERROR]",
           `loop iteration ${iteration}: ${msg}${note !== null ? ` (${note})` : ""}`,
           [],
@@ -2770,7 +2794,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         pendingRepair = commitFailureDetail ?? "(no git output captured)";
         // The tree is deliberately PRESERVED (the one no-rollback path);
         // the entry is appended uncommitted and rides the repair commit.
-        recordIteration("[ERROR]", `loop iteration ${iteration}: git commit failed; next iteration is repair-only`, [], [firstLineOf(commitFailureDetail ?? "")], false);
+        await recordIteration("[ERROR]", `loop iteration ${iteration}: git commit failed; next iteration is repair-only`, [], [firstLineOf(commitFailureDetail ?? "")], false);
         out(`loop: ${pick.hash} iteration ${iteration} commit failed — next iteration repairs`);
         break;
       }
@@ -2785,15 +2809,15 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         await sleep(decision.ms, signal);
         break;
       case "abandon-item":
-        return abandonItem(decision.reason);
+        return await abandonItem(decision.reason);
       case "abort-loop": {
-        const abandoned = exitInProgress(`loop aborted: ${decision.reason}`);
+        const abandoned = await exitInProgress(`loop aborted: ${decision.reason}`);
         return { item: abandoned.item, loopAbort: decision.reason };
       }
       case "abort-run-environment": {
         // dc7514: the environment (not the item) is broken — roll the claim
         // back to ready and abort the whole run.
-        const released = releaseItemToReady(decision.reason);
+        const released = await releaseItemToReady(decision.reason);
         return { item: released.item, loopAbort: decision.reason };
       }
     }
@@ -2823,7 +2847,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         // Bookkeeping-prefixed like every recordIteration commit, so
         // isBookkeepingOnlyWorktree's discard predicate keeps seeing this
         // for what it is (dc7514 wrap-don't-duplicate).
-        commitAll(
+        await commitAll(
           exec,
           worktree,
           `${LOOP_BOOKKEEPING_COMMIT_PREFIX}phase-4 audit line for ${pick.hash}`,
@@ -2833,14 +2857,14 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       event("item:phase4-branch-append-failed", { error: serializeError(e) });
     }
     try {
-      pushCurrentBranch(exec, worktree);
+      await pushCurrentBranch(exec, worktree);
     } catch (e) {
       if (e instanceof PushFailedError) {
         // AC: push-failure = abort-item-after-preserving. The commit is
         // local + preserved; the item is abandoned so a human untangles
         // the remote in the morning.
         lastFailure = e.message;
-        return abandonItem(`push failed (commit preserved locally): ${firstLineOf(e.detail)}`);
+        return await abandonItem(`push failed (commit preserved locally): ${firstLineOf(e.detail)}`);
       }
       throw e;
     }
@@ -2859,7 +2883,12 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         repoRoot,
         mode: args.mode,
         merged: args.merged,
-        exec,
+        // The tail is the gh/PR/CI path: `withGhRetry` and `checkHold`
+        // underneath it are synchronous (they back off with a BUSY-WAIT
+        // sleep), so it takes the sync seam until that layer moves too
+        // (debug-5e1a77 follow-up). It runs once per item, not per
+        // iteration, and its cost is remote latency, not spawn blocking.
+        exec: execSync,
         sleep,
         ...(signal !== undefined ? { signal } : {}),
         now,
@@ -2875,7 +2904,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       // finalizeMerged removes the worktree — afterwards diffStat runs
       // against a deleted directory and reports 0/+0/-0 for exactly the
       // items that shipped the most work.
-      const snapshot = baseItem();
+      const snapshot = await baseItem();
       const finalized = finalizeMerged(tailOutcome.prUrl, splitRequest);
       return {
         item: {
@@ -2922,7 +2951,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     }
     return {
       item: {
-        ...baseItem(),
+        ...(await baseItem()),
         outcome: "handed-off",
         ...(tailOutcome.prUrl !== null ? { prUrl: tailOutcome.prUrl } : {}),
         worktreePath: relToRepo(worktree, repoRoot),
@@ -2975,7 +3004,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
       return { followUpSpecPath: null, splitFailed: false };
     }
     try {
-      const r = exec("git", ["worktree", "remove", "--force", worktree], {
+      const r = execSync("git", ["worktree", "remove", "--force", worktree], {
         cwd: repoRoot,
         env: { GIT_TERMINAL_PROMPT: "0" },
       });
@@ -2993,7 +3022,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
     // false rather than reporting a blocked flip that never happened.
     let splitFailedOut = false;
     backlogLockBestEffort("finalize-merged", () => {
-      let pull = exec("git", ["pull", "--ff-only"], {
+      let pull = execSync("git", ["pull", "--ff-only"], {
         cwd: repoRoot,
         env: { GIT_TERMINAL_PROMPT: "0" },
       });
@@ -3003,7 +3032,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         // push landing mid-fetch) shouldn't strand the reconcile when the
         // second attempt would fast-forward cleanly. Still-failing keeps
         // the pre-mlc104 event; dispatcher row 4 reconciles the drift.
-        const fetch = exec("git", ["fetch", "origin"], {
+        const fetch = execSync("git", ["fetch", "origin"], {
           cwd: repoRoot,
           env: { GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
         });
@@ -3013,7 +3042,7 @@ async function runItem(args: RunItemArgs): Promise<RunItemResult> {
         // Deliberately still attempted after a failed fetch (review AA-7):
         // `git pull` runs its own fetch, so the explicit fetch above is
         // belt-and-suspenders, not a precondition.
-        pull = exec("git", ["pull", "--ff-only"], {
+        pull = execSync("git", ["pull", "--ff-only"], {
           cwd: repoRoot,
           env: { GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
         });
@@ -3148,9 +3177,9 @@ function devModelFrom(merged: unknown): string {
   return "claude-sonnet-4-6";
 }
 
-function safeHead(exec: Exec, cwd: string): string | null {
+async function safeHead(exec: ExecLike, cwd: string): Promise<string | null> {
   try {
-    return getHead(exec, cwd);
+    return await getHead(exec, cwd);
   } catch {
     return null;
   }
@@ -3169,13 +3198,13 @@ function firstLineOf(s: string): string {
  * discard (review finding MED-2 — the [ERROR] entry must say what was
  * lost when the salvage re-attempt also failed). Never throws.
  */
-function uncommittedDiffNote(exec: Exec, cwd: string): string | null {
+async function uncommittedDiffNote(exec: ExecLike, cwd: string): Promise<string | null> {
   try {
     const env = { GIT_TERMINAL_PROMPT: "0" };
     let files = 0;
     let added = 0;
     let deleted = 0;
-    const d = exec("git", ["diff", "--numstat", "HEAD"], { cwd, env });
+    const d = await exec("git", ["diff", "--numstat", "HEAD"], { cwd, env });
     if (d.exitCode === 0) {
       for (const line of d.stdout.split("\n")) {
         if (line.trim() === "") continue;
@@ -3187,7 +3216,7 @@ function uncommittedDiffNote(exec: Exec, cwd: string): string | null {
         }
       }
     }
-    const u = exec("git", ["ls-files", "--others", "--exclude-standard"], { cwd, env });
+    const u = await exec("git", ["ls-files", "--others", "--exclude-standard"], { cwd, env });
     const untracked =
       u.exitCode === 0 ? u.stdout.split("\n").filter((l) => l.trim() !== "").length : 0;
     if (files === 0 && untracked === 0) return null;

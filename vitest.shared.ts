@@ -29,14 +29,34 @@
 // — after which measured caps (debug-5c8b21) become enforceable and therefore
 // meaningful.
 //
-// STATUS OF FAULT (2), 2026-08-20 (debug-5e1a77). The async seam now EXISTS —
-// `realExecAsync` in src/lib/exec.ts — and `test/exec-async-seam.test.ts`
-// demonstrates both halves in this suite: a test that overruns a 200ms cap
-// through the async seam is interrupted at the cap, and the same overrun
-// through `realExec` runs 10x past it and reports PASSED. What is NOT done is
-// ADOPTION: the blocking call sites still use `realExec`, so every file listed
-// below still blocks and its caps are still unenforceable. Membership here is
-// unchanged until a file stops calling a sync child-process API.
+// STATUS OF FAULT (2), 2026-08-20 (debug-5e1a77). The async seam EXISTS —
+// `realExecAsync` in src/lib/exec.ts — and it is now ADOPTED by the loop
+// driver, which was the whole of the over-cap population. `git-tx.ts` takes
+// an `ExecLike` (`Exec | ExecAsync`) and awaits internally, `driver.ts`
+// defaults to `realExecAsync`, and `preflight.ts` follows. The migration cost
+// no test fake anything: `await` on a non-promise is a no-op, so every
+// synchronous fake injected through `opts.exec` still works verbatim.
+//
+// `test/loop-driver-timeout-enforcement.test.ts` is the proof, and it is
+// negative-controlled — flipping that one default back to `realExec` turns
+// the file red twice over: the tick counter reads exactly 0 (as it did before
+// adoption) and the 150ms-cap case runs to a clean `merged`, which `it.fails`
+// scores as the false PASS it is.
+//
+// TWO CALL SITES DELIBERATELY STAY SYNCHRONOUS, and they are not oversights:
+//   * anything held under `withBacklogLock`. That lock acquires and releases
+//     around a SYNCHRONOUS callback, so awaiting inside it would release the
+//     lock while the child is still running — the lost-update race the lock
+//     exists to prevent. The driver keeps an `execSync` seam for exactly
+//     this main-worktree bookkeeping.
+//   * `claimSpec` and the merge tail (`tail.ts`, and `withGhRetry` /
+//     `checkHold` under it, which back off with a busy-wait sleep). Both are
+//     once-per-item, not per-iteration; their cost is remote latency, not
+//     spawn blocking. Moving them is follow-up work, not this fix.
+//
+// Membership below is unchanged and stays MECHANICAL: a file belongs here iff
+// it references a synchronous child-process API. Several of these files no
+// longer block for long, but they still block.
 //
 // FAULT (2), MEASURED DIRECTLY (debug-5e1a77 iteration 2). The mechanism was
 // inferred until now; it is confirmed. `test/loop-driver.test.ts`'s LOW-11
@@ -135,6 +155,7 @@ export const SYNC_BLOCKING_TESTS = [
   "test/learn-watch.test.ts",
   "test/loop-chaos.test.ts",
   "test/loop-concurrency.test.ts",
+  "test/loop-driver-timeout-enforcement.test.ts",
   "test/loop-driver.test.ts",
   "test/loop-git-tx.test.ts",
   "test/loop-graph-freshness.test.ts",
