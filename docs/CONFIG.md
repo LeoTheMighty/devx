@@ -464,6 +464,7 @@ learn:
   retro_timeout_minutes: 360     # spawned retro past this retires as `timeout`
   home: ~/.claude/devx           # queue home (user-global, one per human)
   auto_allow: false              # unreviewed repos serve instead of prompting
+  auto_apply: false              # an unattended retro applies, not just prints
 ```
 
 Consumed by `devx learn-watch` (rtl102) and the `/devx-init` hook install
@@ -503,13 +504,74 @@ every unreviewed repo" is the wrong direction to guess. Note also that a
 running watcher's skip-set is per-*run*: flipping the knob does not rescue
 entries an already-running watcher walked past, so restart it.
 
+**`auto_apply` (c808b1) is what makes a spawned retro worth spawning.**
+`auto_allow` gets the watcher past the `[y/N]` gate; `auto_apply` decides what
+the retro it spawns is allowed to do when it gets there. Set it in config, or
+pass `devx learn-watch --auto-apply` to force it on for one run — same
+one-directional flag as `--auto-allow` (its absence defers to config; turning
+the policy off for a run is a config edit). Mechanically it is the mode the
+spawn hands the retro: `DEVX_LEARN_UNATTENDED=1` in the wrapper's environment
+plus an `unattended` argument on the `/devx-learn` invocation, both of which
+are absent — byte-for-byte — from an attended spawn. Off, an unattended
+`/devx-learn` behaves like the attended one — it prints its evidence table and
+waits for a prune that never comes, until `retro_timeout_minutes` kills the tab
+and every mined lesson goes with it. On, outlet-1 rows whose change set the
+predicate clears land on `fw/learn-YYYY-MM-DD-<slug>` and go through the normal
+gates: local CI → PR → remote CI → the mode merge gate. No direct-to-`main`
+path exists in either setting.
+
+It is deliberately **not** implied by `auto_allow`. Letting the watcher open a
+tab is a strictly smaller grant than letting what runs in that tab open PRs
+against your repo, and the second one needs the consent of whoever reviews
+them. Same fail-closed typo handling as `auto_allow`, for a stronger reason.
+
+Turning it on never widens *what* may be applied — two carve-outs hold in every
+mode:
+
+- **wedge paths**, decided mechanically by
+  `devx learn-helper route <path…>` → `apply` | `propose`. Anything under
+  `.claude/**` or `skills/**`, any `settings.json` / `settings.local.json`, and
+  anything outside the repo routes `propose`, because **skill and settings
+  edits prompt for confirmation even under bypass-permissions** — an unattended
+  tab hangs on that prompt until the retro timeout kills it. This one is a
+  harness fact, not a policy, so no knob relaxes it.
+- **locked machinery** — gate logic, refusal paths, cascade rules, verdict
+  vocabulary, append-only disciplines. An automated pass that can loosen the
+  gates it is judged by is a system with no floor. No path pattern recognizes
+  these (the same file holds loosenable and unloosenable lines), so the run
+  declares it: `devx learn-helper route --locked <path…>` returns `propose`
+  with the locked-machinery reason even when every path is ordinary `src/`
+  code, and stamps that reason on every per-path verdict so nothing downstream
+  can find an `apply`. The flag reads fail-closed — anything but
+  `false`/absent counts as locked.
+
+Rows in either carve-out become a durable artifact rather than tab stdout
+nobody reads: `devx learn-helper propose` (JSON payload on stdin) writes
+`docs/updates/<date>-<slug>.md` plus a `dev/` spec and a `DEV.md` row under
+`### Learn proposals`, so the proposal enters the normal backlog and `devx
+next` can offer it. `--target personal` is outlet 4's arm: it writes
+`<learn-home>/proposals/<date>-<slug>.md` instead — still never committed and
+still never applied to any settings file, just recoverable. The three repo
+writes land as one transaction (doc → spec → backlog, restore-on-partial), so
+a backlog row never points at a spec that was not written.
+
+**Every unattended run leaves a report**, including the one that mined nothing:
+`devx learn-helper report` writes `<learn-home>/reports/<YYYY-MM-DDTHH-MM>-<slug>.md`
+and appends one line to `<learn-home>/reports/index.md`. The report names each
+row's bucket, the question that decided it, applied-vs-proposed with the
+`route` predicate's reason, and the PR URL if one opened. The index is the
+reason you never need a session id to find last night's retros — `ls` the
+directory or grep the index. A run that stops at its budget bound writes a
+partial report rather than nothing, so the watcher files a real outcome instead
+of `timeout`.
+
 **All of `learn:` is read from the watcher's launch cwd**, via the same
 `loadMerged()` walk every other section uses — the watcher is user-global but
 its config is not. Launching it from a different repo (or from `~`) picks up
 that directory's `devx.config.yaml`, or the defaults if there isn't one. This
 is a known wrinkle, not a bug to rediscover: put `auto_allow`, `idle_minutes`,
 and `retro_timeout_minutes` in the config of whatever directory you actually
-launch the watcher from, or pass `--auto-allow` explicitly.
+launch the watcher from, or pass `--auto-allow` / `--auto-apply` explicitly.
 
 **Home precedence — `DEVX_LEARN_HOME` env > `learn.home` > `~/.claude/devx`.**
 The env var wins everywhere and is what tests and hook installs use to redirect

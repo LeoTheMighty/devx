@@ -3,9 +3,11 @@
 > Framework self-improvement loop (workstream `harness-fold-in`, Phase 4).
 > Mines the **current session** for lessons, lays them out in an evidence
 > table, and — only after the user prunes — routes each surviving finding to
-> its destination. Judgment lives here in prose; the only mechanical arm is
-> `devx learn-helper slug` (branch/file naming). Plan-first is the contract:
-> nothing is applied without user approval.
+> its destination. Judgment lives here in prose; the mechanical arms are
+> `devx learn-helper slug|route|propose|report`. Plan-first is the attended
+> contract: nothing is applied without user approval. An unattended run
+> (`learn.auto_apply`, see below) swaps the human prune for an evidence bar
+> and a path predicate — it never swaps out a guard.
 
 ## Mining scope
 
@@ -123,10 +125,126 @@ into a ref or path yourself.
 
 ## Foreground only
 
-Run `/devx-learn` in a **user-foreground session only**. Skill and settings
-edits prompt for confirmation even under bypass-permissions — a subagent or
-unattended loop cannot accept them, so a background learn run wedges. The
-overnight loop must never invoke this skill.
+Attended `/devx-learn` runs in a **user-foreground session only**. Skill and
+settings edits prompt for confirmation even under bypass-permissions — a
+subagent or an unattended tab cannot accept them, so a run that tries to edit
+one wedges until the retro timeout kills it. That is not a policy, it is the
+harness, and it is why the unattended mode below hands those paths to
+`devx learn-helper propose` instead of editing them.
+
+The overnight `devx loop` still never invokes this skill. The only sanctioned
+background caller is `devx learn-watch`, and only in the unattended mode
+described next.
+
+## Unattended mode
+
+`devx learn-watch` spawns a retro into a tab nobody is sitting in front of.
+That run is invoked as `/devx-learn unattended` with `DEVX_LEARN_UNATTENDED=1`
+in the environment, and only when `learn.auto_apply` is on (default **false**;
+`devx learn-watch --auto-apply` turns it on for one run). Both halves are
+absent from an attended spawn — when neither is present, **every rule above
+applies unchanged**: the evidence table, the prune gate, and the
+write-nothing-until-the-user-prunes contract.
+
+Everything in this section is conditional on that mode. It replaces the human,
+never the guards.
+
+### Auto-prune replaces the prune gate
+
+Nobody is there to strike rows, so the promotion bar does the pruning: **a row
+survives only if its evidence is a concrete moment in the mined session** — a
+failure, a rework, a wrong assumption with a visible cost. A row whose evidence
+reads "this could bite someone" is dropped outright, not re-routed to a
+narrower outlet: unattended, the rule that outlet 1 requires evidence of the
+machinery *failing* is load-bearing rather than advisory. Ties still take the
+narrower outlet and still record which two outlets they were torn between. The
+evidence table is still produced — into the run report, not to a human.
+
+### Apply vs propose is a predicate, not a judgment
+
+Hand every surviving row's paths to the predicate and take its verdict:
+
+```
+devx learn-helper route <path…>   # → {"decision":"apply"|"propose","reason":…}
+```
+
+It returns `propose` for anything an unattended tab cannot edit — `.claude/**`,
+`skills/**`, any `settings.json`, anything outside the repo (including
+`~/.claude/`) — and for a row that never named a path. A row is `apply` only
+when **every** path it touches is. Never second-guess the verdict and never
+edit a `propose` path "just this once": that edit is the wedge this mode
+exists to avoid.
+
+### Applied rows go through the gates, not around them
+
+An `apply` row lands exactly where an attended one would: branch
+`fw/learn-YYYY-MM-DD-<slug>` (slug from `devx learn-helper slug`, never
+hand-built) → local CI → PR → remote CI → the mode merge gate, which
+auto-merges on green in YOLO. This mode adds **no** direct-to-`main` path and
+skips no gate. If CI stays red, the row's disposition becomes `proposed` with
+the failure as its reason — an unattended tab does not open a fix-forward
+spree.
+
+### Proposed rows leave a durable artifact
+
+An unattended tab's stdout is not a delivery channel. Every `propose` row —
+plus every outlet-2 (`devx.config.yaml`) row and every locked-machinery row —
+is written through:
+
+```
+devx learn-helper propose <payload.json>                    # docs/updates + dev/ spec + DEV.md row
+devx learn-helper propose <payload.json> --target personal  # outlet 4, never committed
+```
+
+The repo target writes `docs/updates/<date>-<slug>.md`, a `dev/` spec, and a
+`DEV.md` row as one transaction, so the proposal enters the normal backlog.
+The personal target writes `<learn-home>/proposals/<date>-<slug>.md`: still
+never committed, still never applied to anyone's settings, but recoverable
+instead of scrolled past.
+
+### Locked machinery is proposal-only in every mode
+
+Gate logic, refusal paths, cascade rules, verdict vocabulary, and append-only
+disciplines are never applied by an unattended run — not when the predicate
+says `apply`, not in YOLO. A pass that can loosen the gates it is judged by has
+no floor.
+
+No path pattern recognizes them, so this one is your call to declare — and the
+predicate enforces it once you do:
+
+```
+devx learn-helper route --locked <path…>   # → propose, whatever the paths are
+```
+
+A `--locked` row comes back `propose` with the locked-machinery reason even
+when every path it touches is ordinary `src/` code, and every per-path verdict
+carries that reason too. Route the row through `devx learn-helper propose`
+from there like any other proposal.
+
+### The run always reports
+
+Whether it applied, proposed, dropped every row, or ran out of budget:
+
+```
+devx learn-helper report <payload.json>
+```
+
+writes a report under `<learn-home>/reports/` plus a line in
+`reports/index.md`, so last night's decisions are found with `ls` and never
+"find the session id first". Each row carries its bucket, the question that
+decided it, its disposition, and the predicate's reason; the report names the
+PR URL if one opened.
+
+### Refusals and budget
+
+- **Thin sessions still refuse.** A fresh or empty session exits clean and
+  files a report saying it found nothing. Never manufacture a lesson to
+  justify the tab.
+- **Never self-triggers** — unchanged.
+- **Bound the run well inside `learn.retro_timeout_minutes`** (default 360).
+  At the bound, stop cleanly: finish the row in hand, leave the rest
+  `proposed`, write the report marked partial, and exit — so the watcher files
+  a real outcome instead of `timeout`.
 
 <!-- nudge-canonical -->
 If this session hit real friction — a wrong assumption, a missing guard, a

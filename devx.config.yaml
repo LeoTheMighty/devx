@@ -368,6 +368,13 @@ learn:
                                  # (needed for `nohup devx learn-watch &`; a
                                  #  recorded `deny` still wins, and the policy
                                  #  never writes repos.json)
+  auto_apply: false              # true = an unattended /devx-learn run APPLIES
+                                 # its routed framework fixes (branch → CI → PR
+                                 #  → merge gate) instead of printing a table
+                                 #  nobody reads. NOT implied by auto_allow;
+                                 #  wedge paths (.claude/**, skills/**,
+                                 #  settings.json) and locked machinery stay
+                                 #  proposal-only either way
 
 # ---------------------------------------------------------------------------
 # Stack — what /devx Phase 5 (local CI) runs.

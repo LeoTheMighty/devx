@@ -50,6 +50,9 @@ describe("learnConfigFrom", () => {
     // 28b267: OFF by default. The watcher prompts once per repo until a human
     // opts into the unattended policy.
     expect(LEARN_DEFAULTS.autoAllow).toBe(false);
+    // c808b1: also OFF by default, and separately from autoAllow — spawning a
+    // retro unattended must not imply letting it open PRs.
+    expect(LEARN_DEFAULTS.autoApply).toBe(false);
   });
 
   it("reads a fully-populated learn: block", () => {
@@ -59,6 +62,7 @@ describe("learnConfigFrom", () => {
         retro_timeout_minutes: 45,
         home: "/tmp/learn-home",
         auto_allow: true,
+        auto_apply: true,
       },
     });
     expect(cfg).toEqual({
@@ -66,6 +70,7 @@ describe("learnConfigFrom", () => {
       retroTimeoutMinutes: 45,
       home: "/tmp/learn-home",
       autoAllow: true,
+      autoApply: true,
     });
   });
 
@@ -154,6 +159,25 @@ describe("learnConfigFrom", () => {
     });
     expect(cfg.idleMinutes).toBe(LEARN_DEFAULTS.idleMinutes);
     expect(cfg.autoAllow).toBe(true);
+  });
+
+  it("reads auto_apply only from a real boolean, off by default (c808b1)", () => {
+    expect(learnConfigFrom({ learn: { auto_apply: true } }).autoApply).toBe(true);
+    expect(learnConfigFrom({ learn: { auto_apply: false } }).autoApply).toBe(false);
+    // Same fail-closed direction as auto_allow, for a stronger reason: a typo
+    // read as "on" here opens PRs nobody asked for.
+    for (const bad of ["yes", "true", "1", 1, 0, null, undefined, [], {}, Number.NaN]) {
+      expect(learnConfigFrom({ learn: { auto_apply: bad } }).autoApply).toBe(false);
+    }
+    expect(learnConfigFrom({ learn: {} }).autoApply).toBe(false);
+  });
+
+  it("auto_allow does not imply auto_apply (c808b1)", () => {
+    // The watcher being servable unattended (28b267) is a strictly smaller
+    // grant than a spawned retro opening PRs against the repo. Someone who
+    // turned the first knob on has not consented to the second.
+    expect(learnConfigFrom({ learn: { auto_allow: true } }).autoApply).toBe(false);
+    expect(learnConfigFrom({ learn: { auto_apply: true } }).autoAllow).toBe(false);
   });
 
   it("does not mutate LEARN_DEFAULTS across calls", () => {

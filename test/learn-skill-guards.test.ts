@@ -16,8 +16,17 @@
 //      rtl106 extends this layer with the ordered five-outlet first-match
 //      routing procedure and its three checkability rules.
 //
+//      c808b1 extends it again with the `## Unattended mode` section: the mode
+//      entry (env + argument + `learn.auto_apply`), the auto-prune bar that
+//      replaces the human prune, the `devx learn-helper route` predicate, the
+//      through-the-gates apply path, the durable proposal artifacts, the
+//      locked-machinery carve-out, the always-written report, and the budget
+//      bound — plus a drift guard that every `devx learn-helper` subcommand the
+//      body tells an unattended run to invoke is actually registered.
+//
 // Spec: dev/dev-hfi104-2026-07-24T10:41-devx-learn-skill.md (T4.5)
 //       dev/dev-rtl106-2026-07-30T09:31-outlet-routing-rework.md (T6.3)
+//       dev/dev-c808b1-2026-08-05T11:25-devx-learn-unattended-apply.md
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -247,6 +256,132 @@ describe("hfi104 — /devx-learn skill body carries the pinned sections (static)
     // The marker is followed by actual nudge prose, not a bare tag.
     const after = body.slice(body.indexOf("<!-- nudge-canonical -->"));
     expect(after).toMatch(/\/devx-learn/);
+  });
+
+  it("skills/devx-learn.md mirror is byte-identical (pin101 shipping path)", () => {
+    expect(readFileSync(MIRROR_PATH, "utf8")).toBe(body);
+  });
+});
+
+// c808b1 — the unattended arm. An unattended tab has no human to prune rows,
+// accept a confirmation prompt, or read stdout, so three things have to be
+// written down and kept from drifting: what replaces the prune (an evidence
+// bar), what decides apply-vs-propose (a predicate, not the model's judgment),
+// and where the run's decisions land (a report, not the scrollback). These pins
+// assert the section exists, names its mechanical arms, and — crucially — does
+// NOT quietly relax the attended contract or the locked-machinery guard.
+describe("c808b1 — /devx-learn skill body carries the unattended-mode contract", () => {
+  const body = readFileSync(SKILL_PATH, "utf8");
+  const UNATTENDED = body.slice(body.indexOf("\n## Unattended mode\n"));
+
+  it("carries an Unattended mode section after the guards", () => {
+    expect(body).toMatch(/^## Unattended mode$/m);
+    expect(UNATTENDED).not.toBe("");
+    expect(body.indexOf("## Unattended mode")).toBeGreaterThan(body.indexOf("### Locked machinery"));
+  });
+
+  it("pins the mode entry: both halves of the spawn plus the opt-in knob", () => {
+    // The spawn carries an env var (for subprocesses) AND a skill argument (for
+    // this body). A run that reads only one of them mis-detects its own mode.
+    expect(UNATTENDED).toMatch(/DEVX_LEARN_UNATTENDED=1/);
+    expect(UNATTENDED).toMatch(/\/devx-learn unattended/);
+    expect(UNATTENDED).toMatch(/`learn\.auto_apply`/);
+    expect(UNATTENDED).toMatch(/--auto-apply/);
+    expect(UNATTENDED).toMatch(/default \*\*false\*\*/);
+  });
+
+  it("keeps the attended path unchanged when neither half is present", () => {
+    // The whole spec's compatibility claim, in one sentence of the body.
+    expect(UNATTENDED).toMatch(/absent from an attended\s*\n?\s*spawn/i);
+    expect(UNATTENDED).toMatch(/every rule above\s*\n?\*{0,2}applies unchanged/i);
+    // …and the attended prune gate is still stated up top, unqualified.
+    expect(body).toMatch(/write nothing until the\s*\n?user prunes/i);
+  });
+
+  it("pins the auto-prune bar: concrete moment in, plausibility out", () => {
+    expect(UNATTENDED).toMatch(/^### Auto-prune replaces the prune gate$/m);
+    expect(UNATTENDED).toMatch(/concrete moment in the mined session/i);
+    expect(UNATTENDED).toMatch(/dropped outright/i);
+    // Ties keep the attended rule rather than inventing an unattended one.
+    expect(UNATTENDED).toMatch(/narrower outlet/i);
+  });
+
+  it("pins apply-vs-propose as the `route` predicate, not a judgment call", () => {
+    expect(UNATTENDED).toMatch(/devx learn-helper route/);
+    expect(UNATTENDED).toMatch(/"decision"/);
+    for (const wedge of [/`\.claude\/\*\*`/, /`skills\/\*\*`/, /`settings\.json`/, /~\/\.claude\//]) {
+      expect(UNATTENDED, String(wedge)).toMatch(wedge);
+    }
+    // A row is apply only if EVERY path is — the aggregation rule routeLearnPaths
+    // implements. Stating it per-path would let a mixed row half-apply.
+    expect(UNATTENDED).toMatch(/\*\*every\*\* path/i);
+    expect(UNATTENDED).toMatch(/never second-guess the verdict/i);
+  });
+
+  it("pins the applied path through the normal gates with no direct-to-main arm", () => {
+    expect(UNATTENDED).toMatch(/fw\/learn-YYYY-MM-DD-<slug>/);
+    expect(UNATTENDED).toMatch(/devx learn-helper slug/);
+    expect(UNATTENDED).toMatch(/merge gate/i);
+    expect(UNATTENDED).toMatch(/no\*{0,2} direct-to-`main` path/i);
+    expect(UNATTENDED).toMatch(/skips no gate/i);
+  });
+
+  it("pins durable proposal artifacts for both targets", () => {
+    expect(UNATTENDED).toMatch(/devx learn-helper propose/);
+    expect(UNATTENDED).toMatch(/docs\/updates\/<date>-<slug>\.md/);
+    expect(UNATTENDED).toMatch(/`DEV\.md` row/);
+    expect(UNATTENDED).toMatch(/--target personal/);
+    expect(UNATTENDED).toMatch(/proposals\/<date>-<slug>\.md/);
+    expect(UNATTENDED).toMatch(/never committed/i);
+  });
+
+  it("keeps locked machinery proposal-only even when the predicate says apply", () => {
+    const locked = UNATTENDED.slice(UNATTENDED.indexOf("### Locked machinery is proposal-only"));
+    expect(locked).not.toBe("");
+    expect(locked).toMatch(/gate logic, refusal paths, cascade rules/i);
+    expect(locked).toMatch(/not when the predicate\s*\n?\s*says `apply`/i);
+    expect(locked).toMatch(/not in YOLO/i);
+    // The carve-out is enforced, not just asserted: the body has to tell the
+    // run how to declare it, or the guard is prose again.
+    expect(locked).toMatch(/devx learn-helper route --locked/);
+    expect(locked).toMatch(/devx learn-helper propose/);
+  });
+
+  it("pins the always-written report and its session-id-free findability", () => {
+    expect(UNATTENDED).toMatch(/devx learn-helper report/);
+    expect(UNATTENDED).toMatch(/reports\/index\.md/);
+    expect(UNATTENDED).toMatch(/session id/i);
+    // Every disposition path reports — including the one that changed nothing.
+    expect(UNATTENDED).toMatch(/dropped every row/i);
+  });
+
+  it("pins the thin-session refusal and the budget bound", () => {
+    expect(UNATTENDED).toMatch(/thin sessions still refuse/i);
+    expect(UNATTENDED).toMatch(/never manufacture a lesson/i);
+    expect(UNATTENDED).toMatch(/never self-triggers/i);
+    expect(UNATTENDED).toMatch(/`learn\.retro_timeout_minutes`/);
+    expect(UNATTENDED).toMatch(/partial/i);
+    expect(UNATTENDED).toMatch(/instead of `timeout`/);
+  });
+
+  // The body instructs an unattended run to shell out. If a subcommand it names
+  // is not registered, the run fails at the point where nobody is watching —
+  // so the prose and the CLI registration are pinned to each other.
+  it("names only `devx learn-helper` subcommands the CLI actually registers", () => {
+    const source = readFileSync(resolve(REPO_ROOT, "src/commands/learn-helper.ts"), "utf8");
+    const registered = new Set(
+      [...source.matchAll(/\n\s*\.command\("([a-z-]+)"\)/g)].map((m) => m[1]),
+    );
+    expect(registered.size).toBeGreaterThan(0);
+    const invoked = new Set(
+      [...body.matchAll(/devx learn-helper ([a-z-]+)/g)].map((m) => m[1]),
+    );
+    expect(invoked).toContain("route");
+    expect(invoked).toContain("propose");
+    expect(invoked).toContain("report");
+    for (const name of invoked) {
+      expect(registered, `skill body invokes unregistered subcommand '${name}'`).toContain(name);
+    }
   });
 
   it("skills/devx-learn.md mirror is byte-identical (pin101 shipping path)", () => {

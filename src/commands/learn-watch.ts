@@ -12,6 +12,10 @@
 //   devx learn-watch --auto-allow # serve unreviewed repos without asking, so
 //                                 # `nohup devx learn-watch &` actually drains
 //                                 # (28b267; = `learn.auto_allow: true`)
+//   devx learn-watch --auto-apply # spawn each retro in UNATTENDED mode, so it
+//                                 # applies what it finds instead of printing a
+//                                 # table nobody reads (c808b1;
+//                                 # = `learn.auto_apply: true`)
 //   devx learn-watch list         # pending + readiness · last processed + outcomes
 //   devx learn-watch requeue <sid>  # put a processed session back on the queue
 //
@@ -73,6 +77,9 @@ export interface ResolvedLearnEnv {
   retroTimeoutMs: number;
   /** `learn.auto_allow`, with `--auto-allow` layered over it. */
   autoAllow: boolean;
+  /** `learn.auto_apply`, with `--auto-apply` layered over it. Same
+   *  flag > config > default precedence, and the same one-directional flag. */
+  autoApply: boolean;
 }
 
 /**
@@ -90,9 +97,20 @@ export interface ResolvedLearnEnv {
  * absence is indistinguishable from `--no-auto-allow` and must therefore mean
  * "defer to config" rather than "force off". Turning the policy OFF for a
  * single run is a config edit, which is the safe direction to make harder.
+ *
+ * `autoApply` resolves the same way and is resolved SEPARATELY: it is not
+ * implied by `autoAllow`, in either direction. Letting the watcher open a tab
+ * is a strictly smaller grant than letting what runs in that tab open PRs, so
+ * the second one is opted into on its own or not at all.
  */
 export function resolveLearnEnv(
-  opts: { home?: string; merged?: unknown; env?: LearnEnv; autoAllow?: boolean } = {},
+  opts: {
+    home?: string;
+    merged?: unknown;
+    env?: LearnEnv;
+    autoAllow?: boolean;
+    autoApply?: boolean;
+  } = {},
 ): ResolvedLearnEnv {
   let merged: unknown = opts.merged;
   if (merged === undefined) {
@@ -108,6 +126,7 @@ export function resolveLearnEnv(
     idleSeconds: cfg.idleMinutes * 60,
     retroTimeoutMs: cfg.retroTimeoutMinutes * 60_000,
     autoAllow: opts.autoAllow === true || cfg.autoAllow,
+    autoApply: opts.autoApply === true || cfg.autoApply,
   };
 }
 
@@ -149,6 +168,8 @@ export interface WatchCmdOpts extends LearnWatchIO {
   dryRun?: boolean;
   /** `--auto-allow`: force `learn.auto_allow` on for this run. */
   autoAllow?: boolean;
+  /** `--auto-apply`: force `learn.auto_apply` on for this run. */
+  autoApply?: boolean;
   /** Home override (test seam; the CLI resolves it from env + config). */
   home?: string;
   /** Merged-config seam. */
@@ -215,7 +236,7 @@ export async function runLearnWatch(opts: WatchCmdOpts = {}): Promise<number> {
   const out = opts.out ?? ((line: string) => process.stdout.write(line));
   const err = opts.err ?? ((line: string) => process.stderr.write(line));
   const log = (line: string): void => out(`${line}\n`);
-  const { home, idleSeconds, retroTimeoutMs, autoAllow } = resolveLearnEnv(opts);
+  const { home, idleSeconds, retroTimeoutMs, autoAllow, autoApply } = resolveLearnEnv(opts);
   const dryRun = opts.dryRun === true;
 
   // Claimed before anything is printed: a refusal should read as a refusal,
@@ -253,6 +274,14 @@ export async function runLearnWatch(opts: WatchCmdOpts = {}): Promise<number> {
         "still wins, and repos.json is never written by the policy)",
     );
   }
+  // Same reason, one grant up: a log that never says "these retros could open
+  // PRs" leaves the human to infer it from the PR list.
+  if (autoApply) {
+    log(
+      "(learn.auto_apply: retros spawn UNATTENDED — they auto-prune and may open PRs for what " +
+        "they find; wedge paths and locked machinery stay proposal-only)",
+    );
+  }
 
   const readLine = opts.readLine ?? readLineSync;
   const drain = opts.drainPassFn ?? drainPass;
@@ -284,6 +313,7 @@ export async function runLearnWatch(opts: WatchCmdOpts = {}): Promise<number> {
         dryRun,
         interactive,
         autoAllow,
+        autoApply,
         idleSeconds,
         retroTimeoutMs,
         log,
@@ -420,13 +450,19 @@ export function register(program: Command): void {
       "Treat a repo nobody has reviewed as allowed instead of asking, so an unattended watcher (`nohup`) drains instead of walking past it. A recorded `deny` still wins and repos.json is never written. Same as `learn.auto_allow: true`; the flag only turns it on. NOTE: entries a running watcher already skipped stay skipped for the life of that run — restart it to pick them up",
       false,
     )
+    .option(
+      "--auto-apply",
+      "Spawn each retro in UNATTENDED mode: it auto-prunes its evidence table and routes the rows that clear `devx learn-helper route` through the normal apply path (branch -> local CI -> PR -> merge gate) instead of waiting for a prune nobody will type. Wedge paths (.claude/**, skills/**, settings) and locked machinery stay proposal-only regardless. Same as `learn.auto_apply: true`; the flag only turns it on, and it is NOT implied by --auto-allow",
+      false,
+    )
     // A typo'd subcommand (`learn-watch lst`) must not silently start a real
     // drain, so excess arguments are a usage error rather than ignored.
     .allowExcessArguments(false)
-    .action(async (opts: { dryRun?: boolean; autoAllow?: boolean }) => {
+    .action(async (opts: { dryRun?: boolean; autoAllow?: boolean; autoApply?: boolean }) => {
       const code = await runLearnWatch({
         dryRun: opts.dryRun === true,
         autoAllow: opts.autoAllow === true,
+        autoApply: opts.autoApply === true,
       });
       if (code !== 0) process.exit(code);
     });

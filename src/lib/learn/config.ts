@@ -19,6 +19,7 @@
 // > `~/.claude/devx`.
 //
 // Spec: dev/dev-rtl102-2026-07-30T09:31-learn-config-section.md
+//       dev/dev-c808b1-2026-08-05T11:25-devx-learn-unattended-apply.md (auto_apply)
 // Plan: _devx/workstreams/retro-listener/plan.md §Phase 2
 
 import { homedir } from "node:os";
@@ -47,6 +48,21 @@ export interface LearnConfig {
    * watcher ever touched permanently allowed.
    */
   autoAllow: boolean;
+  /**
+   * Policy: let an unattended `/devx-learn` run APPLY its outlet-1 findings
+   * (branch → local CI → PR → mode merge gate) instead of stopping at an
+   * evidence table nobody is sitting in front of (c808b1).
+   *
+   * Off by default, and deliberately not inherited from `auto_allow`: that
+   * knob only lets the watcher *spawn* a retro, while this one lets the
+   * spawned retro open PRs against the repo. An unattended run that opens PRs
+   * must be opted into by the person who will review them.
+   *
+   * Turning it on changes NOTHING about what may be applied — wedge paths
+   * (`routeLearnPath`) and locked machinery stay proposal-only in every mode.
+   * It only decides whether the apply path exists at all for this repo.
+   */
+  autoApply: boolean;
 }
 
 export const LEARN_DEFAULTS: LearnConfig = {
@@ -54,6 +70,7 @@ export const LEARN_DEFAULTS: LearnConfig = {
   retroTimeoutMinutes: 360,
   home: "~/.claude/devx",
   autoAllow: false,
+  autoApply: false,
 };
 
 /** Positive finite minutes, fractions allowed (sub-minute windows are useful
@@ -101,6 +118,8 @@ export function learnConfigFrom(merged: unknown): LearnConfig {
   if (home !== null) out.home = home;
   const autoAllow = bool(l.auto_allow);
   if (autoAllow !== null) out.autoAllow = autoAllow;
+  const autoApply = bool(l.auto_apply);
+  if (autoApply !== null) out.autoApply = autoApply;
 
   return out;
 }
