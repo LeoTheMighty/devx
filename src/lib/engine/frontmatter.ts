@@ -207,6 +207,17 @@ function plainScalarSource(
  * missing keys yield defaults (gate flags false, stage null, outcome null),
  * malformed values are coerced conservatively (only literal `true` counts
  * as a passed gate — a gate flag must fail closed).
+ *
+ * Soft on purpose, and that is now a LOCKED decision (D-13, debug-9f24c7):
+ * an unparseable block yields a best-effort state rather than throwing, so a
+ * half-edited spec can never crash a gate or a board render. The cost is that
+ * "soft-degraded" and "genuinely records nothing" look identical HERE — so
+ * every caller with an output channel is required to consult
+ * `frontmatterParseError(content)` and say "unreadable" instead of asserting
+ * the empty state it just read. Wired at `devx next` (a
+ * `frontmatter-unreadable` drift row), `devx status`, and every gate (via
+ * `ResolvedWorkstream.frontmatterError`). Do not change this return shape
+ * without re-surveying the consumers listed in D-13.
  */
 export function readEngineState(content: string): EngineState {
   const state: EngineState = {

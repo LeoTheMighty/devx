@@ -40,6 +40,7 @@ import {
   HASH_RE,
   SPEC_TYPE_DIRS,
   ensureEngineFrontmatter,
+  frontmatterParseError,
   readEngineState,
 } from "./frontmatter.js";
 import { type EngineConfig } from "./config.js";
@@ -395,6 +396,11 @@ export interface ResolvedWorkstream {
   /** Spec file content at resolve time. */
   content: string;
   state: EngineState;
+  /** 9f24c7 / D-13: first YAML error in the spec's frontmatter block, or
+   *  null when it parses. Non-null means `state` above is soft-degraded —
+   *  fields below the error may be silently absent. Additive: the resolver
+   *  still resolves; reporting is the consumer's call (the gates warn). */
+  frontmatterError: string | null;
   /** Repo-relative workstream dir. */
   workstreamRel: string;
   /** Absolute workstream dir. */
@@ -454,6 +460,7 @@ export function resolveWorkstream(
     specRel: `${PLAN_DIR}/${basename(specAbs)}`,
     content,
     state,
+    frontmatterError: frontmatterParseError(content),
     workstreamRel,
     workstreamAbs,
   };
