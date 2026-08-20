@@ -453,3 +453,117 @@ describe("runAwaitRemoteCi — sibling workflows (arci1)", () => {
     ]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// pr-conflicting passthrough (debug-c94f14)
+//
+// The state is only useful if it reaches the skill body intact: exit 0 with
+// the payload on stdout, NOT exit 2. A future CLI that maps the new state to
+// the probe-failure branch would re-hide the diagnosis behind "gh outage".
+// ---------------------------------------------------------------------------
+
+describe("runAwaitRemoteCi — pr-conflicting (c94f14)", () => {
+  const branch = "feat/dev-sgr105";
+  const ghKey = `gh run list --branch ${branch} --limit 30 --json databaseId,status,conclusion,url,headSha,workflowName`;
+  const prKey = `gh pr view ${branch} --json number,mergeable,mergeStateStatus`;
+  const conflicting = okExit(
+    JSON.stringify({
+      number: 118,
+      mergeable: "CONFLICTING",
+      mergeStateStatus: "DIRTY",
+    }),
+  );
+
+  it("--once: exit 0 with the pr-conflicting payload on stdout", async () => {
+    const { dir } = makeRepoFixture();
+    const io = captureIo();
+    const code = await runAwaitRemoteCi([branch, "--once"], {
+      out: io.push.out,
+      err: io.push.err,
+      repoRoot: dir,
+      awaitOpts: {
+        fs: fixtureFs(true, dir),
+        exec: fakeExec({ [ghKey]: okExit("[]"), [prKey]: conflicting }),
+        sleep: async () => {},
+        headSha: HEAD_SHA,
+      },
+    });
+    expect(code).toBe(0);
+    expect(JSON.parse(io.out)).toEqual({
+      state: "pr-conflicting",
+      prNumber: 118,
+      mergeable: "CONFLICTING",
+      mergeStateStatus: "DIRTY",
+    });
+    expect(io.err).toBe("");
+  });
+
+  it("driver mode: exit 0 with the same terminal payload", async () => {
+    const { dir } = makeRepoFixture();
+    const io = captureIo();
+    const code = await runAwaitRemoteCi([branch], {
+      out: io.push.out,
+      err: io.push.err,
+      repoRoot: dir,
+      awaitOpts: {
+        fs: fixtureFs(true, dir),
+        exec: fakeExec({ [ghKey]: okExit("[]"), [prKey]: conflicting }),
+        sleep: async () => {},
+        headSha: HEAD_SHA,
+      },
+    });
+    expect(code).toBe(0);
+    expect(JSON.parse(io.out)).toMatchObject({
+      state: "pr-conflicting",
+      prNumber: 118,
+    });
+  });
+
+  it("a healthy PR still reads as the pre-c94f14 empty/workflow-no-run pair", async () => {
+    const { dir } = makeRepoFixture();
+    const healthy = okExit(
+      JSON.stringify({
+        number: 118,
+        mergeable: "MERGEABLE",
+        mergeStateStatus: "CLEAN",
+      }),
+    );
+    const onceIo = captureIo();
+    expect(
+      await runAwaitRemoteCi([branch, "--once"], {
+        out: onceIo.push.out,
+        err: onceIo.push.err,
+        repoRoot: dir,
+        awaitOpts: {
+          fs: fixtureFs(true, dir),
+          exec: fakeExec({ [ghKey]: okExit("[]"), [prKey]: healthy }),
+          sleep: async () => {},
+          headSha: HEAD_SHA,
+        },
+      }),
+    ).toBe(0);
+    expect(JSON.parse(onceIo.out)).toEqual({ state: "empty" });
+
+    const driverIo = captureIo();
+    expect(
+      await runAwaitRemoteCi([branch], {
+        out: driverIo.push.out,
+        err: driverIo.push.err,
+        repoRoot: dir,
+        awaitOpts: {
+          fs: fixtureFs(true, dir),
+          exec: fakeExec({
+            [ghKey]: [okExit("[]"), okExit("[]")],
+            [prKey]: [healthy, healthy],
+          }),
+          sleep: async () => {},
+          headSha: HEAD_SHA,
+        },
+      }),
+    ).toBe(0);
+    expect(JSON.parse(driverIo.out)).toEqual({
+      state: "workflow-no-run",
+      reason: "no-runs",
+    });
+  });
+});

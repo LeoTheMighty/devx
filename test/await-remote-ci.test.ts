@@ -14,7 +14,9 @@ import {
   awaitRemoteCi,
   foldRunsAtSha,
   hasWorkflowFiles,
+  isPrConflicting,
   parseGhRunList,
+  parsePrView,
   probeRemoteCi,
 } from "../src/lib/devx/await-remote-ci.js";
 
@@ -1466,5 +1468,364 @@ describe("awaitRemoteCi — sibling workflows (arci1)", () => {
       headSha: HEAD_SHA,
     });
     expect(result).toMatchObject({ state: "completed", conclusion: "success" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pr-conflicting (debug-c94f14)
+//
+// The repro this file exists to encode: PR #118 (2026-08-05) got ZERO
+// workflow runs while the probe answered `{"state":"empty"}` on 41
+// consecutive probes over ~50 minutes. `gh pr view 118 --json
+// mergeable,mergeStateStatus` said CONFLICTING/DIRTY the whole time —
+// GitHub can't build a merge ref for a conflicted PR, so `pull_request`
+// workflows never start. Empty run list + conflicted PR must NOT read the
+// same as empty run list + healthy PR.
+// ---------------------------------------------------------------------------
+
+describe("parsePrView", () => {
+  it("parses the happy shape", () => {
+    expect(
+      parsePrView(
+        JSON.stringify({
+          number: 118,
+          mergeable: "CONFLICTING",
+          mergeStateStatus: "DIRTY",
+        }),
+      ),
+    ).toEqual({
+      prNumber: 118,
+      mergeable: "CONFLICTING",
+      mergeStateStatus: "DIRTY",
+    });
+  });
+
+  it("tolerates a trailing newline", () => {
+    expect(
+      parsePrView('{"number":7,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN"}\n'),
+    ).toMatchObject({ prNumber: 7 });
+  });
+
+  it("returns null (never throws) on malformed input", () => {
+    for (const bad of [
+      "",
+      "   ",
+      "not json",
+      "null",
+      "[]",
+      '"a string"',
+      "42",
+      JSON.stringify({ mergeable: "CONFLICTING" }), // no number
+      JSON.stringify({ number: 0, mergeable: "CONFLICTING" }), // non-positive
+      JSON.stringify({ number: 1.5, mergeable: "CONFLICTING" }), // non-integer
+      JSON.stringify({ number: "118", mergeable: "CONFLICTING" }), // string number
+      JSON.stringify({ number: 118 }), // neither field present
+      JSON.stringify({ number: 118, mergeable: 3, mergeStateStatus: null }),
+    ]) {
+      expect(parsePrView(bad)).toBeNull();
+    }
+  });
+
+  it("keeps a PR with only one of the two fields populated", () => {
+    expect(parsePrView(JSON.stringify({ number: 9, mergeStateStatus: "DIRTY" })))
+      .toEqual({ prNumber: 9, mergeable: "", mergeStateStatus: "DIRTY" });
+  });
+});
+
+describe("isPrConflicting", () => {
+  it("is true on CONFLICTING or DIRTY", () => {
+    expect(
+      isPrConflicting({
+        prNumber: 1,
+        mergeable: "CONFLICTING",
+        mergeStateStatus: "DIRTY",
+      }),
+    ).toBe(true);
+    expect(
+      isPrConflicting({ prNumber: 1, mergeable: "CONFLICTING", mergeStateStatus: "" }),
+    ).toBe(true);
+    expect(
+      isPrConflicting({ prNumber: 1, mergeable: "", mergeStateStatus: "DIRTY" }),
+    ).toBe(true);
+  });
+
+  it("is false for every non-conflict state", () => {
+    for (const [mergeable, mergeStateStatus] of [
+      ["MERGEABLE", "CLEAN"],
+      ["MERGEABLE", "BLOCKED"],
+      ["MERGEABLE", "BEHIND"],
+      ["MERGEABLE", "UNSTABLE"],
+      ["UNKNOWN", "UNKNOWN"],
+      ["", ""],
+    ]) {
+      expect(isPrConflicting({ prNumber: 1, mergeable, mergeStateStatus })).toBe(
+        false,
+      );
+    }
+  });
+});
+
+describe("probeRemoteCi — pr-conflicting (c94f14)", () => {
+  const root = "/repo";
+  const branch = "feat/dev-sgr105";
+  const ghKey = `gh run list --branch ${branch} --limit 30 --json databaseId,status,conclusion,url,headSha,workflowName`;
+  const prKey = `gh pr view ${branch} --json number,mergeable,mergeStateStatus`;
+  const noopSleep = async () => {};
+
+  const workflowFs = () =>
+    fakeFs(root, {
+      exists: new Set([".github/workflows"]),
+      dirs: { ".github/workflows": ["devx-ci.yml"] },
+    });
+
+  const prView = (
+    mergeable: string,
+    mergeStateStatus: string,
+    number = 118,
+  ): ExecResult =>
+    okExit(JSON.stringify({ number, mergeable, mergeStateStatus }));
+
+  it("REPRO: empty run list + CONFLICTING PR → pr-conflicting, not empty", async () => {
+    const result = await probeRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec({
+        [ghKey]: okExit("[]"),
+        [prKey]: prView("CONFLICTING", "DIRTY"),
+      }),
+      sleep: noopSleep,
+      headSha: HEAD_SHA,
+    });
+    expect(result).toEqual({
+      state: "pr-conflicting",
+      prNumber: 118,
+      mergeable: "CONFLICTING",
+      mergeStateStatus: "DIRTY",
+    });
+  });
+
+  it("empty run list + healthy PR → still plain empty", async () => {
+    const result = await probeRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec({
+        [ghKey]: okExit("[]"),
+        [prKey]: prView("MERGEABLE", "CLEAN"),
+      }),
+      sleep: noopSleep,
+      headSha: HEAD_SHA,
+    });
+    expect(result).toEqual({ state: "empty" });
+  });
+
+  it("the mergeability read happens ONLY on the empty path", async () => {
+    const calls: ExecCall[] = [];
+    const result = await probeRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec(
+        { [ghKey]: okExit(makeRun({ status: "completed", conclusion: "success" })) },
+        calls,
+      ),
+      sleep: noopSleep,
+      headSha: HEAD_SHA,
+    });
+    expect(result).toMatchObject({ state: "completed" });
+    expect(calls.some((c) => c.args.includes("view"))).toBe(false);
+  });
+
+  it("UNKNOWN mergeability is re-polled a bounded number of times, then falls back to empty", async () => {
+    const sleeps: number[] = [];
+    const calls: ExecCall[] = [];
+    const result = await probeRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec(
+        {
+          [ghKey]: okExit("[]"),
+          [prKey]: [
+            prView("UNKNOWN", "UNKNOWN"),
+            prView("UNKNOWN", "UNKNOWN"),
+            prView("UNKNOWN", "UNKNOWN"),
+          ],
+        },
+        calls,
+      ),
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+      headSha: HEAD_SHA,
+    });
+    expect(result).toEqual({ state: "empty" });
+    expect(calls.filter((c) => c.args.includes("view")).length).toBe(3);
+    expect(sleeps).toEqual([2_000, 2_000]);
+  });
+
+  it("UNKNOWN that resolves to CONFLICTING on the second read is caught", async () => {
+    const result = await probeRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec({
+        [ghKey]: okExit("[]"),
+        [prKey]: [prView("UNKNOWN", "UNKNOWN"), prView("CONFLICTING", "DIRTY", 42)],
+      }),
+      sleep: noopSleep,
+      headSha: HEAD_SHA,
+    });
+    expect(result).toEqual({
+      state: "pr-conflicting",
+      prNumber: 42,
+      mergeable: "CONFLICTING",
+      mergeStateStatus: "DIRTY",
+    });
+  });
+
+  it("a resolved (non-UNKNOWN) first read is not re-polled", async () => {
+    const calls: ExecCall[] = [];
+    await probeRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec(
+        { [ghKey]: okExit("[]"), [prKey]: prView("MERGEABLE", "CLEAN") },
+        calls,
+      ),
+      sleep: noopSleep,
+      headSha: HEAD_SHA,
+    });
+    expect(calls.filter((c) => c.args.includes("view")).length).toBe(1);
+  });
+
+  it("no PR for the branch (gh exits non-zero) degrades to empty, not a probe failure", async () => {
+    const result = await probeRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec({
+        [ghKey]: okExit("[]"),
+        [prKey]: failExit("no pull requests found for branch"),
+      }),
+      sleep: noopSleep,
+      headSha: HEAD_SHA,
+    });
+    expect(result).toEqual({ state: "empty" });
+  });
+
+  it("an exec seam that throws on gh pr view degrades to empty", async () => {
+    // fakeExec throws for unconfigured commands — i.e. every pre-c94f14
+    // fixture in this file exercises this fallback and must keep passing.
+    const result = await probeRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec({ [ghKey]: okExit("[]") }),
+      sleep: noopSleep,
+      headSha: HEAD_SHA,
+    });
+    expect(result).toEqual({ state: "empty" });
+  });
+
+  it("unparseable gh pr view output degrades to empty", async () => {
+    const result = await probeRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec({ [ghKey]: okExit("[]"), [prKey]: okExit("<html>502</html>") }),
+      sleep: noopSleep,
+      headSha: HEAD_SHA,
+    });
+    expect(result).toEqual({ state: "empty" });
+  });
+
+  it("rejects an invalid mergeableAttempts / mergeableRetryMs", async () => {
+    const base = {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec({ [ghKey]: okExit("[]"), [prKey]: prView("MERGEABLE", "CLEAN") }),
+      sleep: noopSleep,
+      headSha: HEAD_SHA,
+    };
+    await expect(
+      probeRemoteCi(branch, { ...base, mergeableAttempts: 0 }),
+    ).rejects.toThrow(/mergeableAttempts must be a positive integer/);
+    await expect(
+      probeRemoteCi(branch, { ...base, mergeableRetryMs: -1 }),
+    ).rejects.toThrow(/mergeableRetryMs must be a non-negative finite number/);
+  });
+});
+
+describe("awaitRemoteCi — pr-conflicting (c94f14)", () => {
+  const root = "/repo";
+  const branch = "feat/dev-sgr105";
+  const ghKey = `gh run list --branch ${branch} --limit 30 --json databaseId,status,conclusion,url,headSha,workflowName`;
+  const prKey = `gh pr view ${branch} --json number,mergeable,mergeStateStatus`;
+
+  const workflowFs = () =>
+    fakeFs(root, {
+      exists: new Set([".github/workflows"]),
+      dirs: { ".github/workflows": ["devx-ci.yml"] },
+    });
+
+  const conflicting = okExit(
+    JSON.stringify({ number: 118, mergeable: "CONFLICTING", mergeStateStatus: "DIRTY" }),
+  );
+
+  it("returns pr-conflicting terminally WITHOUT burning the 60s empty retry", async () => {
+    const sleeps: number[] = [];
+    const calls: ExecCall[] = [];
+    const result = await awaitRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec({ [ghKey]: okExit("[]"), [prKey]: conflicting }, calls),
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+      emptyRetryMs: 60_000,
+      headSha: HEAD_SHA,
+    });
+    expect(result).toEqual({
+      state: "pr-conflicting",
+      prNumber: 118,
+      mergeable: "CONFLICTING",
+      mergeStateStatus: "DIRTY",
+    });
+    // No 60s empty-retry sleep, and exactly one run-list probe: waiting can't
+    // make GitHub build a merge ref that doesn't exist.
+    expect(sleeps).toEqual([]);
+    expect(calls.filter((c) => c.args.includes("list")).length).toBe(1);
+  });
+
+  it("empty first, conflict discovered on the retry probe → pr-conflicting", async () => {
+    const result = await awaitRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec({
+        [ghKey]: [okExit("[]"), okExit("[]")],
+        // First probe: gh hasn't computed mergeability yet and stays UNKNOWN
+        // through the bounded re-poll. Second probe: CONFLICTING.
+        [prKey]: [
+          okExit(JSON.stringify({ number: 118, mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" })),
+          okExit(JSON.stringify({ number: 118, mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" })),
+          okExit(JSON.stringify({ number: 118, mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" })),
+          conflicting,
+        ],
+      }),
+      sleep: async () => {},
+      emptyRetryMs: 60_000,
+      headSha: HEAD_SHA,
+    });
+    expect(result).toMatchObject({ state: "pr-conflicting", prNumber: 118 });
+  });
+
+  it("mid-poll: in-progress run vanishes and the PR turns out conflicted", async () => {
+    const result = await awaitRemoteCi(branch, {
+      repoRoot: root,
+      fs: workflowFs(),
+      exec: fakeExec({
+        [ghKey]: [okExit(makeRun({ status: "in_progress" })), okExit("[]")],
+        [prKey]: conflicting,
+      }),
+      sleep: async () => {},
+      pollMs: 120_000,
+      maxPolls: 3,
+      headSha: HEAD_SHA,
+    });
+    expect(result).toMatchObject({ state: "pr-conflicting", prNumber: 118 });
   });
 });
