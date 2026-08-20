@@ -50,6 +50,7 @@ import {
   regenerateGraph,
 } from "../src/lib/graph/regen.js";
 import { armRejectingHook } from "./helpers/git-hooks.js";
+import { GIT } from "./helpers/git-bin.js";
 
 // ---------------------------------------------------------------------------
 // Layer 1 — pure splicers
@@ -760,10 +761,10 @@ describe("claimSpec — rollback paths", () => {
     try {
       const origin = join(base, "origin.git");
       const repoRoot = join(base, "repo");
-      execFileSync("git", ["init", "--bare", "-q", "-b", "main", origin]);
-      execFileSync("git", ["clone", "-q", origin, repoRoot]);
+      execFileSync(GIT, ["init", "--bare", "-q", "-b", "main", origin]);
+      execFileSync(GIT, ["clone", "-q", origin, repoRoot]);
       const g = (...args: string[]): string =>
-        execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" }).trim();
+        execFileSync(GIT, args, { cwd: repoRoot, encoding: "utf8" }).trim();
       g("config", "user.email", "t@t");
       g("config", "user.name", "t");
       g("config", "commit.gpgsign", "false");

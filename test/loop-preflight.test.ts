@@ -24,6 +24,7 @@ import {
 import { readLoopState } from "../src/lib/loop/state.js";
 import { type WorkerRunFn } from "../src/lib/loop/worker.js";
 import { type TailFn } from "../src/lib/loop/tail.js";
+import { GIT } from "./helpers/git-bin.js";
 
 // ---------------------------------------------------------------------------
 // Probe units
@@ -236,7 +237,7 @@ describe("loopConfigFrom preflight knob", () => {
 // ---------------------------------------------------------------------------
 
 function g(cwd: string, ...args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+  return execFileSync(GIT, args, { cwd, encoding: "utf8" }).trim();
 }
 
 interface Fixture {
@@ -249,8 +250,8 @@ function makeFixture(hash: string): Fixture {
   const base = mkdtempSync(join(tmpdir(), "devx-loop-preflight-"));
   const origin = join(base, "origin.git");
   const repoRoot = join(base, "repo");
-  execFileSync("git", ["init", "--bare", "-q", "-b", "main", origin], { encoding: "utf8" });
-  execFileSync("git", ["clone", "-q", origin, repoRoot], { encoding: "utf8" });
+  execFileSync(GIT, ["init", "--bare", "-q", "-b", "main", origin], { encoding: "utf8" });
+  execFileSync(GIT, ["clone", "-q", origin, repoRoot], { encoding: "utf8" });
   g(repoRoot, "config", "user.email", "loop@test");
   g(repoRoot, "config", "user.name", "loop");
   g(repoRoot, "config", "commit.gpgsign", "false");

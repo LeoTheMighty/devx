@@ -42,6 +42,7 @@ import {
   writeHookScript,
   type Fixture,
 } from "./helpers/loop-git-fixture.js";
+import { GIT } from "./helpers/git-bin.js";
 
 let fixture: Fixture | null = null;
 afterEach(() => {
@@ -196,7 +197,7 @@ describe("runLoop scenarios", () => {
     expect(prompts[0]).toContain("iteration 1 of at most 4 on spec `aaa111`");
 
     // Branch pushed to origin BEFORE the tail ran.
-    const remoteRefs = execFileSync("git", ["ls-remote", "--heads", fixture.origin], {
+    const remoteRefs = execFileSync(GIT, ["ls-remote", "--heads", fixture.origin], {
       encoding: "utf8",
     });
     expect(remoteRefs).toContain("refs/heads/feat/dev-aaa111");
@@ -394,7 +395,7 @@ describe("runLoop scenarios", () => {
     // (LOW-11: no loop-owned main commit may be left unpushed silently).
     expect(g(fixture.repoRoot, "log", "-1", "--format=%s")).toContain("abandon bbb222");
     expect(
-      execFileSync("git", ["--git-dir", fixture.origin, "log", "-1", "--format=%s"], {
+      execFileSync(GIT, ["--git-dir", fixture.origin, "log", "-1", "--format=%s"], {
         encoding: "utf8",
       }),
     ).toContain("abandon bbb222");
@@ -544,7 +545,7 @@ describe("runLoop scenarios", () => {
     );
     expect(g(fixture.repoRoot, "status", "--porcelain")).toBe("");
     expect(
-      execFileSync("git", ["--git-dir", fixture.origin, "log", "-1", "--format=%s"], {
+      execFileSync(GIT, ["--git-dir", fixture.origin, "log", "-1", "--format=%s"], {
         encoding: "utf8",
       }),
     ).toContain("jjj000 in progress at loop exit");
@@ -1718,7 +1719,7 @@ describe("E-3: budget-rail split (mss103)", () => {
     expect(existsSync(join(fixture.cacheDir, "locks", "spec-aaa111.lock"))).toBe(false);
     expect(g(fixture.repoRoot, "log", "-1", "--format=%s")).toContain("split aaa111");
     expect(
-      execFileSync("git", ["--git-dir", fixture.origin, "log", "-1", "--format=%s", "main"], {
+      execFileSync(GIT, ["--git-dir", fixture.origin, "log", "-1", "--format=%s", "main"], {
         encoding: "utf8",
       }),
     ).toContain("split aaa111");
@@ -2031,7 +2032,7 @@ describe("E-3: worker-requested split, non-merged tails (mss103 review fixes)", 
     // The follow-up was committed AND pushed, not left dirty on main.
     expect(g(fixture.repoRoot, "status", "--porcelain")).toBe("");
     expect(
-      execFileSync("git", ["--git-dir", fixture.origin, "ls-tree", "-r", "--name-only", "main"], {
+      execFileSync(GIT, ["--git-dir", fixture.origin, "ls-tree", "-r", "--name-only", "main"], {
         encoding: "utf8",
       }),
     ).toContain(followUpPath);

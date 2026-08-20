@@ -48,6 +48,28 @@
 // (@vitest/runner) `unref()`s the timer in its `Promise.race`, so even a
 // briefly-idle loop is not guaranteed to service it.
 //
+// FAULT (2)'S NEIGHBOUR, AND THE BIGGER NUMBER (debug-5e1a77 iteration 3).
+// Most of this pass's wall-clock was never the blocking at all — it was PATH
+// resolution. A bare `"git"` makes libuv hand the lookup to `execvp` in the
+// child, and on macOS a FAILED `execve` attempt costs ~5.6ms, so a spawn costs
+// ~5.6ms per PATH entry that misses. On a dev box with 26 entries ahead of
+// `/usr/bin` that is ~150ms on EVERY git call, against ~11ms for the same
+// command named absolutely — identical for sync and async spawns, so it is
+// exec-attempt cost and not a `spawnSync` artifact. Invisible from a shell,
+// whose hash table already holds the answer. `resolveCommandPath`
+// (src/lib/exec.ts) now resolves once inside both seams, and
+// `test/helpers/git-bin.ts` does the same for fixtures that drive git
+// directly. Measured on loop-driver's `runLoop scenarios` block (19 tests,
+// real git): 141-149s → 46s (seam) → 15.2-16.4s (fixtures too) — 9.2x, twice,
+// same tests, no assertion touched.
+//
+// WHEN A NUMBER HERE LOOKS INSANE, SUSPECT THE MACHINE FIRST. Two consecutive
+// runs of the unchanged loop-driver.test.ts at the same commit measured 674s
+// and 172s, the difference being a single test that took 501s at ~0% CPU. That
+// is macOS sleeping mid-run, not code (see the same trap in `devx loop`
+// iteration accounting). Iteration 2's "severe and unexplained within-file
+// amplification" was this. Re-measure before diagnosing.
+//
 // The other half of those numbers is not devx code at all: on macOS a `git`
 // command that has to exec a hook FILE THE TEST WROTE pays a security
 // assessment — 3.5s the first time in a worker, ~0.5s every time after,

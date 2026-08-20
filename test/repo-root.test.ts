@@ -20,6 +20,7 @@ import {
   interpretRevParse,
   resolveRepoRoot,
 } from "../src/lib/repo-root.js";
+import { GIT } from "./helpers/git-bin.js";
 
 const GIT_ENV = {
   ...process.env,
@@ -31,7 +32,7 @@ const GIT_ENV = {
 };
 
 function git(cwd: string, ...args: string[]): void {
-  execFileSync("git", args, { cwd, env: GIT_ENV, stdio: "ignore" });
+  execFileSync(GIT, args, { cwd, env: GIT_ENV, stdio: "ignore" });
 }
 
 let root: string;

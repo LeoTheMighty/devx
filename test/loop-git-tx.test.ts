@@ -22,6 +22,7 @@ import {
   type Exec,
   type ExecResult,
 } from "../src/lib/loop/git-tx.js";
+import { GIT } from "./helpers/git-bin.js";
 
 // ---------------------------------------------------------------------------
 // Recording fake exec
@@ -202,7 +203,7 @@ describe("real-git integration", () => {
   beforeEach(() => {
     repo = mkdtempSync(join(tmpdir(), "devx-git-tx-"));
     const g = (...args: string[]) =>
-      execFileSync("git", args, { cwd: repo, encoding: "utf8" });
+      execFileSync(GIT, args, { cwd: repo, encoding: "utf8" });
     g("init", "-q", "-b", "main");
     g("config", "user.email", "loop@test");
     g("config", "user.name", "loop");

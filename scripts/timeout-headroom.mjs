@@ -54,7 +54,45 @@
 //   - A test whose location is missing (DEVX_HEADROOM_OUT unset when the run
 //     started) is counted separately and skipped from the ranking.
 //
-// LAST SWEEP — 2026-08-19, 12-core macOS, full two-pass `npm test`
+// LAST SWEEP — 2026-08-20, 12-core macOS, two-pass gate (`npm run test:parallel`
+// then `npm run test:blocking`), 117 files / 2,631 tests parallel (25.5s) + 28
+// files / 756 tests blocking (155.4s), all green. 3,386 distinct tests
+// analyzed. Taken after debug-5e1a77 iterations 2-3.
+//
+//   16 tests under 1x → 3. 21 under 2x → 9. 65 under 5x → 52. The worst
+//   number in the suite moved from 0.02x (221,677ms against a 5,000ms cap)
+//   to 0.4x (13,417ms). The whole blocking pass went 1,024s → 155s.
+//
+//   The three still over their cap, all still unenforceable (they block):
+//     0.4x  13,417ms/5,000  loop-driver.test.ts:863  commit-failure repair
+//     0.5x   9,913ms/5,000  loop-driver.test.ts:554  push failure at acs_met
+//     0.9x   5,330ms/5,000  init-e2e.test.ts:890     gh-not-auth path
+//   The first two are the last two REAL-PREDICATE git hooks in the suite —
+//   the expensive form (test/helpers/git-hooks.ts). That is the next cut.
+//
+//   Two rows under 1x are deliberate and must stay: exec-async-seam.test.ts
+//   :136 is the pinned false green (2,009ms under a 200ms cap, PASSED — the
+//   fault itself), and :114 is AC 1's `it.fails` proof that a cap CAN fire.
+//   Read past both.
+//
+//   WHAT ACTUALLY MOVED THE NUMBERS, and it was not the async seam. Most of
+//   this pass's cost was PATH resolution. A bare `"git"` makes libuv hand the
+//   lookup to `execvp` in the child; on macOS a FAILED `execve` attempt costs
+//   ~5.6ms, so a spawn costs ~5.6ms per PATH entry that misses. With 26
+//   entries ahead of `/usr/bin` that is ~150ms on EVERY git call, against
+//   ~11ms for the same command named absolutely — and identical for async
+//   spawns, so it is exec-attempt cost, not a `spawnSync` artifact. Both
+//   seams now resolve once (`resolveCommandPath`, src/lib/exec.ts) and the
+//   fixtures do too (`test/helpers/git-bin.ts`). Measured A/B on
+//   loop-driver's `runLoop scenarios` block, 19 tests, twice each:
+//   141-149s → 46s (seam) → 15.2-16.4s (fixtures too).
+//
+//   FAULT (2) IS STILL OPEN. Nothing here made a cap enforceable — these
+//   tests are faster, not interruptible. Every one of the 3 over-cap rows is
+//   still in SYNC_BLOCKING_TESTS and would still run past a cap of any value.
+//   The seam exists (`realExecAsync`); adoption has not happened.
+//
+// PRIOR SWEEP — 2026-08-19, 12-core macOS, full two-pass `npm test`
 // (113 files / 2,540 tests parallel + 26 files / 733 tests blocking, all
 // green). 3,272 distinct tests analyzed. Findings, worst first:
 //

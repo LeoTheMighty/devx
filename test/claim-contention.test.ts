@@ -29,6 +29,7 @@ import {
   isRejectedPush,
 } from "../src/lib/devx/claim.js";
 import { runClaim } from "../src/commands/devx-helper.js";
+import { GIT } from "./helpers/git-bin.js";
 
 // ---------------------------------------------------------------------------
 // Fixture: bare origin + main clone + peer clone
@@ -44,7 +45,7 @@ const GIT_ENV = {
 };
 
 function g(cwd: string, ...args: string[]): string {
-  return execFileSync("git", args, { cwd, env: GIT_ENV, encoding: "utf8" }).trim();
+  return execFileSync(GIT, args, { cwd, env: GIT_ENV, encoding: "utf8" }).trim();
 }
 
 const realExec: Exec = (cmd, args, opts) => {
@@ -84,8 +85,8 @@ function makeFixture(): Fixture {
   const base = mkdtempSync(join(tmpdir(), "devx-claim-contention-"));
   const origin = join(base, "origin.git");
   const root = join(base, "repo");
-  execFileSync("git", ["init", "--bare", "-q", "-b", "main", origin], { env: GIT_ENV });
-  execFileSync("git", ["clone", "-q", origin, root], { env: GIT_ENV });
+  execFileSync(GIT, ["init", "--bare", "-q", "-b", "main", origin], { env: GIT_ENV });
+  execFileSync(GIT, ["clone", "-q", origin, root], { env: GIT_ENV });
   g(root, "config", "user.email", "t@example.com");
   g(root, "config", "user.name", "t");
   g(root, "config", "commit.gpgsign", "false");
@@ -122,7 +123,7 @@ function makeFixture(): Fixture {
   g(root, "push", "-q", "-u", "origin", "main");
 
   const peer = join(base, "peer");
-  execFileSync("git", ["clone", "-q", origin, peer], { env: GIT_ENV });
+  execFileSync(GIT, ["clone", "-q", origin, peer], { env: GIT_ENV });
   g(peer, "config", "user.email", "peer@example.com");
   g(peer, "config", "user.name", "peer");
   g(peer, "config", "commit.gpgsign", "false");
@@ -203,7 +204,7 @@ describe("claimSpec under a lost push race", () => {
     expect(g(fx.root, "ls-remote", "origin", "refs/heads/main")).toContain(localHead);
     // …ON TOP of the peer's commit (rebase, never a force-push).
     expect(
-      execFileSync("git", ["merge-base", "--is-ancestor", peerSha, "main"], {
+      execFileSync(GIT, ["merge-base", "--is-ancestor", peerSha, "main"], {
         cwd: fx.root,
         env: GIT_ENV,
       }),

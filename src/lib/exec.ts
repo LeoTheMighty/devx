@@ -11,6 +11,9 @@
 // Spec: dev/dev-tur101-2026-08-04T10:00-retire-review-tour.md
 
 import { spawn, spawnSync } from "node:child_process";
+import { constants as fsConstants, accessSync, statSync } from "node:fs";
+import { isAbsolute, join, sep } from "node:path";
+import { platform } from "node:process";
 
 export interface ExecResult {
   stdout: string;
@@ -32,8 +35,84 @@ export type Exec = (
  *  useful anyway. */
 const MAX_BUFFER = 64 * 1024 * 1024;
 
+// ---------------------------------------------------------------------------
+// PATH resolution (debug-5e1a77)
+// ---------------------------------------------------------------------------
+
+/**
+ * Cache of `${PATH}\0${cmd}` → absolute path. Keyed by the EFFECTIVE PATH so a
+ * caller that overrides `opts.env.PATH` (test shims do) never reads an entry
+ * resolved under a different search order.
+ */
+const resolvedCommands = new Map<string, string>();
+
+/**
+ * Resolve a bare command name (`"git"`) to its absolute path BEFORE handing it
+ * to `spawn`/`spawnSync`.
+ *
+ * WHY (debug-5e1a77, measured 2026-08-20 on a 12-core macOS box). When the
+ * command has no slash, libuv hands the name to `execvp` in the child, which
+ * tries an `execve` against each PATH entry in turn. On macOS a FAILED
+ * `execve` attempt is not free — it costs ~5.6ms — so the price of a spawn is
+ * linear in the number of PATH entries that miss:
+ *
+ *   spawnSync("git", ["status"])              154ms   (26 misses before /usr/bin)
+ *   spawnSync("/usr/bin/git", ["status"])      11ms
+ *   PATH trimmed to "/usr/bin:/bin"            11ms
+ *   25 nonexistent dirs then /usr/bin         151ms
+ *
+ * Identical for the async seam (158ms → 12ms), so this is exec-attempt cost,
+ * not a `spawnSync` artifact — and it is invisible from a shell, where the
+ * interactive hash table already holds the answer. A dev box with a
+ * shell-profile-grown PATH (54 entries, 26 before `/usr/bin`) therefore pays
+ * ~14x on EVERY git call devx makes; the loop's driver makes ~60 per
+ * iteration. Resolving here costs one `stat` per candidate — microseconds —
+ * and is cached after the first walk.
+ *
+ * Deliberately CONSERVATIVE: anything this function is not certain about
+ * returns `cmd` unchanged, so `execvp` still gets to answer and behaviour is
+ * exactly today's. That covers Windows (PATHEXT has its own rules), a command
+ * that already carries a separator, an empty PATH entry (POSIX reads it as the
+ * child's cwd), and a relative PATH entry (resolved against the CHILD's cwd,
+ * which is `opts.cwd`, not ours).
+ */
+export function resolveCommandPath(cmd: string, envPath: string | undefined): string {
+  if (platform === "win32") return cmd;
+  if (cmd.includes(sep) || cmd.includes("/")) return cmd;
+  const searchPath = envPath ?? "";
+  if (searchPath === "") return cmd;
+
+  const key = `${searchPath}\0${cmd}`;
+  const hit = resolvedCommands.get(key);
+  if (hit !== undefined) return hit;
+
+  let answer = cmd;
+  for (const dir of searchPath.split(":")) {
+    // "" means cwd, and a relative entry resolves against the child's cwd —
+    // neither is ours to reproduce. Hand the whole question back to execvp.
+    if (dir === "" || !isAbsolute(dir)) return cmd;
+    const candidate = join(dir, cmd);
+    try {
+      if (!statSync(candidate).isFile()) continue;
+      accessSync(candidate, fsConstants.X_OK);
+    } catch {
+      continue;
+    }
+    answer = candidate;
+    break;
+  }
+  resolvedCommands.set(key, answer);
+  return answer;
+}
+
+/** The PATH the child will actually search, given this call's `opts.env`.
+ *  Both seams MERGE `opts.env` over `process.env`, so an override wins. */
+function effectivePath(env: Record<string, string> | undefined): string | undefined {
+  return env?.PATH ?? process.env.PATH;
+}
+
 export const realExec: Exec = (cmd, args, opts) => {
-  const r = spawnSync(cmd, args, {
+  const r = spawnSync(resolveCommandPath(cmd, effectivePath(opts?.env)), args, {
     encoding: "utf8",
     cwd: opts?.cwd,
     // Merge over process.env rather than replace — git needs HOME/PATH etc.
@@ -104,7 +183,7 @@ export const realExecAsync: ExecAsync = (cmd, args, opts) =>
 
     let child: ReturnType<typeof spawn>;
     try {
-      child = spawn(cmd, args, {
+      child = spawn(resolveCommandPath(cmd, effectivePath(opts?.env)), args, {
         cwd: opts?.cwd,
         env: opts?.env ? { ...process.env, ...opts.env } : undefined,
         stdio: ["ignore", "pipe", "pipe"],

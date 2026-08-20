@@ -8,17 +8,30 @@
 // are scripted seams; everything else is production code.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { resolveCommandPath } from "../../src/lib/exec.js";
 import { type WorkerRunFn } from "../../src/lib/loop/worker.js";
 import { type TailFn } from "../../src/lib/loop/tail.js";
 
 export { armRejectingHook, disarmHook, writeHookScript } from "./git-hooks.js";
 
+/**
+ * Absolute path to `git`, resolved ONCE (debug-5e1a77).
+ *
+ * A bare `"git"` makes libuv hand PATH resolution to `execvp` in the child,
+ * and on macOS every failed `execve` attempt costs ~5.6ms — so on a dev box
+ * whose PATH has 26 entries ahead of `/usr/bin`, each fixture git call pays
+ * ~150ms it does nothing with. This fixture makes ~12 git calls per
+ * `makeFixture`, and `test/loop-driver.test.ts` builds one per test. Reuses
+ * the production resolver rather than restating the rule.
+ */
+const GIT = resolveCommandPath("git", process.env.PATH);
+
 export function g(cwd: string, ...args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+  return execFileSync(GIT, args, { cwd, encoding: "utf8" }).trim();
 }
 
 export interface SpecFixture {
@@ -49,7 +62,7 @@ export function makeFixture(specs: SpecFixture[]): Fixture {
   const base = mkdtempSync(join(tmpdir(), "devx-loop-driver-"));
   const origin = join(base, "origin.git");
   const repoRoot = join(base, "repo");
-  execFileSync("git", ["init", "--bare", "-q", "-b", "main", origin], { encoding: "utf8" });
+  execFileSync(GIT, ["init", "--bare", "-q", "-b", "main", origin], { encoding: "utf8" });
   // Teardown race (CI red on PR #103, and a lost local red before it): a push
   // into a bare repo can fire `git gc --auto` in the BACKGROUND on the receive
   // side, which keeps creating objects/locks under origin.git after `git push`
@@ -61,7 +74,7 @@ export function makeFixture(specs: SpecFixture[]): Fixture {
   g(origin, "config", "gc.auto", "0");
   g(origin, "config", "receive.autogc", "false");
   g(origin, "config", "maintenance.auto", "false");
-  execFileSync("git", ["clone", "-q", origin, repoRoot], { encoding: "utf8" });
+  execFileSync(GIT, ["clone", "-q", origin, repoRoot], { encoding: "utf8" });
   g(repoRoot, "config", "user.email", "loop@test");
   g(repoRoot, "config", "user.name", "loop");
   g(repoRoot, "config", "commit.gpgsign", "false");
@@ -99,7 +112,7 @@ export function makeFixture(specs: SpecFixture[]): Fixture {
       "- 2026-07-05T13:00 — created.",
       "",
     ].join("\n");
-    execFileSync("mkdir", ["-p", join(repoRoot, type)]);
+    mkdirSync(join(repoRoot, type), { recursive: true });
     writeFileSync(join(repoRoot, rel), spec, "utf8");
   }
   writeFileSync(join(repoRoot, "DEV.md"), devRows.join("\n") + "\n", "utf8");
