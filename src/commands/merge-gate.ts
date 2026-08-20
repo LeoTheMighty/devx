@@ -49,6 +49,7 @@ import {
   findSpecForHashAnyType,
 } from "../lib/engine/frontmatter.js";
 import { attachPhase } from "../lib/help.js";
+import { type GhRetryOpts, withGhRetry } from "../lib/gh-retry.js";
 import { deriveMergeAdvice } from "../lib/devx/auto-merge-action.js";
 import { deriveBranch } from "../lib/plan/derive-branch.js";
 import {
@@ -72,6 +73,11 @@ export interface RunMergeGateOpts {
   projectPath?: string;
   /** Test seam: shell-out replacement for `gh ...`. */
   exec?: (cmd: string, args: string[]) => ExecResult;
+  /**
+   * Transient-failure retry tuning (debug-d7e8e5). The seam — injected or
+   * real — is always retry-wrapped; `false` opts out.
+   */
+  retry?: GhRetryOpts | false;
   /**
    * Caller-supplied touched-line coverage (0..1). Used by tests today; will
    * also be how /devx Phase 5 injects what its coverage runner measured once
@@ -262,7 +268,12 @@ export function runMergeGate(
 ): number {
   const out = opts.out ?? ((s) => process.stdout.write(s));
   const err = opts.err ?? ((s) => process.stderr.write(s));
-  const exec = opts.exec ?? defaultExec;
+  // debug-d7e8e5: both signal calls below are reads (`gh pr list`,
+  // `gh pr view`). A transient GraphQL 401 on either one used to produce a
+  // terminal exit 2 — "gh signal collection failed" — stranding a green PR.
+  const baseExec = opts.exec ?? defaultExec;
+  const exec =
+    opts.retry === false ? baseExec : withGhRetry(baseExec, opts.retry);
 
   if (args.length !== 1) {
     err("usage: devx merge-gate <hash> [--coverage <pct>]\n");

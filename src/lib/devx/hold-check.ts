@@ -41,6 +41,7 @@
 
 import { blockingReviewCount } from "../../commands/merge-gate.js";
 import { type Exec, realExec } from "../exec.js";
+import { type GhRetryOpts, withGhRetry } from "../gh-retry.js";
 
 /** The literal marker a human drops in a PR comment to block the merge
  *  tail. Matched case-insensitively with flexible whitespace after the
@@ -69,6 +70,13 @@ export interface HoldCheckOpts {
   repoRoot: string;
   /** Test seam — replacement for the real `gh` shell-out. */
   exec?: Exec;
+  /**
+   * Transient-failure retry tuning (debug-d7e8e5). The seam — injected or
+   * real — is always retry-wrapped; pass `false` to opt out (the "what does
+   * a single flake do today?" repro) or a `sleep` override to keep tests
+   * off the wall clock.
+   */
+  retry?: GhRetryOpts | false;
 }
 
 interface GhComment {
@@ -91,7 +99,10 @@ export function checkHold(
   prNumber: number,
   opts: HoldCheckOpts,
 ): HoldCheckResult {
-  const exec = opts.exec ?? realExec;
+  // debug-d7e8e5: a single transient GraphQL 401 used to abort the merge
+  // tail outright. `gh pr view` is a read, so a bounded retry is free.
+  const base = opts.exec ?? realExec;
+  const exec = opts.retry === false ? base : withGhRetry(base, opts.retry);
 
   const r = exec(
     "gh",
