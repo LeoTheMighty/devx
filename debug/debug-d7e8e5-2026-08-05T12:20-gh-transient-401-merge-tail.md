@@ -4,7 +4,7 @@ type: debug
 created: 2026-08-05T12:20:00-06:00
 title: "Merge-tail helpers treat transient gh GraphQL 401s as terminal — no retry"
 from: dev/dev-sgr107-2026-08-02T13:57-downstream-portability.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-08-19T19-39-20-483-20983
 ---
 
@@ -59,3 +59,5 @@ with no state change. Attended cost: a human retry loop. Unattended cost
   - Learning: Retry wrappers compose silently — the tail hands checkHold an already-wrapped exec, so an always-wrap default nests 3x3 attempts (~16s of backoff) on a sustained outage. Fixed by making the wrap opt-out-able and asserting the call count (3, not 9) in a test.
   - Learning: 'First bare word after the flags' is the wrong way to find a gh subcommand: a global flag's value is itself a bare word, so `gh --repo o/r pr view` parsed as group 'o/r'. Scanning for the first token that names a known command group is what actually works.
   - Learning: Editing .claude/commands/*.md requires `npm run sync:skills` — the skills/ mirror drift check is a separate script (scripts/sync-skills.mjs --check) and does NOT fail test/skills-packaging.test.ts, so the drift is easy to miss locally and would surface in CI.
+- 2026-08-20T05:39:49.803Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-08-20T05:39:49.803Z — merged via devx loop — PR https://github.com/LeoTheMighty/devx/pull/132
