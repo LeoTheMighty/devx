@@ -4,7 +4,7 @@ type: debug
 created: 2026-08-05T14:05:00-06:00
 title: "await-remote-ci reads a CONFLICTING PR as `empty` — 50min of blind probes for a self-serviceable state"
 from: dev/dev-sgr105-2026-08-02T13:57-mark-done-phase8.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-08-19T19-39-20-483-20983
 ---
 
@@ -63,3 +63,5 @@ the branch and pushing triggered CI immediately.
   - Learning: test/await-remote-ci.test.ts's fakeExec throws on any unconfigured command signature, so adding a second gh call inside an existing code path would have broken ~10 pre-existing fixtures. Making the mergeability read degrade silently on an exec throw was required for compatibility and is independently the right failure posture — every old empty-state fixture now exercises the fallback.
   - Learning: src/lib/loop/tail.ts has the same blindness for the unattended path and does NOT inherit this fix: it consumes hasWorkflowFiles + parseGhRunList directly rather than probeRemoteCi, so a conflicted PR overnight still polls to the CI timeout and hands off with 'remote CI did not complete within Nmin'. Worth a follow-up debug spec.
   - Learning: Full `npm test` took ~23 min here (1382s in the blocking leg alone), longer than the ~17 min recorded in memory — budget a full iteration for it and pipe output to a file rather than through `tail`, which buffers everything until the pipeline exits and makes progress unobservable.
+- 2026-08-20T15:13:29.596Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-08-20T15:13:29.597Z — merged via devx loop — PR https://github.com/LeoTheMighty/devx/pull/133
