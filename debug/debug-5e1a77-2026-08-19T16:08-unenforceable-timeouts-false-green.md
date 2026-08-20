@@ -6,7 +6,7 @@ title: "16 tests run past their own timeout and still report PASSED — the cap 
 from: debug/debug-5c8b21-2026-08-03T16:20-loop-concurrency-timeout-headroom.md
 plan: null
 spawned: []
-status: in-progress
+status: done
 owner: /devx-loop-2026-08-19T19-39-20-483-20983
 branch: null
 ---
@@ -147,6 +147,8 @@ is for.
   - Learning: Adoption made the hook-bearing tests markedly SLOWER under load, not faster: the origin-pre-receive test went 13.4s → 48.4s in the full pass while measuring 1.5s alone (32x). Reproduced across two consecutive passes, so it is contention and not the macOS-sleep artifact from iteration 3 — a freed event loop lets more work overlap, so more macOS hook security assessments queue at once. Speed and enforceability are separate axes here.
   - Learning: An `it.fails` row inverts the usual flake direction — it goes red when the body SUCCEEDS — so its safety margin is a SHORTER cap, not a longer one. Reading such a row in the headroom sweep as 'dangerously thin' is backwards; the LAST SWEEP block now says so in place.
   - Learning: TypeScript only flags an un-awaited promise where the value is USED, so a bare-statement call to a newly-async function compiles clean and silently becomes fire-and-forget. After a migration like this, a regex sweep for un-awaited calls of every converted name is a required check — tsc passing is not evidence.
+- 2026-08-20T18:14:47.865Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-08-20T18:14:47.866Z — merged via devx loop — PR https://github.com/LeoTheMighty/devx/pull/135
 
 ## Links
 
