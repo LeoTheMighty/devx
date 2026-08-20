@@ -6,8 +6,8 @@ title: "16 tests run past their own timeout and still report PASSED — the cap 
 from: debug/debug-5c8b21-2026-08-03T16:20-loop-concurrency-timeout-headroom.md
 plan: null
 spawned: []
-status: ready
-owner: null
+status: in-progress
+owner: /devx-loop-2026-08-19T19-39-20-483-20983
 branch: null
 ---
 
@@ -98,6 +98,7 @@ is for.
   it and green anyway". Fifth instance of the timing-dependent-test class
   (after c81f04, 74632d, 5c8b21, ecdcda) and the first one where the failure
   mode is a false PASS rather than a red build.
+- 2026-08-20T10:00:54-06:00 — claimed by /devx in session /devx-loop-2026-08-19T19-39-20-483-20983
 
 ## Links
 
