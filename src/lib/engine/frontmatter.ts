@@ -24,7 +24,7 @@
 
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { isMap, parseDocument } from "yaml";
+import { isMap, isScalar, parseDocument } from "yaml";
 
 import { VERDICTS, type Verdict } from "./verdict.js";
 
@@ -185,6 +185,24 @@ function emptyGateVerdicts(): GateVerdicts {
 }
 
 /**
+ * The verbatim source text of a top-level PLAIN (unquoted) scalar, or null
+ * when the key is absent, quoted, or not a scalar at all. Lets a field whose
+ * YAML-inferred type is wrong (a numeric-looking hash) be read as the bytes
+ * the author actually wrote, without the round-trip hazards of coercing the
+ * parsed value back to a string.
+ */
+function plainScalarSource(
+  doc: ReturnType<typeof parseDocument>,
+  key: string,
+): string | null {
+  const node = doc.getIn([key], true);
+  if (!isScalar(node)) return null;
+  if (node.type !== "PLAIN" || typeof node.source !== "string") return null;
+  const raw = node.source.trim();
+  return raw === "" ? null : raw;
+}
+
+/**
  * Read the engine-relevant state out of a spec. Defensive by construction:
  * missing keys yield defaults (gate flags false, stage null, outcome null),
  * malformed values are coerced conservatively (only literal `true` counts
@@ -208,9 +226,11 @@ export function readEngineState(content: string): EngineState {
   const split = splitFrontmatter(content);
   if (!split) return state;
 
+  let doc: ReturnType<typeof parseDocument>;
   let parsed: unknown;
   try {
-    parsed = parseDocument(split.fmText).toJS() as unknown;
+    doc = parseDocument(split.fmText);
+    parsed = doc.toJS() as unknown;
   } catch {
     return state;
   }
@@ -222,7 +242,16 @@ export function readEngineState(content: string): EngineState {
   const str = (v: unknown): string | null =>
     typeof v === "string" && v.trim() !== "" ? v.trim() : null;
 
-  state.hash = str(fm.hash);
+  // `hash:` is read from the RAW scalar source, not from toJS(). A spec hash
+  // is 6 hex chars, and an all-digit one (`hash: 620337`) is a legal YAML
+  // integer — toJS() hands back a number, which `str()` rejects, so the spec
+  // reads as hashless. Coercing with String() would fix that one case and
+  // silently CORRUPT others: `012345` parses to 12345 and `0x1234` to 4660,
+  // either of which would resolve to a different spec than the file it came
+  // from. The plain scalar's own bytes are the only lossless answer. Quoted
+  // hashes take the normal path — toJS() already returns their exact text.
+  // Found by the AC-2 spec-frontmatter canary (debug-9f24c7).
+  state.hash = plainScalarSource(doc, "hash") ?? str(fm.hash);
   state.type = str(fm.type);
   state.status = str(fm.status);
   state.workstream = str(fm.workstream);
