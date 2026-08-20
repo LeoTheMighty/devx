@@ -4,7 +4,8 @@ type: debug
 created: 2026-08-05T12:20:00-06:00
 title: "Merge-tail helpers treat transient gh GraphQL 401s as terminal — no retry"
 from: dev/dev-sgr107-2026-08-02T13:57-downstream-portability.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-08-19T19-39-20-483-20983
 ---
 
 ## Goal
@@ -47,3 +48,4 @@ with no state change. Attended cost: a human retry loop. Unattended cost
   - Learning: iteration 2 [FAIL]: No work was performed — the iteration aborted on an API error (computer slept mid-response) before reading the spec, leaving the worktree clean.
   - Learning: learning: The iteration terminated on 'Your computer went to sleep mid-response' before any tool call ran; a sleep event during a loop iteration can consume an entire iteration budget slot with zero progress and no partial state to recover.
   - Learning: iteration 3 [ERROR]: worker report unparseable after retry (no JSON object found in the output); worker exited 1: …29,"heartbeat":true,"session_id":"10334099-a570-4033-a422-4a5eb9c15228","uuid":"8edeb6d9-5179-4bc9-82a4-11e27e940222"} API Error: Your computer went to sleep mid-response. The response above may be incomplete. API Error: Your computer went to sleep mid-response. The response above may be incomplete.
+- 2026-08-19T23:02:07-06:00 — claimed by /devx in session /devx-loop-2026-08-19T19-39-20-483-20983
