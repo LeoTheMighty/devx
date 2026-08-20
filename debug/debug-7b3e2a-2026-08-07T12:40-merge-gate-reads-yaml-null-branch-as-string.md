@@ -6,7 +6,7 @@ title: merge-gate reads YAML `branch: null` as the string "null" and queries a b
 from: debug/debug-4d1a9c-2026-08-07T11:37-claim-commits-on-current-branch-not-base.md
 plan: null
 spawned: []
-status: in-progress
+status: done
 owner: /devx-loop-2026-08-19T19-39-20-483-20983
 branch: null
 ---
@@ -122,3 +122,5 @@ than what it says) — a hand-rolled parser disagreeing with YAML about what
   - Learning: The two pre-existing readers disagreed with each other on quoted "null": merge-gate treated it as a string, verify-claim's normalizeBranchScalar collapsed it to null by stripping quotes before the null test. YAML fidelity (test nullish before unquoting) is the tiebreaker that makes them consistent, and it changes behavior only for a branch literally named `null`, which git could never resolve anyway.
   - Learning: debug-9f24c7 is NOT the same root parser — it is readEngineState ignoring doc.errors from a real eemeli/yaml parse, whereas 7b3e2a is hand-rolled regex readers not knowing YAML nulls. The spec's conditional 'fold into 9f24c7' does not apply.
   - Learning: Running `npm test` in the background while continuing to edit source poisons the run (the build/typecheck steps race the edits) and starves any concurrent targeted vitest. Finish edits first, then launch the suite as the last action of the iteration.
+- 2026-08-20T16:00:51.620Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-08-20T16:00:51.621Z — merged via devx loop — PR https://github.com/LeoTheMighty/devx/pull/134
