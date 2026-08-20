@@ -4,8 +4,8 @@ type: dev
 created: 2026-08-05T11:25:00-06:00
 title: /devx-learn unattended mode — route and apply lessons without a human
 from: null
-status: ready
-owner: null
+status: in-progress
+owner: /devx-loop-2026-08-19T19-39-20-483-20983
 blocked_by: [28b267]
 branch: null
 ---
@@ -125,6 +125,7 @@ because it is the one change that can silently disable the rest.
   `/devx-learn` to apply its routed changes automatically, having been shown
   that this conflicts with plan-first and the locked-machinery guard. Carve-out
   1 raised here rather than decided.
+- 2026-08-20T12:14:50-06:00 — claimed by /devx in session /devx-loop-2026-08-19T19-39-20-483-20983
 
 ## Links
 
