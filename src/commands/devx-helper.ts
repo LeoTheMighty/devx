@@ -42,9 +42,14 @@
 //     • 0  → terminal (or single-shot probe complete). JSON shape varies
 //            by mode:
 //              --once : ProbeState (one of no-workflow / empty /
-//                       sha-mismatch / in-progress / completed).
-//              else   : AwaitState (one of no-workflow / workflow-no-run /
+//                       pr-conflicting / sha-mismatch / in-progress /
 //                       completed).
+//              else   : AwaitState (one of no-workflow / workflow-no-run /
+//                       pr-conflicting / completed).
+//            `pr-conflicting` (c94f14) carries `{prNumber, mergeable,
+//            mergeStateStatus}` — no workflow run exists because GitHub
+//            can't build the PR's merge ref. Self-serviceable: merge the
+//            base branch in, resolve, push, re-probe.
 //     • 2  → gh probe failure. JSON `{error, stage}` on stdout where
 //            `stage ∈ {"gh-run-list","gh-parse","git-rev-parse","unknown"}`;
 //            stderr has detail. Operator-actionable (auth / network /
@@ -851,7 +856,7 @@ export function register(program: Command): void {
   sub
     .command("await-remote-ci")
     .description(
-      "Probe remote CI for a branch (dvx105). Without --once: blocks (real sleep) until terminal — emits AwaitState JSON {state: 'no-workflow' | 'workflow-no-run' | 'completed', ...}. With --once: single shot — emits ProbeState JSON (may include transient 'in-progress'/'empty'/'sha-mismatch'). Skill body Phase 7 uses --once + ScheduleWakeup 120s loop to stay cache-warm.",
+      "Probe remote CI for a branch (dvx105). Without --once: blocks (real sleep) until terminal — emits AwaitState JSON {state: 'no-workflow' | 'workflow-no-run' | 'pr-conflicting' | 'completed', ...}. With --once: single shot — emits ProbeState JSON (may include transient 'in-progress'/'empty'/'sha-mismatch'). 'pr-conflicting' (c94f14) means no run exists because the PR is unmergeable — merge the base branch in and re-probe, don't escalate. Skill body Phase 7 uses --once + ScheduleWakeup 120s loop to stay cache-warm.",
     )
     .argument("<branch>", "branch name (e.g. 'feat/dev-dvx105')")
     .option("--once", "single-shot probe; do not block on in-progress")

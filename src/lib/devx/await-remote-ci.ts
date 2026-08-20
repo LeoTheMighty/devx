@@ -9,9 +9,17 @@
 //
 //   probeRemoteCi(branch, opts)
 //     Single-probe — runs `gh run list --branch <branch> --limit <N>` once
-//     and returns one of five states (no-workflow / empty / sha-mismatch /
-//     in-progress / completed). The CLI `--once` mode and the
+//     and returns one of six states (no-workflow / empty / pr-conflicting /
+//     sha-mismatch / in-progress / completed). The CLI `--once` mode and the
 //     skill-body's ScheduleWakeup-driven outer loop both consume this.
+//
+//     c94f14: `empty` used to absorb two very different situations — GitHub
+//     silently not firing a configured workflow (unexplained; INTERVIEW) and
+//     GitHub *correctly* not firing because the PR is CONFLICTING and there
+//     is no merge ref to build (mechanical; self-serviceable). PR #118 burned
+//     41 probes over ~50 minutes on the second one reported as the first.
+//     The probe now asks `gh pr view --json number,mergeable,mergeStateStatus`
+//     on the empty path and splits `pr-conflicting` out.
 //
 //     arci1: the probe folds EVERY run at the branch's headSha, not just
 //     the newest one. A repo with two workflows on the same PR (this repo
@@ -26,7 +34,8 @@
 //
 //   awaitRemoteCi(branch, opts)
 //     Multi-probe driver — composes probeRemoteCi with a `sleep` seam.
-//     Returns one of three terminal states per spec AC #1:
+//     Returns one of four terminal states (three per dvx105 AC #1, plus
+//     c94f14's `pr-conflicting`):
 //       - {state:"no-workflow"}                — no `.github/workflows/*.yml`.
 //       - {state:"workflow-no-run"}            — workflows present but
 //                                                 `gh run list` returned
@@ -38,6 +47,11 @@
 //                                                 HEAD` (per AC #3).
 //       - {state:"completed", conclusion}      — runs returned + matched
 //                                                 + status == "completed".
+//       - {state:"pr-conflicting", prNumber,   — no runs BECAUSE the PR is
+//          mergeable, mergeStateStatus}          unmergeable (CONFLICTING /
+//                                                 DIRTY). Terminal: no amount
+//                                                 of waiting builds a merge
+//                                                 ref that can't exist.
 //
 // Polling discipline (AC #2): the SKILL BODY's outer poll uses the
 // harness `ScheduleWakeup` 120s delay so the prompt cache stays warm
@@ -47,6 +61,7 @@
 // counter-incrementing fake.
 //
 // Spec: dev/dev-dvx105-2026-04-28T19:30-devx-await-remote-ci.md
+//       debug/debug-c94f14-2026-08-05T14:05-await-remote-ci-conflicting-pr-blind.md
 // Epic: _bmad-output/planning-artifacts/epic-devx-skill.md
 
 import { spawnSync } from "node:child_process";
@@ -76,6 +91,22 @@ export interface RunSummary {
 export type ProbeState =
   | { state: "no-workflow" }
   | { state: "empty" }
+  | {
+      /**
+       * debug-c94f14: workflows are configured and `gh run list` returned
+       * nothing — because the PR is CONFLICTING, so GitHub can't build the
+       * merge ref and `pull_request`-triggered workflows never fire. Distinct
+       * from `empty` (genuinely unexplained silence) because the fix is
+       * mechanical and self-serviceable: merge the base branch in, resolve,
+       * push, re-probe.
+       */
+      state: "pr-conflicting";
+      prNumber: number;
+      /** GitHub's `mergeable` enum: MERGEABLE | CONFLICTING | UNKNOWN. */
+      mergeable: string;
+      /** GitHub's `mergeStateStatus`: DIRTY | BLOCKED | BEHIND | CLEAN | … */
+      mergeStateStatus: string;
+    }
   | { state: "sha-mismatch"; runHeadSha: string; headSha: string }
   | {
       state: "in-progress";
@@ -99,6 +130,18 @@ export type ProbeState =
 export type AwaitState =
   | { state: "no-workflow" }
   | { state: "workflow-no-run"; reason: "no-runs" | "sha-mismatch" }
+  | {
+      /**
+       * debug-c94f14 — terminal. The driver does NOT retry a conflicted PR:
+       * no amount of waiting makes GitHub schedule a run against an
+       * unbuildable merge ref. The caller resolves the conflict and
+       * re-invokes.
+       */
+      state: "pr-conflicting";
+      prNumber: number;
+      mergeable: string;
+      mergeStateStatus: string;
+    }
   | {
       state: "completed";
       conclusion: string;
@@ -161,6 +204,19 @@ export interface AwaitRemoteCiOpts {
    */
   pollMs?: number;
   /**
+   * debug-c94f14: how many times `gh pr view --json mergeable,…` is asked
+   * before an `UNKNOWN` mergeability is accepted as unknown. GitHub computes
+   * mergeability lazily, so the first read right after a push is routinely
+   * `UNKNOWN`. Total attempts including the first. Default 3.
+   */
+  mergeableAttempts?: number;
+  /**
+   * debug-c94f14: ms to sleep between mergeability re-reads. Only slept when
+   * the previous read said `UNKNOWN`. Default 2_000 — the whole bounded
+   * re-poll costs at most ~4s, and only on the `empty` path.
+   */
+  mergeableRetryMs?: number;
+  /**
    * Multi-probe driver only: hard cap on poll iterations. Defaults to a
    * large value (effectively "wait forever") so production runs aren't
    * artificially time-boxed; tests pass a small N.
@@ -201,6 +257,8 @@ const realSleep = (ms: number): Promise<void> =>
   });
 
 const DEFAULT_RUN_LIMIT = 30;
+const DEFAULT_MERGEABLE_ATTEMPTS = 3;
+const DEFAULT_MERGEABLE_RETRY_MS = 2_000;
 const DEFAULT_EMPTY_RETRY_MS = 60_000;
 const DEFAULT_POLL_MS = 120_000;
 // Effectively "wait forever" — production runs poll until the gh API says
@@ -447,6 +505,140 @@ export function foldRunsAtSha(
 }
 
 // ---------------------------------------------------------------------------
+// PR mergeability (debug-c94f14)
+// ---------------------------------------------------------------------------
+
+/** One `gh pr view --json number,mergeable,mergeStateStatus` read. */
+export interface PrMergeability {
+  prNumber: number;
+  /** MERGEABLE | CONFLICTING | UNKNOWN (GitHub's enum, verbatim). */
+  mergeable: string;
+  /** DIRTY | BLOCKED | BEHIND | CLEAN | DRAFT | HAS_HOOKS | UNSTABLE | UNKNOWN. */
+  mergeStateStatus: string;
+}
+
+/**
+ * Parse `gh pr view --json number,mergeable,mergeStateStatus` stdout.
+ * Returns `null` — never throws — on anything unexpected: this read is a
+ * *diagnostic refinement* of the `empty` state, so an unparseable answer must
+ * degrade to plain `empty` rather than turn a CI wait into a probe failure.
+ */
+export function parsePrView(stdout: string): PrMergeability | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout.trim() || "null");
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null;
+  }
+  const r = parsed as Record<string, unknown>;
+  if (typeof r.number !== "number" || !Number.isInteger(r.number) || r.number <= 0) {
+    return null;
+  }
+  const mergeable = typeof r.mergeable === "string" ? r.mergeable : "";
+  const mergeStateStatus =
+    typeof r.mergeStateStatus === "string" ? r.mergeStateStatus : "";
+  if (mergeable === "" && mergeStateStatus === "") return null;
+  return { prNumber: r.number, mergeable, mergeStateStatus };
+}
+
+/**
+ * True when GitHub cannot build the PR's merge ref, which is exactly the
+ * condition under which `pull_request` workflows never fire (PR #118,
+ * 2026-08-05: `mergeable: CONFLICTING` / `mergeStateStatus: DIRTY`, zero runs
+ * across 41 probes over ~50 minutes).
+ *
+ * Either field alone is enough — they're computed together but a future gh
+ * version could surface only one, and both readings mean "resolve the
+ * conflict" so there's no ambiguity to preserve.
+ */
+export function isPrConflicting(pr: PrMergeability): boolean {
+  return pr.mergeable === "CONFLICTING" || pr.mergeStateStatus === "DIRTY";
+}
+
+/**
+ * Read the branch's PR mergeability, re-polling a bounded number of times
+ * while GitHub answers `UNKNOWN` (it computes mergeability lazily, so the
+ * first read right after a push routinely is).
+ *
+ * Returns `null` when there's nothing trustworthy to say — no PR for the
+ * branch (`gh pr view` exits non-zero), the exec seam threw, or the payload
+ * didn't parse. Every one of those degrades the caller to plain `empty`,
+ * which is the pre-c94f14 behaviour: this check can only ever *add*
+ * diagnosis, never remove a state the caller already handled.
+ *
+ * NOTE: this is the single exception to `probeRemoteCi`'s "does not sleep"
+ * contract, and it is deliberately tiny (≤ ~4s by default, only on the
+ * `empty` path). Without it a `--once` caller reads `UNKNOWN` and mis-reports
+ * a conflicted PR as `empty` for another 120s wake-up cycle — the exact
+ * 50-minute blindness this spec exists to kill.
+ */
+export function resolveMergeabilityOpts(opts: AwaitRemoteCiOpts): {
+  attempts: number;
+  retryMs: number;
+} {
+  const attempts = opts.mergeableAttempts ?? DEFAULT_MERGEABLE_ATTEMPTS;
+  const retryMs = opts.mergeableRetryMs ?? DEFAULT_MERGEABLE_RETRY_MS;
+  if (!Number.isInteger(attempts) || attempts < 1) {
+    throw new Error(
+      `opts.mergeableAttempts must be a positive integer (got ${attempts})`,
+    );
+  }
+  if (!Number.isFinite(retryMs) || retryMs < 0) {
+    throw new Error(
+      `opts.mergeableRetryMs must be a non-negative finite number (got ${retryMs})`,
+    );
+  }
+  return { attempts, retryMs };
+}
+
+export async function probePrMergeability(
+  branch: string,
+  opts: AwaitRemoteCiOpts,
+): Promise<PrMergeability | null> {
+  const { attempts, retryMs } = resolveMergeabilityOpts(opts);
+  const exec = opts.exec ?? retryingExec;
+  const sleep = opts.sleep ?? realSleep;
+
+  let last: PrMergeability | null = null;
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) await sleep(retryMs);
+    let result: ExecResult;
+    try {
+      result = exec(
+        "gh",
+        [
+          "pr",
+          "view",
+          branch,
+          "--json",
+          "number,mergeable,mergeStateStatus",
+        ],
+        { cwd: opts.repoRoot },
+      );
+    } catch {
+      // Exec seam blew up (no gh on PATH under a test fake, spawn failure).
+      // Diagnostic-only read — stay silent.
+      return null;
+    }
+    if (result.exitCode !== 0) {
+      // Most commonly "no pull requests found for branch" — the probe is
+      // running before the PR exists. Nothing to diagnose.
+      return null;
+    }
+    const parsed = parsePrView(result.stdout);
+    if (!parsed) return null;
+    if (parsed.mergeable !== "UNKNOWN") return parsed;
+    last = parsed;
+  }
+  // Still UNKNOWN after the bounded re-poll. Hand it back anyway — the caller
+  // only acts on CONFLICTING, so an UNKNOWN falls through to `empty`.
+  return last;
+}
+
+// ---------------------------------------------------------------------------
 // Single-probe
 // ---------------------------------------------------------------------------
 
@@ -461,6 +653,9 @@ export function foldRunsAtSha(
  *   1. fs probe `.github/workflows/` — no exec. Cheap.
  *   2. exec `gh run list` — network round-trip. Skipped if step 1 said
  *      "no-workflow".
+ *   2b. exec `gh pr view` — network round-trip, and ONLY on the empty path
+ *       (c94f14). Diagnoses "no run because the PR is unmergeable"; a
+ *       non-empty run list never pays for it.
  *   3. exec `git rev-parse HEAD` — local. Skipped if step 2 returned no runs.
  */
 export async function probeRemoteCi(
@@ -487,6 +682,17 @@ export async function probeRemoteCi(
   if (!Number.isInteger(runLimit) || runLimit < 1) {
     throw new Error(
       `probeRemoteCi: opts.runLimit must be a positive integer (got ${runLimit})`,
+    );
+  }
+  // Validate the c94f14 mergeability knobs EAGERLY — they're only consumed on
+  // the empty path, and a bad value surfacing as a mid-wait throw (mapped to
+  // CLI exit 2 `stage:"unknown"`) reads as a gh outage rather than the caller
+  // error it is.
+  try {
+    resolveMergeabilityOpts(opts);
+  } catch (e) {
+    throw new Error(
+      `probeRemoteCi: ${e instanceof Error ? e.message : String(e)}`,
     );
   }
 
@@ -524,6 +730,20 @@ export async function probeRemoteCi(
   }
   const runs = parseGhRunList(ghResult.stdout);
   if (runs.length === 0) {
+    // Step 2b (debug-c94f14): workflows exist but nothing ran. Before
+    // reporting the undiagnosed `empty`, ask the mechanical question that
+    // explains most of these — is the PR conflicted? GitHub can't build a
+    // merge ref for a CONFLICTING PR, so `pull_request` workflows never
+    // start, and the fix is self-serviceable (merge base in, resolve, push).
+    const pr = await probePrMergeability(branch, opts);
+    if (pr && isPrConflicting(pr)) {
+      return {
+        state: "pr-conflicting",
+        prNumber: pr.prNumber,
+        mergeable: pr.mergeable,
+        mergeStateStatus: pr.mergeStateStatus,
+      };
+    }
     return { state: "empty" };
   }
 
@@ -594,11 +814,14 @@ export async function probeRemoteCi(
  *
  *                      ┌── no-workflow ───────────────────► RETURN no-workflow
  *                      │
+ *                      ├── pr-conflicting ────────────────► RETURN pr-conflicting
+ *                      │                                    (terminal; c94f14)
  *   probe ─► (empty) ──┤                                  (sleep emptyRetryMs)
  *                      └── empty (1st time) ─► probe ─┬── empty       ─► RETURN workflow-no-run
  *                                                     ├── no-workflow  ─► RETURN no-workflow
  *                                                     │                  (rare: workflow added between probes)
  *                                                     ├── sha-mismatch ─► RETURN workflow-no-run
+ *                                                     ├── pr-conflicting ─► RETURN pr-conflicting
  *                                                     ├── in-progress  ─► poll loop
  *                                                     └── completed    ─► RETURN completed
  *                      ├── sha-mismatch ─────────────────► RETURN workflow-no-run
@@ -611,6 +834,18 @@ export async function probeRemoteCi(
  * INTERVIEW for either reason; the discriminator on the AwaitState lets
  * an audit trail capture which.
  */
+/** Lift a `pr-conflicting` ProbeState into the terminal AwaitState. */
+function liftConflicting(
+  probe: Extract<ProbeState, { state: "pr-conflicting" }>,
+): AwaitState {
+  return {
+    state: "pr-conflicting",
+    prNumber: probe.prNumber,
+    mergeable: probe.mergeable,
+    mergeStateStatus: probe.mergeStateStatus,
+  };
+}
+
 export async function awaitRemoteCi(
   branch: string,
   opts: AwaitRemoteCiOpts,
@@ -691,6 +926,12 @@ export async function awaitRemoteCi(
   if (probe.state === "no-workflow") {
     return { state: "no-workflow" };
   }
+  if (probe.state === "pr-conflicting") {
+    // Terminal — retrying can't make GitHub schedule a run against an
+    // unbuildable merge ref (debug-c94f14). Return immediately instead of
+    // burning the 60s empty-retry on a state we've already diagnosed.
+    return liftConflicting(probe);
+  }
   if (probe.state === "sha-mismatch") {
     return { state: "workflow-no-run", reason: "sha-mismatch" };
   }
@@ -715,6 +956,9 @@ export async function awaitRemoteCi(
     }
     if (probe.state === "empty") {
       return { state: "workflow-no-run", reason: "no-runs" };
+    }
+    if (probe.state === "pr-conflicting") {
+      return liftConflicting(probe);
     }
     if (probe.state === "sha-mismatch") {
       return { state: "workflow-no-run", reason: "sha-mismatch" };
@@ -753,6 +997,9 @@ export async function awaitRemoteCi(
     }
     if (probe.state === "empty") {
       return { state: "workflow-no-run", reason: "no-runs" };
+    }
+    if (probe.state === "pr-conflicting") {
+      return liftConflicting(probe);
     }
     if (probe.state === "sha-mismatch") {
       return { state: "workflow-no-run", reason: "sha-mismatch" };
