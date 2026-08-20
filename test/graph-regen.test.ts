@@ -49,6 +49,7 @@ import {
   type RegenFs,
   regenerateGraph,
 } from "../src/lib/graph/regen.js";
+import { armRejectingHook } from "./helpers/git-hooks.js";
 
 const realRepoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TS = "2026-08-01T08:00";
@@ -562,10 +563,7 @@ describe("claim hook — GRAPH.md stays fresh (AC 2)", () => {
   /** Reject every push, so the claim fails AFTER the regen has written. */
   function rejectPushes(repo: ClaimRepo): void {
     const hooks = join(repo.base, "hooks");
-    mkdirSync(hooks, { recursive: true });
-    writeFileSync(join(hooks, "pre-push"), "#!/bin/sh\necho no >&2\nexit 1\n", {
-      mode: 0o755,
-    });
+    armRejectingHook(hooks, "pre-push");
     git(repo.root, "config", "core.hooksPath", hooks);
   }
 

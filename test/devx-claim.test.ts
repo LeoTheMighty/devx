@@ -49,6 +49,7 @@ import {
   type RegenFn,
   regenerateGraph,
 } from "../src/lib/graph/regen.js";
+import { armRejectingHook } from "./helpers/git-hooks.js";
 
 // ---------------------------------------------------------------------------
 // Layer 1 — pure splicers
@@ -786,10 +787,7 @@ describe("claimSpec — rollback paths", () => {
 
       // Reject every push.
       const hooksDir = join(base, "hooks");
-      mkdirSync(hooksDir, { recursive: true });
-      writeFileSync(join(hooksDir, "pre-push"), "#!/bin/sh\necho no >&2\nexit 1\n", {
-        mode: 0o755,
-      });
+      armRejectingHook(hooksDir, "pre-push");
       g("config", "core.hooksPath", hooksDir);
 
       await expect(

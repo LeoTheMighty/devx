@@ -15,6 +15,8 @@ import { join } from "node:path";
 import { type WorkerRunFn } from "../../src/lib/loop/worker.js";
 import { type TailFn } from "../../src/lib/loop/tail.js";
 
+export { armRejectingHook, disarmHook, writeHookScript } from "./git-hooks.js";
+
 export function g(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 }

@@ -38,6 +38,22 @@
 // below still blocks and its caps are still unenforceable. Membership here is
 // unchanged until a file stops calling a sync child-process API.
 //
+// FAULT (2), MEASURED DIRECTLY (debug-5e1a77 iteration 2). The mechanism was
+// inferred until now; it is confirmed. `test/loop-driver.test.ts`'s LOW-11
+// scenario, run alone under the 5,000ms default cap: 14.1s wall, PASSED, and
+// a `setInterval(fn, 50)` armed inside the test body ticked **zero** times.
+// The loop is not merely slow, it is held for 100% of the test. 13.7s of that
+// 14.1s was inside the injected exec seam and 12.9s inside two `git push`
+// calls. Vitest makes this strictly worse than it has to be: `withTimeout`
+// (@vitest/runner) `unref()`s the timer in its `Promise.race`, so even a
+// briefly-idle loop is not guaranteed to service it.
+//
+// The other half of those numbers is not devx code at all: on macOS a `git`
+// command that has to exec a hook FILE THE TEST WROTE pays a security
+// assessment — 3.5s the first time in a worker, ~0.5s every time after,
+// against 52ms for the same push with no hook. See test/helpers/git-hooks.ts
+// for the measurements and for the cheap (symlinked system binary) form.
+//
 // Membership is MECHANICAL, not a timing snapshot: a file belongs here iff it
 // references a synchronous child-process API. `test/vitest-split.test.ts`
 // pins the list against the tree so a new sync-blocking file cannot silently

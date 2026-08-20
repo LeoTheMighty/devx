@@ -38,6 +38,8 @@ import {
   makeFixture,
   mergedTail,
   scriptedWorker,
+  armRejectingHook,
+  writeHookScript,
   type Fixture,
 } from "./helpers/loop-git-fixture.js";
 
@@ -553,13 +555,12 @@ describe("runLoop scenarios", () => {
     // A pre-push hook that rejects feature branches but lets the claim's
     // main push through.
     const hooksDir = join(fixture.base, "hooks");
-    execFileSync("mkdir", ["-p", hooksDir]);
     // NB: a HEAD push reports local_ref as literal "HEAD" — match on the
     // resolved remote_ref instead.
-    writeFileSync(
-      join(hooksDir, "pre-push"),
+    writeHookScript(
+      hooksDir,
+      "pre-push",
       `#!/bin/sh\nwhile read local_ref local_sha remote_ref remote_sha; do\n  case "$remote_ref" in refs/heads/feat/*) echo "feature pushes rejected" >&2; exit 1;; esac\ndone\nexit 0\n`,
-      { mode: 0o755 },
     );
     g(fixture.repoRoot, "config", "core.hooksPath", hooksDir);
 
@@ -863,11 +864,10 @@ describe("runLoop review-fix scenarios", () => {
     // pre-commit hook fails only inside worktrees while the flag exists.
     const hooksDir = join(fixture.base, "hooks");
     const flagPath = join(fixture.base, "commit-blocked");
-    execFileSync("mkdir", ["-p", hooksDir]);
-    writeFileSync(
-      join(hooksDir, "pre-commit"),
+    writeHookScript(
+      hooksDir,
+      "pre-commit",
       `#!/bin/sh\ncase "$PWD" in *".worktrees/"*) [ -f "${flagPath}" ] && { echo "hook says no" >&2; exit 1; } ;; esac\nexit 0\n`,
-      { mode: 0o755 },
     );
     writeFileSync(flagPath, "1", "utf8");
     g(fixture.repoRoot, "config", "core.hooksPath", hooksDir);
@@ -906,11 +906,10 @@ describe("runLoop review-fix scenarios", () => {
     // the "transiently failing" commit seam.
     const hooksDir = join(fixture.base, "hooks");
     const flagPath = join(fixture.base, "commit-blocked");
-    execFileSync("mkdir", ["-p", hooksDir]);
-    writeFileSync(
-      join(hooksDir, "pre-commit"),
+    writeHookScript(
+      hooksDir,
+      "pre-commit",
       `#!/bin/sh\ncase "$PWD" in *".worktrees/"*) [ -f "${flagPath}" ] && { echo "hook says no" >&2; exit 1; } ;; esac\nexit 0\n`,
-      { mode: 0o755 },
     );
     writeFileSync(flagPath, "1", "utf8");
     g(fixture.repoRoot, "config", "core.hooksPath", hooksDir);
@@ -953,12 +952,11 @@ describe("runLoop review-fix scenarios", () => {
   it("salvage re-attempt that ALSO fails resets and records the discarded-diff stat (MED-2)", async () => {
     fixture = makeFixture([{ hash: "sal002" }]);
     const hooksDir = join(fixture.base, "hooks");
-    execFileSync("mkdir", ["-p", hooksDir]);
     // Commits in worktrees fail unconditionally — the failure is permanent.
-    writeFileSync(
-      join(hooksDir, "pre-commit"),
+    writeHookScript(
+      hooksDir,
+      "pre-commit",
       `#!/bin/sh\ncase "$PWD" in *".worktrees/"*) echo "hook says no" >&2; exit 1;; esac\nexit 0\n`,
-      { mode: 0o755 },
     );
     g(fixture.repoRoot, "config", "core.hooksPath", hooksDir);
 
@@ -1270,23 +1268,20 @@ describe("runLoop review-fix scenarios", () => {
 
   it("main-push failure after a loop-owned commit is tolerated with a report WARN (LOW-11)", async () => {
     fixture = makeFixture([{ hash: "psh001" }]);
-    // pre-push hook: reject pushes once the flag exists (the claim's own
-    // push happens before the flag is created).
+    // The hooks dir starts EMPTY — the claim's own push (which happens before
+    // the worker runs) must succeed. The worker then arms a rejecting hook,
+    // so every push after it fails. A symlink to /usr/bin/false instead of a
+    // flag-file predicate script: same instant, same effect, ~13s cheaper
+    // (see test/helpers/git-hooks.ts).
     const hooksDir = join(fixture.base, "hooks");
-    const flagPath = join(fixture.base, "push-blocked");
-    execFileSync("mkdir", ["-p", hooksDir]);
-    writeFileSync(
-      join(hooksDir, "pre-push"),
-      `#!/bin/sh\n[ -f "${flagPath}" ] && { echo "origin down" >&2; exit 1; }\nexit 0\n`,
-      { mode: 0o755 },
-    );
+    mkdirSync(hooksDir, { recursive: true });
     g(fixture.repoRoot, "config", "core.hooksPath", hooksDir);
     const { worker } = scriptedWorker([
       { kind: "report", report: { success: false, summary: "doomed" } },
     ]);
     const flaggingWorker: WorkerRunFn = async (p, o) => {
       const res = await worker(p, o);
-      writeFileSync(flagPath, "1", "utf8");
+      armRejectingHook(hooksDir, "pre-push");
       return res;
     };
     const r = await runLoop(baseOpts(fixture, { worker: flaggingWorker, tail: mergedTail().tail }));
@@ -1874,11 +1869,10 @@ describe("E-3: split rail progress oracle (mss103 review fixes)", () => {
     // the budget runs out before any repair iteration can land it.
     const hooksDir = join(fixture.base, "hooks");
     const flagPath = join(fixture.base, "commit-blocked");
-    execFileSync("mkdir", ["-p", hooksDir]);
-    writeFileSync(
-      join(hooksDir, "pre-commit"),
+    writeHookScript(
+      hooksDir,
+      "pre-commit",
       `#!/bin/sh\ncase "$PWD" in *".worktrees/"*) [ -f "${flagPath}" ] && { echo "hook says no" >&2; exit 1; } ;; esac\nexit 0\n`,
-      { mode: 0o755 },
     );
     g(fixture.repoRoot, "config", "core.hooksPath", hooksDir);
 
