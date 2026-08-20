@@ -4,7 +4,7 @@ type: debug
 created: 2026-08-05T11:47:00-06:00
 title: "Loop merge tail leaves GRAPH.md stale — FR-4's third flow has no unattended host"
 from: sgr105
-status: in-progress
+status: done
 owner: /devx-loop-2026-08-19T19-39-20-483-20983
 ---
 
@@ -94,3 +94,5 @@ paths into the commit. `markDone`'s single happy path does not cover those.
   - Learning: The merge tail is FR-4's fourth host, but it is not the last unhooked state-flipping loop flow: `abandon-preserved`/`abandon-discarded` (`[-]`/`[ ]` flips), `release-to-ready`, `split-bookkeeping`, and `handed-off-split` all mutate DEV.md rows without regenerating the board. They are outside this spec's ACs, but a follow-up sweeping them would close FR-4 on the unattended path entirely.
   - Learning: `commitOnMain`'s `extraPaths` are `git add`ed as one list and ALL dropped if the add fails, so an ignored GRAPH.md would silently cost a split's follow-up spec its commit. The gitignore check is not cosmetic — it protects an unrelated artifact, which is why the split-SUCCESS case is pinned alongside the gitignore case.
   - Learning: The prose-budget gate (S-1) counts only `_devx/templates/engine/` plus `.claude/commands/devx-plan.md`; workstream design docs are outside it, so recording an architecture decision in `_devx/workstreams/<slug>/design.md` costs nothing against the 60KB budget that INTERVIEW Q#9 is already over.
+- 2026-08-20T05:02:04.637Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-08-20T05:02:04.637Z — merged via devx loop — PR https://github.com/LeoTheMighty/devx/pull/131
