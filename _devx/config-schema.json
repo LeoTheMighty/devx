@@ -1033,7 +1033,11 @@
           "minLength": 1
         },
         "auto_allow": {
-          "description": "Treat a repo nobody has reviewed as allowed instead of prompting once per repo (28b267). Default false. Turn it on to run the watcher unattended (`nohup devx learn-watch &`), where the [y/N] prompt can never be answered and every unreviewed entry would otherwise be walked past forever. A recorded `deny` in repos.json still wins, and the policy never WRITES repos.json — that file stays the record of what a human reviewed, so turning this back off restores prompting. `devx learn-watch --auto-allow` forces it on for one run.",
+          "description": "Treat a repo nobody has reviewed as allowed instead of prompting once per repo (28b267). Default false. Turn it on to run the watcher unattended (`nohup devx learn-watch &`), where the [y/N] prompt can never be answered and every unreviewed entry would otherwise be walked past forever. A recorded `deny` in repos.json still wins, and the policy never WRITES repos.json \u2014 that file stays the record of what a human reviewed, so turning this back off restores prompting. `devx learn-watch --auto-allow` forces it on for one run.",
+          "type": "boolean"
+        },
+        "auto_apply": {
+          "description": "Let an unattended /devx-learn run apply its routed framework fixes (branch \u2192 local CI \u2192 PR \u2192 mode merge gate) instead of stopping at an evidence table nobody is sitting in front of (c808b1). Default false \u2014 an unattended run that opens PRs must be opted into, not inherited by anyone who installs devx, and it is deliberately NOT implied by learn.auto_allow (that knob only lets the watcher spawn a retro). Turning it on never widens WHAT may be applied: wedge paths (.claude/**, skills/**, settings.json, anything outside the repo) and locked machinery stay proposal-only in every mode.",
           "type": "boolean"
         }
       },

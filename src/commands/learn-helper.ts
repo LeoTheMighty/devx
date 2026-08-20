@@ -11,6 +11,10 @@
 //   listen — the Stop + SessionEnd hook entry point (rtl101). Registered in
 //            `.claude/settings.json`, so it runs at every turn end in every
 //            hooked repo.
+//   route  — the apply-vs-propose predicate for an unattended run (c808b1).
+//            Mechanical because it answers a harness fact — which paths hang
+//            on a confirmation prompt an unattended tab cannot accept — not a
+//            judgment call. See src/lib/learn/route.ts.
 //
 // Exit codes:
 //   0 — always for `slug`; sanitized slug printed on stdout. The sanitizer
@@ -20,10 +24,15 @@
 //       unwritable queue. A hook that can fail a turn is worse than a missed
 //       detection (design.md §Constraints); the listener core is already total,
 //       and the try/catch here is the second belt.
+//   0 — always for `route`; the verdict is on stdout as JSON, not in the exit
+//       status. A `propose` is a normal, expected answer, and an exit code a
+//       shell reads as failure would make the skill body's `||` arms fire on
+//       the routine path.
 //   2 — commander usage error (unknown subcommand; handled by commander).
 //
 // Spec: dev/dev-hfi104-2026-07-24T10:41-devx-learn-skill.md (T4.2),
-//       dev/dev-rtl101-2026-07-30T09:31-listener-nudge-pin.md (T1.4)
+//       dev/dev-rtl101-2026-07-30T09:31-listener-nudge-pin.md (T1.4),
+//       dev/dev-c808b1-2026-08-05T11:25-devx-learn-unattended-apply.md (route)
 // Design: _devx/workstreams/harness-fold-in/design.md §Interfaces,
 //         _devx/workstreams/retro-listener/design.md §Interfaces
 
@@ -40,6 +49,7 @@ import {
   isRetroGuarded,
 } from "../lib/learn/listener.js";
 import type { LearnEnv } from "../lib/learn/queue.js";
+import { type LearnRouteOpts, routeLearnPaths } from "../lib/learn/route.js";
 import { sanitizeLearnSlug } from "../lib/learn/slug.js";
 
 export interface RunLearnSlugOpts {
@@ -56,6 +66,29 @@ export interface RunLearnSlugOpts {
 export function runLearnSlug(args: string[], opts: RunLearnSlugOpts = {}): number {
   const out = opts.out ?? ((s) => process.stdout.write(s));
   out(`${sanitizeLearnSlug(args.join(" "))}\n`);
+  return 0;
+}
+
+export interface RunLearnRouteOpts extends LearnRouteOpts {
+  /** Test seam: route stdout off process.stdout. */
+  out?: (s: string) => void;
+  /** Print only the decision word (`apply`/`propose`) instead of the JSON. */
+  quiet?: boolean;
+}
+
+/**
+ * `devx learn-helper route <path…>` — print the apply-vs-propose verdict for a
+ * row's change set as JSON (`{decision, reason, verdicts}`), one verdict per
+ * path so a report can name the rule that decided each one.
+ *
+ * Zero paths is not a usage error: a row whose "proposed change" never named a
+ * file is exactly the row an unattended run must not apply, so it routes to
+ * `propose` like any other unappliable row.
+ */
+export function runLearnRoute(paths: string[], opts: RunLearnRouteOpts = {}): number {
+  const out = opts.out ?? ((s) => process.stdout.write(s));
+  const result = routeLearnPaths(paths, { repoRoot: opts.repoRoot, home: opts.home });
+  out(opts.quiet ? `${result.decision}\n` : `${JSON.stringify(result, null, 2)}\n`);
   return 0;
 }
 
@@ -131,6 +164,22 @@ export function register(program: Command): void {
     .argument("[raw...]", "raw text to sanitize (session-mined learning title)")
     .action((raw: string[]) => {
       const code = runLearnSlug(raw ?? []);
+      if (code !== 0) process.exit(code);
+    });
+
+  sub
+    .command("route")
+    .description(
+      "Apply-vs-propose predicate for an unattended /devx-learn run: prints {decision, reason, verdicts} JSON for the given paths. `propose` for anything an unattended tab cannot edit (.claude/**, skills/**, settings.json, outside the repo); `apply` otherwise. Exit 0 either way.",
+    )
+    .argument("[paths...]", "paths the row would change (repo-relative or absolute)")
+    .option("-q, --quiet", "print only the decision word")
+    .option("--repo-root <dir>", "repo root the paths are relative to (default: cwd)")
+    .action((paths: string[], options: { quiet?: boolean; repoRoot?: string }) => {
+      const code = runLearnRoute(paths ?? [], {
+        quiet: options.quiet,
+        repoRoot: options.repoRoot,
+      });
       if (code !== 0) process.exit(code);
     });
 

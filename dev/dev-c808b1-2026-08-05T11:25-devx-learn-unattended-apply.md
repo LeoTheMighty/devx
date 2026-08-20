@@ -126,6 +126,14 @@ because it is the one change that can silently disable the rest.
   that this conflicts with plan-first and the locked-machinery guard. Carve-out
   1 raised here rather than decided.
 - 2026-08-20T12:14:50-06:00 — claimed by /devx in session /devx-loop-2026-08-19T19-39-20-483-20983
+- 2026-08-20T18:20:02.523Z — loop iteration 1: Landed the mechanical core of the unattended /devx-learn path: the `devx learn-helper route` apply-vs-propose predicate and the `learn.auto_apply` gating knob, both fully tested.
+  - Change: New src/lib/learn/route.ts: pure first-match predicate routing every wedge-path family (.claude/**, skills/**, settings.json, outside-repo, empty) to `propose` and ordinary in-repo paths to `apply`, with a per-path reason; routeLearnPaths proposes a whole row if any path proposes
+  - Change: New `devx learn-helper route <path…>` subcommand emitting {decision, reason, verdicts} JSON (plus --quiet/--repo-root), exit 0 on both verdicts
+  - Change: New learn.auto_apply config knob (default false, fail-closed on non-booleans, not implied by auto_allow) wired through src/lib/learn/config.ts, _devx/config-schema.json, devx.config.yaml, docs/CONFIG.md §15c and the full-sample fixture
+  - Change: 37-test test/learn-route.test.ts covering the wedge fuzz set, apply set, row aggregation and the CLI surface; 4 added assertions in test/learn-config.test.ts pinning auto_apply's default and its independence from auto_allow
+  - Learning: test/learn-config.test.ts's 'fully-populated learn: block' case asserts the whole LearnConfig object with toEqual, so every new learn knob must be added there and to test/fixtures/sample-config-full.yaml or the config gate reds — cheap to miss.
+  - Learning: The repo splits vitest into two configs (vitest.parallel.config.ts / vitest.blocking.config.ts); cli.test.ts and skills-sync.test.ts live in the blocking pass, so a targeted `vitest run <file>` against the parallel config silently runs nothing for them.
+  - Learning: `skills/` is only a wedge dir as the FIRST path segment — src/lib/skills/* is ordinary code — while `.claude` is a wedge as any segment (nested subproject harness dirs); the two need different matching rules, not one shared 'segment includes' check.
 
 ## Links
 
