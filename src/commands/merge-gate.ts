@@ -51,6 +51,7 @@ import {
 import { attachPhase } from "../lib/help.js";
 import { type GhRetryOpts, withGhRetry } from "../lib/gh-retry.js";
 import { deriveMergeAdvice } from "../lib/devx/auto-merge-action.js";
+import { isNullishScalar } from "../lib/frontmatter-scalar.js";
 import { deriveBranch } from "../lib/plan/derive-branch.js";
 import {
   type GateDecision,
@@ -88,7 +89,7 @@ export interface RunMergeGateOpts {
   coverageOverride?: number | null;
 }
 
-interface ParsedFrontmatter {
+export interface ParsedFrontmatter {
   status?: string;
   branch?: string;
   pr?: number;
@@ -119,8 +120,11 @@ interface GhReview {
  * out of the prefix block — overkill for this surface, so we hand-roll the
  * minimal regex. The spec frontmatter shape is authored by /devx-plan and
  * /devx, so we control both sides of the contract.
+ *
+ * Nullish scalars come back `undefined`, never a string — callers guard with
+ * `typeof x === "string"` and a null-as-string silently defeats that guard.
  */
-function readFrontmatter(specPath: string): ParsedFrontmatter {
+export function readFrontmatter(specPath: string): ParsedFrontmatter {
   const text = readFileSync(specPath, "utf8");
   const m = /^---\n([\s\S]*?)\n---/.exec(text);
   if (!m) return {};
@@ -129,13 +133,28 @@ function readFrontmatter(specPath: string): ParsedFrontmatter {
     const kv = /^([a-z_][a-z0-9_]*):\s*(.*)$/i.exec(line);
     if (!kv) continue;
     const key = kv[1];
-    let val = kv[2].trim();
+    // Inline `# ...` comment, YAML-style (the `#` must follow whitespace).
+    // Safe for all three keys this reader keeps: git forbids spaces in ref
+    // names, and `status:`/`pr:` are an enum and an integer. Without it a
+    // hand-edited `branch: null  # not claimed yet` slips past the nullish
+    // test below and we are back to `gh pr list --head 'null # ...'`.
+    const raw = kv[2].replace(/\s+#.*$/, "").trim();
+    // Quote-stripping has to happen AFTER the nullish test, or `"null"` (a
+    // real string per YAML) and bare `null` (a null per YAML) collapse into
+    // the same value and we lose the distinction we just paid to keep.
+    // debug-7b3e2a: `branch: null` used to be read as the 4-character STRING
+    // "null", which passed the `typeof x === "string" && x.length > 0` guard
+    // below and sent `gh pr list --head null` after a PR that never existed.
+    if (isNullishScalar(raw)) continue;
+    let val = raw;
     if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
     if (val.startsWith("'") && val.endsWith("'")) val = val.slice(1, -1);
     if (key === "pr" && /^\d+$/.test(val)) {
       result.pr = Number.parseInt(val, 10);
     } else if (key === "status" || key === "branch") {
-      result[key] = val;
+      // A quoted-empty value (`branch: ""`) is a zero-length string, which is
+      // no more usable as a branch name than a null — drop it too.
+      if (val.length > 0) result[key] = val;
     }
   }
   return result;

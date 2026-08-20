@@ -234,6 +234,40 @@ describe("parseSpecClaimFields", () => {
     expect(parseSpecClaimFields(empty).branch).toBeNull();
   });
 
+  it("reads YAML nullish owner/status/branch as null, not the string 'null' (debug-7b3e2a)", () => {
+    for (const spelling of ["null", "Null", "NULL", "~", ""]) {
+      const content = [
+        "---",
+        "hash: roc101",
+        `owner: ${spelling}`,
+        `status: ${spelling}`,
+        `branch: ${spelling}`,
+        "---",
+      ].join("\n");
+      expect(parseSpecClaimFields(content)).toEqual({
+        owner: null,
+        status: null,
+        branch: null,
+      });
+    }
+  });
+
+  it("keeps a quoted \"null\" owner/status/branch as the literal string (YAML says it is one)", () => {
+    const content = [
+      "---",
+      "hash: roc101",
+      'owner: "null"',
+      'status: "null"',
+      'branch: "null"',
+      "---",
+    ].join("\n");
+    expect(parseSpecClaimFields(content)).toEqual({
+      owner: '"null"',
+      status: '"null"',
+      branch: "null",
+    });
+  });
+
   it("throws VerifyClaimError(spec-parse) when frontmatter is missing", () => {
     expect(() => parseSpecClaimFields("# no frontmatter here")).toThrowError(
       VerifyClaimError,
