@@ -543,6 +543,16 @@ Rows in either carve-out become a durable artifact (a `docs/updates/` entry
 plus a backlog row, or a `~/.claude/devx/proposals/` file for personal ones)
 rather than tab stdout nobody reads.
 
+**Every unattended run leaves a report**, including the one that mined nothing:
+`devx learn-helper report` writes `<learn-home>/reports/<YYYY-MM-DDTHH-MM>-<slug>.md`
+and appends one line to `<learn-home>/reports/index.md`. The report names each
+row's bucket, the question that decided it, applied-vs-proposed with the
+`route` predicate's reason, and the PR URL if one opened. The index is the
+reason you never need a session id to find last night's retros — `ls` the
+directory or grep the index. A run that stops at its budget bound writes a
+partial report rather than nothing, so the watcher files a real outcome instead
+of `timeout`.
+
 **All of `learn:` is read from the watcher's launch cwd**, via the same
 `loadMerged()` walk every other section uses — the watcher is user-global but
 its config is not. Launching it from a different repo (or from `~`) picks up

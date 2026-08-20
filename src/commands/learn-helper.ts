@@ -11,6 +11,10 @@
 //   listen — the Stop + SessionEnd hook entry point (rtl101). Registered in
 //            `.claude/settings.json`, so it runs at every turn end in every
 //            hooked repo.
+//   report — the durable trace an unattended run leaves (c808b1). Mechanical
+//            because the *location* is the point: an unattended tab's stdout
+//            is not a delivery channel, so the run's decisions go to a fixed
+//            path under the learn home plus an index line.
 //   route  — the apply-vs-propose predicate for an unattended run (c808b1).
 //            Mechanical because it answers a harness fact — which paths hang
 //            on a confirmation prompt an unattended tab cannot accept — not a
@@ -28,11 +32,15 @@
 //       status. A `propose` is a normal, expected answer, and an exit code a
 //       shell reads as failure would make the skill body's `||` arms fire on
 //       the routine path.
+//   0 — always for `report`, including an unreadable payload: a run that
+//       cannot report is indistinguishable from a run that hung, so a bad
+//       payload still writes a degraded report (and says so on stderr)
+//       rather than leaving nothing behind.
 //   2 — commander usage error (unknown subcommand; handled by commander).
 //
 // Spec: dev/dev-hfi104-2026-07-24T10:41-devx-learn-skill.md (T4.2),
 //       dev/dev-rtl101-2026-07-30T09:31-listener-nudge-pin.md (T1.4),
-//       dev/dev-c808b1-2026-08-05T11:25-devx-learn-unattended-apply.md (route)
+//       dev/dev-c808b1-2026-08-05T11:25-devx-learn-unattended-apply.md (route, report)
 // Design: _devx/workstreams/harness-fold-in/design.md §Interfaces,
 //         _devx/workstreams/retro-listener/design.md §Interfaces
 
@@ -48,7 +56,12 @@ import {
   handleHookPayload,
   isRetroGuarded,
 } from "../lib/learn/listener.js";
-import type { LearnEnv } from "../lib/learn/queue.js";
+import { type LearnEnv, learnHome } from "../lib/learn/queue.js";
+import {
+  type LearnReport,
+  renderLearnReport,
+  writeLearnReport,
+} from "../lib/learn/report.js";
 import { type LearnRouteOpts, routeLearnPaths } from "../lib/learn/route.js";
 import { sanitizeLearnSlug } from "../lib/learn/slug.js";
 
@@ -89,6 +102,106 @@ export function runLearnRoute(paths: string[], opts: RunLearnRouteOpts = {}): nu
   const out = opts.out ?? ((s) => process.stdout.write(s));
   const result = routeLearnPaths(paths, { repoRoot: opts.repoRoot, home: opts.home });
   out(opts.quiet ? `${result.decision}\n` : `${JSON.stringify(result, null, 2)}\n`);
+  return 0;
+}
+
+export interface RunLearnReportOpts {
+  /** Test seam: route stdout off process.stdout. */
+  out?: (s: string) => void;
+  /** Test seam: route warnings off process.stderr. */
+  err?: (s: string) => void;
+  /** Test seam: stdin reader. Defaults to a blocking read of fd 0. */
+  readInput?: () => string;
+  /** Test seam / override: the learn home. Defaults to `learnHome(env)`. */
+  home?: string;
+  /** Test seam: env consulted for `DEVX_LEARN_HOME`. */
+  env?: LearnEnv;
+  /** Render to stdout without writing anything. */
+  print?: boolean;
+  /** Fallback `finishedAt` when the payload omits it (test seam: the clock). */
+  now?: () => string;
+}
+
+/**
+ * Coerce whatever arrived into a `LearnReport`. Deliberately permissive: the
+ * caller is a skill body assembling JSON by hand at the end of a long run, and
+ * every field it gets wrong is better absorbed here than turned into a missing
+ * report. A payload that is not an object at all becomes an empty report whose
+ * note says the payload was unreadable — still a report.
+ */
+export function coerceLearnReport(payload: unknown, note?: string): LearnReport {
+  const base = payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as Record<string, unknown>) : {};
+  const rows = Array.isArray(base.rows) ? base.rows : [];
+  const report: LearnReport = {
+    ...(base as LearnReport),
+    rows: rows.filter((r): r is Record<string, unknown> => !!r && typeof r === "object").map((r) => ({
+      learning: typeof r.learning === "string" ? r.learning : "",
+      evidence: typeof r.evidence === "string" ? r.evidence : undefined,
+      bucket: typeof r.bucket === "string" ? r.bucket : undefined,
+      question: typeof r.question === "string" ? r.question : undefined,
+      disposition:
+        r.disposition === "applied" || r.disposition === "proposed" ? r.disposition : "dropped",
+      reason: typeof r.reason === "string" ? r.reason : undefined,
+      paths: Array.isArray(r.paths) ? r.paths.filter((p): p is string => typeof p === "string") : undefined,
+      artifact: typeof r.artifact === "string" ? r.artifact : undefined,
+    })),
+  };
+  if (note) report.note = note;
+  return report;
+}
+
+/**
+ * `devx learn-helper report [file]` — write the run report for a `/devx-learn`
+ * pass and print the path it landed at.
+ *
+ * The payload is JSON on stdin (or in `file`). Nothing about it is trusted:
+ * unknown fields pass through, wrong-typed ones are dropped, and an
+ * unparseable payload still produces a report — the AC is that *every*
+ * unattended run leaves one, and the run that fumbled its own JSON is
+ * precisely the one worth a trace.
+ */
+export function runLearnReport(file: string | undefined, opts: RunLearnReportOpts = {}): number {
+  const out = opts.out ?? ((s) => process.stdout.write(s));
+  const err = opts.err ?? ((s) => process.stderr.write(s));
+
+  let raw: string;
+  try {
+    raw = file && file !== "-" ? readFileSync(file, "utf8") : (opts.readInput ?? readStdin)();
+  } catch {
+    raw = "";
+  }
+
+  let parsed: unknown;
+  let note: string | undefined;
+  // Slug override for the degraded path: the note is a sentence, and a
+  // filename built from it is unreadable exactly where legibility matters.
+  let slug: string | undefined;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    parsed = undefined;
+    note = "report payload was unreadable — writing a degraded report so the run still leaves a trace";
+    slug = "unreadable-payload";
+    err(`devx learn-helper report: ${note}\n`);
+  }
+
+  const report = coerceLearnReport(parsed, note);
+  if (!report.finishedAt) report.finishedAt = (opts.now ?? (() => new Date().toISOString()))();
+  if (!report.mode) report.mode = "unattended";
+
+  if (opts.print) {
+    out(renderLearnReport(report));
+    return 0;
+  }
+
+  const home = opts.home ?? learnHome(opts.env ?? process.env);
+  try {
+    const written = writeLearnReport(report, { home, slug });
+    out(`${written.path}\n`);
+  } catch (writeErr) {
+    err(`devx learn-helper report: could not write the report (${String(writeErr)})\n`);
+    out(renderLearnReport(report));
+  }
   return 0;
 }
 
@@ -181,6 +294,18 @@ export function register(program: Command): void {
         repoRoot: options.repoRoot,
       });
       if (code !== 0) process.exit(code);
+    });
+
+  sub
+    .command("report")
+    .description(
+      "Write the run report for a /devx-learn pass (JSON payload on stdin or in <file>) to <learn-home>/reports/ plus a line in reports/index.md, and print the path. Written on every path including the found-nothing one; exit 0 always.",
+    )
+    .argument("[file]", "JSON payload file ('-' or omitted reads stdin)")
+    .option("--home <dir>", "learn home to write under (default: $DEVX_LEARN_HOME or ~/.claude/devx)")
+    .option("--print", "render the report to stdout instead of writing it")
+    .action((file: string | undefined, options: { home?: string; print?: boolean }) => {
+      runLearnReport(file, { home: options.home, print: options.print });
     });
 
   sub
