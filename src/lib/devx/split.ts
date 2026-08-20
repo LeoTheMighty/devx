@@ -50,6 +50,7 @@ import {
   formatTimestamps,
   insertDevMdRow,
 } from "../plan/emit-retro-story.js";
+import { isNullishScalar } from "../frontmatter-scalar.js";
 import { generateHash } from "../engine/workstream.js";
 import {
   CLAIMABLE_TYPES,
@@ -487,7 +488,9 @@ function appendSpawned(content: string, followUpHash: string): string {
       // absorbed into the flow rewrite or they'd be orphaned as invalid
       // YAML under the rewritten key (review BH-6).
       const scalar = fmLines[spawnedIdx].replace(/^spawned:\s*/, "").trim();
-      const entries = scalar === "" || scalar === "null" ? [] : [scalar];
+      // Every YAML null spelling means "no children yet", not a child named
+      // `~` (debug-7b3e2a — the same null-as-string class).
+      const entries = isNullishScalar(scalar) ? [] : [scalar];
       let blockEnd = spawnedIdx + 1;
       while (blockEnd < fmLines.length) {
         const itemMatch = /^\s+-\s+(\S.*)$/.exec(fmLines[blockEnd]);

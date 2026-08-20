@@ -1084,6 +1084,28 @@ describe("parseFrontmatterValue — quote/comment/CRLF tolerance", () => {
     const body = `---\r\nbranch: feat/dev-foo\r\n---\r\nbody\r\n`;
     expect(parseFrontmatterValue(body, "branch")).toBe("feat/dev-foo");
   });
+
+  // debug-7b3e2a: `branch: null` used to read as the STRING "null", which
+  // routed check #5 to `branch-mismatch` ("has branch='null'") instead of the
+  // accurate `spec-missing-branch-frontmatter`, and printed "owner null" in
+  // `devx next`'s blocked report.
+  it("reads YAML's null spellings as null", () => {
+    for (const spelling of ["null", "Null", "NULL", "~", ""]) {
+      expect(parseFrontmatterValue(`---\nbranch: ${spelling}\n---\n`, "branch")).toBe(
+        null,
+      );
+    }
+  });
+
+  it("keeps a quoted \"null\" as the literal string (YAML says it is one)", () => {
+    expect(parseFrontmatterValue(`---\nbranch: "null"\n---\n`, "branch")).toBe("null");
+  });
+
+  it("reads a null spelling behind an inline comment as null", () => {
+    expect(
+      parseFrontmatterValue(`---\nbranch: null  # not claimed yet\n---\n`, "branch"),
+    ).toBe(null);
+  });
 });
 
 describe("parseEpicDevMdRows — code-fence handling", () => {

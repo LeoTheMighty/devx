@@ -31,6 +31,8 @@
 
 import { join } from "node:path";
 
+import { isNullishScalar } from "../frontmatter-scalar.js";
+
 import { type ClaimFs, findSpecForHash, realFs } from "./claim.js";
 import { specLockOwner } from "./spec-lock.js";
 
@@ -152,15 +154,34 @@ export function parseLockOwner(lockBody: string): string | null {
  *   - trailing `# comment` (YAML requires whitespace before the `#`)
  *   - single or double quoting
  *   - a fully-qualified `refs/heads/<name>`
- *   - the null-ish spellings `null` / `~` / empty
+ *   - the null-ish spellings `null` / `Null` / `NULL` / `~` / empty
+ *
+ * The null test runs BEFORE quote-stripping (debug-7b3e2a): YAML says a
+ * quoted `"null"` is a string and a bare `null` is a null, and a reader that
+ * collapses the two disagrees with the file it is reading.
  */
 function normalizeBranchScalar(raw: string): string | null {
-  let v = raw.replace(/\s+#.*$/, "").trim();
+  const stripped = raw.replace(/\s+#.*$/, "").trim();
+  if (isNullishScalar(stripped)) return null;
+  let v = stripped;
   const quoted = /^(["'])([\s\S]*)\1$/.exec(v);
   if (quoted) v = quoted[2].trim();
   if (v.startsWith("refs/heads/")) v = v.slice("refs/heads/".length);
-  if (v === "" || v === "null" || v === "~") return null;
-  return v;
+  return v === "" ? null : v;
+}
+
+/**
+ * Normalize an `owner:` / `status:` frontmatter scalar.
+ *
+ * debug-7b3e2a: these two used to null out only on the EMPTY value, so a spec
+ * carrying the explicit-unset `owner: null` parsed as the string "null" —
+ * which then failed the session-token comparison in verifyClaim and reported
+ * a spurious `specOwnerDrift`, and rendered as `'null'` where the
+ * nothing-to-resume message meant to say `<absent>`.
+ */
+function normalizePlainScalar(raw: string): string | null {
+  const v = raw.trim();
+  return isNullishScalar(v) ? null : v;
 }
 
 export interface SpecClaimFields {
@@ -191,14 +212,12 @@ export function parseSpecClaimFields(content: string): SpecClaimFields {
   for (const line of fmMatch[1].split("\n")) {
     const ownerMatch = /^owner:\s*(.*)$/.exec(line);
     if (ownerMatch) {
-      const v = ownerMatch[1].trim();
-      owner = v === "" ? null : v;
+      owner = normalizePlainScalar(ownerMatch[1]);
       continue;
     }
     const statusMatch = /^status:\s*(.*)$/.exec(line);
     if (statusMatch) {
-      const v = statusMatch[1].trim();
-      status = v === "" ? null : v;
+      status = normalizePlainScalar(statusMatch[1]);
       continue;
     }
     const branchMatch = /^branch:\s*(.*)$/.exec(line);

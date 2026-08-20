@@ -50,6 +50,7 @@ import {
 import { join } from "node:path";
 
 import { blankFencedLines } from "../backlog/parse.js";
+import { isNullishScalar } from "../frontmatter-scalar.js";
 import {
   type DeriveBranchConfig,
   deriveBranch,
@@ -765,6 +766,13 @@ export function parseFrontmatterValue(
   const hashIdx = raw.indexOf(" #");
   if (hashIdx !== -1) raw = raw.slice(0, hashIdx);
   raw = raw.trim();
+  // YAML's null spellings read as null, not as their own text (debug-7b3e2a).
+  // Tested BEFORE quote-stripping so a quoted `"null"` stays the string YAML
+  // says it is. Without this, `branch: null` reported as a `branch-mismatch`
+  // against deriveBranch instead of the accurate
+  // `spec-missing-branch-frontmatter`, and `owner: null` rendered as
+  // "owner null" in `devx next`'s blocked report.
+  if (isNullishScalar(raw)) return null;
   // Strip surrounding YAML quotes. `"feat/dev-foo"` → `feat/dev-foo`.
   if (
     (raw.startsWith('"') && raw.endsWith('"')) ||
