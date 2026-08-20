@@ -4,7 +4,8 @@ type: debug
 created: 2026-08-05T14:05:00-06:00
 title: "await-remote-ci reads a CONFLICTING PR as `empty` — 50min of blind probes for a self-serviceable state"
 from: dev/dev-sgr105-2026-08-02T13:57-mark-done-phase8.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-08-19T19-39-20-483-20983
 ---
 
 ## Goal
@@ -52,3 +53,4 @@ the branch and pushing triggered CI immediately.
 - 2026-08-05T14:05 — filed from the sgr105 resume session (root cause of
   INTERVIEW Q#16; PR #118 unblocked by merging origin/main into the
   branch).
+- 2026-08-20T08:37:53-06:00 — claimed by /devx in session /devx-loop-2026-08-19T19-39-20-483-20983
