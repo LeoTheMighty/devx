@@ -6,8 +6,8 @@ title: merge-gate reads YAML `branch: null` as the string "null" and queries a b
 from: debug/debug-4d1a9c-2026-08-07T11:37-claim-commits-on-current-branch-not-base.md
 plan: null
 spawned: []
-status: ready
-owner: null
+status: in-progress
+owner: /devx-loop-2026-08-19T19-39-20-483-20983
 branch: null
 ---
 
@@ -112,3 +112,4 @@ than what it says) — a hand-rolled parser disagreeing with YAML about what
 - 2026-08-07T12:40 — filed from the `4d1a9c` Phase 8, where it blocked the
   merge of a green CI'd PR. Root-caused to `merge-gate.ts:111` +
   `merge-gate.ts:333` and proven by flipping the single field.
+- 2026-08-20T09:13:31-06:00 — claimed by /devx in session /devx-loop-2026-08-19T19-39-20-483-20983
