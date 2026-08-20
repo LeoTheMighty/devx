@@ -4,7 +4,7 @@ type: debug
 created: 2026-08-05T12:20:00-06:00
 title: "Unparseable spec frontmatter reads as an empty block everywhere — 5 shipped specs were invisible to the engine"
 from: dev/dev-sgr106-2026-08-02T13:57-graph-backfill.md
-status: in-progress
+status: blocked
 owner: /devx-loop-2026-08-19T19-39-20-483-20983
 ---
 
@@ -78,3 +78,4 @@ unquoted title goes invisible again, silently.
 - 2026-08-05T12:20 — filed from sgr106 Phase 4/Phase 5 (the attended backfill
   run surfaced it; 5 data instances fixed there, class left open here).
 - 2026-08-19T23:39:52-06:00 — claimed by /devx in session /devx-loop-2026-08-19T19-39-20-483-20983
+- 2026-08-20T14:37:51.285Z — [FAIL] loop abandoned 9f24c7: push failed (commit preserved locally): ssh_dispatch_run_fatal: Connection to 140.82.114.3 port 22: Broken pipe; worktree preserved at .worktrees/debug-9f24c7
