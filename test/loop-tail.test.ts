@@ -120,6 +120,120 @@ function withWorkflows(): void {
   writeFileSync(join(repoRoot, ".github", "workflows", "devx-ci.yml"), "name: ci\n", "utf8");
 }
 
+describe("defaultTail — transient gh failures (debug-d7e8e5)", () => {
+  const GRAPHQL_401 =
+    "HTTP 401: Requires authentication (https://api.github.com/graphql)";
+
+  /** Wrap a script so the FIRST call matching `match` fails with `stderr`. */
+  function flakeOnce(
+    script: Script,
+    match: (cmd: string, args: string[]) => boolean,
+    stderr = GRAPHQL_401,
+  ): Script {
+    let fired = false;
+    return {
+      respond: (cmd, args) => {
+        if (!fired && match(cmd, args)) {
+          fired = true;
+          return { exitCode: 1, stderr };
+        }
+        return script.respond(cmd, args);
+      },
+    };
+  }
+
+  const noSleepRetry = { sleep: () => {} };
+
+  it("rides out a 401 on the CI probe instead of stranding a green PR", async () => {
+    withWorkflows();
+    const { exec, calls } = scriptedExec(
+      flakeOnce(ghHappyPath(), (cmd, args) => cmd === "gh" && args[0] === "run"),
+    );
+    const lines: string[] = [];
+    const r = await defaultTail(
+      ITEM,
+      ctx(exec, { ghRetry: noSleepRetry, out: (l) => lines.push(l) }),
+    );
+    expect(r.outcome).toBe("merged");
+    expect(calls.filter((c) => c.cmd === "gh" && c.args[0] === "run")).toHaveLength(2);
+    expect(lines.some((l) => l.includes("transient gh failure"))).toBe(true);
+  });
+
+  it("rides out a 401 on the hold check rather than failing safe to blocked", async () => {
+    withWorkflows();
+    const { exec, calls } = scriptedExec(
+      flakeOnce(
+        ghHappyPath(),
+        (cmd, args) => cmd === "gh" && args[1] === "view" && args.includes("comments,reviews"),
+      ),
+    );
+    const r = await defaultTail(ITEM, ctx(exec, { ghRetry: noSleepRetry }));
+    expect(r.outcome).toBe("merged");
+    expect(
+      calls.filter((c) => c.cmd === "gh" && c.args.includes("comments,reviews")),
+    ).toHaveLength(2);
+  });
+
+  it("pre-fix behavior: the same 401 hands the item off (ghRetry: false)", async () => {
+    withWorkflows();
+    const { exec } = scriptedExec(
+      flakeOnce(ghHappyPath(), (cmd, args) => cmd === "gh" && args[0] === "run"),
+    );
+    const r = await defaultTail(ITEM, ctx(exec, { ghRetry: false }));
+    expect(r.outcome).toBe("handed-off");
+    if (r.outcome === "handed-off") {
+      expect(r.kind).toBe("handed-off-failure");
+      expect(r.detail).toContain("CI probe failed");
+    }
+  });
+
+  it("wraps the hold check exactly once — budgets must not compound", async () => {
+    withWorkflows();
+    const { exec, calls } = scriptedExec({
+      respond: (cmd, args) =>
+        cmd === "gh" && args.includes("comments,reviews")
+          ? { exitCode: 1, stderr: GRAPHQL_401 }
+          : ghHappyPath().respond(cmd, args),
+    });
+    // A sustained outage on the hold read costs 3 attempts, not 3 × 3: the
+    // tail hands checkHold an already-wrapped seam.
+    const r = await defaultTail(ITEM, ctx(exec, { ghRetry: noSleepRetry }));
+    expect(
+      calls.filter((c) => c.cmd === "gh" && c.args.includes("comments,reviews")),
+    ).toHaveLength(3);
+    // An unreadable hold state still fails SAFE — YOLO ignores comments, so
+    // this one merges; the assertion that matters here is the call count.
+    expect(r.outcome).toBe("merged");
+  });
+
+  it("never retries the merge itself — a mutation must not double-fire", async () => {
+    withWorkflows();
+    const { exec, calls } = scriptedExec(
+      flakeOnce(
+        ghHappyPath({ viewState: "OPEN" }),
+        (cmd, args) => cmd === "gh" && args[1] === "merge",
+      ),
+    );
+    const r = await defaultTail(ITEM, ctx(exec, { ghRetry: noSleepRetry }));
+    expect(r.outcome).toBe("handed-off");
+    expect(calls.filter((c) => c.cmd === "gh" && c.args[1] === "merge")).toHaveLength(1);
+  });
+
+  it("gives up on a sustained outage (bounded attempts, no infinite loop)", async () => {
+    withWorkflows();
+    const { exec, calls } = scriptedExec({
+      respond: (cmd, args) =>
+        cmd === "gh" && args[0] === "run"
+          ? { exitCode: 1, stderr: GRAPHQL_401 }
+          : ghHappyPath().respond(cmd, args),
+    });
+    const r = await defaultTail(ITEM, ctx(exec, { ghRetry: noSleepRetry }));
+    expect(r.outcome).toBe("handed-off");
+    if (r.outcome === "handed-off") expect(r.kind).toBe("handed-off-failure");
+    expect(calls.filter((c) => c.cmd === "gh" && c.args[0] === "run")).toHaveLength(3);
+  });
+});
+
 describe("defaultTail", () => {
   it("green CI + YOLO gate ⇒ creates the PR and merges (squash + delete-branch)", async () => {
     withWorkflows();

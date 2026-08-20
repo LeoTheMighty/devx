@@ -53,6 +53,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
+import { withGhRetry } from "../gh-retry.js";
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -187,6 +189,11 @@ const realExec: Exec = (cmd, args, opts) => {
     exitCode: r.status,
   };
 };
+
+// debug-d7e8e5: the probe's `gh run list` is a read; a transient 401/5xx
+// used to raise GhProbeError and be reported as an operator-actionable gh
+// outage. Retry it a bounded number of times first.
+const retryingExec: Exec = withGhRetry(realExec);
 
 const realSleep = (ms: number): Promise<void> =>
   new Promise((resolve) => {
@@ -484,7 +491,7 @@ export async function probeRemoteCi(
   }
 
   const fs: AwaitRemoteCiFs = { ...realFs, ...(opts.fs ?? {}) };
-  const exec = opts.exec ?? realExec;
+  const exec = opts.exec ?? retryingExec;
 
   // Step 1: workflows present?
   if (!hasWorkflowFiles(fs, opts.repoRoot)) {
@@ -661,7 +668,7 @@ export async function awaitRemoteCi(
   // user wants to track the new HEAD they re-invoke /devx Phase 7.
   let pinnedOpts = opts;
   if (opts.headSha === undefined) {
-    const exec = opts.exec ?? realExec;
+    const exec = opts.exec ?? retryingExec;
     const r = exec("git", ["rev-parse", branch], { cwd: opts.repoRoot });
     if (r.exitCode !== 0) {
       throw new GhProbeError(

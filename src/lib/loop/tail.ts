@@ -39,6 +39,7 @@ import { GhProbeError, hasWorkflowFiles, parseGhRunList } from "../devx/await-re
 import { checkHold } from "../devx/hold-check.js";
 import { mergeGateFor, type GateSignals } from "../merge-gate.js";
 import { type Exec } from "./git-tx.js";
+import { type GhRetryOpts, withGhRetry } from "../gh-retry.js";
 
 export interface TailItem {
   hash: string;
@@ -65,6 +66,9 @@ export interface TailCtx {
   ciPollMs?: number;
   ciTimeoutMs?: number;
   out?: (line: string) => void;
+  /** Transient-gh-failure retry tuning (debug-d7e8e5). `false` opts out;
+   *  tests pass a no-op `sleep` to stay off the wall clock. */
+  ghRetry?: GhRetryOpts | false;
 }
 
 /**
@@ -101,8 +105,24 @@ export type TailFn = (item: TailItem, ctx: TailCtx) => Promise<TailOutcome>;
 // ---------------------------------------------------------------------------
 
 export async function defaultTail(item: TailItem, ctx: TailCtx): Promise<TailOutcome> {
-  const exec = ctx.exec;
   const out = ctx.out ?? (() => {});
+  // debug-d7e8e5: ONE wrap for the whole unattended gh surface below (pr
+  // list/view, run list, and the checkHold seam). A single transient GraphQL
+  // 401 — GitHub served them for ~half of all calls over a 15-minute window
+  // on 2026-08-05 — used to hand the item off as an outage-shaped failure and
+  // strand a green PR overnight. The wrapper retries reads only; `gh pr
+  // create` and `gh pr merge` below are excluded by its allowlist, so a
+  // retried call can never double-open or double-merge.
+  const retryLog: GhRetryOpts = {
+    onRetry: ({ cmd, args, attempt, delayMs, result }) =>
+      out(
+        `loop: transient gh failure (attempt ${attempt}, exit ${result.exitCode}) on \`${cmd} ${args.slice(0, 2).join(" ")}\` — retrying in ${delayMs}ms: ${firstLine(result.stderr) || "(no stderr)"}`,
+      ),
+  };
+  const exec =
+    ctx.ghRetry === false
+      ? ctx.exec
+      : withGhRetry(ctx.exec, { ...retryLog, ...ctx.ghRetry });
   const pollMs = ctx.ciPollMs ?? 30_000;
   const timeoutMs = ctx.ciTimeoutMs ?? 45 * 60_000;
 
@@ -254,6 +274,11 @@ export async function defaultTail(item: TailItem, ctx: TailCtx): Promise<TailOut
       const hold = checkHold(prNumber, {
         repoRoot: ctx.repoRoot,
         exec: (cmd, args, o) => exec(cmd, args, o),
+        // `exec` is already the retry-wrapped seam built at the top of this
+        // function; letting checkHold wrap it a second time would compound
+        // the budgets (3 × 3 attempts, ~16s of backoff) on a sustained
+        // outage. One wrap per call site.
+        retry: false,
       });
       if (hold.hold) {
         return handOff("handed-off-ok", prUrl, prNumber, `hold requested: ${hold.reason ?? "devx: hold"}`);

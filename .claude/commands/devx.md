@@ -386,6 +386,12 @@ check-hold <pr-number>`. Exit 3 (`devx: hold` comment or an unresolved
 requested-changes review) → do NOT merge; surface the hold reason, address
 it via `/devx address <pr>`, and only merge after the hold is lifted
 (comment resolved / re-review). Exit 0 → silence merges, as YOLO always has.
+Exit 2 is a gh failure — note that `check-hold`, `merge-gate` and the
+remote-CI probe now retry transient GitHub errors internally (GraphQL 401,
+5xx/429, network — 3 attempts, exponential backoff; debug-d7e8e5), so an
+exit 2 means a *sustained* outage or a real auth problem, not the one-off
+flake it used to mean. Don't hand-retry the command in a loop: check
+`gh auth status` and stop.
 
 **YOLO is fully autonomous — /devx merges its own PRs. Period.** No "leave it open for human review," no "prior PRs were merged manually so I'll follow that pattern." If the user wants to gate merges on human approval they bump out of YOLO. The only thing that stops a YOLO merge is the merge gate itself returning `merge:false`. Past PRs being merged by a human is irrelevant — that's an artifact of `/devx` not doing its job, not a project policy.
 
@@ -401,7 +407,7 @@ It emits a JSON decision to stdout and exits with one of three codes:
 |---|---|---|
 | `0` | `{"merge": true}` | Run the merge command below. |
 | `1` | `{"merge": false, "reason": "...", "advice": [...]}` | Dispatch on `advice` array — see "Advice routing" below. Always append the gate's `reason` to the spec status log first. |
-| `2` | `{"merge": false, "reason": "no PR yet" \| "no spec file …" \| "gh signal collection failed"}` (no `advice` field — exit 2 is investigation, not a routing decision) | Investigation: missing PR → re-check Phase 7 actually opened one; missing/ambiguous spec → check the hash against the backlog (typo, or a duplicated hash across type dirs); `gh` failure → check auth (`gh auth status`) and re-run. Do NOT write a MANUAL.md row for exit 2 — these are transient. Never auto-merge on exit 2 — uncertainty defaults to safe. |
+| `2` | `{"merge": false, "reason": "no PR yet" \| "no spec file …" \| "gh signal collection failed"}` (no `advice` field — exit 2 is investigation, not a routing decision) | Investigation: missing PR → re-check Phase 7 actually opened one; missing/ambiguous spec → check the hash against the backlog (typo, or a duplicated hash across type dirs); `gh` failure → check auth (`gh auth status`) and re-run, but note the CLI already retried transient errors 3× with backoff (debug-d7e8e5), so a bare re-run is unlikely to help. Do NOT write a MANUAL.md row for exit 2 — these are transient. Never auto-merge on exit 2 — uncertainty defaults to safe. |
 
 Pass `--coverage <pct>` (a value in `[0, 1]`) iff Phase 5's coverage runner produced one — under YOLO/BETA the gate ignores it; under PROD the gate uses it.
 
