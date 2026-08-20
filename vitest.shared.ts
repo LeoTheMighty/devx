@@ -29,6 +29,15 @@
 // — after which measured caps (debug-5c8b21) become enforceable and therefore
 // meaningful.
 //
+// STATUS OF FAULT (2), 2026-08-20 (debug-5e1a77). The async seam now EXISTS —
+// `realExecAsync` in src/lib/exec.ts — and `test/exec-async-seam.test.ts`
+// demonstrates both halves in this suite: a test that overruns a 200ms cap
+// through the async seam is interrupted at the cap, and the same overrun
+// through `realExec` runs 10x past it and reports PASSED. What is NOT done is
+// ADOPTION: the blocking call sites still use `realExec`, so every file listed
+// below still blocks and its caps are still unenforceable. Membership here is
+// unchanged until a file stops calling a sync child-process API.
+//
 // Membership is MECHANICAL, not a timing snapshot: a file belongs here iff it
 // references a synchronous child-process API. `test/vitest-split.test.ts`
 // pins the list against the tree so a new sync-blocking file cannot silently
@@ -80,6 +89,7 @@ export const SYNC_BLOCKING_TESTS = [
   "test/devx-claim.test.ts",
   "test/eject-noop.test.ts",
   "test/engine-workstream.test.ts",
+  "test/exec-async-seam.test.ts",
   "test/graph-cli.test.ts",
   "test/graph-regen.test.ts",
   "test/init-cli-scaffold.test.ts",

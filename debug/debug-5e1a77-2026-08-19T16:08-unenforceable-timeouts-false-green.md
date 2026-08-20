@@ -99,6 +99,17 @@ is for.
   (after c81f04, 74632d, 5c8b21, ecdcda) and the first one where the failure
   mode is a false PASS rather than a red build.
 - 2026-08-20T10:00:54-06:00 — claimed by /devx in session /devx-loop-2026-08-19T19-39-20-483-20983
+- 2026-08-20T16:08:37.876Z — loop iteration 1: Added the async exec seam (realExecAsync) to src/lib/exec.ts with an in-suite, negative-control-verified proof that a test's declared timeout now actually fires — closing AC 1.
+  - Change: src/lib/exec.ts grew realExecAsync + the ExecAsync type: spawn-based, behaviourally identical to realExec (env merged over process.env, spawn failures and signal kills resolve as exitCode 127 rather than rejecting, 64MB output ceiling enforced by hand with kill-and-127 instead of silent truncation), with stdin set to `ignore` for hang-immunity on the overnight-loop paths
+  - Change: test/exec-async-seam.test.ts (11 tests, 2.3s) proves AC 1: an it.fails test that overruns a 200ms cap through the async seam stays green only when the cap fires, paired with an ordinary test asserting the body was abandoned mid-flight rather than merely throwing; the sync counterpart running 10x past the same cap and reporting PASSED is pinned in the same file as the live fault
+  - Change: Six parity tests plus a maxBuffer-overflow test cover the seam's contract against realExec's observable behaviour
+  - Change: vitest.shared.ts registers the new file in SYNC_BLOCKING_TESTS and its fault-(2) note now states that the seam exists but ADOPTION has not happened — the listed files still call realExec and their caps are still unenforceable
+  - Learning: vitest 2.1's `it.fails` DOES convert a timeout into a pass, which makes an overrunning test expressible inside the green suite — no nested vitest child run is needed for AC 1's proof. Verified with a negative control: swapping realExecAsync for realExec turns the file red (2 failures), so the proof is not vacuous.
+  - Learning: The abandoned child of a timed-out async exec does not extend the file's wall-clock — it runs in the background overlapping the remaining tests. A 3s sleep abandoned at 200ms cost the file nothing, so margin on the 'was it the cap or the child finishing?' assertion is free.
+  - Learning: The maxBuffer overflow branch is cheap to test for real: `yes | head -c 70000000` trips the 64MB ceiling in 63ms, so that kill path is covered rather than left to production.
+  - Learning: The parallel pass has grown since the spec's sweep — 117 files / 2631 tests (25s) vs the recorded 113 / 2540. AC 3's re-sweep numbers will not be line-comparable to the LAST SWEEP block without noting that.
+  - Learning: The repo has no linter; the local gate is `tsc --noEmit` + build + the two vitest passes.
+  - Learning: AC 2's real choke point is git-tx's single `git()` helper — making it async is contagious through driver.ts, preflight.ts, report.ts and tail.ts, and that ripple (not exec.ts) is where the remaining iteration budget will go.
 
 ## Links
 

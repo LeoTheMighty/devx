@@ -10,7 +10,7 @@
 //
 // Spec: dev/dev-tur101-2026-08-04T10:00-retire-review-tour.md
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 export interface ExecResult {
   stdout: string;
@@ -24,6 +24,14 @@ export type Exec = (
   opts?: { cwd?: string; env?: Record<string, string> },
 ) => ExecResult;
 
+/** Output ceiling, shared by both seams. Diffs and `gh` JSON payloads can be
+ *  large, and the 1MB default truncates them silently. The sync seam hands
+ *  this to spawnSync, which applies it PER STREAM; the async seam enforces it
+ *  by hand (`spawn` has no maxBuffer) against stdout+stderr COMBINED. The
+ *  difference only shows up above 64MB on one stream, where neither answer is
+ *  useful anyway. */
+const MAX_BUFFER = 64 * 1024 * 1024;
+
 export const realExec: Exec = (cmd, args, opts) => {
   const r = spawnSync(cmd, args, {
     encoding: "utf8",
@@ -32,7 +40,7 @@ export const realExec: Exec = (cmd, args, opts) => {
     env: opts?.env ? { ...process.env, ...opts.env } : undefined,
     // Diffs and `gh` JSON payloads can be large; the default 1MB maxBuffer
     // truncates silently.
-    maxBuffer: 64 * 1024 * 1024,
+    maxBuffer: MAX_BUFFER,
   });
   if (r.error || r.status === null) {
     const detail = r.error ? r.error.message : "spawn returned null status";
@@ -44,6 +52,120 @@ export const realExec: Exec = (cmd, args, opts) => {
     exitCode: r.status,
   };
 };
+
+/**
+ * The async twin of {@link Exec}. Same arguments, same result shape — the
+ * only difference is that the caller `await`s it.
+ */
+export type ExecAsync = (
+  cmd: string,
+  args: string[],
+  opts?: { cwd?: string; env?: Record<string, string> },
+) => Promise<ExecResult>;
+
+/**
+ * Non-blocking `realExec`.
+ *
+ * WHY THIS EXISTS (debug-5e1a77). `realExec` is `spawnSync`, so for the whole
+ * duration of a child process it holds the event loop. Nothing else in the
+ * process gets a tick — including `setTimeout` callbacks. That is not just a
+ * latency cost: `@vitest/runner` implements a test's timeout as a promise race
+ * against a timer, so a test whose work is a chain of `spawnSync` calls can
+ * run 44x past its declared cap and still report PASSED, because the timer in
+ * that race never fires. A cap that cannot fire is not enforcement at any
+ * value. `test/exec-async-seam.test.ts` demonstrates both halves of that.
+ *
+ * Behavioural contract — deliberately identical to `realExec`, so a call site
+ * can move over by adding `await` and nothing else:
+ *
+ *   * `opts.env` is MERGED over `process.env`, never a replacement (git needs
+ *     HOME/PATH), and only when the caller passes one.
+ *   * A spawn failure (ENOENT, EACCES) or a child killed by a signal resolves
+ *     — it does not reject — with `exitCode: 127` and the reason in `stderr`.
+ *     Callers branch on `exitCode`; a rejection would be a new failure mode
+ *     for every one of them.
+ *   * Output over {@link MAX_BUFFER} kills the child and reports 127 rather
+ *     than silently truncating.
+ *
+ * One intentional difference: stdin is `ignore` (an immediate EOF) rather than
+ * an open pipe. An open pipe is a hang pathway — a child that reads stdin would
+ * wait forever for a parent that never writes — and hang-immunity is mandatory
+ * on the overnight-loop paths this seam serves (`v2/04-overnight-loop.md` §4).
+ * `spawnSync` with no `input` gives the child the same immediate EOF.
+ */
+export const realExecAsync: ExecAsync = (cmd, args, opts) =>
+  new Promise<ExecResult>((resolve) => {
+    let settled = false;
+    const finish = (r: ExecResult): void => {
+      if (settled) return;
+      settled = true;
+      resolve(r);
+    };
+
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(cmd, args, {
+        cwd: opts?.cwd,
+        env: opts?.env ? { ...process.env, ...opts.env } : undefined,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (e) {
+      // spawn throws synchronously only on bad arguments; a missing binary
+      // arrives as an 'error' event. Both are the same answer to the caller.
+      finish({ stdout: "", stderr: (e as Error).message, exitCode: 127 });
+      return;
+    }
+
+    let stdout = "";
+    let stderr = "";
+    let captured = 0;
+    let overflowed = false;
+
+    const capture = (which: "stdout" | "stderr") => (chunk: string) => {
+      if (overflowed) return;
+      captured += Buffer.byteLength(chunk, "utf8");
+      if (captured > MAX_BUFFER) {
+        overflowed = true;
+        child.kill();
+        finish({
+          stdout,
+          stderr: `output exceeded maxBuffer (${MAX_BUFFER} bytes)`,
+          exitCode: 127,
+        });
+        return;
+      }
+      if (which === "stdout") stdout += chunk;
+      else stderr += chunk;
+    };
+
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", capture("stdout"));
+    child.stderr?.on("data", capture("stderr"));
+    // A killed child can leave its pipes to emit EPIPE/ECONNRESET. An
+    // unhandled 'error' on a stream is a thrown exception, so absorb them:
+    // the child's own 'error'/'close' below is the result-bearing signal.
+    child.stdout?.on("error", () => {});
+    child.stderr?.on("error", () => {});
+
+    child.on("error", (e) => {
+      finish({ stdout, stderr: e.message, exitCode: 127 });
+    });
+
+    // 'close' rather than 'exit': 'exit' can arrive before the stdio streams
+    // have flushed, which would truncate the output of a fast, chatty child.
+    child.on("close", (code, signal) => {
+      if (code === null) {
+        finish({
+          stdout,
+          stderr: stderr === "" ? `terminated by signal ${signal}` : stderr,
+          exitCode: 127,
+        });
+        return;
+      }
+      finish({ stdout, stderr, exitCode: code });
+    });
+  });
 
 /**
  * Is `relPath` excluded by the repo's ignore rules?
