@@ -539,9 +539,15 @@ mode:
   vocabulary, append-only disciplines. An automated pass that can loosen the
   gates it is judged by is a system with no floor.
 
-Rows in either carve-out become a durable artifact (a `docs/updates/` entry
-plus a backlog row, or a `~/.claude/devx/proposals/` file for personal ones)
-rather than tab stdout nobody reads.
+Rows in either carve-out become a durable artifact rather than tab stdout
+nobody reads: `devx learn-helper propose` (JSON payload on stdin) writes
+`docs/updates/<date>-<slug>.md` plus a `dev/` spec and a `DEV.md` row under
+`### Learn proposals`, so the proposal enters the normal backlog and `devx
+next` can offer it. `--target personal` is outlet 4's arm: it writes
+`<learn-home>/proposals/<date>-<slug>.md` instead — still never committed and
+still never applied to any settings file, just recoverable. The three repo
+writes land as one transaction (doc → spec → backlog, restore-on-partial), so
+a backlog row never points at a spec that was not written.
 
 **Every unattended run leaves a report**, including the one that mined nothing:
 `devx learn-helper report` writes `<learn-home>/reports/<YYYY-MM-DDTHH-MM>-<slug>.md`

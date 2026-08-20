@@ -15,6 +15,12 @@
 //            because the *location* is the point: an unattended tab's stdout
 //            is not a delivery channel, so the run's decisions go to a fixed
 //            path under the learn home plus an index line.
+//   propose — the durable artifact a `propose` row leaves (c808b1).
+//            Mechanical because the *destination* is the point, same as
+//            `report`: a wedge-path or locked-machinery row that only got
+//            printed dies with the tab, so it is written to
+//            `docs/updates/` + a `dev/` spec + a `DEV.md` row (repo), or to
+//            `<learn-home>/proposals/` (outlet 4, never committed).
 //   route  — the apply-vs-propose predicate for an unattended run (c808b1).
 //            Mechanical because it answers a harness fact — which paths hang
 //            on a confirmation prompt an unattended tab cannot accept — not a
@@ -36,11 +42,16 @@
 //       cannot report is indistinguishable from a run that hung, so a bad
 //       payload still writes a degraded report (and says so on stderr)
 //       rather than leaving nothing behind.
+//   0 — for `propose` when the artifact landed; the printed paths are the
+//       result. 1 when the write failed, because unlike `report` there is no
+//       degraded form worth keeping: a proposal that half-landed would leave
+//       a DEV.md row pointing at nothing, and the caller must know to retry
+//       or fall back to the report row.
 //   2 — commander usage error (unknown subcommand; handled by commander).
 //
 // Spec: dev/dev-hfi104-2026-07-24T10:41-devx-learn-skill.md (T4.2),
 //       dev/dev-rtl101-2026-07-30T09:31-listener-nudge-pin.md (T1.4),
-//       dev/dev-c808b1-2026-08-05T11:25-devx-learn-unattended-apply.md (route, report)
+//       dev/dev-c808b1-2026-08-05T11:25-devx-learn-unattended-apply.md (route, report, propose)
 // Design: _devx/workstreams/harness-fold-in/design.md §Interfaces,
 //         _devx/workstreams/retro-listener/design.md §Interfaces
 
@@ -57,6 +68,11 @@ import {
   isRetroGuarded,
 } from "../lib/learn/listener.js";
 import { type LearnEnv, learnHome } from "../lib/learn/queue.js";
+import {
+  type LearnProposal,
+  writePersonalProposal,
+  writeRepoProposal,
+} from "../lib/learn/propose.js";
 import {
   type LearnReport,
   renderLearnReport,
@@ -205,6 +221,109 @@ export function runLearnReport(file: string | undefined, opts: RunLearnReportOpt
   return 0;
 }
 
+export interface RunLearnProposeOpts {
+  /** Test seam: route stdout off process.stdout. */
+  out?: (s: string) => void;
+  /** Test seam: route errors off process.stderr. */
+  err?: (s: string) => void;
+  /** Test seam: stdin reader. Defaults to a blocking read of fd 0. */
+  readInput?: () => string;
+  /** `personal` writes outlet-4's snippet under the learn home; `repo`
+   *  (default) files the doc + spec + backlog row. */
+  target?: "repo" | "personal";
+  /** Repo root for the `repo` target. Defaults to the process cwd. */
+  repoRoot?: string;
+  /** Learn home for the `personal` target. */
+  home?: string;
+  /** Test seam: env consulted for `DEVX_LEARN_HOME`. */
+  env?: LearnEnv;
+  /** Test seam: the clock. */
+  now?: () => Date;
+}
+
+/**
+ * Coerce whatever arrived into a `LearnProposal`. Permissive for the same
+ * reason `coerceLearnReport` is: the caller is a skill body assembling JSON at
+ * the end of a long run, and a fumbled field must not be the reason a row the
+ * run refused to apply also fails to get written down.
+ *
+ * A missing title is the one field with a real consequence (it is the slug
+ * source), so it degrades to a named fallback rather than an empty string.
+ */
+export function coerceLearnProposal(payload: unknown): LearnProposal {
+  const base =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? (payload as Record<string, unknown>)
+      : {};
+  const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
+  return {
+    title: str(base.title) ?? "unnamed learn proposal",
+    evidence: str(base.evidence),
+    bucket: str(base.bucket),
+    question: str(base.question),
+    reason: str(base.reason),
+    change: str(base.change),
+    sessionId: str(base.sessionId),
+    locked: base.locked === true,
+    paths: Array.isArray(base.paths)
+      ? base.paths.filter((p): p is string => typeof p === "string")
+      : undefined,
+  };
+}
+
+/**
+ * `devx learn-helper propose [file]` — write the durable artifact for one row
+ * an unattended run may not apply, and print where it landed.
+ *
+ * Prints one path per line (`repo` prints the doc, the spec and the backlog
+ * file) so the caller can paste them straight into the run report's `artifact`
+ * column without re-deriving any of them — a rendered artifact is never
+ * scraped to rebuild its own inputs.
+ */
+export function runLearnPropose(file: string | undefined, opts: RunLearnProposeOpts = {}): number {
+  const out = opts.out ?? ((s) => process.stdout.write(s));
+  const err = opts.err ?? ((s) => process.stderr.write(s));
+
+  let raw: string;
+  try {
+    raw = file && file !== "-" ? readFileSync(file, "utf8") : (opts.readInput ?? readStdin)();
+  } catch {
+    raw = "";
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    err("devx learn-helper propose: payload was not readable JSON — nothing written\n");
+    return 1;
+  }
+
+  const proposal = coerceLearnProposal(parsed);
+  const finishedAt = (opts.now ?? (() => new Date()))().toISOString();
+
+  try {
+    if (opts.target === "personal") {
+      const path = writePersonalProposal(proposal, {
+        home: opts.home ?? learnHome(opts.env ?? process.env),
+        finishedAt,
+      });
+      out(`${path}\n`);
+      return 0;
+    }
+    const written = writeRepoProposal(proposal, {
+      repoRoot: opts.repoRoot ?? process.cwd(),
+      finishedAt,
+      now: opts.now,
+    });
+    out(`${written.docPath}\n${written.specPath}\n${written.devMdPath}\n`);
+    return 0;
+  } catch (writeErr) {
+    err(`devx learn-helper propose: could not write the proposal (${String(writeErr)})\n`);
+    return 1;
+  }
+}
+
 export interface RunLearnListenOpts {
   /** Test seam: the hook environment (`DEVX_RETRO`, `DEVX_LEARN_HOME`). */
   env?: LearnEnv;
@@ -306,6 +425,24 @@ export function register(program: Command): void {
     .option("--print", "render the report to stdout instead of writing it")
     .action((file: string | undefined, options: { home?: string; print?: boolean }) => {
       runLearnReport(file, { home: options.home, print: options.print });
+    });
+
+  sub
+    .command("propose")
+    .description(
+      "Write the durable artifact for a /devx-learn row that may not be applied (JSON payload on stdin or in <file>): docs/updates/<date>-<slug>.md + a dev/ spec + a DEV.md row, or --target personal for an outlet-4 snippet under the learn home. Prints the paths written.",
+    )
+    .argument("[file]", "JSON payload file ('-' or omitted reads stdin)")
+    .option("--target <kind>", "'repo' (doc + spec + backlog row) or 'personal' (outlet 4)", "repo")
+    .option("--repo-root <dir>", "repo root to write under (default: cwd)")
+    .option("--home <dir>", "learn home for --target personal (default: $DEVX_LEARN_HOME or ~/.claude/devx)")
+    .action((file: string | undefined, options: { target?: string; repoRoot?: string; home?: string }) => {
+      const code = runLearnPropose(file, {
+        target: options.target === "personal" ? "personal" : "repo",
+        repoRoot: options.repoRoot,
+        home: options.home,
+      });
+      if (code !== 0) process.exit(code);
     });
 
   sub
