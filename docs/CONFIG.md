@@ -537,7 +537,13 @@ mode:
   harness fact, not a policy, so no knob relaxes it.
 - **locked machinery** — gate logic, refusal paths, cascade rules, verdict
   vocabulary, append-only disciplines. An automated pass that can loosen the
-  gates it is judged by is a system with no floor.
+  gates it is judged by is a system with no floor. No path pattern recognizes
+  these (the same file holds loosenable and unloosenable lines), so the run
+  declares it: `devx learn-helper route --locked <path…>` returns `propose`
+  with the locked-machinery reason even when every path is ordinary `src/`
+  code, and stamps that reason on every per-path verdict so nothing downstream
+  can find an `apply`. The flag reads fail-closed — anything but
+  `false`/absent counts as locked.
 
 Rows in either carve-out become a durable artifact rather than tab stdout
 nobody reads: `devx learn-helper propose` (JSON payload on stdin) writes

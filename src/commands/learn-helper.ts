@@ -113,10 +113,21 @@ export interface RunLearnRouteOpts extends LearnRouteOpts {
  * Zero paths is not a usage error: a row whose "proposed change" never named a
  * file is exactly the row an unattended run must not apply, so it routes to
  * `propose` like any other unappliable row.
+ *
+ * `--locked` is the skill body's own guard walk speaking: the row would loosen
+ * gate logic, a refusal path, a cascade rule, verdict vocabulary, or an
+ * append-only discipline. It forces `propose` over every path rule, so a
+ * locked row whose files are all ordinary `src/` code still cannot be applied.
  */
 export function runLearnRoute(paths: string[], opts: RunLearnRouteOpts = {}): number {
   const out = opts.out ?? ((s) => process.stdout.write(s));
-  const result = routeLearnPaths(paths, { repoRoot: opts.repoRoot, home: opts.home });
+  const result = routeLearnPaths(paths, {
+    repoRoot: opts.repoRoot,
+    home: opts.home,
+    // Threaded rather than defaulted: `--locked` is the caller's content-level
+    // verdict, and omitting it must mean "not locked", not "unknown".
+    locked: opts.locked,
+  });
   out(opts.quiet ? `${result.decision}\n` : `${JSON.stringify(result, null, 2)}\n`);
   return 0;
 }
@@ -402,15 +413,20 @@ export function register(program: Command): void {
   sub
     .command("route")
     .description(
-      "Apply-vs-propose predicate for an unattended /devx-learn run: prints {decision, reason, verdicts} JSON for the given paths. `propose` for anything an unattended tab cannot edit (.claude/**, skills/**, settings.json, outside the repo); `apply` otherwise. Exit 0 either way.",
+      "Apply-vs-propose predicate for an unattended /devx-learn run: prints {decision, reason, verdicts} JSON for the given paths. `propose` for anything an unattended tab cannot edit (.claude/**, skills/**, settings.json, outside the repo) and for --locked rows; `apply` otherwise. Exit 0 either way.",
     )
     .argument("[paths...]", "paths the row would change (repo-relative or absolute)")
     .option("-q, --quiet", "print only the decision word")
     .option("--repo-root <dir>", "repo root the paths are relative to (default: cwd)")
-    .action((paths: string[], options: { quiet?: boolean; repoRoot?: string }) => {
+    .option(
+      "--locked",
+      "the row would loosen locked machinery (gate logic, refusal paths, cascade rules, verdict vocabulary, append-only disciplines) — forces `propose` regardless of the paths",
+    )
+    .action((paths: string[], options: { quiet?: boolean; repoRoot?: string; locked?: boolean }) => {
       const code = runLearnRoute(paths ?? [], {
         quiet: options.quiet,
         repoRoot: options.repoRoot,
+        locked: options.locked,
       });
       if (code !== 0) process.exit(code);
     });

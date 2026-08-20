@@ -14,11 +14,17 @@
 // row costs the whole retro (the tab hangs, the watcher files `timeout`, and
 // no other row from that session ever lands either).
 //
-// It answers *"can this edit be made in an unattended tab?"* — nothing else.
-// Locked machinery (gate logic, refusal paths, cascade rules, verdict
-// vocabulary, append-only disciplines) is a separate, content-level guard that
-// stays proposal-only in every mode; a `apply` verdict from here is a
-// statement about the path, never a licence to loosen what lives at it.
+// It answers *"can this edit be made in an unattended tab?"* — plus one thing
+// the caller must tell it. Locked machinery (gate logic, refusal paths,
+// cascade rules, verdict vocabulary, append-only disciplines) is a
+// *content*-level guard: no path pattern identifies it, because the same file
+// holds loosenable and unloosenable lines. So the caller passes `locked` when
+// its own walk says the row would relax one of those, and the predicate turns
+// that into a `propose` verdict that outranks every path rule — including the
+// paths that would otherwise have come back `apply`. Two reasons it lives here
+// rather than staying prose: a skill body that merely *states* the carve-out
+// can drift, and a consumer scanning per-path verdicts must not be able to
+// find an `apply` anywhere in a locked row's result.
 //
 // Spec: dev/dev-c808b1-2026-08-05T11:25-devx-learn-unattended-apply.md
 
@@ -48,6 +54,17 @@ export interface LearnRouteOpts {
   repoRoot?: string;
   /** Test seam for `~` expansion + the home-directory arm. */
   home?: string;
+  /**
+   * The row would loosen locked machinery — gate logic, refusal paths, cascade
+   * rules, verdict vocabulary, or an append-only discipline. Set by the caller
+   * (the skill body's own guard walk), never inferred from the path, and
+   * strictly one-directional: it can only force `propose`, and nothing else in
+   * this module can turn it back into `apply`. Read fail-closed — any value
+   * other than `false`/`undefined`/`null` counts as locked, because a caller
+   * that fumbles *this* flag's type is the one caller whose mistake must not
+   * end in an apply.
+   */
+  locked?: boolean;
 }
 
 /** Filenames that are settings no matter where they live. `settings.local.json`
@@ -61,6 +78,18 @@ const HARNESS_DIR = ".claude";
 /** The packaged mirror of `.claude/commands/`. Same gate, different name; only
  *  meaningful as the *first* segment (a `src/skills/` module is ordinary code). */
 const MIRROR_DIR = "skills";
+
+/** The one reason that outranks every path rule. Named once so the row-level
+ *  and per-path verdicts cannot drift into two different explanations. */
+export const LOCKED_MACHINERY_REASON =
+  "locked machinery (gate logic, refusal paths, cascade rules, verdict vocabulary, append-only disciplines) is proposal-only in every mode — an automated pass that can loosen the gates it is judged by has no floor";
+
+/** Fail-closed truthiness for the `locked` flag: anything that is not exactly
+ *  `false`/`undefined`/`null` counts as locked. A caller that passes `"no"` or
+ *  `0` has a bug, and the safe reading of that bug is "do not apply". */
+export function isLockedFlag(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== false;
+}
 
 /** Split a path into segments on either separator, dropping the noise `.`/``
  *  segments a hand-written path picks up (`./docs/x.md`, `docs//x.md`). */
@@ -80,6 +109,7 @@ function expandTilde(p: string, home: string): string {
  * First match wins, widest wedge first — the same shape as the skill body's
  * outlet walk, so the two read the same way:
  *
+ *   0. locked machinery           → propose (content-level; outranks the rest)
  *   1. nothing to edit            → propose
  *   2. outside the repo           → propose (nothing outside it can land on a
  *                                   branch; `~/.claude/**` arrives here first)
@@ -94,6 +124,11 @@ export function routeLearnPath(path: string, opts: LearnRouteOpts = {}): LearnRo
   const raw = typeof path === "string" ? path : "";
 
   const propose = (reason: string): LearnRouteVerdict => ({ path: raw, decision: "propose", reason });
+
+  // Rule 0 — the caller's content-level guard. Checked before the path is even
+  // parsed: a locked row's verdict must not depend on whether its file happens
+  // to sit somewhere the harness would have allowed.
+  if (isLockedFlag(opts.locked)) return propose(LOCKED_MACHINERY_REASON);
 
   if (raw.trim() === "") {
     return propose("empty path — an unattended run cannot apply a change with no file behind it");
@@ -141,6 +176,14 @@ export function routeLearnPath(path: string, opts: LearnRouteOpts = {}): LearnRo
  */
 export function routeLearnPaths(paths: readonly string[], opts: LearnRouteOpts = {}): LearnRouteResult {
   const verdicts = paths.map((p) => routeLearnPath(p, opts));
+
+  // A locked row proposes whatever its paths look like, and proposes even with
+  // no paths at all — the guard is about what the change *says*, not where it
+  // lands. Every per-path verdict already carries the same reason (rule 0), so
+  // there is no `apply` anywhere in the result for a consumer to pick up.
+  if (isLockedFlag(opts.locked)) {
+    return { decision: "propose", reason: LOCKED_MACHINERY_REASON, verdicts };
+  }
 
   if (verdicts.length === 0) {
     return {

@@ -16,7 +16,12 @@
 import { describe, expect, it } from "vitest";
 
 import { runLearnRoute } from "../src/commands/learn-helper.js";
-import { routeLearnPath, routeLearnPaths } from "../src/lib/learn/route.js";
+import {
+  isLockedFlag,
+  LOCKED_MACHINERY_REASON,
+  routeLearnPath,
+  routeLearnPaths,
+} from "../src/lib/learn/route.js";
 
 const REPO = "/tmp/fixture-repo";
 const HOME = "/tmp/fixture-home";
@@ -139,5 +144,101 @@ describe("c808b1 — `devx learn-helper route` CLI surface", () => {
     const { code, text } = capture([]);
     expect(code).toBe(0);
     expect(JSON.parse(text).decision).toBe("propose");
+  });
+});
+
+// c808b1 — the locked-machinery carve-out, the half of the predicate no path
+// pattern can decide. The spec's test AC is "a locked-machinery row never
+// reaches the apply path", and the failure it guards against is specific: a
+// row that loosens gate logic lives in ordinary `src/` code, so every path
+// rule says `apply` and only the caller's declaration stands between an
+// unattended run and a system with no floor.
+describe("c808b1 — locked machinery outranks every path rule", () => {
+  // Deliberately the most apply-looking change set in the repo.
+  const ORDINARY = ["src/lib/merge-gate.ts", "test/merge-gate.test.ts", "docs/MODES.md"];
+
+  it("a locked row of otherwise-appliable paths proposes", () => {
+    const unlocked = routeLearnPaths(ORDINARY, OPTS);
+    expect(unlocked.decision).toBe("apply"); // control: the paths alone say apply
+
+    const locked = routeLearnPaths(ORDINARY, { ...OPTS, locked: true });
+    expect(locked.decision).toBe("propose");
+    expect(locked.reason).toBe(LOCKED_MACHINERY_REASON);
+  });
+
+  it("leaves no `apply` verdict anywhere for a consumer to pick up", () => {
+    // A report renderer or a retry that scans per-path verdicts must not find
+    // a green light on any single path of a locked row.
+    const locked = routeLearnPaths(ORDINARY, { ...OPTS, locked: true });
+    expect(locked.verdicts).toHaveLength(ORDINARY.length);
+    expect(locked.verdicts.every((v) => v.decision === "propose")).toBe(true);
+    expect(locked.verdicts.every((v) => v.reason === LOCKED_MACHINERY_REASON)).toBe(true);
+    expect(JSON.stringify(locked)).not.toMatch(/"decision": ?"apply"/);
+  });
+
+  it("proposes a locked row with no paths at all", () => {
+    const locked = routeLearnPaths([], { ...OPTS, locked: true });
+    expect(locked.decision).toBe("propose");
+    expect(locked.reason).toBe(LOCKED_MACHINERY_REASON);
+  });
+
+  it("single-path routing honors the flag too — the guard has no bypass door", () => {
+    const v = routeLearnPath("src/lib/merge-gate.ts", { ...OPTS, locked: true });
+    expect(v.decision).toBe("propose");
+    expect(v.reason).toBe(LOCKED_MACHINERY_REASON);
+    expect(v.path).toBe("src/lib/merge-gate.ts");
+  });
+
+  it("is one-directional — `locked` can never turn a wedge path into an apply", () => {
+    for (const path of [".claude/commands/devx.md", "skills/devx.md", "~/.claude/settings.json"]) {
+      for (const locked of [true, false, undefined]) {
+        expect(routeLearnPath(path, { ...OPTS, locked }).decision, `${path} locked=${locked}`).toBe(
+          "propose",
+        );
+      }
+    }
+  });
+
+  it("omitted / false means not locked, so ordinary rows still apply", () => {
+    expect(routeLearnPaths(ORDINARY, { ...OPTS, locked: false }).decision).toBe("apply");
+    expect(routeLearnPaths(ORDINARY, { ...OPTS, locked: undefined }).decision).toBe("apply");
+  });
+
+  // The flag arrives from a skill body assembling CLI args by hand. Every way
+  // of fumbling its type has to land on `propose`: this is the one flag whose
+  // caller-bug must not end in an unattended apply.
+  it("reads fail-closed — any non-false value counts as locked", () => {
+    for (const value of [true, "true", "false", "no", 0, 1, "", [], {}]) {
+      expect(isLockedFlag(value), JSON.stringify(value)).toBe(true);
+    }
+    for (const value of [false, undefined, null]) {
+      expect(isLockedFlag(value), String(value)).toBe(false);
+    }
+  });
+
+  it("fail-closed reading reaches the routing functions, not just the helper", () => {
+    const bogus = routeLearnPaths(ORDINARY, { ...OPTS, locked: "no" as unknown as boolean });
+    expect(bogus.decision).toBe("propose");
+  });
+});
+
+describe("c808b1 — `devx learn-helper route --locked` CLI surface", () => {
+  function capture(paths: string[], opts: { quiet?: boolean; locked?: boolean } = {}) {
+    let text = "";
+    const code = runLearnRoute(paths, { ...OPTS, ...opts, out: (s) => (text += s) });
+    return { code, text };
+  }
+
+  it("--locked forces propose on an ordinary change set and exits 0", () => {
+    const { code, text } = capture(["src/lib/merge-gate.ts"], { locked: true });
+    expect(code).toBe(0);
+    const parsed = JSON.parse(text);
+    expect(parsed.decision).toBe("propose");
+    expect(parsed.reason).toBe(LOCKED_MACHINERY_REASON);
+  });
+
+  it("--locked --quiet prints just the decision word", () => {
+    expect(capture(["src/lib/merge-gate.ts"], { locked: true, quiet: true }).text).toBe("propose\n");
+    expect(capture(["src/lib/merge-gate.ts"], { quiet: true }).text).toBe("apply\n");
   });
 });
