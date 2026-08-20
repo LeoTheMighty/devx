@@ -4,7 +4,7 @@ type: dev
 created: 2026-08-05T11:25:00-06:00
 title: /devx-learn unattended mode — route and apply lessons without a human
 from: null
-status: in-progress
+status: done
 owner: /devx-loop-2026-08-19T19-39-20-483-20983
 blocked_by: [28b267]
 branch: null
@@ -172,6 +172,8 @@ because it is the one change that can silently disable the rest.
   - Learning: The E-6 acceptance script (`npx tsx _devx/workstreams/harness-fold-in/evals/E-6_learn-skill-guards.ts`) is a second, independent consumer of the skill body's guard sections and runs in ~1s — cheaper than the suite for any skill-body edit, and it would have caught a guard-section rename the vitest pins missed.
   - Learning: The locked-machinery carve-out is the one guard no path pattern can decide (the same file holds loosenable and unloosenable lines), which is why it had to become a caller-declared flag rather than another rule inside routeLearnPath — and why the flag has to force every per-path verdict to `propose`, not just the row decision, or a consumer scanning verdicts finds a green light.
   - Learning: The skill body grew ~4.5KB and the S-1 prose budget gate (test/engine-prose-budget.test.ts, engine.prose_budget_kb = 60KB) still passes — but it measures templates + stage skill sections, and INTERVIEW Q#9 already records the full surface at 64.2KB, so further skill-body growth in this area is not free.
+- 2026-08-20T18:52:49.226Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-08-20T18:52:49.226Z — merged via devx loop — PR https://github.com/LeoTheMighty/devx/pull/136
 
 ## Links
 
