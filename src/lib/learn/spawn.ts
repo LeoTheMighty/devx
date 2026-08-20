@@ -99,6 +99,37 @@ export function shellQuote(value: string): string {
 }
 
 /**
+ * Env var the wrapper exports for an unattended retro, and the skill-body
+ * argument it passes alongside it (c808b1).
+ *
+ * BOTH, not either: the argument is what `/devx-learn`'s own body branches on,
+ * and the env var is what every *subprocess* the retro runs inherits — a
+ * `devx learn-helper …` call, a hook, a nested tool — none of which can see
+ * the slash command's arguments. Dropping the env var would make the mode
+ * invisible one process down; dropping the argument would make the skill body
+ * read process state to learn how it was invoked.
+ *
+ * `DEVX_RETRO=1` stays on both paths regardless: it is the self-trigger bound
+ * (E-2), and an unattended retro is exactly the run with nobody to notice the
+ * loop.
+ */
+export const LEARN_UNATTENDED_ENV = "DEVX_LEARN_UNATTENDED";
+export const LEARN_UNATTENDED_ARG = "unattended";
+
+/** Per-spawn mode inputs for {@link buildWrapperCommand}. */
+export interface WrapperOpts {
+  /**
+   * Run the retro in unattended mode: auto-prune instead of waiting for a
+   * human to strike rows, and route outlet-1 rows through the apply path.
+   *
+   * Default OFF, and off is the *attended* contract verbatim — an unspecified
+   * spawn must never widen what the retro may do (`learn.auto_apply` is the
+   * only thing that turns it on, and it is itself default-false).
+   */
+  unattended?: boolean;
+}
+
+/**
  * The shell the spawned tab runs: the forked retro, wrapped so its completion
  * marker lands on every exit path and carries the exit status.
  *
@@ -112,7 +143,12 @@ export function shellQuote(value: string): string {
  * The trap body is single-quote-free on purpose: it is itself embedded in a
  * single-quoted shell word, and E-9 pins its shape with a `[^']*` match.
  */
-export function buildWrapperCommand(sid: string, cwd: string, markerPath: string): string {
+export function buildWrapperCommand(
+  sid: string,
+  cwd: string,
+  markerPath: string,
+  opts: WrapperOpts = {},
+): string {
   // Before any command construction — not after, and not "it's quoted anyway".
   assertSpawnableSessionId(sid);
   if (typeof cwd !== "string") {
@@ -122,12 +158,19 @@ export function buildWrapperCommand(sid: string, cwd: string, markerPath: string
     throw new Error(`markerPath must be a non-empty string; got ${JSON.stringify(markerPath)}`);
   }
 
+  // Both halves of the mode, or neither — see LEARN_UNATTENDED_ENV. The
+  // slash-command argument is a bare word from a constant, never session text,
+  // so it needs no quoting of its own inside the double-quoted word.
+  const unattended = opts.unattended === true;
+  const slash = unattended ? `/devx-learn ${LEARN_UNATTENDED_ARG}` : "/devx-learn";
+  const modeEnv = unattended ? `${LEARN_UNATTENDED_ENV}=1 ` : "";
+
   return [
     `M=${shellQuote(markerPath)}; `,
     'w() { printf "%s" "$1" > "$M.tmp" && mv "$M.tmp" "$M"; }; ',
     `trap 'rc=$?; w "$rc"; exit "$rc"' HUP INT TERM; `,
     `cd ${shellQuote(cwd)} || { w error-cd; exit 1; }; `,
-    `DEVX_RETRO=1 claude --resume ${shellQuote(sid)} --fork-session "/devx-learn"; `,
+    `DEVX_RETRO=1 ${modeEnv}claude --resume ${shellQuote(sid)} --fork-session "${slash}"; `,
     'w "$?"',
   ].join("");
 }
@@ -227,7 +270,7 @@ function defaultRun(capture: boolean): RunFn {
  */
 export type SpawnResult = "spawned" | "manual" | "dry-run" | "error-spawn";
 
-export interface SpawnRetroOpts {
+export interface SpawnRetroOpts extends WrapperOpts {
   /** Print-only: no marker directory, no stale-marker unlink, no window. */
   dryRun?: boolean;
   /** Arm-selection inputs. Default to the real environment. */
@@ -282,7 +325,7 @@ export function spawnRetro(
 
   const log = opts.log ?? ((line: string) => process.stdout.write(`${line}\n`));
   const marker = doneMarkerPath(home, sid);
-  const cmd = buildWrapperCommand(sid, cwd, marker);
+  const cmd = buildWrapperCommand(sid, cwd, marker, { unattended: opts.unattended });
 
   if (opts.dryRun) {
     log(`  [dry-run] would spawn: ${cmd}`);

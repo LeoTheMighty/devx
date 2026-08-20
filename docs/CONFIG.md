@@ -506,7 +506,13 @@ entries an already-running watcher walked past, so restart it.
 
 **`auto_apply` (c808b1) is what makes a spawned retro worth spawning.**
 `auto_allow` gets the watcher past the `[y/N]` gate; `auto_apply` decides what
-the retro it spawns is allowed to do when it gets there. Off, an unattended
+the retro it spawns is allowed to do when it gets there. Set it in config, or
+pass `devx learn-watch --auto-apply` to force it on for one run — same
+one-directional flag as `--auto-allow` (its absence defers to config; turning
+the policy off for a run is a config edit). Mechanically it is the mode the
+spawn hands the retro: `DEVX_LEARN_UNATTENDED=1` in the wrapper's environment
+plus an `unattended` argument on the `/devx-learn` invocation, both of which
+are absent — byte-for-byte — from an attended spawn. Off, an unattended
 `/devx-learn` behaves like the attended one — it prints its evidence table and
 waits for a prune that never comes, until `retro_timeout_minutes` kills the tab
 and every mined lesson goes with it. On, outlet-1 rows whose change set the
@@ -543,7 +549,7 @@ its config is not. Launching it from a different repo (or from `~`) picks up
 that directory's `devx.config.yaml`, or the defaults if there isn't one. This
 is a known wrinkle, not a bug to rediscover: put `auto_allow`, `idle_minutes`,
 and `retro_timeout_minutes` in the config of whatever directory you actually
-launch the watcher from, or pass `--auto-allow` explicitly.
+launch the watcher from, or pass `--auto-allow` / `--auto-apply` explicitly.
 
 **Home precedence — `DEVX_LEARN_HOME` env > `learn.home` > `~/.claude/devx`.**
 The env var wins everywhere and is what tests and hook installs use to redirect

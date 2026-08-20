@@ -854,6 +854,18 @@ export interface DrainPassOpts extends RepoOpts, PromptOpts {
    * arrives) and {@link repoDecision} (or it arrives and is refused).
    */
   autoAllow?: boolean;
+  /**
+   * `learn.auto_apply` (c808b1): spawn the retro in UNATTENDED mode, so it
+   * auto-prunes and routes its outlet-1 rows through the apply path instead of
+   * printing an evidence table into a tab nobody is sitting in front of.
+   *
+   * Strictly separate from {@link DrainPassOpts.autoAllow} — that one decides
+   * whether a window opens at all, this one decides what may happen inside it,
+   * and the second grant is much larger than the first. The drain forwards it
+   * and nothing else: every carve-out (wedge paths, locked machinery) is
+   * enforced inside the retro, not by whether this flag reached the spawn.
+   */
+  autoApply?: boolean;
   /** Readiness window. Default {@link DEFAULT_IDLE_SECONDS}. */
   idleSeconds?: number;
   /** Clock seam (epoch ms) — readiness, `processed_ts`, and the marker bound. */
@@ -966,6 +978,7 @@ export function drainPass(opts: DrainPassOpts): DrainSummary {
   const { home } = opts;
   const dryRun = opts.dryRun === true;
   const autoAllow = opts.autoAllow === true;
+  const autoApply = opts.autoApply === true;
   const log = opts.log ?? ((line: string) => process.stdout.write(`${line}\n`));
   const seen = opts.seen ?? new Set<string>();
   const noted = opts.noted ?? new Set<string>();
@@ -1098,9 +1111,18 @@ export function drainPass(opts: DrainPassOpts): DrainSummary {
       }
     }
 
-    if (!dryRun) log(`  retro for ${entryLabel(entry)} — opening a window`);
+    if (!dryRun) {
+      // The mode is named on the spawn line, not only at startup: a done log
+      // read weeks later has to answer "was THIS retro allowed to open a PR?"
+      // without knowing which config the watcher was launched under.
+      log(
+        `  retro for ${entryLabel(entry)} — opening a window` +
+          (autoApply ? " (unattended: it may apply its findings)" : ""),
+      );
+    }
     const result = spawn(home, entry, {
       dryRun,
+      unattended: autoApply,
       arm: opts.arm,
       env: opts.env,
       platform: opts.platform,

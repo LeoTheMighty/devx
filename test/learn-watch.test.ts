@@ -60,6 +60,8 @@ import {
 import {
   type RunFn,
   type SpawnResult,
+  LEARN_UNATTENDED_ARG,
+  LEARN_UNATTENDED_ENV,
   TMUX_WINDOW_NAME,
   buildWrapperCommand,
   escapeAppleScript,
@@ -1231,6 +1233,43 @@ describe("buildWrapperCommand", () => {
   it("rejects a missing marker path rather than writing to a bare $M", () => {
     expect(() => buildWrapperCommand(REAL_SID, "/tmp", "")).toThrow(/markerPath/);
   });
+
+  // --- unattended mode (c808b1) -------------------------------------------
+
+  it("says nothing about unattended mode by default — attended is the contract", () => {
+    // The default spawn must be BYTE-identical to the pre-c808b1 wrapper: an
+    // unspecified caller (an embedder, an old call site, a future refactor that
+    // drops the opts arg) gets the attended retro, never the one that may open
+    // PRs. Asserted against the literal string, not just the absence of the
+    // env var, so a stray argument would fail here too.
+    expect(cmd()).not.toContain(LEARN_UNATTENDED_ENV);
+    expect(cmd()).toContain(`--fork-session "/devx-learn"`);
+    expect(buildWrapperCommand(REAL_SID, "/repo/a", MARKER, {})).toBe(cmd());
+    expect(buildWrapperCommand(REAL_SID, "/repo/a", MARKER, { unattended: false })).toBe(cmd());
+  });
+
+  it("passes BOTH halves of unattended mode — the arg and the inherited env", () => {
+    const c = buildWrapperCommand(REAL_SID, "/repo/a", MARKER, { unattended: true });
+    // The argument is what the skill body branches on...
+    expect(c).toContain(`--fork-session "/devx-learn ${LEARN_UNATTENDED_ARG}"`);
+    // ...and the env var is what every subprocess the retro runs inherits,
+    // none of which can see the slash command's arguments.
+    expect(c).toContain(`${LEARN_UNATTENDED_ENV}=1`);
+    expect(c.indexOf(`${LEARN_UNATTENDED_ENV}=1`)).toBeLessThan(c.indexOf("claude --resume"));
+  });
+
+  it("keeps DEVX_RETRO=1 in unattended mode — that run is the one with no witness", () => {
+    const c = buildWrapperCommand(REAL_SID, "/repo/a", MARKER, { unattended: true });
+    expect(c.indexOf("DEVX_RETRO=1")).toBeLessThan(c.indexOf("claude --resume"));
+  });
+
+  it("keeps the trap shape and stays valid sh in unattended mode", () => {
+    const c = buildWrapperCommand(REAL_SID, "/tmp/leo's repo", MARKER, { unattended: true });
+    expect(c).toMatch(/trap '[^']*'\s+HUP INT TERM/);
+    expect(c).not.toMatch(/trap '[^']*'[^\n]*EXIT/);
+    const check = spawnSync("sh", ["-n"], { input: c, encoding: "utf8" });
+    expect(check.status, `sh -n rejected the unattended wrapper: ${check.stderr}`).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1514,6 +1553,30 @@ describe("spawnRetro", () => {
       /no cwd/,
     );
     expect(calls).toEqual([]);
+  });
+
+  // --- unattended mode (c808b1) -------------------------------------------
+
+  it("forwards unattended into the command the window actually runs", () => {
+    const { calls, run } = recorder(0);
+    spawnRetro(home, entry, { arm: "tmux", run, unattended: true });
+    // The wrapper is one argv element (tmux hands it to `sh -c` whole), so the
+    // mode has to be IN that string — an opts field the builder ignored would
+    // pass a unit test on spawnRetro and open an attended tab in production.
+    expect(calls[0]?.[1]?.[3]).toContain(`${LEARN_UNATTENDED_ENV}=1`);
+    expect(calls[0]?.[1]?.[3]).toContain(`/devx-learn ${LEARN_UNATTENDED_ARG}`);
+  });
+
+  it("opens an ATTENDED tab when nothing asked for unattended", () => {
+    const { calls, run } = recorder(0);
+    spawnRetro(home, entry, { arm: "tmux", run });
+    expect(calls[0]?.[1]?.[3]).not.toContain(LEARN_UNATTENDED_ENV);
+  });
+
+  it("dry-run prints the unattended command it would have run, not the attended one", () => {
+    const printed: string[] = [];
+    spawnRetro(home, entry, { dryRun: true, unattended: true, log: (l) => printed.push(l) });
+    expect(printed[0]).toContain(`${LEARN_UNATTENDED_ENV}=1`);
   });
 });
 
@@ -2115,6 +2178,56 @@ describe("drainPass", () => {
     expect(summary.printed).toBe(0);
     expect(printed.join("\n")).toContain("would skip");
   });
+
+  // --- auto_apply → unattended spawn (c808b1) ------------------------------
+
+  /** A spawn seam that records the OPTS it was handed, not just the session. */
+  function optsSpawn() {
+    const seen: Array<Record<string, unknown>> = [];
+    const spawn: SpawnFn = (_home, _entry, o) => {
+      seen.push(o as unknown as Record<string, unknown>);
+      return "spawned";
+    };
+    return { seen, spawn };
+  }
+
+  it("autoApply spawns the retro unattended", () => {
+    queueReady(SID_A);
+    const { seen, spawn } = optsSpawn();
+    drainPass(drainOpts({ autoAllow: true, autoApply: true, spawn, awaitMarkerFn: () => "0" }));
+    expect(seen[0]?.unattended).toBe(true);
+  });
+
+  it("hands the spawn unattended: false when auto_apply is off", () => {
+    queueReady(SID_A);
+    const { seen, spawn } = optsSpawn();
+    drainPass(drainOpts({ autoAllow: true, spawn, awaitMarkerFn: () => "0" }));
+    expect(seen[0]?.unattended).toBe(false);
+  });
+
+  it("auto_allow alone never implies auto_apply — the second grant is much larger", () => {
+    // Opening a tab is not the same permission as opening PRs from it. A drain
+    // that inferred one from the other would turn every `nohup` watcher into an
+    // apply path nobody opted into.
+    queueReady(SID_A);
+    const { seen, spawn } = optsSpawn();
+    drainPass(drainOpts({ autoAllow: true, spawn, awaitMarkerFn: () => "0" }));
+    expect(seen[0]?.unattended).toBe(false);
+  });
+
+  it("names the mode on the spawn line so the log answers 'could this open a PR?'", () => {
+    queueReady(SID_A);
+    const { spawn } = optsSpawn();
+    drainPass(drainOpts({ autoAllow: true, autoApply: true, spawn, awaitMarkerFn: () => "0" }));
+    expect(printed.join("\n")).toContain("unattended: it may apply its findings");
+  });
+
+  it("says nothing about applying when the retro is attended", () => {
+    queueReady(SID_A);
+    const { spawn } = optsSpawn();
+    drainPass(drainOpts({ autoAllow: true, spawn, awaitMarkerFn: () => "0" }));
+    expect(printed.join("\n")).not.toContain("unattended");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -2316,6 +2429,50 @@ describe("resolveLearnEnv", () => {
   it("a malformed auto_allow still resolves to the default, not a crash", () => {
     expect(resolveLearnEnv({ merged: { learn: { auto_allow: "yes" } } }).autoAllow).toBe(false);
   });
+
+  // --- auto_apply precedence: flag > config > default (c808b1) -------------
+
+  it("reads auto_apply from the merged config", () => {
+    expect(resolveLearnEnv({ merged: { learn: { auto_apply: true } } }).autoApply).toBe(true);
+    expect(resolveLearnEnv({ merged: { learn: { auto_apply: false } } }).autoApply).toBe(false);
+  });
+
+  it("defaults auto_apply to false with no learn: block", () => {
+    expect(resolveLearnEnv({ merged: {} }).autoApply).toBe(false);
+  });
+
+  it("--auto-apply overrides a config that says false", () => {
+    expect(
+      resolveLearnEnv({ merged: { learn: { auto_apply: false } }, autoApply: true }).autoApply,
+    ).toBe(true);
+  });
+
+  it("an absent --auto-apply defers to config rather than forcing it off", () => {
+    for (const flag of [false, undefined]) {
+      expect(
+        resolveLearnEnv({ merged: { learn: { auto_apply: true } }, autoApply: flag }).autoApply,
+      ).toBe(true);
+    }
+  });
+
+  it("a malformed auto_apply resolves to false — the fail-closed direction", () => {
+    expect(resolveLearnEnv({ merged: { learn: { auto_apply: "yes" } } }).autoApply).toBe(false);
+    expect(resolveLearnEnv({ merged: { learn: { auto_apply: 1 } } }).autoApply).toBe(false);
+  });
+
+  it("resolves the two policies independently, in both directions", () => {
+    // Neither knob may be read off the other: auto_allow opens a tab,
+    // auto_apply lets what's in it open PRs.
+    const allowOnly = resolveLearnEnv({ merged: { learn: { auto_allow: true } } });
+    expect(allowOnly.autoAllow).toBe(true);
+    expect(allowOnly.autoApply).toBe(false);
+    const applyOnly = resolveLearnEnv({ merged: { learn: { auto_apply: true } } });
+    expect(applyOnly.autoAllow).toBe(false);
+    expect(applyOnly.autoApply).toBe(true);
+    // And the flags don't cross either.
+    expect(resolveLearnEnv({ merged: {}, autoAllow: true }).autoApply).toBe(false);
+    expect(resolveLearnEnv({ merged: {}, autoApply: true }).autoAllow).toBe(false);
+  });
 });
 
 describe("runLearnWatch", () => {
@@ -2453,6 +2610,81 @@ describe("runLearnWatch", () => {
     queueReady(REAL_SID);
     await runLearnWatch(cliOpts({ drainPassFn: () => drainSummaryStub() }));
     expect(text()).not.toContain("auto_allow");
+  });
+
+  // --- auto_apply, through the CLI (c808b1) --------------------------------
+
+  it("forwards the resolved auto_apply policy into every drain pass", async () => {
+    let passOpts: Record<string, unknown> = {};
+    await runLearnWatch(
+      cliOpts({
+        merged: { learn: { auto_apply: true } },
+        drainPassFn: (o: Record<string, unknown>) => {
+          passOpts = o;
+          return drainSummaryStub();
+        },
+      }),
+    );
+    expect(passOpts.autoApply).toBe(true);
+  });
+
+  it("--auto-apply reaches the drain even when config says false", async () => {
+    let passOpts: Record<string, unknown> = {};
+    await runLearnWatch(
+      cliOpts({
+        merged: { learn: { auto_apply: false } },
+        autoApply: true,
+        drainPassFn: (o: Record<string, unknown>) => {
+          passOpts = o;
+          return drainSummaryStub();
+        },
+      }),
+    );
+    expect(passOpts.autoApply).toBe(true);
+  });
+
+  it("hands the drain autoApply: false when nothing turned it on", async () => {
+    let passOpts: Record<string, unknown> = {};
+    await runLearnWatch(
+      cliOpts({
+        drainPassFn: (o: Record<string, unknown>) => {
+          passOpts = o;
+          return drainSummaryStub();
+        },
+      }),
+    );
+    expect(passOpts.autoApply).toBe(false);
+  });
+
+  it("--auto-allow does not switch on the apply path", async () => {
+    let passOpts: Record<string, unknown> = {};
+    await runLearnWatch(
+      cliOpts({
+        autoAllow: true,
+        drainPassFn: (o: Record<string, unknown>) => {
+          passOpts = o;
+          return drainSummaryStub();
+        },
+      }),
+    );
+    expect(passOpts.autoAllow).toBe(true);
+    expect(passOpts.autoApply).toBe(false);
+  });
+
+  it("announces the apply policy at startup — a PR list is a bad place to learn it", async () => {
+    queueReady(REAL_SID);
+    await runLearnWatch(
+      cliOpts({ merged: { learn: { auto_apply: true } }, drainPassFn: () => drainSummaryStub() }),
+    );
+    expect(text()).toContain("learn.auto_apply");
+    expect(text()).toContain("may open PRs");
+    expect(text()).toContain("proposal-only");
+  });
+
+  it("says nothing about the apply policy when it is off", async () => {
+    queueReady(REAL_SID);
+    await runLearnWatch(cliOpts({ drainPassFn: () => drainSummaryStub() }));
+    expect(text()).not.toContain("auto_apply");
   });
 
   it("every line it writes carries its own newline — the log is readable while it runs", async () => {
@@ -2767,5 +2999,17 @@ describe("learn-watch registration", () => {
     expect(flag?.defaultValue).toBe(false);
     // The per-run skip-set caveat belongs somewhere a human will read it.
     expect(flag?.description).toContain("restart");
+  });
+
+  it("exposes --auto-apply, defaulting to off (c808b1)", () => {
+    const program = buildProgram();
+    const cmd = program.commands.find((c) => c.name() === "learn-watch");
+    const flag = cmd?.options.find((o) => o.long === "--auto-apply");
+    expect(flag, "devx learn-watch --auto-apply must be registered").toBeDefined();
+    expect(flag?.defaultValue).toBe(false);
+    // The two carve-outs are the first thing a human turning this on asks
+    // about, so they belong in --help rather than only in docs/CONFIG.md.
+    expect(flag?.description).toContain("proposal-only");
+    expect(flag?.description).toContain("NOT implied by --auto-allow");
   });
 });
