@@ -89,6 +89,7 @@ export const SYNC_BLOCKING_TESTS = [
   "test/loop-concurrency.test.ts",
   "test/loop-driver.test.ts",
   "test/loop-git-tx.test.ts",
+  "test/loop-graph-freshness.test.ts",
   "test/loop-instances.test.ts",
   "test/loop-iteration.test.ts",
   "test/loop-preflight.test.ts",

@@ -325,7 +325,32 @@ worktree's config copy). Config then loads from the resolved root.
   (the skill keeps owning commit + push, symmetric with how it owns the
   merge itself). This also structurally closes the `git add -A`
   cleanup-commit incident class (2026-07-29 erratum).
-- *Failure posture*: regen failures inside claim/emission/mark-done are
+- *Loop merge tail* — **fourth host, added 2026-08-19 (debug-8a9586)**.
+  `devx loop`'s own merge tail (`src/lib/loop/driver.ts`,
+  `finalize-merged`) is a state-flipping flow this section originally
+  missed: it predates sgr105 and closes items unattended, so every
+  overnight-merged item left the board stale until the next attended
+  claim happened to refresh it. FR-4 and G-3 were only satisfied on the
+  attended path. The tail now calls `regenerateGraph` after its flips
+  and adds GRAPH.md to the cleanup commit's pathspec, on BOTH branches —
+  the `[x]` done flip and the split-failure `[-]` blocked flip.
+  **Decided (spec AC 4): the tail keeps its own flip sequencing and
+  shares the regen PRIMITIVE, rather than routing through `markDone`.**
+  `markDone`'s single happy path cannot express three things the tail
+  needs — the split-failure branch flips `[-]` blocked (`markDone` has no
+  blocked mode at all — it flips to done or throws on the state
+  mismatch), the dvx103 `phase 4:`
+  fallback line the orchestrator writes because workers may not touch the
+  Status log, and the follow-up spec path carried into the same commit's
+  pathspec. Forcing them in would widen a helper whose whole value is one
+  narrow contract. What sgr105 removed was duplicated *regen* logic, and
+  that is exactly what is shared here: one `regenerateGraph`, one
+  `isGitIgnored` (hoisted to `src/lib/exec.ts` so both hosts ask git the
+  same question), one warn-and-continue posture. Pinned by
+  `test/loop-graph-freshness.test.ts`, the permanent-suite analogue of
+  E-5's `mark-done` leg.
+- *Failure posture*: regen failures inside claim/emission/mark-done/the
+  loop tail are
   **warn-and-continue** — a broken graph render must never abort a state
   flip; the miss surfaces via `--check` (E-2) instead. (E-5's threshold
   binds the success path, not the failure path.)
