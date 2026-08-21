@@ -2,7 +2,7 @@
 hash: 7b3e2a
 type: debug
 created: 2026-08-07T12:40:00-06:00
-title: merge-gate reads YAML `branch: null` as the string "null" and queries a branch by that name, so every unset-branch spec gates as "no PR yet"
+title: 'merge-gate reads YAML `branch: null` as the string "null" and queries a branch by that name, so every unset-branch spec gates as "no PR yet"'
 from: debug/debug-4d1a9c-2026-08-07T11:37-claim-commits-on-current-branch-not-base.md
 plan: null
 spawned: []

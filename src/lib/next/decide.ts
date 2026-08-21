@@ -85,7 +85,15 @@ export interface DriftEntry {
   hash: string;
   /** Backlog file the row lives in ("DEV.md" | "DEBUG.md" | "PLAN.md"). */
   backlog: string;
-  kind: "status-mismatch" | "in-progress-without-lock" | "stale-live-lock";
+  kind:
+    | "status-mismatch"
+    | "in-progress-without-lock"
+    | "stale-live-lock"
+    /** 9f24c7 / D-13: the spec's frontmatter YAML does not parse, so every
+     *  engine field read from it (`status:`, `blocked_by:`, `phase:`, gate
+     *  flags) may be silently absent. Reported, never auto-fixed — the
+     *  reader stays soft (D-13) and this row is how the softness surfaces. */
+    | "frontmatter-unreadable";
   /** Status the backlog row carries (checkbox/Status: text). */
   backlogStatus?: SpecStatus;
   /** Status the spec frontmatter carries. */

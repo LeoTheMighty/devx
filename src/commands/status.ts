@@ -32,7 +32,10 @@ import type { Command } from "commander";
 
 import { attachPhase } from "../lib/help.js";
 import { loadEngineContext } from "../lib/engine/context.js";
-import { readEngineState } from "../lib/engine/frontmatter.js";
+import {
+  frontmatterParseError,
+  readEngineState,
+} from "../lib/engine/frontmatter.js";
 import { renderFocusLine, renderGateSummary } from "../lib/engine/render.js";
 import { loadTodoDoc } from "../lib/engine/todo-truth.js";
 import { heartbeatIntervalMsFrom } from "../lib/loop/config.js";
@@ -85,7 +88,20 @@ export function runStatus(opts: RunStatusOpts = {}): number {
     // Per-entry degradation: an unreadable/renamed-mid-scan spec (or any
     // other per-file failure) skips that entry, never the whole command.
     try {
-      const state = readEngineState(fs.readFile(join(planDir, name)));
+      const content = fs.readFile(join(planDir, name));
+      // 9f24c7 / D-13: say "unreadable" instead of rendering a confident
+      // empty state. The colon shape swallows every key below the bad one,
+      // so `stage: null` here is indistinguishable from a legacy plan spec
+      // and the entry would drop out of the render in total silence. Warn
+      // first, THEN take whichever path the (partial) state implies — the
+      // backtick shape still reads losslessly and must keep rendering.
+      const parseError = frontmatterParseError(content);
+      if (parseError !== null) {
+        err(
+          `devx status: plan/${name}: frontmatter does not parse (${parseError}) — engine state below the error is unreadable; anything rendered for it is partial\n`,
+        );
+      }
+      const state = readEngineState(content);
       // Only engine-managed specs participate (legacy plan specs have no
       // stage — PLAN.md is their surface).
       if (state.stage === null) continue;

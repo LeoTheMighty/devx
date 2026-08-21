@@ -31,7 +31,10 @@ import {
   parseDevMd,
   parseInterviewMd,
 } from "../backlog/parse.js";
-import { readEngineState } from "../engine/frontmatter.js";
+import {
+  frontmatterParseError,
+  readEngineState,
+} from "../engine/frontmatter.js";
 import { type EngineConfig } from "../engine/config.js";
 import { renderFocusLine, renderGateSummary } from "../engine/render.js";
 import { computeTodoDrift } from "../engine/todo.js";
@@ -184,6 +187,25 @@ export function gatherRepoSnapshot(opts: GatherOpts): RepoSnapshot {
           // frontmatter `status: Done` (hand-edit) would otherwise produce
           // phantom drift + a row-4 livelock (adversarial-review EC#3).
           specStatus = readEngineState(specContent).status?.toLowerCase() ?? null;
+          // 9f24c7 / D-13: `readEngineState` fails SOFT, so a spec whose
+          // frontmatter YAML does not parse reads as a confident empty
+          // state — `status: null` here falls through to
+          // `specStatus ?? row.status` below AND suppresses the
+          // status-mismatch drift row on the next line, because that row
+          // only fires when `specStatus !== null`. The backlog row then
+          // silently stands in for a spec nobody can read. Report the
+          // unreadability as its own drift row instead.
+          const parseError = frontmatterParseError(specContent);
+          if (parseError !== null) {
+            drift.push({
+              hash: row.hash,
+              backlog,
+              kind: "frontmatter-unreadable",
+              backlogStatus: row.status,
+              specStatus,
+              detail: `${backlog} row '${row.hash}': spec frontmatter does not parse (${parseError}) — engine state read from it is NOT trustworthy (keys below the error may be silently absent); fix the YAML, usually an unquoted \`title:\` containing ': ' or a leading backtick`,
+            });
+          }
         } catch (e) {
           warnings.push(
             `${backlog} row '${row.hash}': spec unreadable (${errMessage(e)})`,

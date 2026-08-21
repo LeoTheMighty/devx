@@ -11,6 +11,7 @@ import {
   applyEnginePatch,
   ensureEngineFrontmatter,
   findSpecForHashIn,
+  frontmatterParseError,
   readEngineState,
   splitFrontmatter,
   stageIndex,
@@ -114,6 +115,40 @@ describe("readEngineState", () => {
     expect(s.stage).toBeNull();
   });
 
+  it("reads an all-digit hash that YAML types as an integer (debug-9f24c7)", () => {
+    // `hash: 620337` — six hex chars that happen to all be digits. toJS()
+    // returns the NUMBER 620337, which the string guard used to reject, so
+    // the spec read as hashless.
+    expect(readEngineState("---\nhash: 620337\ntype: debug\n---\nbody\n").hash).toBe(
+      "620337",
+    );
+  });
+
+  it("does not corrupt a hash YAML would re-type lossily", () => {
+    // The reason the fix reads raw source instead of String(number):
+    // 012345 → 12345 and 0x1234 → 4660 would each resolve to a DIFFERENT
+    // spec than the file the bytes came from.
+    expect(readEngineState("---\nhash: 012345\n---\nbody\n").hash).toBe("012345");
+    expect(readEngineState("---\nhash: 0x1234\n---\nbody\n").hash).toBe("0x1234");
+    expect(readEngineState("---\nhash: 1e5\n---\nbody\n").hash).toBe("1e5");
+  });
+
+  it("still reads a quoted hash through the normal path", () => {
+    expect(readEngineState('---\nhash: "494590"\n---\nbody\n').hash).toBe("494590");
+    expect(readEngineState("---\nhash: 'abc123'\n---\nbody\n").hash).toBe("abc123");
+  });
+
+  it("a missing or empty hash is still null", () => {
+    expect(readEngineState("---\ntype: dev\n---\nbody\n").hash).toBeNull();
+    expect(readEngineState("---\nhash:\ntype: dev\n---\nbody\n").hash).toBeNull();
+    expect(readEngineState('---\nhash: ""\n---\nbody\n').hash).toBeNull();
+  });
+
+  it("a non-scalar hash does not leak a node into the state", () => {
+    expect(readEngineState("---\nhash: [a, b]\n---\nbody\n").hash).toBeNull();
+    expect(readEngineState("---\nhash:\n  a: b\n---\nbody\n").hash).toBeNull();
+  });
+
   it("tolerates a scalar blocked_by", () => {
     const s = readEngineState("---\nblocked_by: q7\n---\nbody\n");
     expect(s.blockedBy).toEqual(["q7"]);
@@ -128,6 +163,153 @@ describe("readEngineState", () => {
   it("returns pure defaults on malformed YAML frontmatter", () => {
     const s = readEngineState("---\n[:::\n---\nbody\n");
     expect(s.hash).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// debug-9f24c7 AC 1 — the silent-loss repro.
+//
+// An unquoted `title:` carrying a bare `: ` or a leading backtick makes the
+// whole frontmatter block a YAML *error*, but `parseDocument().toJS()` does
+// NOT throw on either — it hands back a plausible-looking object. So
+// readEngineState's `catch` never fires and the caller gets a confident,
+// WRONG EngineState rather than the all-defaults one. The two shapes fail
+// differently, and neither is "empty":
+//
+//   - `: ` opens a nested compact mapping under `title`, which SWALLOWS every
+//     subsequent key into it. Keys BEFORE the title survive; `status:`,
+//     `blocked_by:` and the rest vanish. This is the shape that made
+//     dev-mgr102's real `blocked_by: [mgr101]` look absent to `devx graph
+//     backfill` (sgr106).
+//   - A leading backtick is a reserved-character error that yaml RECOVERS
+//     from: doc.errors is non-empty but every field still reads correctly.
+//     Lossless today — but it is the same "spec is unreadable" class, and
+//     `applyEnginePatch` refuses to write to it, so the spec is frozen.
+//
+// The guard for the class is test/spec-frontmatter-parses.test.ts (AC 2);
+// these tests pin the reader semantics the guard exists to protect against.
+// ---------------------------------------------------------------------------
+
+const COLON_TITLE_SPEC = [
+  "---",
+  "hash: mgr102",
+  "type: dev",
+  "title: State persistence: schedule.json + manager.json",
+  "status: done",
+  "phase: 2",
+  "blocked_by: [mgr101]",
+  "---",
+  "",
+  "## Goal",
+  "",
+].join("\n");
+
+const BACKTICK_TITLE_SPEC = [
+  "---",
+  "hash: cli303",
+  "type: dev",
+  "title: `devx --help` listing with phase + epic annotations",
+  "status: done",
+  "blocked_by: [cli302]",
+  "---",
+  "",
+  "## Goal",
+  "",
+].join("\n");
+
+describe("unparseable frontmatter reads as silent loss (debug-9f24c7 AC 1)", () => {
+  it("an unquoted `: ` in title swallows every key after it — status and blocked_by are LOST", () => {
+    const s = readEngineState(COLON_TITLE_SPEC);
+
+    // The real file says `status: done`, `phase: 2`, `blocked_by: [mgr101]`.
+    // The reader reports a spec that records none of them, and says so with
+    // exactly the same values a genuinely-blank spec would produce.
+    expect(s.status).toBeNull();
+    expect(s.phase).toBeNull();
+    expect(s.blockedBy).toEqual([]);
+
+    // ...while the keys that happen to precede the bad title read fine, so
+    // nothing downstream has a reason to suspect the file.
+    expect(s.hash).toBe("mgr102");
+    expect(s.type).toBe("dev");
+
+    // Indistinguishable from the real thing: a spec that genuinely records
+    // no status/phase/edges yields a deep-equal EngineState.
+    const genuinelyBlank = readEngineState(
+      "---\nhash: mgr102\ntype: dev\n---\n\n## Goal\n",
+    );
+    expect(s).toEqual(genuinelyBlank);
+
+    // The only signal that they differ at all:
+    expect(frontmatterParseError(COLON_TITLE_SPEC)).toMatch(/Nested mappings/);
+    expect(frontmatterParseError("---\nhash: mgr102\ntype: dev\n---\n")).toBeNull();
+  });
+
+  it("a leading backtick in title errors but yaml recovers — lossless read, frozen writer", () => {
+    const s = readEngineState(BACKTICK_TITLE_SPEC);
+    expect(s.status).toBe("done");
+    expect(s.blockedBy).toEqual(["cli302"]);
+
+    // Still unreadable by the engine's own definition, and the writer agrees:
+    expect(frontmatterParseError(BACKTICK_TITLE_SPEC)).toMatch(
+      /reserved character/,
+    );
+    expect(() => applyEnginePatch(BACKTICK_TITLE_SPEC, { stage: "done" })).toThrow(
+      /parse failed/,
+    );
+  });
+
+  it("reader and writer disagree on the same bytes (the bug's fingerprint)", () => {
+    // readEngineState answers cheerfully; applyEnginePatch refuses. Any
+    // read-modify-write consumer therefore crashes on a file it just read
+    // "successfully" — or, worse, writes through a state it invented.
+    expect(() => readEngineState(COLON_TITLE_SPEC)).not.toThrow();
+    expect(() => applyEnginePatch(COLON_TITLE_SPEC, { stage: "done" })).toThrow(
+      /parse failed/,
+    );
+  });
+
+  it("quoting the title restores every lost field (the sgr106 data fix)", () => {
+    const fixed = COLON_TITLE_SPEC.replace(
+      "title: State persistence: schedule.json + manager.json",
+      'title: "State persistence: schedule.json + manager.json"',
+    );
+    expect(frontmatterParseError(fixed)).toBeNull();
+    const s = readEngineState(fixed);
+    expect(s.status).toBe("done");
+    expect(s.phase).toBe(2);
+    expect(s.blockedBy).toEqual(["mgr101"]);
+  });
+});
+
+describe("frontmatterParseError", () => {
+  it("returns null on a spec that parses", () => {
+    expect(frontmatterParseError(FULL_SPEC)).toBeNull();
+  });
+
+  it("returns null on a file with NO frontmatter block (a different condition)", () => {
+    expect(frontmatterParseError("# QA walkthrough\n\nprose\n")).toBeNull();
+  });
+
+  it("returns the first error message, single-line", () => {
+    const msg = frontmatterParseError("---\n[:::\n---\nbody\n");
+    expect(msg).toBeTruthy();
+    expect(msg).not.toContain("\n");
+  });
+
+  it("agrees with applyEnginePatch on every input (reader/writer parity)", () => {
+    for (const spec of [FULL_SPEC, COLON_TITLE_SPEC, BACKTICK_TITLE_SPEC]) {
+      const err = frontmatterParseError(spec);
+      const threw = (() => {
+        try {
+          applyEnginePatch(spec, { stage: "done" });
+          return false;
+        } catch {
+          return true;
+        }
+      })();
+      expect(threw).toBe(err !== null);
+    }
   });
 });
 

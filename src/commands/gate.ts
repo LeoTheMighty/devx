@@ -109,6 +109,17 @@ function resolveOrFail(
       ctx.ctx.engine,
       opts.fs ?? {},
     );
+    // 9f24c7 / D-13: the reader stays soft so a half-edited spec can never
+    // crash a gate — but a gate that silently reads `stage: null` /
+    // `gate_status: all-false` off an unparseable block is asserting an
+    // empty state it cannot actually see. Every gate resolves through here,
+    // so one warning covers prd/coverage/evals. Advisory only: it does not
+    // change the verdict or the exit code.
+    if (ws.frontmatterError !== null) {
+      io.err(
+        `${usage}: warning: ${ws.specRel} frontmatter does not parse (${ws.frontmatterError}) — engine state below the error is unreadable, so stage/gate flags read from this spec may be silently absent; fix the YAML before trusting this verdict\n`,
+      );
+    }
     return {
       ok: true,
       ws,

@@ -67,6 +67,61 @@ file; supersessions are appended, never rewritten.
   tur101: the trailing "≙ one tour" clause dropped with the review tour; the
   sizing invariant itself is unchanged.)*
 
+- **D-13 (locked, 2026-08-20, debug-9f24c7)** — *`readEngineState` keeps
+  failing SOFT; the call sites that can report must SAY "unreadable."* A spec
+  whose frontmatter YAML doesn't parse still reads as a best-effort
+  `EngineState` — the reader never throws, so a half-edited spec can never
+  crash a gate, a board render, or the dispatcher (the posture the soft
+  reader was chosen for; see the spec's Technical notes: "do NOT fix this by
+  making `readEngineState` throw"). The bug was never the softness — it was
+  that softness was *indistinguishable from absence*. So: the return shape is
+  unchanged, and every consumer that has an output channel consults
+  `frontmatterParseError(content)` and reports:
+  - `devx next` → a `frontmatter-unreadable` **drift row** (`src/lib/next/gather.ts`).
+    Load-bearing: `effectiveStatus = specStatus ?? row.status` silently
+    substitutes the backlog row for the spec, and the *same* null also
+    suppresses the `status-mismatch` row that would otherwise have been the
+    only signal. The new row is the sole report on that path.
+  - `devx status` → one stderr line per unreadable plan spec
+    (`src/commands/status.ts`), emitted *before* the stage check — a swallowed
+    `stage:` is otherwise indistinguishable from a legacy non-engine plan
+    spec, and the entry drops out of the render in total silence.
+  - the gates → one warning at `resolveOrFail`, the choke point every gate
+    resolves through (`src/commands/gate.ts`); `ResolvedWorkstream` gained an
+    additive `frontmatterError: string | null`. This names the cause *before*
+    `applyEnginePatch` throws its own write-side error — the reader/writer
+    asymmetry that is the bug's fingerprint. Pinned by
+    `test/frontmatter-unreadable-reported.test.ts`.
+
+  Every one of these is **advisory**: no verdict, exit code, or routed row
+  changes, and nothing is auto-fixed (CAP-2). The mechanical guard against
+  recurrence is the repo-wide canary `test/spec-frontmatter-parses.test.ts`;
+  `devx doctor` (dev-db36af) remains the natural home for the `--fix` half.
+
+  *Corollary — a file with NO frontmatter block at all* (e.g.
+  `test/test-2e7b45`, a QA walkthrough parked in a spec dir) *stays legal and
+  silent.* `frontmatterParseError` returns null for it by design: "not an
+  engine artifact" is a real, common state, and reporting it would make the
+  canary noisy enough to be ignored. Only a block that opens and fails to
+  parse is a defect.
+
+  *AC 4 (blast radius), verified against real history, not assumed:* all 624
+  historical revisions of all 202 spec files were re-parsed. Exactly **six**
+  files were ever unreadable — the five named in the spec plus
+  `debug-7b3e2a` (filed 2026-08-07, i.e. the class recurred *after* the spec
+  was written; fixed 2026-08-20). **No plan spec was ever affected**, so no
+  `gate_verdicts:`, `stage:`, `entered_at:` or `outcome:` was ever read as
+  absent, and none of the six carries a `phase:`. Only `mgr102`/`mgr103`
+  genuinely lost keys on read (`status`, `plan`, `blocked_by`); the three
+  backtick-shape specs read losslessly and were merely *frozen* to
+  `applyEnginePatch`. The loss was masked because the DEV.md rows repeat both
+  facts in prose (`Status: done. Blocked-by: mgr101.`) and the three merged in
+  declared order (efa23bf → 4366ae5 → ca42895), so no invisible edge was ever
+  violated. The one thing actually acted on as absent was `devx graph`'s edge
+  set — which is exactly how sgr106 found this. **Durable-state loss: nil.**
+  Note the mask is not a safety net going forward: the graph and the gates
+  read frontmatter, not the row prose.
+
 ## Open questions (non-blocking, tracked)
 
 - ~~**O-1** — Mermaid in tours~~ **CLOSED 2026-08-04 (tur101)** — moot; the
