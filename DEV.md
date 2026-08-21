@@ -254,3 +254,22 @@ re-run `devx graph`.
 - [x] `dev/dev-sgr106-2026-08-02T13:57-graph-backfill.md` — Backfill — adds-only idempotent edge completion + attended devx-repo run (E-6). Attended-only: loop must `--exclude`. Status: done. Blocked-by: sgr103. Parallel-safe with sgr104/sgr105/sgr107. PR: https://github.com/LeoTheMighty/devx/pull/120 (merged 66720bd)
 - [x] `dev/dev-sgr107-2026-08-02T13:57-downstream-portability.md` — Downstream portability — packaged CLI proof + MANUAL.md handoff (E-7). Status: done. Blocked-by: sgr103. Parallel-safe with sgr104/sgr105/sgr106. PR: https://github.com/LeoTheMighty/devx/pull/117 (merged 119f933)
 - [x] `dev/dev-sgrret-2026-08-02T14:00-retro-story-graph.md` — Retro + LEARN.md updates (interim retro discipline). Status: done. Blocked-by: sgr101, sgr102, sgr103, sgr104, sgr105, sgr106, sgr107. PR: https://github.com/LeoTheMighty/devx/pull/121 (merged 8eb64bf)
+
+### Epic — usage-window-governor (plan: c8e2d4)
+
+`devx loop` pauses on the Claude subscription usage limit and auto-resumes
+when the window resets, instead of misclassifying it as a hard error and
+burning the abandon counter. Workstream
+`_devx/workstreams/usage-window-governor/`; all four gates passed
+2026-08-21 (design + plan + evals CONCERNS — the human-gated E-7 and the
+parked FR-8 spike, recorded rather than waived). Design decision **D-UW1**:
+the governor is a PRE-LADDER interception, not a ladder rung —
+`ladder.ts` gets zero diff. Deps: uwg101 → uwg102 → uwg103 → uwg104;
+uwgspk is parallel-safe with all of them.
+
+- [/] `dev/dev-uwg101-2026-08-21T14:30-uwg101.md` — Detection floor: `usage-window.ts` markers, tail-bounded matcher, reset parsing. Ships inert (nothing calls it). Status: in-progress. From: epic-usage-window-governor.
+- [ ] `dev/dev-uwg102-2026-08-21T14:30-uwg102.md` — Governor + driver seam: pure `planPause` + chunked `runPause`, intercepted before `classifyIteration` (D-UW1). Status: ready. Blocked-by: uwg101.
+- [ ] `dev/dev-uwg103-2026-08-21T14:30-uwg103.md` — Pause is visible everywhere run state is: `LoopStatus "paused"`, gather liveness widening, `windowPauses[]`, morning-report section, four `loop:` knobs in config.ts AND the schema. Status: ready. Blocked-by: uwg102.
+- [ ] `dev/dev-uwg104-2026-08-21T14:30-uwg104.md` — Live overnight ride-through. **HUMAN-GATED** — needs a supervised night riding a real reset; scoped alone so uwg101-103 ship green without it (the pin105 shape). Discharges MANUAL MV2.1. Status: ready. Blocked-by: uwg103.
+- [ ] `dev/dev-uwgspk-2026-08-21T14:30-uwgspk.md` — Spike: does a usage-probe API exist at all? Findings doc only, timeboxed to one story. Parallel-safe with uwg101-104. Status: ready. From: epic-usage-window-governor.
+- [ ] `dev/dev-uwgret-2026-08-21T13:14-retro-usage-window-governor.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: uwg101, uwg102, uwg103.
