@@ -4,7 +4,7 @@
 
 # Story graph
 
-197 specs across 23 groups — 13 blocked · 139 done · 4 in-progress · 41 ready; 394 edges.
+197 specs across 23 groups — 12 blocked · 140 done · 4 in-progress · 41 ready; 395 edges.
 
 ## Legend
 
@@ -150,7 +150,7 @@ flowchart TD
     6a913f["6a913f hash→spec resolution hardcodes dev/ acros…"]
     74632d["74632d loop-driver fixture teardown races on mac…"]
     7a2d1f["7a2d1f Mobile companion v0.1 through real-time s…"]
-    7b3e2a["7b3e2a `merge-gate`'s hand-rolled `readFrontmatt…"]
+    7b3e2a["7b3e2a merge-gate reads YAML `branch: null` as t…"]
     7c1e93["7c1e93 loop-concurrency G-1 harness times out un…"]
     7e2b56["7e2b56 emit-retro-story writes its artifacts to…"]
     8a9586["8a9586 Loop merge tail leaves GRAPH.md stale — F…"]
@@ -211,6 +211,7 @@ flowchart TD
   28b267 -.-> ebf8c4
   28b267 -.-> ecdcda
   4d1a9c -.-> 67a7e8
+  4d1a9c -.-> 7b3e2a
   5c8b21 -.-> 5e1a77
   620c74 -.-> rtl101
   620c74 -.-> rtl102
@@ -503,7 +504,7 @@ flowchart TD
   class 97f6d8 ready
   class 9b9be5 done
   class 9c4e21 done
-  class 9f24c7 blocked
+  class 9f24c7 done
   class a01000 done
   class a02000 blocked
   class a03000 blocked

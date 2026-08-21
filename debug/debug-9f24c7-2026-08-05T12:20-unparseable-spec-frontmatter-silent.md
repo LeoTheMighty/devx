@@ -4,7 +4,7 @@ type: debug
 created: 2026-08-05T12:20:00-06:00
 title: "Unparseable spec frontmatter reads as an empty block everywhere — 5 shipped specs were invisible to the engine"
 from: dev/dev-sgr106-2026-08-02T13:57-graph-backfill.md
-status: in-progress
+status: done
 owner: /devx-interactive-2026-08-21-harness-sweep
 ---
 
@@ -104,3 +104,4 @@ unquoted title goes invisible again, silently.
   - Learning: Piping `npm test` to `tail -80` also truncates the saved background-task output file, so the parallel leg's summary is unrecoverable afterward. The &&-chain still proves it passed (the blocking leg can't start otherwise), but capture the file unpiped if you want the evidence. The full run took 24 minutes here — over a third of the 60-minute iteration ceiling that killed iteration 2.
 - 2026-08-20T14:37:51.285Z — [FAIL] loop abandoned 9f24c7: push failed (commit preserved locally): ssh_dispatch_run_fatal: Connection to 140.82.114.3 port 22: Broken pipe; worktree preserved at .worktrees/debug-9f24c7
 - 2026-08-21T11:10 — revived interactively: the three loop commits were intact and unpushed, only the push leg had failed. Rebased onto main (one status-log conflict, resolved by keeping both histories in order), full local gate green (122/122 parallel + 29/29 blocking, 3564 tests). No code re-done; ACs 1-4 stand as the loop shipped them.
+- 2026-08-21T11:13:18-06:00 — merged via PR #137 (squash → 3603021)
