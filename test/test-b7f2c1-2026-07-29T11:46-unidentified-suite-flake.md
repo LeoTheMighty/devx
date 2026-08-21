@@ -4,7 +4,7 @@ type: test
 created: 2026-07-29T11:46:00-06:00
 title: "Unidentified 1-in-2,665 suite flake under load + full-log capture for long gate runs"
 from: dev/dev-mlcret-2026-07-28T09:04-retro-multi-loop-concurrency.md
-status: in-progress
+status: done
 owner: null
 branch: null
 ---
@@ -116,6 +116,7 @@ unresolvable:
 - 2026-08-21T13:05 — AC 3 + AC 4 shipped interactively (harness sweep); AC 1 + AC 2 were already closed by PR #103. Both vitest passes now run a json reporter alongside the human one, writing `.devx-cache/test-results/{parallel,blocking}.json`. AC 4 is `test/test-results-capture.test.ts`: it runs THIS REPO'S OWN parallel config against a deliberately-failing temp test, simulates the 2026-07-29 capture by keeping only the last four stdout lines, asserts the diagnosis is NOT in that tail, and then reads the failing test's name out of the results file. A hand-written config in a scratch project would have proven that some config works rather than the one `npm test` uses.
 - 2026-08-21T13:05 — note on the first attempt, recorded because it is a real vitest gotcha: a probe project with `--root <tmp>` and an absolute `--config` silently ignored the per-reporter `outputFile` and dumped the json to stdout instead. Running against the shipped config was both simpler and a stronger test.
 - 2026-08-21T13:05 — phase 4: config + test-only diff. Single-pass review; explicit zero after the rewrite above.
+- 2026-08-21T13:55 — merged via PR #140 (https://github.com/LeoTheMighty/devx/pull/140, squash 4be6b35). Flipped by hand: `test` is not a claimable type, so `devx devx-helper finalize` correctly refuses it — the execute arm claims dev/ and debug/ only.
 
 ## Links
 
