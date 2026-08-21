@@ -77,15 +77,15 @@ derive (what you're building, the first slice, the audience) are filed in
 `INTERVIEW.md` for you to answer afterward; the OS-supervisor install is
 deferred to `MANUAL.md`.
 
-**Interactive (`/devx-init` in Claude Code)** — the "simple guy to talk to":
-a short interview, then the same scaffold with your answers instead of
-defaults.
+There is no interactive installer: `devx init` is non-interactive by design.
+The questions it cannot infer are filed in `INTERVIEW.md` for you to answer
+afterward with `/devx-interview`.
 
 Either way you get:
 
 1. **Repo detection** — empty vs. existing vs. already-on-devx. Re-runs take the upgrade path (header-bearing files refreshed, your files preserved).
 2. **Engine scaffolding** — packaged engine templates into `_devx/`.
-3. **Backlog scaffolding** — `DEV.md`, `PLAN.md`, `TEST.md`, `DEBUG.md`, `FOCUS.md`, `INTERVIEW.md`, `MANUAL.md`, `LESSONS.md` at the repo root, plus `dev/`, `plan/`, `test/`, `debug/`, `focus/` spec dirs.
+3. **Backlog scaffolding** — `DEV.md`, `PLAN.md`, `TEST.md`, `DEBUG.md`, `FOCUS.md`, `INTERVIEW.md`, `MANUAL.md`, `LEARN.md` at the repo root, plus `dev/`, `plan/`, `test/`, `debug/`, `focus/`, `learn/`, `qa/` spec dirs.
 4. **CI/CD scaffolding** — a minimal GitHub Actions workflow with lint + test gates, plus a PR template that links back to the spec file.
 5. **Config** — `devx.config.yaml` with the strategic axes (mode / shape / thoroughness) and every knob (`docs/CONFIG.md`).
 6. **Skills install** — per Part 2.
@@ -111,6 +111,44 @@ kick off planning with `/devx-plan <idea>`.
 For unattended operation there's `devx loop` (overnight mode — budgets from
 `devx.config.yaml → loop:`; see `v2/04-loop.md`). Answer pending questions
 with `/devx-interview`.
+
+---
+
+## Part 5 — The retro loop (learning from your own sessions)
+
+`devx init` registers two Claude Code hooks (`Stop`, `SessionEnd`) that record
+your finished sessions to a queue at `~/.claude/devx/learn-queue.jsonl`. A
+watcher drains that queue, replaying each session into `/devx-learn` so the
+system mines its own friction.
+
+Nothing drains the queue on its own — you have to run the watcher:
+
+```bash
+devx learn-watch list          # what's pending, and the tail of the done log
+devx learn-watch --dry-run     # print the spawn command, change nothing
+devx learn-watch               # drain, one retro at a time (foreground)
+```
+
+Unattended, surviving terminal exit:
+
+```bash
+nohup devx learn-watch --auto-allow > ~/.claude/devx/watch.log 2>&1 &
+```
+
+Two knobs in `devx.config.yaml → learn:` decide how far it goes on its own:
+
+| Knob | Effect |
+|---|---|
+| `auto_allow` | serve a repo nobody has reviewed instead of prompting — required for the `nohup` form above. A recorded `deny` still wins. |
+| `auto_apply` | let the retro **apply** its routed fixes through the normal branch → CI → PR → merge gate, instead of printing a table. Wedge paths (`.claude/**`, `skills/**`, `settings.json`) stay proposal-only regardless. |
+
+**A retro spawns an interactive Claude session in a new tmux window or
+Terminal.app tab — it is not headless.** With `auto_apply: false` it waits for
+a human to strike rows, so an unattended run just burns the
+`retro_timeout_minutes` budget (default 360) and retires as `timeout`. If you
+want it to finish by itself, `auto_apply: true` is the knob that does it.
+On a machine with neither tmux nor Terminal.app the watcher degrades to
+`manual`: it prints the command and files the entry rather than waiting.
 
 ---
 

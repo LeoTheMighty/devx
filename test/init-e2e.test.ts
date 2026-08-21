@@ -169,7 +169,7 @@ const ALL_BACKLOGS: ReadonlyArray<string> = [
   "FOCUS.md",
   "INTERVIEW.md",
   "MANUAL.md",
-  "LESSONS.md",
+  "LEARN.md",
 ];
 
 // Patch HOME so the supervisor probe can't accidentally look at the real

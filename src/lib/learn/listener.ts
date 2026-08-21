@@ -27,6 +27,15 @@
 // the dedupe below can never cap the depth. The wrapper exports the variable
 // (E-9); this file returns before any read when it is set (E-2).
 //
+// TWO ARMS, DIFFERENT JOBS (amended 2026-08-21). `Stop` is the cheap per-turn
+// nudge detector; `SessionEnd` is the once-per-session backstop that captures
+// a finished session whether or not the agent said the magic words. The
+// original design had only the first, so capture was hostage to an agent
+// remembering one sentence — and the queue recorded 2 sessions in its
+// lifetime, none in the 19 days before this amendment. Constraint 2 (cheap)
+// binds `Stop` only: SessionEnd fires once per session, so it can afford the
+// done-log read that keeps a retired session from being re-queued.
+//
 // Ported semantics: `_devx/workstreams/retro-listener/reference/learn-listener.py`
 // (its docstrings are the trap inventory).
 //
@@ -43,6 +52,7 @@ import {
   isSafeSessionId,
   learnHome,
   pendingSessionIds,
+  readDone,
   touchEndedMarker,
   withQueueLock,
 } from "./queue.js";
@@ -95,10 +105,13 @@ export type ListenerAction =
   | "lock-contended"
   /** SessionEnd with a denylisted reason: no marker. */
   | "reason-denied"
-  /** SessionEnd for a session the queue is not waiting on: no marker. */
+  /** SessionEnd for a session with nothing to mine (no transcript), or one
+   *  the watcher already processed: nothing to do. */
   | "not-pending"
   /** SessionEnd for a pending session: `.ended` marker written. */
   | "marked"
+  /** SessionEnd for an un-nudged session: captured by the backstop. */
+  | "queued-on-end"
   /** Something threw. Swallowed here; reported for tests. */
   | "error";
 
@@ -177,7 +190,7 @@ export function handleHookPayload(
     // turn — should not even compute a path it will never use.
     const event = stringField(record, "hook_event_name");
     if (event === "Stop") return handleStop(record, sid, env, deps);
-    if (event === "SessionEnd") return handleSessionEnd(record, sid, env);
+    if (event === "SessionEnd") return handleSessionEnd(record, sid, env, deps);
     return { action: "ignored", sessionId: sid };
   } catch (err) {
     // Deliberately swallowed: this function is called from a hook.
@@ -230,18 +243,78 @@ function handleSessionEnd(
   payload: Record<string, unknown>,
   sid: string,
   env: LearnEnv,
+  deps: ListenerDeps,
 ): ListenerResult {
   const reason = stringField(payload, "reason");
-  if (reason !== undefined && NO_FAST_PATH_REASONS.has(reason)) {
-    return { action: "reason-denied", sessionId: sid };
-  }
+  const noFastPath = reason !== undefined && NO_FAST_PATH_REASONS.has(reason);
   const home = learnHome(env);
-  // Only sessions the queue is waiting on: the marker exists to let the watcher
-  // skip the idle window, and a marker for an unqueued session is litter no one
-  // ever collects. Read is lock-free on purpose — it is tolerant by
-  // construction, and taking the lock at every SessionEnd would put the hook
-  // behind the watcher's rewrites for no gain.
-  if (!pendingSessionIds(home).has(sid)) return { action: "not-pending", sessionId: sid };
-  touchEndedMarker(home, sid);
-  return { action: "marked", sessionId: sid };
+
+  // Already queued (a nudge fired earlier this session): the only job left is
+  // the `.ended` marker, which lets the watcher skip the idle window. Read is
+  // lock-free on purpose — it is tolerant by construction, and taking the lock
+  // at every SessionEnd would put the hook behind the watcher's rewrites for
+  // no gain.
+  if (pendingSessionIds(home).has(sid)) {
+    if (noFastPath) return { action: "reason-denied", sessionId: sid };
+    touchEndedMarker(home, sid);
+    return { action: "marked", sessionId: sid };
+  }
+
+  // THE BACKSTOP. Before this existed, an un-nudged session died here as
+  // `not-pending` and no retro was ever possible: `handleStop` only enqueues
+  // when the assistant's last message carries the canonical nudge sentence,
+  // and this arm only marked sessions that were ALREADY pending. Nothing
+  // enqueued anything else, so a session whose agent simply never said the
+  // words was unreachable. Measured cost of that gap: 2 sessions captured in
+  // the queue's lifetime, none in the 19 days before this change — while the
+  // repo shipped an entire 10-item overnight loop.
+  //
+  // Capture is now wording-independent: the nudge remains the cheap per-turn
+  // fast path on Stop, and this is the reliable end-of-session sweep. Cost is
+  // paid once per session, not per turn, which is why the extra reads here are
+  // affordable where they would not be in `handleStop`.
+  const transcript = stringField(payload, "transcript_path");
+  // No transcript = nothing to mine. Also keeps trivial/aborted sessions out.
+  if (transcript === undefined) return { action: "not-pending", sessionId: sid };
+  // Never re-queue a session the watcher already retired, or a `requeue` is
+  // undone and a processed retro runs a second time. This is the one unbounded
+  // read on the hook path: the done log is append-only and grows one row per
+  // processed retro. Affordable because it is once per SESSION (not per turn,
+  // where G-3's p95 < 500ms bound bites) and the log gains rows no faster than
+  // you open sessions — but it is the thing to bound first if the hook ever
+  // gets slow.
+  if (readDone(home).some((entry) => entry.session_id === sid)) {
+    return { action: "not-pending", sessionId: sid };
+  }
+
+  const lockOpts: BlockingAcquireOpts = { timeoutMs: LISTENER_LOCK_TIMEOUT_MS, ...deps.lockOpts };
+  try {
+    return withQueueLock(
+      home,
+      () => {
+        // Re-check under the lock: a nudge landing on the final turn races us.
+        if (pendingSessionIds(home).has(sid)) {
+          if (!noFastPath) touchEndedMarker(home, sid);
+          return { action: "duplicate", sessionId: sid };
+        }
+        appendPending(
+          home,
+          { session_id: sid, transcript_path: transcript, cwd: stringField(payload, "cwd") ?? null },
+          deps.now,
+        );
+        // A denylisted reason means the human is probably still working in that
+        // terminal (`/clear`, `/resume`) or the spawn cannot authenticate
+        // (`logout`). Queue it either way, but withhold the marker so it drops
+        // to the watcher's idle-mtime fallback instead of spawning a retro that
+        // steals focus mid-work.
+        if (!noFastPath) touchEndedMarker(home, sid);
+        return { action: "queued-on-end", sessionId: sid };
+      },
+      lockOpts,
+    );
+  } catch (err) {
+    // Same posture as handleStop: never delay the turn over a held lock.
+    if (err instanceof PathLockHeldError) return { action: "lock-contended", sessionId: sid };
+    throw err;
+  }
 }

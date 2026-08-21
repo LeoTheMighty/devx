@@ -109,7 +109,11 @@ today from Phase 0 supervisor testing). The code is fixed (bare/upgrade
 `devx init` no longer touches launchd; PR pin103), but the host state is yours
 to settle:
 
-- [ ] Either remove the stale units: `launchctl bootout gui/$(id -u)/dev.devx.manager;
+- [x] **Done 2026-08-21** — removed. Both units were booted out and
+      `~/Library/LaunchAgents/dev.devx.*.plist` deleted; `launchctl list` is
+      now clean of devx. (Only `manager.plist` existed on disk; `concierge`
+      was loaded with no backing file.) Original instruction, for the record:
+      Either remove the stale units: `launchctl bootout gui/$(id -u)/dev.devx.manager;
       launchctl bootout gui/$(id -u)/dev.devx.concierge; rm -f
       ~/Library/LaunchAgents/dev.devx.*.plist` — or reinstall properly via the
       interactive `/devx-init` when you want the supervisor running (MV2.1).

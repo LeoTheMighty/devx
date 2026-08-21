@@ -375,9 +375,16 @@ const stop = (sid: string, message: string, over: Record<string, unknown> = {}) 
   ...over,
 });
 
+// Mirrors the REAL payload: `transcript_path` and `cwd` are common fields on
+// every hook event, SessionEnd included (hooks reference, re-verified
+// 2026-08-21). The earlier helper omitted both, which is why the dead
+// `not-pending` arm went unnoticed — every SessionEnd test was exercising a
+// payload the hook never actually sends.
 const sessionEnd = (sid: string, over: Record<string, unknown> = {}) => ({
   hook_event_name: "SessionEnd",
   session_id: sid,
+  transcript_path: `/tmp/${sid}.jsonl`,
+  cwd: "/repo",
   ...over,
 });
 
@@ -575,19 +582,71 @@ describe("rtl101 E-10 — SessionEnd reason denylist gates the fast path", () =>
     expect(readFileSync(endedMarkerPath(home, sid), "utf8")).toBe("prior");
   });
 
-  it("writes no marker for a session the queue is not waiting on", () => {
-    // The marker exists to let the watcher skip the idle window; one for an
-    // unqueued session is litter nothing ever collects.
-    expect(handleHookPayload(sessionEnd("not-queued-9999", { reason: "exit" }), envFor(home)).action).toBe(
-      "not-pending",
-    );
-    expect(existsSync(markersDir(home))).toBe(false);
+  it("CAPTURES a session the queue is not waiting on (the backstop)", () => {
+    // Superseded behavior: this used to assert `not-pending` and no marker,
+    // on the theory that a marker for an unqueued session is litter. That
+    // reasoning held only because nothing else could ever enqueue: `Stop`
+    // fires only on the literal nudge sentence, so an agent that never said
+    // the words produced a session no retro could reach. Measured cost: 2
+    // sessions captured in the queue's lifetime, none in the 19 days before
+    // this change. SessionEnd is now the wording-independent backstop.
+    expect(
+      handleHookPayload(sessionEnd("not-queued-9999", { reason: "exit" }), envFor(home)).action,
+    ).toBe("queued-on-end");
+    expect(readQueue(home).map((e) => e.session_id)).toContain("not-queued-9999");
+    expect(existsSync(endedMarkerPath(home, "not-queued-9999"))).toBe(true);
   });
 
-  it("writes no marker once the entry has been drained", () => {
-    removeFromQueue(home, readQueue(home)[0]!);
-    handleHookPayload(sessionEnd(sid, { reason: "exit" }), envFor(home));
-    expect(existsSync(markersDir(home))).toBe(false);
+  it("does NOT re-queue a session the watcher already retired", () => {
+    // The real drain writes the done row FIRST and removes from pending second
+    // (watch.ts), so a retired session is never in neither store. Re-queueing
+    // one would silently re-run a completed retro.
+    const drained = readQueue(home)[0]!;
+    appendDone(home, drained, "ok");
+    removeFromQueue(home, drained);
+    expect(handleHookPayload(sessionEnd(sid, { reason: "exit" }), envFor(home)).action).toBe(
+      "not-pending",
+    );
+    expect(readQueue(home)).toHaveLength(0);
+  });
+
+  it("queues a denylisted-reason session but withholds the marker", () => {
+    // `/clear` ends the session object while the human keeps working in that
+    // terminal. The transcript is still worth mining, so capture it — but
+    // leave the fast-path marker off so the watcher waits for the idle window
+    // instead of spawning a retro that steals focus mid-work.
+    const fresh = "cccc-3333-dddd-4444";
+    expect(handleHookPayload(sessionEnd(fresh, { reason: "clear" }), envFor(home)).action).toBe(
+      "queued-on-end",
+    );
+    expect(readQueue(home).map((e) => e.session_id)).toContain(fresh);
+    expect(existsSync(endedMarkerPath(home, fresh))).toBe(false);
+  });
+
+  it("captures exactly once when a nudge already queued the session", () => {
+    // sid is pending from beforeEach — the nudge path won this race.
+    expect(handleHookPayload(sessionEnd(sid, { reason: "exit" }), envFor(home)).action).toBe(
+      "marked",
+    );
+    expect(readQueue(home).filter((e) => e.session_id === sid)).toHaveLength(1);
+  });
+
+  it("ignores a session with no transcript to mine", () => {
+    expect(
+      handleHookPayload(
+        { hook_event_name: "SessionEnd", session_id: "eeee-5555", reason: "exit" },
+        envFor(home),
+      ).action,
+    ).toBe("not-pending");
+    expect(readQueue(home).map((e) => e.session_id)).not.toContain("eeee-5555");
+  });
+
+  it("carries the real transcript_path and cwd onto the queued entry", () => {
+    handleHookPayload(sessionEnd("ffff-6666", { reason: "exit" }), envFor(home));
+    expect(readQueue(home).find((e) => e.session_id === "ffff-6666")).toMatchObject({
+      transcript_path: "/tmp/ffff-6666.jsonl",
+      cwd: "/repo",
+    });
   });
 
   it("marks only the session the payload names", () => {

@@ -3,7 +3,7 @@
 // Public surface:
 //   - writeInitFiles(opts) — orchestrates the five write phases in order:
 //       1. devx.config.yaml  (15 sections + devx_version + provenance comments)
-//       2. 8 backlog files   (DEV/PLAN/TEST/DEBUG/FOCUS/INTERVIEW/MANUAL/LESSONS)
+//       2. 8 backlog files   (DEV/PLAN/TEST/DEBUG/FOCUS/INTERVIEW/MANUAL/LEARN)
 //       3. spec subdirectories (dev/, plan/, test/, debug/, focus/, learn/, qa/,
 //                               focus-group/personas/)
 //       4. CLAUDE.md         (create / append / update-inside-markers; surface
@@ -135,7 +135,12 @@ const BACKLOG_FILES: ReadonlyArray<string> = [
   "FOCUS.md",
   "INTERVIEW.md",
   "MANUAL.md",
-  "LESSONS.md",
+  // LEARN.md, not LESSONS.md: `/devx-learn`'s outlet writes LEARN.md, and
+  // nothing shipped ever reads LESSONS.md. Scaffolding the latter handed a
+  // fresh repo a file no code path touches while omitting the one the learn
+  // loop needs — so the loop's first write landed in a file `devx init` had
+  // never created. Corrected 2026-08-21.
+  "LEARN.md",
 ];
 
 const SPEC_DIRS: ReadonlyArray<string> = [

@@ -168,7 +168,7 @@ describe("ini502 — writeInitFiles — fresh empty repo", () => {
       "FOCUS.md",
       "INTERVIEW.md",
       "MANUAL.md",
-      "LESSONS.md",
+      "LEARN.md",
     ]);
     expect(result.backlogsSkipped).toEqual([]);
     expect(result.specDirsCreated.sort()).toEqual([
@@ -216,7 +216,7 @@ describe("ini502 — writeInitFiles — fresh empty repo", () => {
     ).not.toThrow(ConfigError);
 
     // Backlog files exist with empty-state header.
-    for (const f of ["DEV.md", "PLAN.md", "TEST.md", "DEBUG.md", "FOCUS.md", "INTERVIEW.md", "MANUAL.md", "LESSONS.md"]) {
+    for (const f of ["DEV.md", "PLAN.md", "TEST.md", "DEBUG.md", "FOCUS.md", "INTERVIEW.md", "MANUAL.md", "LEARN.md"]) {
       const body = readFileSync(join(repo, f), "utf8");
       expect(body).toContain("<!-- devx-empty-state-start -->");
       expect(body).toContain("<!-- devx-empty-state-end -->");
@@ -434,7 +434,7 @@ describe("ini502 — writeInitFiles — partial existing backlogs", () => {
     writeFileSync(join(repo, "PLAN.md"), "user-owned PLAN\n");
     const r = writeInitFiles(baseOpts(repo));
     expect(r.backlogsSkipped).toEqual(["DEV.md", "PLAN.md"]);
-    expect(r.backlogsCreated).toEqual(["TEST.md", "DEBUG.md", "FOCUS.md", "INTERVIEW.md", "MANUAL.md", "LESSONS.md"]);
+    expect(r.backlogsCreated).toEqual(["TEST.md", "DEBUG.md", "FOCUS.md", "INTERVIEW.md", "MANUAL.md", "LEARN.md"]);
     expect(readFileSync(join(repo, "DEV.md"), "utf8")).toBe("user-owned DEV\n");
     expect(readFileSync(join(repo, "PLAN.md"), "utf8")).toBe("user-owned PLAN\n");
     expect(readFileSync(join(repo, "TEST.md"), "utf8")).toContain("<!-- devx-empty-state-start -->");

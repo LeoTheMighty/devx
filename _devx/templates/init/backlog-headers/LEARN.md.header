@@ -1,0 +1,12 @@
+# LEARN — What devx has learned about building this project
+
+<!-- devx-empty-state-start -->
+> **What goes here:** one bullet per lesson about the *process*, not the
+> product — what to change about the spec template, the skill prompts,
+> `CLAUDE.md`, config, or docs so the next run is tighter. Written by
+> `/devx-learn` (which mines a finished session and routes each finding to
+> its narrowest outlet) and by you. Tag each with confidence + blast radius;
+> apply low-blast items immediately and file the rest as `MANUAL.md` rows or
+> new specs. This empty-state header auto-deletes once this file holds three
+> or more items.
+<!-- devx-empty-state-end -->

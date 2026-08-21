@@ -364,17 +364,28 @@ learn:
   idle_minutes: 15               # transcript quiet window = "session over"
   retro_timeout_minutes: 360     # spawned retro past this retires as `timeout`
   home: ~/.claude/devx           # user-global: one watcher serves many repos
-  auto_allow: false              # true = unreviewed repos serve without a prompt
+  auto_allow: true               # true = unreviewed repos serve without a prompt
                                  # (needed for `nohup devx learn-watch &`; a
                                  #  recorded `deny` still wins, and the policy
                                  #  never writes repos.json)
-  auto_apply: false              # true = an unattended /devx-learn run APPLIES
+  auto_apply: true               # true = an unattended /devx-learn run APPLIES
                                  # its routed framework fixes (branch → CI → PR
                                  #  → merge gate) instead of printing a table
                                  #  nobody reads. NOT implied by auto_allow;
                                  #  wedge paths (.claude/**, skills/**,
                                  #  settings.json) and locked machinery stay
                                  #  proposal-only either way
+                                 #
+                                 # Both flipped on 2026-08-21. The two retros
+                                 # this queue ever ran (processed 08-06/08-07)
+                                 # both died `timeout` at the 360m bound: they
+                                 # were ATTENDED runs — /devx-learn waits for a
+                                 # human to strike rows — on a machine with
+                                 # nobody at the keyboard. The unattended arm
+                                 # that lets a retro finish by itself (c808b1)
+                                 # merged 08-20, two weeks AFTER those runs, so
+                                 # the capability simply did not exist. Not a
+                                 # bug; attended software run unattended.
 
 # ---------------------------------------------------------------------------
 # Stack — what /devx Phase 5 (local CI) runs.

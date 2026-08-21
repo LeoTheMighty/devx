@@ -64,6 +64,9 @@ runs, tests still run. YOLO relaxes the *gates* (what blocks merge), not the
 ├── PLAN.md                ← planning-work-in-flight backlog (drives /devx-plan)
 ├── MANUAL.md              ← things only the user can do
 ├── INTERVIEW.md           ← questions for the user
+├── LEARN.md               ← process lessons (written by /devx-learn)
+├── GRAPH.md               ← GENERATED Mermaid story board (`devx graph`;
+│                            `--check` fails on drift — never hand-edit)
 ├── devx.config.yaml       ← every knob; see docs/CONFIG.md
 ├── dev/                   ← spec files (one per DEV.md entry)
 ├── plan/                  ← spec files (one per PLAN.md entry)
@@ -179,7 +182,7 @@ human-readable context.
 | `FOCUS.md` | FocusAgent, user | PlanAgents, DebugAgents |
 | `INTERVIEW.md` | any agent when blocked on a human decision | the user |
 | `MANUAL.md` | any agent when action requires a human | the user |
-| `LESSONS.md` | LearnAgent, user (`--add`) | ManageAgent, user, mobile |
+| `LEARN.md` | `/devx-learn`, user | the user, the next agent |
 
 INTERVIEW.md = decisions the user must make. MANUAL.md = actions the user must
 take. Don't conflate.
@@ -251,8 +254,8 @@ Full contract: `.claude/commands/devx.md`.
   repo with readable history, backlogs, specs, and workstream artifacts.
   `_bmad-output/` is a frozen BMAD-era archive — read-only, never rewritten;
   links in shipped specs must keep resolving.
-- **Mode change is a config edit.** To bump out of YOLO, run `/devx-mode beta`
-  (once that skill lands) or edit `devx.config.yaml → mode:`. Don't add
+- **Mode change is a config edit.** To bump out of YOLO, edit
+  `devx.config.yaml → mode:` — there is no `/devx-mode` skill. Don't add
   one-off mode-aware logic without updating `docs/MODES.md`.
 - **Status log is append-only.** Add lines; don't rewrite history.
 - **Worktrees are isolation, not staging.** Don't run a non-`/devx` flow inside

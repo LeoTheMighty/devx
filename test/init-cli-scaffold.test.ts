@@ -32,7 +32,7 @@ const BACKLOGS = [
   "FOCUS.md",
   "INTERVIEW.md",
   "MANUAL.md",
-  "LESSONS.md",
+  "LEARN.md",
 ];
 const SKILLS = ["devx.md", "devx-plan.md", "devx-interview.md"];
 
