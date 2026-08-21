@@ -4,7 +4,7 @@ type: test
 created: 2026-07-28T17:15:00-06:00
 title: "Loop instance registry: crash-orphan-through-admission + devx status live-loops render"
 from: dev/dev-mlc105-2026-07-28T09:02-instance-registry-admission.md
-status: ready
+status: in-progress
 owner: null
 branch: null
 ---
@@ -50,6 +50,8 @@ killing a child mid-run.
   own review tour, which flagged both gaps rather than leaving them
   implicit. Out of mlc105's scope: neither is a defect in the shipped
   code, both are missing coverage of paths that shipped correct.
+- 2026-08-21T12:50 — shipped interactively (harness sweep). `test/loop-instance-orphan-and-status.test.ts`, 10 tests. AC 1 uses a REAL exited pid (`spawnSync("true").pid`) rather than a `pidAlive: () => false` stub — the AC asks for a real crash orphan, and the stub would only test the fixture. AC 2 drives the real `runStatus` through its `fs`/`now` seams, including both fail-soft shapes (unreadable registry dir, torn instance file). Partitioned into the blocking vitest pass: it spawns a child, and `test/vitest-split.test.ts` caught that before CI did.
+- 2026-08-21T12:50 — phase 4: this is a test-only diff adding coverage of already-shipped code, with no production surface. Single-pass review, well under the 3-agent threshold; found nothing actionable (explicit zero).
 
 ## Links
 

@@ -155,6 +155,7 @@ export const SYNC_BLOCKING_TESTS = [
   "test/init-e2e.test.ts",
   "test/learn-watch.test.ts",
   "test/loop-chaos.test.ts",
+  "test/loop-instance-orphan-and-status.test.ts",
   "test/loop-concurrency.test.ts",
   "test/loop-driver-timeout-enforcement.test.ts",
   "test/loop-driver.test.ts",
@@ -165,17 +166,40 @@ export const SYNC_BLOCKING_TESTS = [
   "test/loop-preflight.test.ts",
   "test/manage-loop.test.ts",
   "test/manage-spawn-cli-e2e.test.ts",
+  "test/manage-tick-canonical-state.test.ts",
   "test/postinstall.test.ts",
   "test/repo-root.test.ts",
   "test/skills-packaging.test.ts",
   "test/skills-sync.test.ts",
   "test/spec-lock.test.ts",
   "test/stub.test.ts",
+  "test/test-results-capture.test.ts",
   "test/worktree-refusal.test.ts",
 ] as const;
 
 /** The `test` block every config shares. Coverage stays sourced from
  *  devx.config.yaml via the cfg203 validator (informational at YOLO). */
+/**
+ * Where each pass writes its machine-readable result (b7f2c1 AC 3).
+ *
+ * A ~50-minute gate could lose its own failure evidence. Vitest's default
+ * reporter prints failure DETAIL above the summary, so any capture that
+ * retains a tail keeps the summary and drops the diagnosis: on 2026-07-29
+ * the only surviving record of a red run was four lines saying
+ * `1 failed | 2664 passed` with no test name, and disproving it cost a
+ * 52-minute re-run. The name was eventually recovered from CI, not from the
+ * local capture.
+ *
+ * The json reporter runs ALONGSIDE the human one and writes a file, so the
+ * failing test's name and error survive regardless of how the caller
+ * captured stdout — `| tail`, a truncated buffer, a dropped connection.
+ * Under `.devx-cache/` because it is gitignored and is already where every
+ * other durable run artifact lives.
+ */
+export function resultsPath(pass: string): string {
+  return `.devx-cache/test-results/${pass}.json`;
+}
+
 export const baseTest = {
   include: ["test/**/*.test.ts"],
   // Source-line tags on every task. `scripts/timeout-headroom.mjs`

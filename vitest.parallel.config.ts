@@ -7,11 +7,15 @@
 
 import { defineConfig } from "vitest/config";
 
-import { SYNC_BLOCKING_TESTS, baseTest } from "./vitest.shared.js";
+import { SYNC_BLOCKING_TESTS, baseTest, resultsPath } from "./vitest.shared.js";
 
 export default defineConfig({
   test: {
     ...baseTest,
+    // Human reporter AND a durable json one (b7f2c1). The `default` entry
+    // keeps the terminal output identical; the json file is what survives a
+    // truncated capture of a 50-minute run.
+    reporters: ["default", ["json", { outputFile: resultsPath("parallel") }]],
     exclude: [...baseTest.exclude, ...SYNC_BLOCKING_TESTS],
   },
 });
