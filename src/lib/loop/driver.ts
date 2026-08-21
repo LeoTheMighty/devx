@@ -939,6 +939,19 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
   if (opts.doctor !== false) {
     try {
       const findings = await collectFindings(repoRoot, {
+        // The driver's OWN exec seam, not the module default. Without it the
+        // worktree detector shelled out to REAL git from inside every
+        // loop-driver test's fixture — bypassing the seam the rest of the
+        // driver routes through, and adding enough latency to tip a
+        // 5s-capped test over on macOS CI (caught by PR #139's run).
+        exec: async (cmd: string, args: string[], o?: { cwd?: string }) =>
+          exec(cmd, args, o),
+        // The project's REAL base branch. Defaulting to the literal "main"
+        // makes `git log main..HEAD` error on a `master` or split-branch
+        // repo, which reads conservatively as "real work" — so the fixable
+        // class silently never fires and this self-heal is dead with no
+        // signal (found in review).
+        baseRef: baseBranchFrom(merged),
         ...(opts.pidAlive !== undefined ? { pidAlive: opts.pidAlive } : {}),
       });
       const fixable = findings.filter((f) => f.fixable);
