@@ -39,6 +39,7 @@ import {
   firstUsageMarkerInTail,
   parseResetTime,
 } from "../src/lib/loop/usage-window.js";
+import { planPause, runPause } from "../src/lib/loop/usage-governor.js";
 
 const NOW = new Date("2026-08-21T01:00:00.000Z");
 const RESET = new Date("2026-08-21T06:00:00.000Z");
@@ -251,16 +252,74 @@ describe("parseResetTime — three shapes, and a past time is NOT a reset", () =
 // authored here so Phase 2 has a RED to drive against.
 // ---------------------------------------------------------------------------
 
-describe("planPause bounds (E-3, E-5, E-6) — uwg102's RED", () => {
-  // Extracted to `_devx/workstreams/usage-window-governor/evals/` when
-  // uwg102 starts. Left as todos here so Phase 1 can be green without
-  // deleting Phase 2's RED — a RED that has to be re-derived from memory is
-  // not a RED.
-  it.todo("wakes at reset + usage_reset_slack_ms when the reset is parseable");
-  it.todo("E-3: falls back to the probe cadence when the reset is unknown");
-  it.todo("E-3: aborts with the weekly-limit reason once cumulative pause exceeds the cap");
-  it.todo("E-6: a reset landing after --until takes the deadline path, not a pause");
-  it.todo("E-5: the kill switch means planPause is never consulted at all");
+const CFG = {
+  resumeOnReset: true,
+  usageProbeIntervalMs: 900_000,
+  usageMaxPauseMs: 21_600_000,
+  usageResetSlackMs: 60_000,
+};
+
+describe("planPause — bounds (E-3, E-6)", () => {
+  it("wakes at reset + slack when the reset is parseable", () => {
+    const plan = planPause(
+      { resetAt: RESET, source: "parsed" },
+      CFG,
+      { now: NOW, elapsedPausedMs: 0, deadline: null },
+    );
+    // Narrowed rather than optional-chained: `plan.wakeAt?` on a union
+    // would silently pass if the plan were a `deadline` (no wakeAt at all).
+    expect(plan.kind).toBe("sleep");
+    if (plan.kind !== "sleep") throw new Error(`expected sleep, got ${plan.kind}`);
+    expect(plan.wakeAt.getTime()).toBe(RESET.getTime() + CFG.usageResetSlackMs);
+    expect(plan.source).toBe("parsed");
+  });
+
+  it("E-3: falls back to the probe cadence when the reset is unknown", () => {
+    const plan = planPause(
+      { resetAt: null, source: "probe" },
+      CFG,
+      { now: NOW, elapsedPausedMs: 0, deadline: null },
+    );
+    expect(plan.kind).toBe("probe");
+    if (plan.kind !== "probe") throw new Error(`expected probe, got ${plan.kind}`);
+    expect(plan.intervalMs).toBe(CFG.usageProbeIntervalMs);
+    expect(plan.source).toBe("probe");
+  });
+
+  it("E-3: aborts with the weekly-limit reason once cumulative pause exceeds the cap", () => {
+    const plan = planPause(
+      { resetAt: null, source: "probe" },
+      CFG,
+      { now: NOW, elapsedPausedMs: CFG.usageMaxPauseMs + 1, deadline: null },
+    );
+    expect(plan.kind).toBe("abort");
+    if (plan.kind !== "abort") throw new Error(`expected abort, got ${plan.kind}`);
+    expect(plan.reason).toMatch(/weekly/i);
+  });
+
+  it("E-6: a reset landing after --until takes the deadline path, not a pause", () => {
+    const deadline = new Date(RESET.getTime() - 60 * 60 * 1000); // an hour before reset
+    const plan = planPause(
+      { resetAt: RESET, source: "parsed" },
+      CFG,
+      { now: NOW, elapsedPausedMs: 0, deadline },
+    );
+    // The loop must never hold a machine past the hour its operator named.
+    expect(plan.kind).toBe("deadline");
+  });
+
+  it("E-5: the kill switch means planPause is never consulted at all", () => {
+    // Asserted here as a contract statement; the driver-side proof is in the
+    // Phase 2 seam test. `resumeOnReset:false` short-circuits BEFORE any
+    // governor code runs, so "byte-identical to today" is structural.
+    expect(() =>
+      planPause({ resetAt: RESET, source: "parsed" }, { ...CFG, resumeOnReset: false }, {
+        now: NOW,
+        elapsedPausedMs: 0,
+        deadline: null,
+      }),
+    ).toThrow(/kill switch|resume_on_reset/i);
+  });
 });
 
 describe("E-1 (P0): a window hit pauses, the same item resumes, counters stay put", () => {
@@ -298,4 +357,154 @@ describe("E-5: the kill switch restores today's behavior", () => {
       "on the same script (backoff sleeps from loop.backoff_ms, counters move as today); " +
       "windowPauses.length == 0",
   );
+});
+
+// ---------------------------------------------------------------------------
+// runPause — the chunked sleep. Fake clock + fake sleep, so this is fast and
+// deterministic; the point is the wall-clock re-read, not the waiting.
+// ---------------------------------------------------------------------------
+
+describe("runPause — chunked, wall-clock-driven, sleep-aware", () => {
+  /** A fake clock the test advances explicitly. `sleep(ms)` advances it by
+   *  `ms` unless a scenario says otherwise — which is how machine suspend is
+   *  simulated below. */
+  function fakeTime(start: Date) {
+    let t = start.getTime();
+    const slept: number[] = [];
+    return {
+      slept,
+      now: () => new Date(t),
+      advance: (ms: number) => {
+        t += ms;
+      },
+      sleep: async (ms: number) => {
+        slept.push(ms);
+        t += ms;
+      },
+    };
+  }
+
+  const START = new Date("2026-08-21T01:00:00.000Z");
+
+  it("sleeps in chunks rather than one long sleep", async () => {
+    const clock = fakeTime(START);
+    const res = await runPause(
+      { kind: "sleep", wakeAt: new Date(START.getTime() + 5 * 60_000), source: "parsed" },
+      { now: clock.now, sleep: clock.sleep },
+    );
+    expect(res.kind).toBe("resumed");
+    // 5 minutes at a 60s chunk = 5 sleeps, not 1 × 300_000.
+    expect(clock.slept).toEqual([60_000, 60_000, 60_000, 60_000, 60_000]);
+    expect(res.durationMs).toBe(5 * 60_000);
+  });
+
+  it("SELF-CORRECTS after a machine suspend — the wall clock decides, not the sleep total", async () => {
+    // The whole reason for chunking. `project_devx_loop_sleep_kills_iterations`
+    // records that machine sleep has killed loop runs here. A single long
+    // sleep wakes when its timer says so, which after a suspend is the wrong
+    // instant; re-reading the clock each chunk means a suspend that jumps
+    // past the wake time ends the pause immediately.
+    const clock = fakeTime(START);
+    const wakeAt = new Date(START.getTime() + 5 * 60 * 60_000); // 5 hours out
+    let first = true;
+    const res = await runPause(
+      { kind: "sleep", wakeAt, source: "parsed" },
+      {
+        now: clock.now,
+        sleep: async (ms) => {
+          clock.slept.push(ms);
+          // First chunk: the machine suspends for 6 hours instead of 1 min.
+          clock.advance(first ? 6 * 60 * 60_000 : ms);
+          first = false;
+        },
+      },
+    );
+    expect(res.kind).toBe("resumed");
+    // ONE chunk. It woke up, saw the clock was past the target, and stopped —
+    // it did not go on to sleep the remaining 299 planned minutes.
+    expect(clock.slept).toHaveLength(1);
+    expect(res.durationMs).toBe(6 * 60 * 60_000);
+  });
+
+  it("beats the heartbeat every chunk, so a paused loop can read ALIVE", async () => {
+    const clock = fakeTime(START);
+    const beats: number[] = [];
+    await runPause(
+      { kind: "sleep", wakeAt: new Date(START.getTime() + 3 * 60_000), source: "parsed" },
+      { now: clock.now, sleep: clock.sleep, beat: (ms) => beats.push(ms) },
+    );
+    expect(beats).toEqual([60_000, 120_000, 180_000]);
+  });
+
+  it("a successful probe resumes early; the parsed path has nothing to ask", async () => {
+    const clock = fakeTime(START);
+    let calls = 0;
+    const res = await runPause(
+      {
+        kind: "probe",
+        intervalMs: 60_000,
+        wakeAt: new Date(START.getTime() + 10 * 60_000),
+        source: "probe",
+      },
+      {
+        now: clock.now,
+        sleep: clock.sleep,
+        probe: async () => ++calls >= 3,
+      },
+    );
+    expect(res.kind).toBe("resumed");
+    expect(calls).toBe(3);
+    expect(clock.slept).toHaveLength(3); // stopped early, not at 10
+  });
+
+  it("an aborted signal ends the pause without waiting it out", async () => {
+    const clock = fakeTime(START);
+    const ctrl = new AbortController();
+    const res = await runPause(
+      { kind: "sleep", wakeAt: new Date(START.getTime() + 60 * 60_000), source: "parsed" },
+      {
+        now: clock.now,
+        sleep: async (ms) => {
+          clock.slept.push(ms);
+          clock.advance(ms);
+          ctrl.abort();
+        },
+        signal: ctrl.signal,
+      },
+    );
+    expect(res.kind).toBe("aborted-by-signal");
+    expect(clock.slept).toHaveLength(1);
+  });
+
+  it("deadline and abort plans do not sleep at all", async () => {
+    const clock = fakeTime(START);
+    const deadline = await runPause(
+      { kind: "deadline", reason: "past --until" },
+      { now: clock.now, sleep: clock.sleep },
+    );
+    const abort = await runPause(
+      { kind: "abort", reason: "weekly limit" },
+      { now: clock.now, sleep: clock.sleep },
+    );
+    expect(deadline).toMatchObject({ kind: "deadline", durationMs: 0 });
+    expect(abort).toMatchObject({ kind: "abort", durationMs: 0 });
+    expect(clock.slept).toEqual([]);
+  });
+
+  it("measures REAL elapsed time, not planned — a suspend is reported honestly", async () => {
+    const clock = fakeTime(START);
+    const res = await runPause(
+      { kind: "sleep", wakeAt: new Date(START.getTime() + 2 * 60_000), source: "parsed" },
+      {
+        now: clock.now,
+        sleep: async (ms) => {
+          clock.slept.push(ms);
+          clock.advance(ms * 10); // every chunk takes 10x longer than asked
+        },
+      },
+    );
+    // durationMs is what the clock says, so the run summary and the morning
+    // report tell the truth about a night that was mostly suspended.
+    expect(res.durationMs).toBe(600_000);
+  });
 });

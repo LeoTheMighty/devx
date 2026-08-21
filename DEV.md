@@ -268,7 +268,7 @@ the governor is a PRE-LADDER interception, not a ladder rung —
 uwgspk is parallel-safe with all of them.
 
 - [x] `dev/dev-uwg101-2026-08-21T14:30-uwg101.md` — Detection floor: `usage-window.ts` markers, tail-bounded matcher, reset parsing. Ships inert (nothing calls it). Status: done. From: epic-usage-window-governor. PR: https://github.com/LeoTheMighty/devx/pull/142 (merged 868d647)
-- [ ] `dev/dev-uwg102-2026-08-21T14:30-uwg102.md` — Governor + driver seam: pure `planPause` + chunked `runPause`, intercepted before `classifyIteration` (D-UW1). Status: ready. Blocked-by: uwg101.
+- [/] `dev/dev-uwg102-2026-08-21T14:30-uwg102.md` — Governor + driver seam: pure `planPause` + chunked `runPause`, intercepted before `classifyIteration` (D-UW1). Status: in-progress. Blocked-by: uwg101.
 - [ ] `dev/dev-uwg103-2026-08-21T14:30-uwg103.md` — Pause is visible everywhere run state is: `LoopStatus "paused"`, gather liveness widening, `windowPauses[]`, morning-report section, four `loop:` knobs in config.ts AND the schema. Status: ready. Blocked-by: uwg102.
 - [ ] `dev/dev-uwg104-2026-08-21T14:30-uwg104.md` — Live overnight ride-through. **HUMAN-GATED** — needs a supervised night riding a real reset; scoped alone so uwg101-103 ship green without it (the pin105 shape). Discharges MANUAL MV2.1. Status: ready. Blocked-by: uwg103.
 - [ ] `dev/dev-uwgspk-2026-08-21T14:30-uwgspk.md` — Spike: does a usage-probe API exist at all? Findings doc only, timeboxed to one story. Parallel-safe with uwg101-104. Status: ready. From: epic-usage-window-governor.
