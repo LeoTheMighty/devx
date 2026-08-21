@@ -23,6 +23,7 @@ import { Command } from "commander";
 
 import * as askCommand from "./commands/ask.js";
 import * as configCommand from "./commands/config.js";
+import * as doctorCommand from "./commands/doctor.js";
 import * as devxHelperCommand from "./commands/devx-helper.js";
 import * as ejectCommand from "./commands/eject.js";
 import * as gateCommand from "./commands/gate.js";
@@ -62,6 +63,7 @@ const commands: CommandModule[] = [
   askCommand,
   configCommand,
   devxHelperCommand,
+  doctorCommand,
   ejectCommand,
   gateCommand,
   graphCommand,

@@ -93,7 +93,18 @@ export interface DriftEntry {
      *  engine field read from it (`status:`, `blocked_by:`, `phase:`, gate
      *  flags) may be silently absent. Reported, never auto-fixed — the
      *  reader stays soft (D-13) and this row is how the softness surfaces. */
-    | "frontmatter-unreadable";
+    | "frontmatter-unreadable"
+    /** db36af: a spec lock left behind on a CLOSED item. Nothing reaps these
+     *  — reaping fires only on a contending claim for the same hash, which
+     *  never comes once the row is `[x]` — so they accumulate silently (14
+     *  of them by 2026-08-12). Fixable by `devx doctor --fix`; surfaced here
+     *  because `devx next` is the surface somebody actually runs. */
+    | "stale-lock"
+    /** db36af: a row marked `blocked` whose blocker cannot do its job —
+     *  absent, struck, or already done. Report-only (re-root vs retire vs
+     *  unblock is judgment). Motivating case: 8 of 10 blocked PLAN.md rows
+     *  sat behind a hash superseded five weeks earlier. */
+    | "dead-blocker";
   /** Status the backlog row carries (checkbox/Status: text). */
   backlogStatus?: SpecStatus;
   /** Status the spec frontmatter carries. */
