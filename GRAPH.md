@@ -4,7 +4,7 @@
 
 # Story graph
 
-199 specs across 23 groups — 12 blocked · 147 done · 5 in-progress · 35 ready; 397 edges.
+199 specs across 23 groups — 12 blocked · 148 done · 4 in-progress · 35 ready; 397 edges.
 
 ## Legend
 
@@ -415,7 +415,7 @@ flowchart TD
   class rtl104 done
   class rtl105 done
   class rtl106 done
-  class rtlret wip
+  class rtlret done
   class grp_story_graph collapsed
   class c8e2d4 ready
   class c30001 ready
