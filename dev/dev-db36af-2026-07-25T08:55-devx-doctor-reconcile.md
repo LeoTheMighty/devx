@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-25T08:55:00-06:00
 title: devx doctor — mechanical state reconciliation (self-healing primitive)
 from: debug/debug-dc7514-2026-07-25T08:55-loop-infra-failure-classification.md
-status: in-progress
+status: done
 branch: feat/dev-db36af
 blocked_by: [dc7514]
 ---
@@ -193,3 +193,4 @@ were established (see debug-dc7514's Evidence).
   .devx-cache/locks/spec-<hash>.lock` — that bare unlink had no ownership
   check at all on the one file whose job is to record ownership, so it
   deleted a peer's lock in the re-claim case.
+- 2026-08-21T12:49:24-06:00 — merged via PR #139 (squash → bf25634)
