@@ -105,6 +105,8 @@ import {
   type ReviewEvidence,
   type SplitRequest,
 } from "./iteration.js";
+import { collectFindings } from "../doctor/collect.js";
+import { applyFixes } from "../doctor/fix.js";
 import {
   CommitFailedError,
   LOOP_BOOKKEEPING_COMMIT_PREFIX,
@@ -223,6 +225,11 @@ export interface DryRunPlan {
 }
 
 export interface RunLoopOpts {
+  /** db36af: run `devx doctor`'s FIXABLE class at run start, before the
+   *  first item pick, so a repo wedged by a previous night's crash heals
+   *  itself instead of the loop walking past the item all night. Default on;
+   *  `false` in tests that assert on an untouched fixture. */
+  doctor?: boolean;
   repoRoot: string;
   /** Defaults to `<repoRoot>/.devx-cache`. */
   cacheDir?: string;
@@ -912,6 +919,102 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
     }
     return null;
   };
+
+  // ── Self-heal before the first pick (db36af) ────────────────────────────
+  // A repo wedged in the 2026-07-24 shape — a blocked spec with a dead owner
+  // and a preserved worktree holding only loop bookkeeping — used to sit
+  // there until a human did forensics. The repair steps were 100% mechanical
+  // (main commit `5f83f3e`), which is the whole argument for doing them
+  // here: an overnight run that starts by clearing its own predecessor's
+  // debris can then claim the item, instead of walking past it all night.
+  //
+  // Only the FIXABLE class, and only before the first pick. Everything
+  // report-only (dead owners, orphan worktrees holding real work, dead
+  // blockers) is left alone by construction — `applyFixes` has no applier
+  // for those classes at all, so this cannot become a destructive step by a
+  // later edit that flips a `fixable` flag.
+  //
+  // Best-effort: doctor is advisory, and a detector throwing must never stop
+  // the night from starting.
+  if (opts.doctor !== false) {
+    try {
+      const findings = await collectFindings(repoRoot, {
+        // The driver's OWN exec seam, not the module default. Without it the
+        // worktree detector shelled out to REAL git from inside every
+        // loop-driver test's fixture — bypassing the seam the rest of the
+        // driver routes through, and adding enough latency to tip a
+        // 5s-capped test over on macOS CI (caught by PR #139's run).
+        exec: async (cmd: string, args: string[], o?: { cwd?: string }) =>
+          exec(cmd, args, o),
+        // The project's REAL base branch. Defaulting to the literal "main"
+        // makes `git log main..HEAD` error on a `master` or split-branch
+        // repo, which reads conservatively as "real work" — so the fixable
+        // class silently never fires and this self-heal is dead with no
+        // signal (found in review).
+        baseRef: baseBranchFrom(merged),
+        ...(opts.pidAlive !== undefined ? { pidAlive: opts.pidAlive } : {}),
+      });
+      const fixable = findings.filter((f) => f.fixable);
+      if (fixable.length > 0) {
+        // The `exec` seam is LOAD-BEARING, not optional: without it
+        // `applyFixes` refuses every bookkeeping-only-abandonment with "no
+        // exec seam supplied" — and that is the ONLY class that clears a
+        // 2026-07-24 wedge. The self-heal would have run all night emitting
+        // `doctor:fixed {ok:false}` and changing nothing (caught in review).
+        // `exec` is typed ExecLike (sync OR async) for the driver's other
+        // call sites; applyFixes wants the async shape, so normalize once.
+        // `exec` is typed ExecLike (sync OR async) for the driver's other
+        // call sites; applyFixes wants the async shape, so normalize once.
+        const fixed = await applyFixes(fixable, {
+          repoRoot,
+          exec: async (cmd, args, o) => exec(cmd, args, o),
+        });
+        for (const f of fixed) {
+          event("doctor:fixed", {
+            class: f.class,
+            target: f.target,
+            ok: f.ok,
+            ...(f.error !== undefined ? { error: f.error } : {}),
+          });
+        }
+        const ok = fixed.filter((f) => f.ok).length;
+        if (ok > 0) {
+          out(`devx loop: doctor repaired ${ok} mechanical finding(s) before the first pick`);
+          // Commit what doctor wrote, by explicit pathspec. Left dirty on
+          // `main` these would sit there all night and then fail the merge
+          // tail's `git pull --ff-only` with "local changes would be
+          // overwritten" — a repair that wedges the thing it repaired.
+          const paths = [...new Set(fixed.flatMap((f) => (f.ok ? (f.paths ?? []) : [])))];
+          if (paths.length > 0) {
+            // Explicit pathspec, never `git add -A`: `main` is the tree every
+            // concurrent session shares, and a blanket stage here would sweep
+            // a peer's in-flight spec edits into a commit authored by this
+            // run (the E1 class, erratum ba3c65b).
+            const add = await exec("git", ["add", "--", ...paths], { cwd: repoRoot });
+            if (add.exitCode === 0) {
+              const c = await exec(
+                "git",
+                [
+                  "-c", "commit.gpgsign=false",
+                  "commit",
+                  "-m", `chore(doctor): reconcile ${ok} finding(s) at run start`,
+                  "--", ...paths,
+                ],
+                { cwd: repoRoot },
+              );
+              if (c.exitCode !== 0) {
+                event("doctor:commit-failed", { stderr: c.stderr.trim() });
+              }
+            } else {
+              event("doctor:commit-failed", { stderr: add.stderr.trim() });
+            }
+          }
+        }
+      }
+    } catch (e) {
+      event("doctor:failed", { error: serializeError(e) });
+    }
+  }
 
   try {
     while (true) {

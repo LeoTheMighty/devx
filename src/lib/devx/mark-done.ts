@@ -69,6 +69,7 @@ import {
   realFs,
   relativeFromRepo,
 } from "./claim.js";
+import { releaseSpecLockForClosedSpec, specLockPath } from "./spec-lock.js";
 import { appendStatusLogLine } from "./status-log.js";
 
 const HASH_RE = /^[a-z0-9]{3,12}$/i;
@@ -564,6 +565,41 @@ export function markDone(hash: string, opts: MarkDoneOpts): MarkDoneResult {
       }
     } else {
       warn(regenResult.warning);
+    }
+
+    // ---- Source fix (db36af): release the lock the claim acquired ----
+    //
+    // Symmetry with `claim`, which acquires it in the OPENING flip. Until
+    // this landed, nothing released a `done` spec's lock: reaping fires only
+    // on a contending claim for the same hash, which never comes once the
+    // item is `[x]`. 14 of them accumulated on disk by 2026-08-12, the
+    // oldest 16 days old — and the leak was not historical debris from a
+    // buggier era: lock #15 was created and orphaned by a clean, green,
+    // correctly-executed run inside the very session that documented why
+    // #1–14 existed.
+    //
+    // `releaseSpecLockForClosedSpec` is LIVENESS-GATED, not unguarded — read
+    // its docstring before changing this call. A token-guarded release is
+    // not available here (the lock records the CLAIM process's token and
+    // this is a different process, so a re-derived one can never match — the
+    // b931a1 finding), but an unconditional unlink is not safe either: the
+    // first cut of this call deleted a live peer's lock when a row had been
+    // reset and re-claimed, and `test/devx-finalize.test.ts`'s peer-reclaim
+    // case caught it. A `live` holder is left alone; dead/recycled/
+    // unparseable — the shapes that actually accumulated — are released.
+    //
+    // Warn-and-continue, like every other derived-artifact step: the merge
+    // has already landed on origin, and a lock that survives is `devx
+    // doctor`'s stale-lock finding, not a reason to unwind a merge.
+    try {
+      const released = releaseSpecLockForClosedSpec(specLockPath(opts.repoRoot, hash));
+      if (!released.released && released.reason === "unreadable") {
+        warn(
+          `spec lock .devx-cache/locks/spec-${hash}.lock could not be removed — it is left on disk; \`devx doctor --fix\` sweeps this class, or delete it by hand`,
+        );
+      }
+    } catch (e) {
+      warn(`spec lock release for ${hash} failed: ${errMessage(e)}`);
     }
 
     return { hash, paths, todoSynced, warnings };

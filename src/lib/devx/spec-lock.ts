@@ -457,6 +457,73 @@ export function releaseSpecLockGuarded(
   return { released: true };
 }
 
+/**
+ * Release the lock of a spec the caller has just CLOSED, when no session
+ * token is available to guard on.
+ *
+ * Not a third release path: it is the same unlink, gated on liveness instead
+ * of on ownership. The distinction matters because a token is genuinely
+ * unavailable here — the lock records the CLAIM process's
+ * `defaultSessionId()`, and `markDone` runs in a different process minutes
+ * or hours later, so a re-derived token can never match (b931a1 found this
+ * the expensive way, and reported success while leaking every lock).
+ *
+ * WHY THE LIVENESS GATE, rather than an unconditional unlink. The first cut
+ * argued that a `[x]` row cannot be claimed, so any lock present must be
+ * ours. That is *nearly* true and not true enough: if the row were reset to
+ * `[ ]` by a human or by `doctor --fix` and a peer re-claimed it, our
+ * mark-done would flip its `[/]` to `[x]` and delete the PEER's live lock —
+ * the R7 TOCTOU, reintroduced by the very change meant to clean up after it.
+ * The suite caught it: `test/devx-finalize.test.ts`'s peer-reclaim case went
+ * red. So a lock that classifies `live` is LEFT ALONE, always. Everything
+ * else — dead pid, recycled pid, unparseable, empty — is debris by
+ * definition and is what actually accumulated (14 instances by 2026-08-12,
+ * the oldest 16 days old; lock #15 was created and orphaned inside the very
+ * session that documented why #1–14 existed).
+ *
+ * This still closes the leak for the case that produced it: an interactive
+ * claim runs in a short-lived CLI process, so its lock's pid is dead within
+ * seconds and classifies reapable. A loop's lock stays `live` for the run's
+ * duration — and the loop driver releases its own, guarded, on the way out.
+ *
+ * MUST be called inside the backlog mutation lock (the classify→unlink is a
+ * TOCTOU without it), and only for a spec the caller has just made
+ * unclaimable. Both are the caller's obligation.
+ */
+export function releaseSpecLockForClosedSpec(
+  lockPath: string,
+  deps: ReleaseSpecLockDeps & { pidAlive?: (pid: number) => boolean } = {},
+): SpecLockReleaseResult {
+  const unlink = deps.unlink ?? ((p: string) => unlinkSync(p));
+  const cls = classifySpecLock(lockPath, {
+    ...(deps.readFile !== undefined ? { readFile: deps.readFile } : {}),
+    ...(deps.pidAlive !== undefined ? { pidAlive: deps.pidAlive } : {}),
+  });
+  if (cls.kind === "missing") return { released: false, reason: "missing" };
+  if (cls.kind === "unreadable") return { released: false, reason: "unreadable" };
+  if (cls.kind === "live" || cls.kind === "unknown-pid") {
+    // A live holder — or one whose liveness is unknowable, which takes the
+    // same conservative posture the classifier itself does.
+    return {
+      released: false,
+      reason: "not-owner",
+      owner: "session" in cls.body ? cls.body.session : null,
+    };
+  }
+  try {
+    unlink(lockPath);
+  } catch (err) {
+    if (isEnoentish(err)) return { released: false, reason: "missing" };
+    // PROPAGATE, matching releaseSpecLockGuarded's contract: an EACCES/EPERM
+    // means the lock is still on disk and every future claim of this hash
+    // sees it. Flattening that to `reason: "unreadable"` told the operator
+    // the body could not be read when in fact it read fine and the UNLINK
+    // failed — a different problem with a different fix.
+    throw err;
+  }
+  return { released: true };
+}
+
 /** Does the lock at `lockPath` record `session` as its owner? False on any
  *  read/parse failure (lock gone = claim no longer ours — roc101 posture). */
 export function specLockOwnedBy(

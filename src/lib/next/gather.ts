@@ -58,6 +58,7 @@ import {
   SPEC_LOCK_LIVE_WARN_MS,
   classifySpecLock,
 } from "../devx/spec-lock.js";
+import { detectDeadBlockers, detectStaleLocks } from "../doctor/detect.js";
 import {
   instancesDir,
   listLiveInstances,
@@ -490,10 +491,83 @@ export function gatherRepoSnapshot(opts: GatherOpts): RepoSnapshot {
     qaWalkthroughs,
     blocked,
     todoDrift,
-    drift,
+    drift: [...drift, ...doctorDrift(fs, repoRoot, allRows, opts)],
     warnings,
     allRows,
   };
+}
+
+/**
+ * The two `devx doctor` classes `gatherRepoSnapshot` does not already report,
+ * folded into the SAME `drift[]` channel (db36af AC: reuse the existing
+ * channel; zero file writes from `next` itself).
+ *
+ * Deliberately only two of doctor's six. `mirror-drift` and `dead-owner` are
+ * already covered here as `status-mismatch` and `in-progress-without-lock` —
+ * double-reporting them would make the channel noisier, which is the exact
+ * failure mode that let the existing drift rows go unacted-on for weeks. And
+ * the two worktree classes need an async git probe, which this sync snapshot
+ * cannot take; `devx doctor` itself owns those.
+ *
+ * Best-effort throughout: a doctor detector throwing must never take the
+ * dispatcher down. Drift is advisory (CAP-2).
+ */
+function doctorDrift(
+  fs: NextFs,
+  repoRoot: string,
+  allRows: ReadonlyArray<{ hash: string; backlog: string; status: string }>,
+  opts: GatherOpts,
+): DriftEntry[] {
+  const backlogOf = new Map(allRows.map((r) => [r.hash, r.backlog]));
+  const statusOf = new Map(allRows.map((r) => [r.hash, r.status]));
+  const detectOpts = {
+    repoRoot,
+    fs: {
+      exists: (p: string) => fs.exists(p),
+      readFile: (p: string) => fs.readFile(p),
+      readdir: (p: string) => fs.readdir(p),
+      isDirectory: () => false,
+    },
+    // Resolve statuses from the rows THIS snapshot already parsed through
+    // its own fs seam, never through the real-filesystem resolver — see
+    // `DetectOpts.statusOf`. `undefined` for an unknown hash means "no
+    // opinion", so a lock for a hash outside this universe stays silent
+    // instead of being reported as debris.
+    statusOf: (hash: string) => statusOf.get(hash),
+    ...(opts.lockProbes?.pidAlive !== undefined
+      ? { pidAlive: opts.lockProbes.pidAlive }
+      : {}),
+  };
+  const out: DriftEntry[] = [];
+  try {
+    // Cheap-exit before any work: no locks dir means no stale-lock findings
+    // are possible, and this is the common case on a healthy repo. `devx
+    // next` runs constantly (and the loop calls it per pick), so the
+    // detectors must not put a directory walk on that path for nothing.
+    for (const f of detectStaleLocks(detectOpts)) {
+      out.push({
+        hash: f.hash ?? "",
+        backlog: backlogOf.get(f.hash ?? "") ?? "DEV.md",
+        kind: "stale-lock",
+        detail: `${f.detail} — \`devx doctor --fix\` clears it`,
+      });
+    }
+  } catch {
+    // advisory only
+  }
+  try {
+    for (const f of detectDeadBlockers(detectOpts)) {
+      out.push({
+        hash: f.hash ?? "",
+        backlog: f.backlog ?? "DEV.md",
+        kind: "dead-blocker",
+        detail: f.detail,
+      });
+    }
+  } catch {
+    // advisory only
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

@@ -104,7 +104,7 @@
 //       dev/dev-v2x101-...
 // Epic: _bmad-output/planning-artifacts/epic-devx-skill.md
 
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import process from "node:process";
 
 import type { Command } from "commander";
@@ -146,6 +146,8 @@ import {
   type FinalizeOpts,
   finalize,
 } from "../lib/devx/finalize.js";
+import { releaseSpecLockGuarded, specLockPath } from "../lib/devx/spec-lock.js";
+import { type BacklogLockFn, withBacklogLock } from "../lib/backlog/mutate.js";
 import type { DeriveBranchConfig } from "../lib/plan/derive-branch.js";
 
 const HASH_RE = /^[a-z0-9]{3,12}$/i;
@@ -1087,6 +1089,135 @@ export function runFinalize(
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// release-lock (db36af, absorbing ee7049)
+// ---------------------------------------------------------------------------
+
+export interface RunReleaseLockOpts {
+  out?: (s: string) => void;
+  err?: (s: string) => void;
+  projectPath?: string;
+  repoRoot?: string;
+  /** Test seam — replaces the cross-process backlog lock. */
+  lock?: BacklogLockFn;
+  /** Test seam — forwarded to the release. */
+  deps?: { readFile?: (p: string) => string; unlink?: (p: string) => void };
+}
+
+/**
+ * Guarded spec-lock release for the Phase 9 branch-handoff path.
+ *
+ * Phase 9 told the agent to `rm .devx-cache/locks/spec-<hash>.lock` by hand —
+ * a raw unlink with no ownership check at all, on the one file whose whole
+ * job is to say who owns the claim. That is the R7 TOCTOU with the guard
+ * removed: if a human had cleared our lock and a peer re-claimed the hash,
+ * the `rm` deleted the PEER's lock. This wraps `releaseSpecLockGuarded`
+ * instead, under the backlog lock, exactly as the loop driver does.
+ *
+ * Exit codes: 0 released (or already gone) · 1 backlog-lock contention ·
+ * 3 the lock belongs to someone else — NOT an error, and deliberately not 0:
+ * the caller asked for a release that did not happen and should know ·
+ * 2 unreadable/other · 64 usage.
+ */
+export function runReleaseLock(
+  args: string[],
+  opts: RunReleaseLockOpts = {},
+): number {
+  const out = opts.out ?? ((s) => process.stdout.write(s));
+  const err = opts.err ?? ((s) => process.stderr.write(s));
+  const usage =
+    "usage: devx devx-helper release-lock <hash> --session-token <token>\n";
+
+  const flags: Record<string, string> = {};
+  const positional: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--session-token") {
+      if (i + 1 >= args.length || args[i + 1].startsWith("--")) {
+        err("devx devx-helper release-lock: --session-token requires a value\n");
+        return 64;
+      }
+      flags[a] = args[i + 1];
+      i++;
+    } else if (a.startsWith("--")) {
+      err(`devx devx-helper release-lock: unknown flag '${a}'\n`);
+      return 64;
+    } else {
+      positional.push(a);
+    }
+  }
+  if (positional.length !== 1 || !HASH_RE.test(positional[0])) {
+    err(usage);
+    return 64;
+  }
+  const hash = positional[0];
+  // NOT auto-derived, for the same reason `devx split` refuses to derive it:
+  // a token this process invents can never match the one the CLAIM process
+  // wrote, and one read out of the spec's `owner:` or the lock body always
+  // matches and defeats the guard entirely (CLAUDE.md, E13).
+  const token = flags["--session-token"];
+  if (token === undefined || token.trim() === "") {
+    err(
+      "devx devx-helper release-lock: --session-token is required and must not be empty — pass the token `devx devx-helper claim` returned, never one copied from the spec's owner: or the lock body\n",
+    );
+    return 64;
+  }
+
+  const projectConfigPath = opts.projectPath ?? findProjectConfig();
+  if (!projectConfigPath) {
+    err("devx devx-helper release-lock: devx.config.yaml not found (walked up from cwd)\n");
+    return 64;
+  }
+  const repoRoot = opts.repoRoot ?? dirname(projectConfigPath);
+  const lockPath = specLockPath(repoRoot, hash);
+  const lock: BacklogLockFn =
+    opts.lock ??
+    (<T,>(label: string, fn: () => T): T =>
+      withBacklogLock(join(repoRoot, ".devx-cache"), label, fn));
+
+  try {
+    const res = lock("release-spec-lock", () =>
+      releaseSpecLockGuarded(lockPath, token, opts.deps ?? {}),
+    );
+    if (res.released) {
+      out(`${JSON.stringify({ hash, released: true, lockPath })}\n`);
+      return 0;
+    }
+    if (res.reason === "missing") {
+      out(`${JSON.stringify({ hash, released: false, reason: "missing", lockPath })}\n`);
+      return 0;
+    }
+    if (res.reason === "not-owner") {
+      out(
+        `${JSON.stringify({ hash, released: false, reason: "not-owner", owner: res.owner, lockPath })}\n`,
+      );
+      err(
+        `devx devx-helper release-lock: ${lockPath} is owned by '${res.owner ?? "unknown"}', not the token supplied — a peer re-claimed ${hash}; left in place\n`,
+      );
+      return 3;
+    }
+    out(`${JSON.stringify({ hash, released: false, reason: res.reason, lockPath })}\n`);
+    err(
+      `devx devx-helper release-lock: ${lockPath} body is unreadable — left in place; inspect it by hand or the next claim of ${hash} refuses forever\n`,
+    );
+    return 2;
+  } catch (e) {
+    if (e instanceof BacklogLockTimeoutError) {
+      out(
+        `${JSON.stringify({ error: "backlog lock held", lockPath: e.lockPath, holderPid: e.holderPid })}\n`,
+      );
+      err(`devx devx-helper release-lock: ${e.message}\n`);
+      return 1;
+    }
+    out(`${JSON.stringify({ error: "release-failed", hash })}\n`);
+    err(
+      `devx devx-helper release-lock: ${e instanceof Error ? e.message : String(e)}\n`,
+    );
+    return 2;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // commander wiring
 // ---------------------------------------------------------------------------
@@ -1233,6 +1364,27 @@ export function register(program: Command): void {
         }
       },
     );
+
+  sub
+    .command("release-lock")
+    .description(
+      "Guarded spec-lock release for /devx Phase 9's branch-handoff path (db36af, absorbing ee7049). Wraps releaseSpecLockGuarded under the backlog lock — replaces the raw `rm .devx-cache/locks/spec-<hash>.lock`, which had no ownership check and would delete a peer's lock. Exit 0 released or already gone / 1 backlog-lock contention / 2 unreadable / 3 owned by another session (left in place) / 64 usage.",
+    )
+    .argument("<hash>", "spec hash (e.g. 'mss101')")
+    .requiredOption(
+      "--session-token <token>",
+      "the token `devx devx-helper claim` returned. NEVER one copied from the spec's owner: or the lock body — that always matches and defeats the guard.",
+    )
+    .action((hash: string, options: { sessionToken?: string }) => {
+      const args = [hash];
+      if (options.sessionToken !== undefined) {
+        args.push("--session-token", options.sessionToken);
+      }
+      const code = runReleaseLock(args, {});
+      if (code !== 0) {
+        process.exit(code);
+      }
+    });
 
   sub
     .command("check-hold")

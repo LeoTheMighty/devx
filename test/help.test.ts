@@ -246,6 +246,15 @@ describe("cli303 — devx --help command listing", () => {
                                      scaffolds _devx/workstreams/<slug>/ + the plan
                                      spec's engine frontmatter.
         ask                          (coming in Phase 2 — epic-devx-concierge-skill)
+        doctor [options]             Detect - and with --fix mechanically repair -
+                                     repo-state debris that otherwise needs human
+                                     forensics: stale spec locks on closed items,
+                                     backlog/frontmatter mirror drift,
+                                     bookkeeping-only loop abandonments; plus
+                                     report-only findings for dead owners, orphan
+                                     worktrees and dead blockers. Advisory, never a
+                                     merge gate: exit 0 clean / 3 findings remain / 2
+                                     doctor could not run.
         kill                         (coming in Phase 2 — epic-devx-concierge-skill)
         loop [options]               Run the overnight loop: claim backlog items,
                                      iterate with fresh worker sessions, merge on

@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-25T08:55:00-06:00
 title: devx doctor — mechanical state reconciliation (self-healing primitive)
 from: debug/debug-dc7514-2026-07-25T08:55-loop-infra-failure-classification.md
-status: ready
+status: in-progress
 branch: feat/dev-db36af
 blocked_by: [dc7514]
 ---
@@ -82,6 +82,7 @@ were established (see debug-dc7514's Evidence).
       failures. This AC is achievable as written; no known red remains.
       Budget ~15 min for the gate — pass 2 alone runs ~850s.
 
+
 ## Technical notes
 
 - Wrap, don't duplicate: backlog parsing via `src/lib/backlog/parse.ts`;
@@ -142,3 +143,53 @@ were established (see debug-dc7514's Evidence).
   partition misclassification, not the exec seam). Land ecdcda first.
 
 - 2026-08-13 — the SOURCE-FIX AC demonstrated itself, unprompted, one day after being written. `debug-ecdcda` shipped through the full attended `/devx` loop (PR #125, merged a3ad57f). `devx devx-helper mark-done ecdcda --pr 125 --type debug` returned exit 0 with `paths: ["DEBUG.md", "<spec>", "GRAPH.md"]` — and left `.devx-cache/locks/spec-ecdcda.lock` on disk. So the 14 stale locks cleared in `9e1d9d3` were not historical debris from an older, buggier era: the leak is live in the current code path, and it reproduces on every clean, green, correctly-executed run. Lock #15 was created and orphaned inside the same session that documented why #1-14 existed. Released by hand again; that hand-release is the thing this AC deletes.
+- 2026-08-21T12:05 — claimed and executed interactively (harness sweep).
+- 2026-08-21T13:20 — phase 4: 3-agent parallel adversarial review (Blind
+  Hunter + Edge Case Hunter + Acceptance Auditor; ~1,900-line surface with a
+  DESTRUCTIVE `--fix`, far above the 500-line threshold). ~25 unique
+  actionable findings; ALL fixed in-place and re-verified. Both hunters
+  independently found the same HIGH: `findSpecForHashAnyType` THROWS on an
+  ambiguous hash, the catch flattened that to `resolution = null`, and that
+  branch was `fixable: true` — so a hash resolving in two type dirs (the
+  attested `debug-ea4f41` shape, hit live on sgr103/PR #112 when Phase 5
+  minted a QA walkthrough reusing a story hash) made `doctor --fix`, and the
+  loop's UNATTENDED run-start self-heal, delete a live claim's lock.
+  Ambiguity is now its own report-only finding.
+  Other load-bearing fixes: `rewriteRowStatus` matched any line CONTAINING
+  the backticked path, so a "Follow-up to `dev/dev-x.md`" cross-reference
+  took the splice — and the `[locked]` refusal used `continue`, handing it to
+  the next matching row (now anchored, with `break`); the loop's `applyFixes`
+  call passed no `exec` seam, so the ONLY class that clears a 2026-07-24
+  wedge failed every night with "no exec seam supplied"; the
+  bookkeeping-only repair did 1 of its 3 steps, leaving the spec `blocked`
+  and the branch alive, so the item it "repaired" stayed unclaimable;
+  `mirror-drift` was marked fixable for `superseded`/`deleted`, which have no
+  checkbox form, producing a finding that failed forever; the destructive
+  worktree path had no apply-time re-check (a peer's resume-claim in the
+  detect→fix window would have had its worktree force-removed); writes were
+  non-atomic on a path the loop runs unattended; and a held backlog lock
+  escaped as exit 1, the code this command's header explicitly rejects.
+- 2026-08-21T13:25 — the FIRST REAL SCAN of this repo found a class no
+  fixture had: `.worktrees/dev-a10001` is a leftover `mobile/.dart_tool`
+  directory with no `.git` at all. Running `git` with cwd inside it does not
+  fail — git walks UP and answers about the MAIN checkout — so the
+  bookkeeping probe reported main's dirty state and doctor claimed a pile of
+  build artifacts held work worth keeping, permanently, on evidence about the
+  wrong repository. Now detected and reported honestly. (Cross-epic pattern
+  "first real run against the live repo", earning its keep again.)
+- 2026-08-21T13:30 — the dead-blocker detector was NARROWED during
+  implementation and the narrowing is recorded here because it deviates from
+  the AC letter: the unnarrowed form ("any `Blocked-by:` naming a done hash")
+  produced 20 findings on a healthy backlog, and 20 rows of noise is exactly
+  how an advisory channel gets ignored — the failure mode this story exists
+  to fix. It now fires only when the DEPENDENT row is still `blocked`. The
+  auditor verified against the motivating case by parsing
+  `git show 9e1d9d3^:PLAN.md`: all four rows citing the superseded `c4f1a2`
+  parse as `status=blocked`, so the struck-blocker arm still catches every
+  one. Not an AC dropped.
+- 2026-08-21T13:35 — absorbed-scope note: `ee7049` is delivered here, not
+  just retired. `devx devx-helper release-lock <hash> --session-token` ships,
+  and `/devx` Phase 9's branch-handoff step no longer says `rm
+  .devx-cache/locks/spec-<hash>.lock` — that bare unlink had no ownership
+  check at all on the one file whose job is to record ownership, so it
+  deleted a peer's lock in the re-claim case.
