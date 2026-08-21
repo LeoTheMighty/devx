@@ -4,7 +4,7 @@
 
 # Story graph
 
-205 specs across 24 groups — 12 blocked · 149 done · 5 in-progress · 39 ready; 409 edges.
+206 specs across 24 groups — 12 blocked · 149 done · 5 in-progress · 40 ready; 410 edges.
 
 ## Legend
 
@@ -141,6 +141,7 @@ flowchart TD
   end
   subgraph sg_standalone["standalone — no workstream or epic"]
     28b267["28b267 learn.auto_allow — the retro watcher stop…"]
+    2e1174["2e1174 Tests in the ASYNC blocking pass sit with…"]
     2e7b45["2e7b45 QA walkthrough for 'Backfill — adds-only…"]
     357d0c["357d0c Loop instance registry: crash-orphan-thro…"]
     3b9e07["3b9e07 `devx loop` never emits the mandatory `ph…"]
@@ -387,6 +388,7 @@ flowchart TD
   grp_story_graph -.-> d7e8e5
   grp_os_supervisor_scaffold --> grp_devx_cli_skeleton
   tur101 -.-> 7c1e93
+  uwg102 -.-> 2e1174
   uwg102 --> uwg101
   uwg103 --> uwg102
   uwg104 --> uwg103
@@ -482,6 +484,7 @@ flowchart TD
   class d40007 ready
   class d40ret ready
   class 28b267 done
+  class 2e1174 ready
   class 2e7b45 ready
   class 357d0c done
   class 3b9e07 done
