@@ -1024,6 +1024,22 @@ describe("runLoop review-fix scenarios", () => {
     expect(events).toContain("iteration:repair-salvage-failed");
   }, HOOK_TEST_TIMEOUT_MS);
 
+  // Explicit cap, and the number is measured rather than guessed: this
+  // scenario drives THREE items through real git fixtures with spawned
+  // workers, and clocks 4,373ms on a quiet machine against vitest's 5,000ms
+  // default — 14% headroom locally, and negative on a loaded macOS runner
+  // (observed 5,519ms, PR #143). It has now failed CI twice on timing alone
+  // with no diff touching the driver.
+  //
+  // This is NOT the `debug-5e1a77` anti-pattern. That rule says do not raise
+  // a cap that CANNOT FIRE — a sync-blocking test where a blocked event loop
+  // means the timeout never runs at all, so no value is enforcement. Here the
+  // cap fires correctly (this file is in the async blocking pass); the cap is
+  // simply set below the work. Raising it to a realistic value IS enforcement.
+  //
+  // `scripts/timeout-headroom.mjs` (debug-5c8b21 AC 3) is the sweep that
+  // finds this class; see debug spec `2e1174` for running it across the
+  // blocking pass rather than one test at a time.
   it("abandoned items WITH committed progress don't trip the systemic 3-stop (MED-4)", async () => {
     fixture = makeFixture([
       { hash: "big001" },
@@ -1077,7 +1093,7 @@ describe("runLoop review-fix scenarios", () => {
     expect(r.summary?.items.every((i) => i.leftState === "blocked")).toBe(true);
     const events = readEvents(fixture.cacheDir, r.summary!.runId).map((e) => e.event);
     expect(events).not.toContain("item:split");
-  });
+  }, 30_000);
 
   it("3 consecutive handed-off-FAILURE tails trip the systemic stop; the next item is untouched (MED-6)", async () => {
     fixture = makeFixture([
