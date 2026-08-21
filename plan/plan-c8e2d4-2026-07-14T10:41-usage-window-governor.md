@@ -9,19 +9,23 @@ spawned: []
 mode: YOLO
 project_shape: empty-dream
 thoroughness: send-it
-stack_layers: [ backend ]
+stack_layers: [backend]
 blocked_by: []
-stage: design
+stage: executing
 entered_at: prd
 gate_status:
   prd_validated: true
-  design_verified: false
-  plan_verified: false
-  evals_red: false
+  design_verified: true
+  plan_verified: true
+  evals_red: true
 outcome:
   status: null
   measure_by: null
 workstream: _devx/workstreams/usage-window-governor
+gate_verdicts:
+  design: CONCERNS
+  plan: CONCERNS
+  evals: CONCERNS
 ---
 
 ## Goal
@@ -51,12 +55,21 @@ plan-d01000 and resolves the design lean in `docs/OPEN_QUESTIONS.md` §3.
   `firstPermanentErrorMatchInTail`) + `parseResetTime()` — unix-epoch
   `|<ts>` form, "resets 3am" next-occurrence form, ISO form; past timestamp
   → null (fall to probe path).
-- **New ladder rung `usage-window-exhausted`** (`ladder.ts`): classified
-  *above* permanent-error; counts toward **nothing** (weather, not a defect);
-  decision `pause-usage-window`. Driver semantics: decrement the iteration
-  counter (a window hit must not burn `maxIterationsPerItem`); preserve
-  `pendingRepair`; roll back a half-written tree otherwise; claim/lock/
-  worktree untouched so the **same item resumes first**.
+- ~~**New ladder rung `usage-window-exhausted`** (`ladder.ts`)~~ →
+  **superseded by D-UW1 (design stage, 2026-08-21): a PRE-LADDER
+  interception in the driver; `ladder.ts` gets zero diff.** The seeded scope
+  above was written before the code map; `IterationClass`/`LadderDecision`
+  are failure-shaped by construction (`nextLadderState` bumps
+  `consecutiveFailures` for every non-success), so a rung would need four
+  exemptions to a reducer whose whole value is having none — and a later
+  refactor generalizing over classes would silently start charging window
+  hits as failures again. See
+  `_devx/workstreams/usage-window-governor/decisions/D-UW1-pre-ladder-interception.md`.
+  **The accounting semantics below are unchanged** — only the seam moved:
+  counts toward nothing (weather, not a defect); a window hit must not burn
+  `maxIterationsPerItem`; preserve `pendingRepair`; roll back a half-written
+  tree otherwise; claim/lock/worktree untouched so the **same item resumes
+  first**.
 - **Pause = in-process chunked sleep** inside `runLoop` (driver already
   injects `now`/`sleep`/`signal`; `caffeinate -i -w` holds the machine awake;
   chunked wall-clock re-checks self-correct after machine sleep). Unknown
@@ -86,11 +99,22 @@ plan-d01000 and resolves the design lean in `docs/OPEN_QUESTIONS.md` §3.
 
 ## Sub-specs to spawn
 
-To be elicited by `/devx-plan`. Sketch: S1 detection + ladder rung (pure,
-ships inert) → S2 driver pause/resume + state + report + knobs → S3 spike
-(usage-probe API investigation; findings doc + `probeUsage` seam decision)
-→ ret. The external-scheduler `--resume <run-id>` variant is an explicit
-v2 follow-up, not scheduled.
+~~Sketch: S1 detection + ladder rung → S2 driver pause/resume → S3 spike
+→ ret.~~ **Superseded 2026-08-21 by the Plan stage.** The seeded 3-phase
+sketch carried the rejected ladder rung (D-UW1) and under-counted the work.
+Actual phases, emitted and `validate-emit`-clean:
+
+- **uwg101** — detection floor (pure, ships inert)
+- **uwg102** — governor + driver seam (pre-ladder interception, D-UW1)
+- **uwg103** — state, heartbeat, summary, report, config knobs
+- **uwg104** — live overnight ride-through (**human-gated**, own phase)
+- **uwgspk** — usage-probe spike (parallel-safe; findings doc only)
+- **uwgret** — retro (blocked-by uwg101-103, deliberately NOT uwg104: a
+  human-gated phase must not hold the retro hostage, which is exactly what
+  happened to `pinret`)
+
+The external-scheduler `--resume <run-id>` variant remains an explicit v2
+follow-up, not scheduled.
 
 ## Acceptance criteria
 
@@ -112,9 +136,11 @@ v2 follow-up, not scheduled.
 ## Status log
 
 - 2026-07-14T10:41 — filed from the vision-gap drift audit (plan
-- 2026-07-15T12:55 — PRD stage (/devx-plan): workstream usage-window-governor scaffolded (bound via --hash); 2 Explore passes (loop code map + decision history); prd.md (G-1..3, UC-1..5, CAP-1..6, FR-1..8) + expectations.md (E-1..E-7, 2×P0) written; `devx gate prd c8e2d4` PASS (1 fix: E-4 threshold made numeric) → prd_validated, stage: design. Key research findings recorded in prd.md: ladder is failure-shaped (seam choice → design stage); usage_cap_pct confirmed unwired; gather.ts trusts only status==running.
   sparkling-bubbling-pie, approved 2026-07-14). Track 2 of 4. Full design
   detail lives in the approved plan + this spec's Scope.
+- 2026-07-15T12:55 — PRD stage (/devx-plan): workstream usage-window-governor scaffolded (bound via --hash); 2 Explore passes (loop code map + decision history); prd.md (G-1..3, UC-1..5, CAP-1..6, FR-1..8) + expectations.md (E-1..E-7, 2×P0) written; `devx gate prd c8e2d4` PASS (1 fix: E-4 threshold made numeric) → prd_validated, stage: design. Key research findings recorded in prd.md: ladder is failure-shaped (seam choice → design stage); usage_cap_pct confirmed unwired; gather.ts trusts only status==running.
+- 2026-08-21T14:35 — Design + Plan + RED stages (/devx-plan). design.md + D-UW1 written; `devx gate coverage c8e2d4` (design) CONCERNS → design_verified; plan.md with 6 phases + coverage table; `devx gate coverage` (plan) CONCERNS → plan_verified (P0 floor met: E-1 and E-2 both covered with a runnable artifact); RED artifact `test/loop-usage-window.test.ts` authored and confirmed failing FOR THE STATED REASON (it names the missing `usage-window.js`, not a broken harness) + `evals/E-7_live-night.md`; `devx gate evals c8e2d4` CONCERNS → evals_red, stage: executing. Emitted uwg101-104 + uwgspk + uwgret; `validate-emit` clean. **Scope § above corrected in the same edit** per the source-of-truth precedence rule: the seeded "new ladder rung" is struck and points at D-UW1, with the accounting semantics preserved verbatim because only the seam moved.
+- 2026-08-21T15:05 — erratum: the 14:35 entry above was first inserted INTO the middle of the 2026-07-14 entry, splitting it across the log and leaving its tail dangling below a later line. Caught by the uwg101 acceptance audit. Repaired by restoring the 2026-07-14 entry verbatim and re-appending the new line at the end — append-only means append, and an insertion that mutates an existing entry is the thing the rule forbids.
 
 ## Links
 

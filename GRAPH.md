@@ -4,7 +4,7 @@
 
 # Story graph
 
-199 specs across 23 groups — 12 blocked · 148 done · 4 in-progress · 35 ready; 397 edges.
+205 specs across 24 groups — 12 blocked · 148 done · 5 in-progress · 40 ready; 409 edges.
 
 ## Legend
 
@@ -21,6 +21,9 @@
 
 ```mermaid
 flowchart TD
+  subgraph sg_blocker_push["blocker-push (workstream)"]
+    e5a9c0["e5a9c0 Vision-gap Track 3 — Interim blocker push…"]
+  end
   subgraph sg_execute_rehome_bmad_eject["execute-rehome-bmad-eject (workstream)"]
     bd5b5e["bd5b5e Execute Rehome Bmad Eject"]
   end
@@ -65,6 +68,12 @@ flowchart TD
   end
   subgraph sg_usage_window_governor["usage-window-governor (workstream)"]
     c8e2d4["c8e2d4 Vision-gap Track 2 — Usage-window governo…"]
+    uwg101["uwg101 Detection floor — `usage-window.ts` marke…"]
+    uwg102["uwg102 Governor + driver seam — planPause/runPau…"]
+    uwg103["uwg103 Pause is visible everywhere run state is…"]
+    uwg104["uwg104 Live overnight ride-through (HUMAN-GATED…"]
+    uwgret["uwgret Retro + LEARN.md updates (interim retro d…"]
+    uwgspk["uwgspk Spike — does a usage-probe API exist? (ti…"]
   end
   subgraph sg_bidirectional_writes_offline["bidirectional-writes-offline (epic)"]
     c30001["c30001 Offline queue foundation (drift + connect…"]
@@ -175,7 +184,6 @@ flowchart TD
     e01000["e01000 Phase 4 — Observability surfaces: TUI, we…"]
     e02000["e02000 Phase 10 — Polish + dogfood"]
     e3f1c2["e3f1c2 install:global produces non-executable de…"]
-    e5a9c0["e5a9c0 Vision-gap Track 3 — Interim blocker push…"]
     ea4f41["ea4f41 QA-walkthrough naming `test/test-story-ha…"]
     eac611["eac611 Integration: manage tick writes state in…"]
     ebf8c4["ebf8c4 QA walkthrough — learn.auto_allow unatten…"]
@@ -270,6 +278,12 @@ flowchart TD
   c30ret --> c30004
   c30ret --> c30005
   c808b1 --> 28b267
+  c8e2d4 -.-> uwg101
+  c8e2d4 -.-> uwg102
+  c8e2d4 -.-> uwg103
+  c8e2d4 -.-> uwg104
+  c8e2d4 -.-> uwgret
+  c8e2d4 -.-> uwgspk
   grp_devx_config_yaml_schema_cli --> grp_devx_cli_skeleton
   grp_devx_cli_skeleton --> grp_devx_config_yaml_schema_cli
   d01000 -.-> grp_multi_loop_concurrency
@@ -373,6 +387,12 @@ flowchart TD
   grp_story_graph -.-> d7e8e5
   grp_os_supervisor_scaffold --> grp_devx_cli_skeleton
   tur101 -.-> 7c1e93
+  uwg102 --> uwg101
+  uwg103 --> uwg102
+  uwg104 --> uwg103
+  uwgret --> uwg101
+  uwgret --> uwg102
+  uwgret --> uwg103
   v2d101 --> v2x101
   v2e101 --> v2s101
   v2e102 --> v2e101
@@ -389,6 +409,7 @@ flowchart TD
   classDef dropped fill:#eee,stroke:#aaa,color:#444
   classDef unknownStatus fill:#fff,stroke:#777,color:#222
   classDef collapsed fill:#eee,stroke:#777,color:#222
+  class e5a9c0 ready
   class bd5b5e wip
   class grp_harness_fold_in collapsed
   class e0a67e wip
@@ -418,6 +439,12 @@ flowchart TD
   class rtlret done
   class grp_story_graph collapsed
   class c8e2d4 ready
+  class uwg101 wip
+  class uwg102 ready
+  class uwg103 ready
+  class uwg104 ready
+  class uwgret ready
+  class uwgspk ready
   class c30001 ready
   class c30002 ready
   class c30003 ready
@@ -498,7 +525,6 @@ flowchart TD
   class e01000 blocked
   class e02000 blocked
   class e3f1c2 done
-  class e5a9c0 ready
   class ea4f41 done
   class eac611 done
   class ebf8c4 ready

@@ -11,6 +11,19 @@ project_shape: empty-dream
 thoroughness: send-it
 stack_layers: [backend]
 blocked_by: []
+stage: design
+entered_at: prd
+gate_status:
+  prd_validated: true
+  design_verified: false
+  plan_verified: false
+  evals_red: false
+outcome:
+  status: null
+  measure_by: null
+workstream: _devx/workstreams/blocker-push
+gate_verdicts:
+  prd: PASS
 ---
 
 ## Goal
