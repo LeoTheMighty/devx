@@ -5,7 +5,7 @@ created: 2026-07-29T10:15:00-06:00
 title: "`devx devx-helper finalize <hash>` — merge-tail primitive (scoped staging, lock release, clock-stamped line, dist rebuild)"
 from: dev/dev-mlcret-2026-07-28T09:04-retro-multi-loop-concurrency.md
 plan: plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md
-status: in-progress
+status: done
 blocked_by: []
 branch: feat/dev-b931a1
 ---
@@ -162,7 +162,7 @@ The three specs partition cleanly: ee7049 wraps the release path that goes
   concurrent swaps could leave the repo with no `dist/` at all; and the
   worktree/release stages were ordered so a refused worktree removal left the
   spec done, unlocked and re-claimable.
-
+- 2026-08-21T11:56:36-06:00 — merged via PR #138 (squash → cdfd3dc)
 
 ## Links
 

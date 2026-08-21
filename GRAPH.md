@@ -4,7 +4,7 @@
 
 # Story graph
 
-197 specs across 23 groups — 12 blocked · 140 done · 5 in-progress · 40 ready; 395 edges.
+197 specs across 23 groups — 12 blocked · 141 done · 4 in-progress · 40 ready; 395 edges.
 
 ## Legend
 
@@ -36,15 +36,7 @@ flowchart TD
     mssret["mssret Retro + LEARN.md updates (interim retro d…"]
   end
   subgraph sg_multi_loop_concurrency["multi-loop-concurrency (workstream)"]
-    20eb6f["20eb6f Multi-loop concurrency — N scoped `devx l…"]
-    b931a1["b931a1 `devx devx-helper finalize hash` — merge-…"]
-    mlc101["mlc101 Canonical repo root + worktree refusal"]
-    mlc102["mlc102 Backlog mutation lock + atomic-writer con…"]
-    mlc103["mlc103 Spec-lock lifecycle: classify, reap, guar…"]
-    mlc104["mlc104 Claim contention + overlap harness"]
-    mlc105["mlc105 Loop instance registry + capacity admissi…"]
-    mlc106["mlc106 Scope model: epic-aware rows + loop scope…"]
-    mlcret["mlcret Retro + LEARN.md updates (interim retro d…"]
+    grp_multi_loop_concurrency["multi-loop-concurrency — 9/9 done, last merged 2026-08-21"]
   end
   subgraph sg_portability_install["portability-install (workstream)"]
     b3f7a1["b3f7a1 Vision-gap Track 1 — Portability & instal…"]
@@ -201,13 +193,6 @@ flowchart TD
     v2t101["v2t101 V2.3 — static HTML review tour on every PR"]
     v2x101["v2x101 V2.2 — execute re-home + BMAD ejection"]
   end
-  20eb6f -.-> mlc101
-  20eb6f -.-> mlc102
-  20eb6f -.-> mlc103
-  20eb6f -.-> mlc104
-  20eb6f -.-> mlc105
-  20eb6f -.-> mlc106
-  20eb6f -.-> mlcret
   28b267 -.-> ebf8c4
   28b267 -.-> ecdcda
   4d1a9c -.-> 67a7e8
@@ -285,7 +270,7 @@ flowchart TD
   c808b1 --> 28b267
   grp_devx_config_yaml_schema_cli --> grp_devx_cli_skeleton
   grp_devx_cli_skeleton --> grp_devx_config_yaml_schema_cli
-  d01000 -.-> 20eb6f
+  d01000 -.-> grp_multi_loop_concurrency
   d02000 --> b02000
   d40001 --> c30005
   d40002 --> d40001
@@ -325,23 +310,11 @@ flowchart TD
   grp_devx_init_skill --> grp_devx_config_yaml_schema_cli
   grp_devx_init_skill --> grp_os_supervisor_scaffold
   grp_devx_manage_v0 --> grp_devx_skill
-  mlc101 -.-> eac611
-  mlc102 --> mlc101
-  mlc103 --> mlc102
-  mlc104 -.-> a7c3f9
-  mlc104 --> mlc103
-  mlc105 -.-> 357d0c
-  mlc105 --> mlc104
-  mlc106 -.-> 74632d
-  mlc106 --> mlc105
-  mlcret -.-> b7f2c1
-  mlcret -.-> b931a1
-  mlcret --> mlc101
-  mlcret --> mlc102
-  mlcret --> mlc103
-  mlcret --> mlc104
-  mlcret --> mlc105
-  mlcret --> mlc106
+  grp_multi_loop_concurrency -.-> eac611
+  grp_multi_loop_concurrency -.-> a7c3f9
+  grp_multi_loop_concurrency -.-> 357d0c
+  grp_multi_loop_concurrency -.-> 74632d
+  grp_multi_loop_concurrency -.-> b7f2c1
   mss102 -.-> b41f7c
   mss102 --> mss101
   mss102 --- |par| mss103
@@ -420,15 +393,7 @@ flowchart TD
   class mss103 done
   class mss104 done
   class mssret ready
-  class 20eb6f done
-  class b931a1 wip
-  class mlc101 done
-  class mlc102 done
-  class mlc103 done
-  class mlc104 done
-  class mlc105 done
-  class mlc106 done
-  class mlcret done
+  class grp_multi_loop_concurrency collapsed
   class b3f7a1 done
   class pin101 done
   class pin102 done
