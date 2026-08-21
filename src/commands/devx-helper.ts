@@ -11,6 +11,10 @@
 //   • roc101: `devx devx-helper verify-claim <hash> [--session-token <token>]`
 //   • v2t101: `devx devx-helper check-hold <pr-number>` (D-5 merge-tail hold)
 //   • sgr105: `devx devx-helper mark-done <hash> --pr <n> --merge-sha <sha>`
+//   • b931a1: `devx devx-helper finalize <hash> --pr <n> --merge-sha <sha>`
+//            — the whole Phase 8 after-merge tail: pull, mark-done, scoped
+//            commit, push, guarded lock release, worktree+branch removal,
+//            dist refresh.
 //
 // (dvx102's `should-create-story` was retired by v2x101 — the v2 engine
 // implements from spec ACs directly; the canary machinery went with it.)
@@ -111,6 +115,7 @@ import {
   ClaimContendedError,
   ClaimError,
   type ClaimSpecOpts,
+  type ClaimableType,
   LockHeldError,
   claimSpec,
 } from "../lib/devx/claim.js";
@@ -136,6 +141,11 @@ import {
   type MarkDoneOpts,
   markDone,
 } from "../lib/devx/mark-done.js";
+import {
+  FinalizeAbort,
+  type FinalizeOpts,
+  finalize,
+} from "../lib/devx/finalize.js";
 import type { DeriveBranchConfig } from "../lib/plan/derive-branch.js";
 
 const HASH_RE = /^[a-z0-9]{3,12}$/i;
@@ -241,7 +251,18 @@ export async function runClaim(
       ...(type !== undefined ? { type } : {}),
       ...(opts.claimOpts ?? {}),
     });
-    out(`${JSON.stringify(result)}\n`);
+    // `sessionToken` (b931a1) is the token this claim WROTE into
+    // `spec-<hash>.lock`. Emitting it is what makes the guarded release at
+    // the other end of the story possible at all: the lock body records
+    // `defaultSessionId()` of THIS short-lived CLI process, and Phase 8's
+    // `finalize` runs in a different process minutes-to-hours later, so it
+    // cannot re-derive it. Without this field the only recoverable source
+    // would be the spec's `owner:` or the lock body itself — which CLAUDE.md
+    // forbids precisely because a token read from the thing it is meant to
+    // guard always matches and defeats the check (the E13 resume-collision
+    // shape). Additive: existing consumers that destructure `branch`/
+    // `lockPath`/`claimSha` are unaffected.
+    out(`${JSON.stringify({ ...result, sessionToken: `/devx-${sessionId}` })}\n`);
     return 0;
   } catch (e) {
     if (e instanceof LockHeldError) {
@@ -826,6 +847,246 @@ export function runMarkDone(
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// finalize (b931a1)
+// ---------------------------------------------------------------------------
+
+export interface RunFinalizeOpts {
+  out?: (s: string) => void;
+  err?: (s: string) => void;
+  /** Test seam: explicit project config path (skip findProjectConfig walk). */
+  projectPath?: string;
+  /** Test seam: project repo root (defaults to dirname of resolved config). */
+  repoRoot?: string;
+  /** Test seam: forward through to finalize (exec, lock, markDone, exists). */
+  finalizeOpts?: Partial<FinalizeOpts>;
+  /** Test seam: forward through to the real markDone this wires up. */
+  markDoneOpts?: Partial<MarkDoneOpts>;
+}
+
+/**
+ * Drive the Phase 8 after-merge tail. Emits exactly one JSON object on
+ * stdout; per-stage detail also goes to stderr as human-readable lines.
+ *
+ * Exit codes:
+ *   0  — every stage succeeded (or was legitimately skipped).
+ *   1  — mark-done's retryable tier: the backlog row is not `[/]`, the spec
+ *        is not `in-progress`, or the backlog lock is held. NOTHING was
+ *        written; the operator retries or reconciles.
+ *   2  — aborted before the write boundary: bad usage, config load, running
+ *        from a linked worktree, or `git pull --ff-only` still failing after
+ *        one fetch retry. Nothing was written.
+ *   3  — the flips landed and were (probably) pushed, but a later stage
+ *        failed. Distinct from 1 and 2 because re-running finalize would now
+ *        fail at mark-done (the row is already `[x]`): the fix is to finish
+ *        the stages named in `steps` by hand.
+ *  64  — usage.
+ */
+export function runFinalize(
+  args: string[],
+  opts: RunFinalizeOpts = {},
+): number {
+  const out = opts.out ?? ((s) => process.stdout.write(s));
+  const err = opts.err ?? ((s) => process.stderr.write(s));
+  const usage =
+    "usage: devx devx-helper finalize <hash> --pr <n> --merge-sha <sha> " +
+    "[--type dev|debug] [--session-token <token>] [--branch <name>] [--no-rebuild]\n";
+
+  // Hand-parsed, mirroring runClaim/runMarkDone: the test seams stay
+  // independent of commander state.
+  const flags: Record<string, string> = {};
+  const bools = new Set<string>();
+  const positional: string[] = [];
+  const KNOWN = new Set(["--pr", "--merge-sha", "--type", "--session-token", "--branch"]);
+  const KNOWN_BOOL = new Set(["--no-rebuild"]);
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (KNOWN_BOOL.has(a)) {
+      bools.add(a);
+    } else if (KNOWN.has(a)) {
+      if (i + 1 >= args.length || args[i + 1].startsWith("--")) {
+        err(`devx devx-helper finalize: ${a} requires a value\n`);
+        return 64;
+      }
+      flags[a] = args[i + 1];
+      i++;
+    } else if (a.startsWith("--")) {
+      err(`devx devx-helper finalize: unknown flag '${a}'\n`);
+      return 64;
+    } else {
+      positional.push(a);
+    }
+  }
+  if (positional.length !== 1) {
+    err(usage);
+    return 64;
+  }
+  const hash = positional[0];
+  if (!HASH_RE.test(hash)) {
+    err(
+      `devx devx-helper finalize: invalid hash '${hash}' (expected hex/alnum 3-12 chars)\n`,
+    );
+    return 64;
+  }
+  if (flags["--pr"] === undefined || flags["--merge-sha"] === undefined) {
+    err(usage);
+    return 64;
+  }
+  if (!/^[0-9]+$/.test(flags["--pr"])) {
+    err(
+      `devx devx-helper finalize: invalid --pr '${flags["--pr"]}' (expected a positive integer)\n`,
+    );
+    return 64;
+  }
+  const pr = Number(flags["--pr"]);
+  if (pr <= 0 || !Number.isSafeInteger(pr)) {
+    err(
+      `devx devx-helper finalize: invalid --pr '${flags["--pr"]}' (expected a positive integer)\n`,
+    );
+    return 64;
+  }
+  if (!/^[0-9a-f]{4,64}$/i.test(flags["--merge-sha"])) {
+    err(
+      `devx devx-helper finalize: invalid --merge-sha '${flags["--merge-sha"]}' (expected 4-64 hex chars)\n`,
+    );
+    return 64;
+  }
+  const rawType = flags["--type"] ?? "dev";
+  if (rawType !== "dev" && rawType !== "debug") {
+    err(
+      `devx devx-helper finalize: invalid --type '${rawType}' (expected 'dev' or 'debug')\n`,
+    );
+    return 64;
+  }
+  const type: ClaimableType = rawType;
+
+  const projectConfigPath = opts.projectPath ?? findProjectConfig();
+  if (!projectConfigPath) {
+    err(
+      "devx devx-helper finalize: devx.config.yaml not found (walked up from cwd)\n",
+    );
+    return 64;
+  }
+  const repoRoot = opts.repoRoot ?? dirname(projectConfigPath);
+
+  let merged: unknown;
+  try {
+    merged = loadMerged({ projectPath: projectConfigPath });
+  } catch (e) {
+    out(`${JSON.stringify({ error: "finalize-failed", stage: "config-load" })}\n`);
+    err(
+      `devx devx-helper finalize: config load failed: ${e instanceof Error ? e.message : String(e)}\n`,
+    );
+    return 2;
+  }
+
+  // The session token guards the lock release, and it is NOT defaulted.
+  //
+  // verify-claim gets away with auto-deriving because a mismatch there fails
+  // SAFE (halt). Here a mismatch fails OPEN: the release is skipped and the
+  // lock leaks. And a re-derived token can never match — the lock body
+  // records the *claim* CLI process's `defaultSessionId()`
+  // (`<minute-stamp>-<pid>`), and this is a different process, minutes or
+  // hours later. Inventing one produced a guaranteed `not-owner` reported as
+  // "a peer re-claimed the hash", which was false, exit 0, and E3 un-closed.
+  //
+  // So: absent → null, and finalize says so out loud. The token comes from
+  // `devx devx-helper claim`'s `sessionToken` field, never from the spec's
+  // `owner:` or the lock body (CLAUDE.md: a token read from the thing it
+  // guards always matches and defeats the check).
+  const rawToken = flags["--session-token"];
+  if (rawToken !== undefined && rawToken.trim() === "") {
+    // An empty string is "supplied" to `??` but disarms the guard for every
+    // ordinary lock while STILL unlinking an empty-bodied one. Reject it as
+    // usage rather than let it read as an intentional opt-out.
+    err(
+      "devx devx-helper finalize: --session-token must not be empty (omit the flag if you do not have the token)\n",
+    );
+    return 64;
+  }
+  const sessionToken = rawToken ?? null;
+
+  // markDone's exceptions are the retryable/abort tier, so they are caught
+  // here (outside finalize) and mapped to 1/2 exactly as runMarkDone maps
+  // them. finalize itself only ever sees a successful return.
+  let markDoneFailure: { code: number; body: Record<string, unknown>; msg: string } | null =
+    null;
+  const runMarkDoneInline = (): { paths: string[]; todoSynced: boolean } => {
+    try {
+      const r = markDone(hash, {
+        repoRoot,
+        config: merged,
+        pr,
+        mergeSha: flags["--merge-sha"],
+        type,
+        ...(opts.markDoneOpts ?? {}),
+      });
+      return { paths: r.paths, todoSynced: r.todoSynced };
+    } catch (e) {
+      if (e instanceof BacklogLockTimeoutError) {
+        markDoneFailure = {
+          code: 1,
+          body: { error: "backlog lock held", lockPath: e.lockPath, holderPid: e.holderPid },
+          msg: e.message,
+        };
+      } else if (e instanceof MarkDoneError) {
+        markDoneFailure = {
+          code: e.stage === "state" ? 1 : 2,
+          body: { error: "mark-done-failed", stage: e.stage },
+          msg: e.message,
+        };
+      } else {
+        markDoneFailure = {
+          code: 2,
+          body: { error: "mark-done-failed", stage: "unknown" },
+          msg: e instanceof Error ? e.message : String(e),
+        };
+      }
+      throw e;
+    }
+  };
+
+  try {
+    const result = finalize(hash, {
+      repoRoot,
+      type,
+      config: merged as DeriveBranchConfig & { git?: { default_branch?: string } },
+      pr,
+      mergeSha: flags["--merge-sha"],
+      sessionToken,
+      ...(flags["--branch"] !== undefined ? { branch: flags["--branch"] } : {}),
+      ...(bools.has("--no-rebuild") ? { rebuild: false } : {}),
+      markDone: runMarkDoneInline,
+      err,
+      ...(opts.finalizeOpts ?? {}),
+    });
+    out(`${JSON.stringify(result)}\n`);
+    for (const s of result.steps) {
+      const tag = s.ok ? (s.skipped ? "skip" : "ok  ") : "FAIL";
+      err(`devx finalize: [${tag}] ${s.stage}${s.detail ? ` — ${s.detail}` : ""}\n`);
+    }
+    return result.ok ? 0 : 3;
+  } catch (e) {
+    if (markDoneFailure !== null) {
+      const f = markDoneFailure as { code: number; body: Record<string, unknown>; msg: string };
+      out(`${JSON.stringify(f.body)}\n`);
+      err(`devx devx-helper finalize: mark-done: ${f.msg}\n`);
+      return f.code;
+    }
+    if (e instanceof FinalizeAbort) {
+      out(`${JSON.stringify({ error: "finalize-aborted", stage: e.stage })}\n`);
+      err(`devx devx-helper finalize: ${e.message}\n`);
+      return 2;
+    }
+    out(`${JSON.stringify({ error: "finalize-failed", stage: "unknown" })}\n`);
+    err(
+      `devx devx-helper finalize: unexpected error: ${e instanceof Error ? e.message : String(e)}\n`,
+    );
+    return 2;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // commander wiring
 // ---------------------------------------------------------------------------
@@ -921,6 +1182,52 @@ export function register(program: Command): void {
         }
         if (options.type !== undefined) args.push("--type", options.type);
         const code = runMarkDone(args, {});
+        if (code !== 0) {
+          process.exit(code);
+        }
+      },
+    );
+
+  sub
+    .command("finalize")
+    .description(
+      "The whole /devx Phase 8 after-merge tail as one call (b931a1): git pull --ff-only, mark-done, `git add -- <returned paths>` + commit + push (bounded rebase-retry), guarded spec-lock release, worktree + branch removal, and a swap-in rebuild of the main worktree's dist/ so the next claim runs post-merge code. Exit 0 all stages / 1 mark-done state mismatch or lock contention (nothing written) / 2 aborted before any write / 3 flips landed but a later stage failed — read `steps`.",
+    )
+    .argument("<hash>", "spec hash (e.g. 'b931a1')")
+    .option("--pr <number>", "merged PR number (required)")
+    .option("--merge-sha <sha>", "squash-merge commit sha (required)")
+    .option("--type <type>", "spec type: 'dev' (default) or 'debug'")
+    .option(
+      "--session-token <token>",
+      "session whose claim this is; guards the spec-lock release. NEVER pass a token copied from the spec's owner: or the lock body — that always matches and defeats the guard.",
+    )
+    .option("--branch <name>", "branch to delete (default: feat/<type>-<hash>)")
+    .option("--no-rebuild", "skip the dist/ refresh")
+    .action(
+      (
+        hash: string,
+        options: {
+          pr?: string;
+          mergeSha?: string;
+          type?: string;
+          sessionToken?: string;
+          branch?: string;
+          rebuild?: boolean;
+        },
+      ) => {
+        const args = [hash];
+        if (options.pr !== undefined) args.push("--pr", options.pr);
+        if (options.mergeSha !== undefined) {
+          args.push("--merge-sha", options.mergeSha);
+        }
+        if (options.type !== undefined) args.push("--type", options.type);
+        if (options.sessionToken !== undefined) {
+          args.push("--session-token", options.sessionToken);
+        }
+        if (options.branch !== undefined) args.push("--branch", options.branch);
+        // commander maps `--no-rebuild` to `rebuild: false`.
+        if (options.rebuild === false) args.push("--no-rebuild");
+        const code = runFinalize(args, {});
         if (code !== 0) {
           process.exit(code);
         }

@@ -5,7 +5,7 @@ created: 2026-07-29T10:15:00-06:00
 title: "`devx devx-helper finalize <hash>` — merge-tail primitive (scoped staging, lock release, clock-stamped line, dist rebuild)"
 from: dev/dev-mlcret-2026-07-28T09:04-retro-multi-loop-concurrency.md
 plan: plan/plan-20eb6f-2026-07-28T08:34-multi-loop-concurrency.md
-status: ready
+status: in-progress
 blocked_by: []
 branch: feat/dev-b931a1
 ---
@@ -124,6 +124,45 @@ The three specs partition cleanly: ee7049 wraps the release path that goes
 
 - 2026-07-29T10:15 — created by mlcret (retro finding E1/E2/E3/E5).
 - 2026-08-06T10:03 — sgrret cross-reference: sgr105 (PR #118) shipped `devx devx-helper mark-done` — the structural half of defect 1 (bookkeeping flips under the backlog lock + explicit-pathspec return, Phase 8 after-merge prose rewritten to invoke it) plus the status-log splice extraction this spec's status-log AC describes. Before starting, re-cut this spec's ACs against what landed: remaining scope is spec-lock release (consume ee7049), the clock-stamped merge line, and the dist-freshness step — do not re-implement the flips or the staging rule. See `LEARN.md § epic-story-graph` E10.
+- 2026-08-21T12:05 — claimed and executed interactively (harness sweep). Scope
+  decision, recorded because it overrides the 2026-08-12 re-cut in `DEV.md`:
+  that re-cut said "remaining scope: E2 only" and moved the spec-lock release
+  to `db36af`. I built the **full `finalize` wrapper** anyway — pull,
+  mark-done, scoped commit, push, lock release, worktree+branch, rebuild —
+  because the thing the spec's Goal actually asks for is "the last major
+  inline-git section of the skill body stops being prose", and E2 alone
+  leaves five inline git commands in Phase 8. On the release specifically:
+  finalize calls `releaseSpecLockGuarded` directly, which this spec's own AC 3
+  explicitly permits when `ee7049` has not landed (it hasn't; it was absorbed
+  into `db36af`). When `db36af` moves the release inside `mark-done`, this
+  stage degrades to a no-op that reports "no lock on disk" — no code change
+  needed, and no third release path was written.
+- 2026-08-21T12:40 — phase 4: 3-agent parallel adversarial review (Blind
+  Hunter + Edge Case Hunter + Acceptance Auditor; ~1,400-line surface,
+  marker-bearing, well above the 500-line threshold). ~24 unique actionable
+  findings; ALL fixed in-place, re-reviewed by re-running the suite. All
+  three reviewers independently found the same HIGH: `finalize` re-derived
+  the session token from its own process, which can NEVER equal the token the
+  earlier `claim` process wrote into the lock — so the guarded release always
+  returned `not-owner`, that was reported as "a peer re-claimed the hash"
+  (a peer that did not exist), exit stayed 0, and the lock leaked. E3 was
+  being reported green while remaining entirely open. Fixed by making
+  `devx devx-helper claim` RETURN `sessionToken` (the only legitimate source
+  — the spec's `owner:` and the lock body are both forbidden because a token
+  read from the thing it guards always matches), threading it through the
+  skill body, and making finalize fail loudly rather than invent one.
+  Other load-bearing fixes: stage 7 ran `npm run build:swap` unconditionally,
+  which would have made every merge in every CONSUMER repo exit 3 (`skills/`
+  ships in the tarball) — now a skip via a `build:swap`-declared probe; the
+  branch to delete was hardcoded `feat/<type>-<hash>` instead of
+  `deriveBranch`, silently missing the real branch on a split-branch project;
+  nothing verified the merge sha was an ancestor before a FORCE `git branch
+  -D`; the staleness predicate compared reflog mtime and so fired on `/devx`'s
+  own claim commit (now sha-vs-sha); `swap-dist.mjs` had no lock and two
+  concurrent swaps could leave the repo with no `dist/` at all; and the
+  worktree/release stages were ordered so a refused worktree removal left the
+  spec done, unlocked and re-claimable.
+
 
 ## Links
 

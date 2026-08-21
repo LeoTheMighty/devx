@@ -21,6 +21,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/build-info.mjs",
+    "build:swap": "tsc -p tsconfig.build.json --outDir dist.next && DEVX_BUILD_OUTDIR=dist.next node scripts/build-info.mjs && node scripts/swap-dist.mjs",
     "postinstall": "node scripts/postinstall.js",
     "test": "node test/schema-smoke.mjs && tsx test/config-io.test.ts && tsx test/config-validate.test.ts && npm run build && npm run typecheck && npm run test:parallel && npm run test:blocking",
     "test:parallel": "vitest run --config vitest.parallel.config.ts",
