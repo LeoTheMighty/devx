@@ -156,7 +156,15 @@ describe("cli302 — `devx eject` is destructively-zero in Phase 0", () => {
         stdio: ["ignore", "pipe", "pipe"],
         // Empty env minus PATH — proves the stub doesn't depend on env vars
         // either. PATH kept so node + git resolution still works on the host.
-        env: { PATH: process.env.PATH ?? "" },
+        //
+        // DEVX_NO_STALE_WARN (b931a1): `devx` prints a one-line banner on
+        // stderr when its own build predates the checkout's HEAD. That is a
+        // property of the BINARY, not of this stub, and this assertion is a
+        // byte-exact stderr match — without the opt-out the test would go
+        // red because someone committed to the repo while the suite ran.
+        // Suppressing an unrelated global banner keeps the assertion about
+        // what it was always about: the stub itself reads no env.
+        env: { PATH: process.env.PATH ?? "", DEVX_NO_STALE_WARN: "1" },
       });
 
       expect(ret.status).toBe(0);
@@ -183,7 +191,7 @@ describe("cli302 — `devx eject` is destructively-zero in Phase 0", () => {
           encoding: "utf8",
           cwd: fixture,
           stdio: ["ignore", "pipe", "pipe"],
-          env: { PATH: process.env.PATH ?? "" },
+          env: { PATH: process.env.PATH ?? "", DEVX_NO_STALE_WARN: "1" },
         },
       );
 

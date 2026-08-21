@@ -240,11 +240,18 @@ describe("devx skill — explicit-pathspec staging discipline (learn 2026-07-29)
     // The list previously ran 1,2,3,4,5,7,8,9 — no step 6 — while step 7
     // instructed "Commit all of (4-6)", a range whose upper bound did not
     // exist. An agent cannot resolve that; renumbering is the fix and this
-    // asserts it stays fixed. sgr105 shortened the list (four hand-edit
-    // steps collapsed into one `mark-done` call), so the floor tracks the
-    // post-sgr105 shape rather than the old count.
+    // asserts it stays fixed.
+    //
+    // The floor has ratcheted DOWN twice, both times because a step count
+    // collapsed into a primitive: sgr105 folded four hand-edits into
+    // `mark-done`, and b931a1 folded the remaining git sequence (pull,
+    // commit, push, lock release, worktree removal, rebuild) into
+    // `finalize`. A high floor would now be a test asserting that the tail
+    // is still prose — the opposite of what this file is for. What the
+    // assertion is actually about survives at any length: numbering is
+    // contiguous, and every `step N` reference resolves.
     const numbers = [...afterMerge.matchAll(/^(\d+)\. /gm)].map((m) => Number(m[1]));
-    expect(numbers.length).toBeGreaterThanOrEqual(6);
+    expect(numbers.length).toBeGreaterThanOrEqual(3);
     for (let i = 0; i < numbers.length; i += 1) {
       expect(numbers[i]).toBe(i + 1);
     }
@@ -312,6 +319,46 @@ describe("devx skill — Phase 8 mark-done host (sgr105)", () => {
     // The `paths` handoff is the mechanism that makes explicit-pathspec
     // staging structural instead of a rule to remember.
     expect(afterMerge).toMatch(/git add -- <paths from step \d+>/);
+  });
+
+  it("the after-merge tail is invoked as the `finalize` primitive, not enumerated git (b931a1)", () => {
+    const body = phase8Body(loadSkill());
+    const afterMerge = body.slice(body.indexOf("After merge:"));
+    expect(afterMerge).toMatch(
+      /devx devx-helper finalize <hash> --pr <n> --merge-sha <merge-sha>/,
+    );
+    // The four inline git commands the primitive replaced must not come
+    // BACK as instructions. They are still allowed to appear inside exit
+    // 3's by-hand recovery list — that path exists precisely because the
+    // primitive stopped halfway — so the assertion is scoped to the tail
+    // ABOVE that list.
+    const recoveryIdx = afterMerge.indexOf("Do not re-run finalize");
+    expect(recoveryIdx).toBeGreaterThan(0);
+    const beforeRecovery = afterMerge.slice(0, recoveryIdx);
+    expect(beforeRecovery).not.toMatch(/^\s*\d+\. `git fetch/m);
+    expect(beforeRecovery).not.toMatch(/^\s*\d+\. Remove worktree: `git worktree remove/m);
+    expect(beforeRecovery).not.toMatch(/^\s*\d+\. Delete local branch/m);
+  });
+
+  it("the tail documents all FOUR finalize exit codes, including the post-write tier", () => {
+    const body = phase8Body(loadSkill());
+    const afterMerge = body.slice(body.indexOf("After merge:"));
+    // Exit 3 is the one that carries new information: the flips landed, so
+    // re-running is wrong. An agent that treats 3 like 1 or 2 re-runs
+    // finalize, hits a state mismatch on an already-`[x]` row, and reports
+    // a failure that is really a success plus one unfinished stage.
+    expect(afterMerge).toMatch(/\*\*3\*\*/);
+    expect(afterMerge).toMatch(/Do not re-run finalize/i);
+  });
+
+  it("the tail names the spec-lock release and the dist rebuild (E3 + E2)", () => {
+    const body = phase8Body(loadSkill());
+    const afterMerge = body.slice(body.indexOf("After merge:"));
+    // Both stages exist because nothing owned them: 14 dead locks
+    // accumulated on disk, and `devx` on PATH ran pre-merge code for as
+    // long as nobody rebuilt main's dist by hand.
+    expect(afterMerge).toMatch(/spec-<hash>\.lock/);
+    expect(afterMerge).toMatch(/rebuilds?\*{0,2} the main worktree's `dist\//i);
   });
 
   it("Phase 8 forbids hand-editing the artifacts mark-done owns", () => {

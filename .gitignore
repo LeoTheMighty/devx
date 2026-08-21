@@ -19,6 +19,10 @@ npm-debug.log*
 yarn-debug.log*
 .bun/
 dist/
+# build:swap staging + rollback dirs (b931a1)
+dist.next/
+dist.prev/
+dist.swap.lock
 build/
 
 # Flutter (Phase 8 mobile)

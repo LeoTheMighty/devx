@@ -145,6 +145,7 @@ export const SYNC_BLOCKING_TESTS = [
   "test/claim-contention.test.ts",
   "test/cli.test.ts",
   "test/devx-claim.test.ts",
+  "test/devx-finalize-real-git.test.ts",
   "test/eject-noop.test.ts",
   "test/engine-workstream.test.ts",
   "test/exec-async-seam.test.ts",
