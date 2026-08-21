@@ -436,3 +436,28 @@ Example:
 ManageAgent reads the `→ Answer:` line, copies it into the blocked spec's
 status log, flips `status: blocked` → `status: ready`, and the next agent tick
 picks the spec back up.
+
+- [ ] **Q#17 — "Blocked on a human" has no way to be expressed, so `devx doctor` reports honest rows as defects.** (from pinret, 2026-08-21)
+
+  `pin105` has sat `[-] blocked` for five weeks, correctly: its scripted half
+  merged (PR #75) and its live half needs the owner at a keyboard
+  (`MANUAL.md MV-pin105.1`). But its `Blocked-by:` names `pin103` and
+  `pin104`, both `done` — so `devx doctor`'s dead-blocker detector (db36af)
+  flags it, and the flag is TRUE: the row is blocked on something the
+  annotation vocabulary cannot name. The same shape will recur for every
+  human-gated item (`9946f9`, the QA walkthroughs, MANUAL rows generally).
+
+  Options:
+  - **(a) `blocked_by:` accepts MANUAL/INTERVIEW references** — e.g.
+    `Blocked-by: MV-pin105.1` — and the dead-blocker detector resolves them
+    against `MANUAL.md`/`INTERVIEW.md` rather than the spec dirs.
+    *Recommended*: it is the smallest vocabulary change, it makes the real
+    dependency visible to `devx next`, and doctor's detector already has the
+    resolution seam.
+  - (b) A separate `blocked_on_human:` field, keeping `blocked_by:` purely
+    spec-to-spec.
+  - (c) Leave it; treat these doctor findings as expected noise on
+    human-gated rows.
+
+  Option (c) is the status quo and costs a recurring false-positive on an
+  advisory channel whose whole failure mode is being ignored.

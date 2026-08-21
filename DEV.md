@@ -15,7 +15,7 @@ planned; this section outranks the paused mobile backlog below.
 - [x] `dev/dev-pin103-2026-07-14T12:02-init-noninteractive-scaffold.md` — Bare `devx init` non-interactive scaffold (defaults AnswerProvider + skills install). Status: done. Blocked-by: pin102. PR: https://github.com/LeoTheMighty/devx/pull/73 (merged f56ddb5).
 - [x] `dev/dev-pin104-2026-07-14T12:03-install-global-sha-docs.md` — install:global + SHA provenance + docs-to-reality. Status: done. Blocked-by: pin101. Parallel-safe with pin102/pin103. PR: https://github.com/LeoTheMighty/devx/pull/74 (merged 4e6bc43).
 - [-] `dev/dev-pin105-2026-07-14T12:04-s5-validation.md` — S-5 validation: timed scratch scenario + live palateful checklist. Status: blocked (scripted half merged; live half waits on MANUAL MV-pin105.1). Blocked-by: pin103, pin104. Requires user action (live palateful run). PR: https://github.com/LeoTheMighty/devx/pull/75 (merged f9e4428; scripted half).
-- [ ] `dev/dev-pinret-2026-07-14T11:11-retro-portability-install.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: pin101, pin102, pin103, pin104, pin105.
+- [/] `dev/dev-pinret-2026-07-14T11:11-retro-portability-install.md` — Retro + LEARN.md updates (interim retro discipline). Status: in-progress. Blocked-by: pin101, pin102, pin103, pin104, pin105.
 
 ## Cross-cutting plans
 
@@ -72,7 +72,7 @@ mss103 are parallel-safe (no shared files).
 - [x] `dev/dev-mss102-2026-07-28T13:43-claim-branch-inheritance.md` — Claim branch inheritance. Status: done. Blocked-by: mss101. Parallel-safe with mss103. PR: https://github.com/LeoTheMighty/devx/pull/97 (merged 46fb9e4)
 - [x] `dev/dev-mss103-2026-07-28T13:43-loop-split-integration.md` — Loop split integration. Status: done. Blocked-by: mss101. Parallel-safe with mss102. PR: https://github.com/LeoTheMighty/devx/pull/99 (merged 962f9a1)
 - [x] `dev/dev-mss104-2026-07-28T13:43-handoff-snippet-retirement.md` — Handoff Snippet retirement sweep. Status: done. Blocked-by: mss102, mss103. PR: https://github.com/LeoTheMighty/devx/pull/101 (merged 5292b19)
-- [ ] `dev/dev-mssret-2026-07-28T13:45-retro-mid-story-split.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: mss101, mss102, mss103, mss104.
+- [/] `dev/dev-mssret-2026-07-28T13:45-retro-mid-story-split.md` — Retro + LEARN.md updates (interim retro discipline). Status: in-progress. Blocked-by: mss101, mss102, mss103, mss104.
 - ~~`dev/dev-ee7049-2026-07-29T10:12-spec-lock-release-cli.md` — Guarded spec-lock release CLI for the Phase 9 branch-handoff path (swaps the raw `rm` for `devx devx-helper release-lock`).~~ Status: absorbed 2026-08-12 into `db36af`, which now owns the release primitive and its three call sites (mark-done, loop merge tail, `doctor --fix`). Not "low priority" after all: the missing release is the SOURCE of the 14 stale locks cleared in `9e1d9d3`, and `.claude/commands/devx.md:478` still instructs a raw `rm .devx-cache/locks/spec-<hash>.lock`. Kept for audit. From: mss104 Phase 8 gap sweep.
 
 ## Phase 0 — Foundation (plan: plan-a01000)
@@ -232,7 +232,9 @@ Port of the 8am-harness retro listener (mycase/8am-harness PR #36): auto-spawn
 - [ ] `dev/dev-9946f9-2026-07-30T14:07-human-smoke-of-the-devx-learn-watch-terminal-app-s.md` — Human smoke of the devx learn-watch Terminal.app spawn arm. Status: ready. Blocked-by: rtl104.
 - [x] `dev/dev-rtl105-2026-07-30T09:31-init-hook-distribution.md` — Hook registration template + `/devx-init` distribution (E-8). Status: done. Blocked-by: rtl101. Parallel-safe with rtl103/rtl104. PR: https://github.com/LeoTheMighty/devx/pull/108
 - [x] `dev/dev-rtl106-2026-07-30T09:31-outlet-routing-rework.md` — `/devx-learn` outlet routing rework (ordered five-outlet first-match). Status: done. Parallel-safe with rtl101–rtl105 (prose + tests only; marker byte-preserved). PR: https://github.com/LeoTheMighty/devx/pull/109 (merged 48ab09df).
-- [ ] `dev/dev-rtlret-2026-07-30T09:33-retro-retro-listener.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: rtl101, rtl102, rtl103, rtl104, rtl105, rtl106.
+- [/] `dev/dev-rtlret-2026-07-30T09:33-retro-retro-listener.md` — Retro + LEARN.md updates (interim retro discipline). Status: in-progress. Blocked-by: rtl101, rtl102, rtl103, rtl104, rtl105, rtl106.
+- [ ] `dev/dev-343b43-2026-08-21T14:10-harvest-loop-learnings.md` — `devx learnings <workstream>`: harvest the loop's per-iteration `- Learning:` lines so a retro can read them as a set instead of grepping six spec files. Status: ready. From: rtlret F1.
+- [ ] `dev/dev-e2da94-2026-08-21T14:12-plan-stage-premise-and-eval-scope.md` — `/devx-plan` Design+Plan stages: name the command that verifies each claim about the EXISTING corpus, and derive a phase's AC file list from its eval's scan scope. Status: ready. From: mssret F1 + F4.
 
 ### Epic — story-graph (plan: 62bcd1)
 

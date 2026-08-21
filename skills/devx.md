@@ -618,6 +618,14 @@ LEARN.md row format is byte-compatible with v1.
 
 1. Evidence: read every shipped spec's status log, the epic's PR bodies
    (`gh pr view`), and the diff stats. Reconstruct from disk, not memory.
+   **For loop-shipped items the spec status log IS the evidence** — the
+   loop writes a thin, uniform PR body ("Overnight loop item; iteration
+   history is in the spec's Status log on this branch") and the branch is
+   deleted at merge, so `gh pr view` returns almost nothing. The status
+   log's per-iteration `- Learning:` lines are the densest material in the
+   epic: written at the moment of discovery by the agent that hit them.
+   Mine them before anything else (epic-retro-listener F1/F5, where 16
+   iterations produced ~70 of them across six PRs totalling +7,686 lines).
 2. Write the retro artifact `_devx/workstreams/<slug>/RETRO-<date>.md`
    (standalone epics: `_devx/retros/<epic-slug>-<date>.md`): Outcome
    (test-count growth, wall-clock, review-pattern stats) + findings.

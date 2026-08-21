@@ -4,7 +4,7 @@
 
 # Story graph
 
-197 specs across 23 groups — 12 blocked · 145 done · 4 in-progress · 36 ready; 395 edges.
+199 specs across 23 groups — 12 blocked · 145 done · 7 in-progress · 35 ready; 397 edges.
 
 ## Legend
 
@@ -48,8 +48,10 @@ flowchart TD
     pinret["pinret Retro + LEARN.md updates (interim retro d…"]
   end
   subgraph sg_retro_listener["retro-listener (workstream)"]
+    343b43["343b43 `devx learnings workstream` — harvest the…"]
     620c74["620c74 Retro Listener"]
     9946f9["9946f9 Human smoke of the devx learn-watch Termi…"]
+    e2da94["e2da94 `/devx-plan` design+plan stage: verify co…"]
     rtl101["rtl101 Listener — nudge pattern, queue store, `l…"]
     rtl102["rtl102 `learn:` config section (idle window, ret…"]
     rtl103["rtl103 Watcher core — readiness, allowlist, outc…"]
@@ -322,6 +324,7 @@ flowchart TD
   mss103 --> mss101
   mss104 --> mss102
   mss104 --> mss103
+  mssret -.-> e2da94
   mssret --> mss101
   mssret --> mss102
   mssret --> mss103
@@ -350,6 +353,7 @@ flowchart TD
   rtl104 --- |par| rtl105
   rtl105 --> rtl101
   rtl105 --- |par| rtl106
+  rtlret -.-> 343b43
   rtlret --> rtl101
   rtlret --> rtl102
   rtlret --> rtl103
@@ -392,7 +396,7 @@ flowchart TD
   class mss102 done
   class mss103 done
   class mss104 done
-  class mssret ready
+  class mssret wip
   class grp_multi_loop_concurrency collapsed
   class b3f7a1 done
   class pin101 done
@@ -400,16 +404,18 @@ flowchart TD
   class pin103 done
   class pin104 done
   class pin105 blocked
-  class pinret ready
+  class pinret wip
+  class 343b43 ready
   class 620c74 wip
   class 9946f9 ready
+  class e2da94 ready
   class rtl101 done
   class rtl102 done
   class rtl103 done
   class rtl104 done
   class rtl105 done
   class rtl106 done
-  class rtlret ready
+  class rtlret wip
   class grp_story_graph collapsed
   class c8e2d4 ready
   class c30001 ready
