@@ -4,7 +4,7 @@
 
 # Story graph
 
-199 specs across 23 groups — 12 blocked · 145 done · 7 in-progress · 35 ready; 397 edges.
+199 specs across 23 groups — 12 blocked · 146 done · 6 in-progress · 35 ready; 397 edges.
 
 ## Legend
 
@@ -396,7 +396,7 @@ flowchart TD
   class mss102 done
   class mss103 done
   class mss104 done
-  class mssret wip
+  class mssret done
   class grp_multi_loop_concurrency collapsed
   class b3f7a1 done
   class pin101 done

@@ -72,7 +72,7 @@ mss103 are parallel-safe (no shared files).
 - [x] `dev/dev-mss102-2026-07-28T13:43-claim-branch-inheritance.md` — Claim branch inheritance. Status: done. Blocked-by: mss101. Parallel-safe with mss103. PR: https://github.com/LeoTheMighty/devx/pull/97 (merged 46fb9e4)
 - [x] `dev/dev-mss103-2026-07-28T13:43-loop-split-integration.md` — Loop split integration. Status: done. Blocked-by: mss101. Parallel-safe with mss102. PR: https://github.com/LeoTheMighty/devx/pull/99 (merged 962f9a1)
 - [x] `dev/dev-mss104-2026-07-28T13:43-handoff-snippet-retirement.md` — Handoff Snippet retirement sweep. Status: done. Blocked-by: mss102, mss103. PR: https://github.com/LeoTheMighty/devx/pull/101 (merged 5292b19)
-- [/] `dev/dev-mssret-2026-07-28T13:45-retro-mid-story-split.md` — Retro + LEARN.md updates (interim retro discipline). Status: in-progress. Blocked-by: mss101, mss102, mss103, mss104.
+- [x] `dev/dev-mssret-2026-07-28T13:45-retro-mid-story-split.md` — Retro + LEARN.md updates (interim retro discipline). Status: done. Blocked-by: mss101, mss102, mss103, mss104. PR: https://github.com/LeoTheMighty/devx/pull/141 (merged 26b64bd)
 - ~~`dev/dev-ee7049-2026-07-29T10:12-spec-lock-release-cli.md` — Guarded spec-lock release CLI for the Phase 9 branch-handoff path (swaps the raw `rm` for `devx devx-helper release-lock`).~~ Status: absorbed 2026-08-12 into `db36af`, which now owns the release primitive and its three call sites (mark-done, loop merge tail, `doctor --fix`). Not "low priority" after all: the missing release is the SOURCE of the 14 stale locks cleared in `9e1d9d3`, and `.claude/commands/devx.md:478` still instructs a raw `rm .devx-cache/locks/spec-<hash>.lock`. Kept for audit. From: mss104 Phase 8 gap sweep.
 
 ## Phase 0 — Foundation (plan: plan-a01000)
