@@ -23,7 +23,7 @@
 //     rendered as a phantom node.
 //
 // Spec: dev/dev-sgr102-2026-08-02T13:57-graph-model.md
-// Design: _devx/workstreams/story-graph/design.md §Architecture 2, §Data
+// Design: _devx/workstreams/story-graph/design/agent.md §Architecture 2, §Data
 
 import { join } from "node:path";
 import { parseDocument } from "yaml";
@@ -52,7 +52,7 @@ import {
 } from "../engine/workstream.js";
 
 // ---------------------------------------------------------------------------
-// Types (the `--format json` contract — pinned in design.md § Data)
+// Types (the `--format json` contract — pinned in design/agent.md § Data)
 // ---------------------------------------------------------------------------
 
 /** Read-only subset of the engine fs seam — the model never writes. */
@@ -876,7 +876,7 @@ export function buildGraphModel(
 
   // `model.warnings` and the top-level `warnings` are the SAME array: the
   // `--format json` payload carries them (E-3/E-4 read `model.warnings`)
-  // while the library surface in design.md hands callers `{model, warnings}`.
+  // while the library surface in design/agent.md hands callers `{model, warnings}`.
   const model: GraphModel = { nodes, edges: edgeList, groups, warnings };
   return { ok: true, model, warnings };
 }

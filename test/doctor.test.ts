@@ -1130,3 +1130,52 @@ describe("devx devx-helper release-lock (absorbed ee7049)", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// flat-era-workstream (folder-per-artifact migration, 2026-08)
+// ---------------------------------------------------------------------------
+
+describe("detectFlatWorkstreams", () => {
+  const fakeFs = (files: Record<string, string | null>) => ({
+    exists: (p: string) =>
+      p in files || Object.keys(files).some((f) => f.startsWith(`${p}/`)),
+    readFile: (p: string) => files[p] ?? "",
+    readdir: (p: string) =>
+      [
+        ...new Set(
+          Object.keys(files)
+            .filter((f) => f.startsWith(`${p}/`))
+            .map((f) => f.slice(p.length + 1).split("/")[0]),
+        ),
+      ],
+    isDirectory: (p: string) =>
+      Object.keys(files).some((f) => f.startsWith(`${p}/`)),
+  });
+
+  it("reports each flat stage artifact with the git mv recipe", async () => {
+    const { detectFlatWorkstreams } = await import("../src/lib/doctor/detect.js");
+    const fs = fakeFs({
+      "/r/_devx/workstreams/old/prd.md": "x",
+      "/r/_devx/workstreams/old/plan.md": "x",
+      "/r/_devx/workstreams/new/prd/agent.md": "x",
+    });
+    const findings = detectFlatWorkstreams({ repoRoot: "/r", fs } as never);
+    expect(findings).toHaveLength(2);
+    expect(findings[0].class).toBe("flat-era-workstream");
+    expect(findings[0].fixable).toBe(false);
+    expect(findings[0].detail).toContain("git mv");
+    expect(findings.map((f) => f.target).sort()).toEqual([
+      "_devx/workstreams/old/plan.md",
+      "_devx/workstreams/old/prd.md",
+    ]);
+  });
+
+  it("is silent on a fully-migrated tree", async () => {
+    const { detectFlatWorkstreams } = await import("../src/lib/doctor/detect.js");
+    const fs = fakeFs({
+      "/r/_devx/workstreams/new/prd/agent.md": "x",
+      "/r/_devx/workstreams/new/expectations.md": "x",
+    });
+    expect(detectFlatWorkstreams({ repoRoot: "/r", fs } as never)).toEqual([]);
+  });
+});

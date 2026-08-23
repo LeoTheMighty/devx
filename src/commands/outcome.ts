@@ -1,6 +1,6 @@
 // `devx outcome arm|score <hash>` — the outcome loop's CLI passthrough
 // (v2o101; v2/02-engine.md §4.10). Thin driver over the pure evaluators in
-// src/lib/engine/outcome.ts: resolve hash → workstream, read prd.md /
+// src/lib/engine/outcome.ts: resolve hash → workstream, read prd/agent.md /
 // expectations.md / the results template, call the pure fns, apply the
 // frontmatter flips + write RESULTS.md, emit JSON.
 //
@@ -15,7 +15,7 @@
 //       [--reopen E-1,E-2] [--successor <slug>]
 //       [--reason <1-2 sentences>] [--notes <reading prose>]
 //       [--disposition <prose>]
-//     Scores every prd.md G- goal (bidirectional coverage required), writes
+//     Scores every prd/agent.md G- goal (bidirectional coverage required), writes
 //     `_devx/workstreams/<slug>/RESULTS.md` from the shipped template, and
 //     flips outcome.status. tune additionally clears evals_red + erases
 //     gate_verdicts.evals (hfi102 — no stale PASS survives the reopen) +
@@ -581,7 +581,7 @@ export function register(program: Command): void {
   outcome
     .command("score")
     .description(
-      "Score every prd.md G- goal vs reality, write RESULTS.md, and flip outcome.status. tune reopens via --reopen E-ids; restart links --successor lineage.",
+      "Score every prd/agent.md G- goal vs reality, write RESULTS.md, and flip outcome.status. tune reopens via --reopen E-ids; restart links --successor lineage.",
     )
     .argument("<hash>", "workstream (plan spec) hash")
     .requiredOption(
@@ -590,7 +590,7 @@ export function register(program: Command): void {
     )
     .option(
       "--goal <G-n=actual>",
-      "measured actual for a goal (repeatable; every prd.md goal required)",
+      "measured actual for a goal (repeatable; every prd/agent.md goal required)",
       collect,
       [] as string[],
     )

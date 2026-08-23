@@ -16,7 +16,7 @@
 // marker must break containment.
 //
 // Spec: dev/dev-rtl101-2026-07-30T09:31-listener-nudge-pin.md (T1.1)
-// Design: _devx/workstreams/retro-listener/design.md §Architecture (Pin)
+// Design: _devx/workstreams/retro-listener/design/agent.md §Architecture (Pin)
 
 /**
  * A mid-sentence slice of the canonical nudge, spanning from the friction

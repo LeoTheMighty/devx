@@ -14,7 +14,7 @@
 //      only thing that disappears is the hyphenated `blocked-by:` SPELLING,
 //      whose entries are carried into the canonical key in the same write.
 //   2. NEVER GUESSES (D-9 spirit). A derived edge comes from durable state
-//      the operator wrote — `phase:` frontmatter, a plan.md `(dev spec: …)`
+//      the operator wrote — `phase:` frontmatter, a plan/agent.md `(dev spec: …)`
 //      pointer, a todo.md phase pointer — or it does not exist. Whatever is
 //      left over is REPORTED in pass 2 for a human, not inferred.
 //   3. IDEMPOTENT. The second run writes zero files. That is the review
@@ -36,7 +36,7 @@
 //   - cross-process safety             → backlog/mutate.ts withBacklogLock
 //
 // Spec: dev/dev-sgr106-2026-08-02T13:57-graph-backfill.md
-// Design: _devx/workstreams/story-graph/plan.md §Phase 6
+// Design: _devx/workstreams/story-graph/plan/agent.md §Phase 6
 // RED artifact: _devx/workstreams/story-graph/evals/E-6_backfill.ts
 
 import { join } from "node:path";
@@ -261,7 +261,7 @@ function indexSpecs(
 // ---------------------------------------------------------------------------
 
 /**
- * `- [x] Phase 1: the ejection PR (dev spec: v2x101)` — the plan.md phase
+ * `- [x] Phase 1: the ejection PR (dev spec: v2x101)` — the plan/agent.md phase
  * CHECKLIST pointer.
  *
  * Anchored to the checklist-row shape, not to `Phase \d+` anywhere on a line.
@@ -283,14 +283,14 @@ interface OrderingSignal {
 
 /**
  * Phase number per spec, from durable state only. Precedence: the spec's own
- * `phase:` frontmatter, then a plan.md checklist pointer, then a todo.md
+ * `phase:` frontmatter, then a plan/agent.md checklist pointer, then a todo.md
  * phase pointer — most-durable first, so a stale artifact can never override
  * what the spec itself records.
  *
  * Tolerates a workstreams root containing non-directory files and workstream
- * dirs with no plan.md (E-6 trigger shapes): every artifact read is an
+ * dirs with no plan/agent.md (E-6 trigger shapes): every artifact read is an
  * `exists` probe on the joined path, so a stray `notes.md` simply yields no
- * `notes.md/plan.md` and contributes nothing.
+ * `notes.md/plan/agent.md` and contributes nothing.
  */
 function readOrderingSignals(
   fs: BackfillFs,
@@ -329,7 +329,7 @@ function readOrderingSignals(
     const spec = specs.get(hash);
     if (spec === undefined) return;
     if (out.has(hash)) return;
-    // A pointer speaks only for its OWN workstream's members. A plan.md that
+    // A pointer speaks only for its OWN workstream's members. A plan/agent.md that
     // name-drops a spec belonging to another workstream would otherwise
     // relabel that spec's membership and rank it against a phase numbering
     // from a different plan — two workstreams' orderings interleaved is worse
@@ -699,7 +699,7 @@ export function planBackfill(
         hash,
         workstream: ws,
         reason:
-          "no `phase:` frontmatter, no plan.md/todo.md pointer, and no recorded edge in either direction",
+          "no `phase:` frontmatter, no plan/agent.md/todo.md pointer, and no recorded edge in either direction",
       });
     }
   }

@@ -5,10 +5,10 @@
 // it hands the CLI a tri-state table via `--table <json>`. EVERYTHING else
 // is mechanical and lives here:
 //
-//   - mode detection      (design.md exists ∧ ¬design_verified → design;
-//                          else plan.md ∧ ¬plan_verified → plan; the
+//   - mode detection      (design/agent.md exists ∧ ¬design_verified → design;
+//                          else plan/agent.md ∧ ¬plan_verified → plan; the
 //                          earlier open gate always wins)
-//   - source-ID extraction (design mode: G-/UC-/CAP-/FR- defs in prd.md;
+//   - source-ID extraction (design mode: G-/UC-/CAP-/FR- defs in prd/agent.md;
 //                          plan mode: E-ids in expectations.md)
 //   - table completeness  (every source ID has exactly one row)
 //   - verdict computation (FAIL = any ❌ or unmet P0 floor; CONCERNS =
@@ -94,8 +94,8 @@ export function detectCoverageMode(i: ModeDetectInputs): ModeDetectResult {
         "Gate 1 (prd) has not passed — run `devx gate prd` before any coverage gate",
     };
   }
-  // Earlier open gate wins: an unverified design.md takes precedence over
-  // an open plan gate even when plan.md also exists.
+  // Earlier open gate wins: an unverified design/agent.md takes precedence over
+  // an open plan gate even when plan/agent.md also exists.
   if (i.designExists && !gs.design_verified) return { mode: "design" };
   if (!gs.design_verified) {
     return {
@@ -124,7 +124,7 @@ export function detectCoverageMode(i: ModeDetectInputs): ModeDetectResult {
 // ---------------------------------------------------------------------------
 
 /**
- * design mode: one row per G-/UC-/CAP-/FR- ID defined in prd.md.
+ * design mode: one row per G-/UC-/CAP-/FR- ID defined in prd/agent.md.
  * plan mode: one row per E-id in expectations.md.
  */
 export function extractSourceIds(

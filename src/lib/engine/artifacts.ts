@@ -1,7 +1,7 @@
 // Central artifact-path resolver — the single source of truth for where a
 // workstream's engine artifacts live relative to its directory.
 //
-// Before this module every consumer join()'d bare filenames ("prd.md",
+// Before this module every consumer join()'d bare filenames ("prd/agent.md",
 // "evals/RED-report.md", …) against workstreamAbs independently, which made
 // any layout change a ~15-module hunt. All path construction and all
 // user-facing artifact names route through these exports; changing the

@@ -36,7 +36,7 @@
 // the retro happens to word its output.
 //
 // Spec: dev/dev-rtl104-2026-07-30T09:31-watcher-cli-spawn.md (T4.1, T4.2)
-// Design: _devx/workstreams/retro-listener/design.md §Architecture (Spawn)
+// Design: _devx/workstreams/retro-listener/design/agent.md §Architecture (Spawn)
 
 import { spawnSync } from "node:child_process";
 import { mkdirSync, unlinkSync } from "node:fs";

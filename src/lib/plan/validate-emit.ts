@@ -131,7 +131,7 @@ export interface ValidateEmitResult {
   /** Path of the epic file the validator used (or, when not found, the
    *  frozen-archive path — kept for pre-v2d101 caller compatibility). */
   epicPath: string;
-  /** Which source resolved (v2d101): `_devx/workstreams/<slug>/plan.md`
+  /** Which source resolved (v2d101): `_devx/workstreams/<slug>/plan/agent.md`
    *  wins; the frozen `_bmad-output/planning-artifacts/epic-<slug>.md` is
    *  the historical fallback. Null when neither exists. */
   source: "workstream-plan" | "frozen-epic" | null;
@@ -296,10 +296,10 @@ export function validateEmit(
     }
     if (source === "workstream-plan") {
       // v2 shape: a spec claims the workstream via `from:` naming its
-      // plan.md, or via a `workstream:` frontmatter pointer. Boundary-
+      // plan/agent.md, or via a `workstream:` frontmatter pointer. Boundary-
       // anchored match rather than endsWith: `from: <path> (phase 2)`
       // trailing text must still count, and a suffix collision like
-      // `backup_devx/workstreams/<slug>/plan.md` must NOT (EC#13).
+      // `backup_devx/workstreams/<slug>/plan/agent.md` must NOT (EC#13).
       const fromVal = parseFrontmatterValue(body, "from");
       const wsVal = parseFrontmatterValue(body, "workstream");
       const fromClaimRe = new RegExp(
@@ -584,7 +584,7 @@ export function parseStoryHashes(epicBody: string): StoryHashRef[] {
  *   - a `(dev spec: <hash>)` marker on a `## Phase checklist` entry
  *     (`- [x] Phase 1: the ejection PR (dev spec: v2x101)`), or
  *   - a backticked `dev/dev-<hash>-…` reference on an "Execution tracker"
- *     line inside a phase's Overview (the v2x101 plan.md shape).
+ *     line inside a phase's Overview (the v2x101 plan/agent.md shape).
  *
  * Dedup keeps the first occurrence's line number. Two precision guards
  * (adversarial-review BH#10/EC#8):

@@ -362,6 +362,45 @@ export function detectMirrorDrift(opts: DetectOpts): Finding[] {
  * and nobody noticed, or it is blocked on something the annotation does not
  * name.
  */
+/** Flat-era workstream artifacts: a repo upgraded across the
+ *  folder-per-artifact layout change (2026-08) still carrying
+ *  `<ws>/prd.md`-style files. Report-only — the repair is a content-safe
+ *  `git mv` the operator should run themselves (it rewrites history-adjacent
+ *  paths and any in-flight session's expectations). Scans the DEFAULT
+ *  workstreams root only; a custom `engine.workstreams_root` repo self-
+ *  serves via the same recipe. */
+export function detectFlatWorkstreams(opts: DetectOpts): Finding[] {
+  const fs = opts.fs ?? realDoctorFs;
+  const root = join(opts.repoRoot, "_devx", "workstreams");
+  if (!fs.exists(root) || !fs.isDirectory(root)) return [];
+  const findings: Finding[] = [];
+  let slugs: string[] = [];
+  try {
+    slugs = fs.readdir(root);
+  } catch {
+    return [];
+  }
+  for (const slug of slugs) {
+    const wsAbs = join(root, slug);
+    if (!fs.isDirectory(wsAbs)) continue;
+    for (const stage of ["prd", "design", "plan"]) {
+      const flat = join(wsAbs, `${stage}.md`);
+      if (!fs.exists(flat)) continue;
+      findings.push({
+        class: "flat-era-workstream",
+        target: `_devx/workstreams/${slug}/${stage}.md`,
+        detail:
+          `flat-era artifact predates the folder-per-artifact layout — the engine now reads ` +
+          `_devx/workstreams/${slug}/${stage}/agent.md. Repair (content-safe): ` +
+          `mkdir -p _devx/workstreams/${slug}/${stage} && git mv _devx/workstreams/${slug}/${stage}.md ` +
+          `_devx/workstreams/${slug}/${stage}/agent.md`,
+        fixable: false,
+      });
+    }
+  }
+  return findings;
+}
+
 export function detectDeadBlockers(opts: DetectOpts): Finding[] {
   const fs = opts.fs ?? realDoctorFs;
   // resolveSpecs:false — this detector reads only backlog rows, so

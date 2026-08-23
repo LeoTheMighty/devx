@@ -41,7 +41,7 @@
   `--epic` / `--workstream` / `--items` / `--exclude` / `--focus`.
 - The overlap harness (E-1) runs under vitest in CI proving
   overlap-safety without partitioning.
-- Design: `_devx/workstreams/multi-loop-concurrency/design.md` (6
+- Design: `_devx/workstreams/multi-loop-concurrency/design/agent.md` (6
   components, single-blocking-lock argument).
 
 ## What we're NOT doing

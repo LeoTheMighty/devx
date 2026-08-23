@@ -6,7 +6,7 @@
 // the drain loop.
 //
 // WHO READS THIS: the watcher (`devx learn-watch`) and the `/devx-init` hook
-// install step — nobody else. The LISTENER MUST NOT (design.md §Constraints,
+// install step — nobody else. The LISTENER MUST NOT (design/agent.md §Constraints,
 // G-3): it runs at every turn end in every hooked repo under a <500ms p95
 // budget, so it resolves its home from `DEVX_LEARN_HOME` + the built-in
 // default only (`learnHome`, src/lib/learn/queue.ts). That split is why
@@ -15,12 +15,12 @@
 // directory on every path they share, or the watcher drains a queue the
 // listener isn't writing to.
 //
-// Precedence (design.md §Interfaces): `DEVX_LEARN_HOME` > config `learn.home`
+// Precedence (design/agent.md §Interfaces): `DEVX_LEARN_HOME` > config `learn.home`
 // > `~/.claude/devx`.
 //
 // Spec: dev/dev-rtl102-2026-07-30T09:31-learn-config-section.md
 //       dev/dev-c808b1-2026-08-05T11:25-devx-learn-unattended-apply.md (auto_apply)
-// Plan: _devx/workstreams/retro-listener/plan.md §Phase 2
+// Plan: _devx/workstreams/retro-listener/plan/agent.md §Phase 2
 
 import { homedir } from "node:os";
 import { join } from "node:path";

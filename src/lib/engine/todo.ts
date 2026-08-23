@@ -17,7 +17,7 @@
 //     file; pinned by test/gate-todo-isolation.test.ts (E-2).
 //
 // Spec: dev/dev-hfi101-2026-07-24T10:41-todo-core.md
-// Design: _devx/workstreams/harness-fold-in/design.md §Interfaces
+// Design: _devx/workstreams/harness-fold-in/design/agent.md §Interfaces
 
 import {
   type EngineState,

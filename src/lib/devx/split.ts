@@ -33,7 +33,7 @@
 // § Constraints, last bullet).
 //
 // Spec: dev/dev-mss101-2026-07-28T13:43-split-primitive-lib-cli.md
-// Design: _devx/workstreams/mid-story-split/design.md § Architecture 1
+// Design: _devx/workstreams/mid-story-split/design/agent.md § Architecture 1
 
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";

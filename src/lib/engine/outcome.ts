@@ -30,7 +30,7 @@
 //
 // Per-goal verdicts are deterministic, not vibes (design tenet 5): an
 // explicit `--result G-n=hit|miss|partial` always wins; otherwise a goal
-// whose prd.md text carries an unambiguous `≥`/`>=`/`≤`/`<=` comparator is
+// whose prd/agent.md text carries an unambiguous `≥`/`>=`/`≤`/`<=` comparator is
 // compared mechanically against the supplied actual; anything else scores
 // `recorded` and the judgment lives in the Reading/Disposition prose.
 //
@@ -179,7 +179,7 @@ export function computeArm(
 export interface PrdGoal {
   /** "G-1" (uppercased). */
   id: string;
-  /** 1-based prd.md line of the definition. */
+  /** 1-based prd/agent.md line of the definition. */
   line: number;
   /** The goal's definition text (bullet body after the colon, wrapped
    *  continuation lines folded), "" when the shape is unrecognized. */
@@ -187,7 +187,7 @@ export interface PrdGoal {
 }
 
 /**
- * Extract the `G-` goals defined in prd.md, with their definition text.
+ * Extract the `G-` goals defined in prd/agent.md, with their definition text.
  * Definition positions come from gate-prd's extractDefinedIds (bold or
  * heading — the template's two shapes); the text is the remainder of the
  * defining bullet/heading line plus indented continuation lines (same
@@ -247,7 +247,7 @@ export interface GoalScoreInput {
 
 export interface GoalRow {
   id: string;
-  /** Target column: the goal's prd.md definition text. */
+  /** Target column: the goal's prd/agent.md definition text. */
   target: string;
   actual: string;
   source: string;
@@ -296,7 +296,7 @@ export interface GoalScoreComputation {
 }
 
 /**
- * Score every prd.md goal. Bidirectional coverage is required (the gate-prd
+ * Score every prd/agent.md goal. Bidirectional coverage is required (the gate-prd
  * orphan-check posture): a defined goal with no `--goal` flag refuses, and
  * a `--goal` flag naming an undefined goal refuses — a silent partial score
  * would undermine the whole loop.

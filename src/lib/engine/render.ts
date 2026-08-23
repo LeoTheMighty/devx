@@ -6,7 +6,7 @@
 //   gates: prd PASS · design FAIL · plan — · evals —
 //     design FAIL → report: <ws>/decisions/2026-07-24-design-verify.md · re-run: devx gate coverage <hash>
 //
-// Fallback rule per gate (design.md §Rendering): verdict ≠ null → verdict;
+// Fallback rule per gate (design/agent.md §Rendering): verdict ≠ null → verdict;
 // else flag true → PASS (legacy pre-verdict runs — shipped specs are never
 // rewritten, the flag-true fallback IS the migration); else `—` (never
 // evaluated, or cleared by `devx revise`). FAIL therefore renders visibly
@@ -22,7 +22,7 @@
 // renderer is table-testable without touching disk.
 //
 // Spec: dev/dev-hfi102-2026-07-24T10:41-gate-verdict-persistence.md (AC 4)
-// Design: _devx/workstreams/harness-fold-in/design.md §Rendering
+// Design: _devx/workstreams/harness-fold-in/design/agent.md §Rendering
 
 import {
   GATE_KEYS,

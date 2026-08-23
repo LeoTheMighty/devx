@@ -33,7 +33,7 @@
 // trap inventory) + `reference/2026-07-28-retro-listener.md` §"Failure modes".
 //
 // Spec: dev/dev-rtl103-2026-07-30T09:31-watcher-core.md (T3.1, T3.2)
-// Design: _devx/workstreams/retro-listener/design.md §Architecture (Watch)
+// Design: _devx/workstreams/retro-listener/design/agent.md §Architecture (Watch)
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, statSync, unlinkSync } from "node:fs";

@@ -743,7 +743,7 @@ function exemptGate(reason: string): GateInfo {
  * Resolve whether a dev spec belongs to an engine-managed workstream, and
  * if so whether that workstream's `evals_red` gate has passed. Chain, in
  * order: `workstream:` frontmatter → `from:`/`plan:` naming a
- * `<workstreamsRoot>/<slug>/plan.md` path → `from:`/`plan:` naming a
+ * `<workstreamsRoot>/<slug>/plan/agent.md` path → `from:`/`plan:` naming a
  * `plan/plan-<hash>-…` spec with engine frontmatter. Standalone specs
  * (from: an epic file, a v2 design doc, or nothing) are exempt — D-8's
  * "small work must not be forced through four gates".

@@ -2,7 +2,7 @@
 // watcher (reader/drainer) share. Everything here is filesystem mechanics; no
 // judgment, no process spawning, no config.
 //
-// Layout, all under the learn home (design.md §Data):
+// Layout, all under the learn home (design/agent.md §Data):
 //
 //   <home>/learn-queue.jsonl        pending  {session_id, transcript_path, cwd, ts}
 //   <home>/learn-queue.done.jsonl   processed  + {processed_ts, outcome}
@@ -38,7 +38,7 @@
 //      crash mid-rewrite leaves the old queue, never a truncated one.
 //
 // Spec: dev/dev-rtl101-2026-07-30T09:31-listener-nudge-pin.md (T1.2)
-// Design: _devx/workstreams/retro-listener/design.md §Architecture (Queue), §Data
+// Design: _devx/workstreams/retro-listener/design/agent.md §Architecture (Queue), §Data
 
 import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";

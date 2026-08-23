@@ -25,7 +25,7 @@
 //     one of those two signals is later restyled.
 //
 // Spec: dev/dev-sgr103-2026-08-02T13:57-graph-render-cli.md
-// Design: _devx/workstreams/story-graph/design.md §Architecture 3, §Data
+// Design: _devx/workstreams/story-graph/design/agent.md §Architecture 3, §Data
 
 import {
   type EdgeKind,

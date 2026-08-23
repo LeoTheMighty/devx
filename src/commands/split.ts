@@ -28,7 +28,7 @@
 //   64 → usage error. stderr only.
 //
 // Spec: dev/dev-mss101-2026-07-28T13:43-split-primitive-lib-cli.md
-// Design: _devx/workstreams/mid-story-split/design.md § Architecture 2
+// Design: _devx/workstreams/mid-story-split/design/agent.md § Architecture 2
 
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";

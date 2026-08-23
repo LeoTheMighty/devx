@@ -17,7 +17,7 @@ devx is a filesystem, not an app. Every unit of work is a markdown file:
   `plan/…`, `debug/…`. Each has goals, acceptance criteria, and an
   append-only status log — the paper trail of who did what.
 - **Workstreams** are where planning artifacts for big features live:
-  `_devx/workstreams/<slug>/` holds `prd.md`, `design.md`, `plan.md`,
+  `_devx/workstreams/<slug>/` holds `prd/agent.md`, `design/agent.md`, `plan/agent.md`,
   `decisions/`, `evals/` for that one feature.
 - **`LEARN.md`** is the system's memory: lessons from past work that future
   planning reads back.
@@ -62,13 +62,13 @@ For anything feature/epic-sized, `/devx-plan` walks four stages. Each stage
 writes artifacts to `_devx/workstreams/<slug>/` and each gate is a mechanical
 CLI check (`devx gate …`) — the agent can't hand-wave past it.
 
-1. **PRD** — an interview with you. Produces `prd.md` (goals, use cases,
+1. **PRD** — an interview with you. Produces `prd/agent.md` (goals, use cases,
    requirements, all with stable IDs) and `expectations.md` (≥3 testable
    "when X, the system SHALL Y" blocks with priorities and thresholds).
 2. **Design** — asks your design questions first, grounds itself in real
-   code, writes `design.md` (the approach — explicitly *not* the task list).
+   code, writes `design/agent.md` (the approach — explicitly *not* the task list).
    Gate 2 checks every PRD ID is covered by the design.
-3. **Plan** — `plan.md`: phases sized so each lands as one reviewable PR.
+3. **Plan** — `plan/agent.md`: phases sized so each lands as one reviewable PR.
    Gate 3 checks every expectation maps to a phase, every P0 to a runnable
    check.
 4. **RED** — writes the P0 checks as *failing* tests and watches them fail

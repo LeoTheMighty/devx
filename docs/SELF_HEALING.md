@@ -200,7 +200,7 @@ finish or close the retro's own tab and the watcher exits. To stop it sooner,
 
 Knobs live under `learn:` in `devx.config.yaml` (`idle_minutes`,
 `retro_timeout_minutes`, `home`); `DEVX_LEARN_HOME` overrides the home for both
-the hook and the watcher. Design: `_devx/workstreams/retro-listener/design.md`.
+the hook and the watcher. Design: `_devx/workstreams/retro-listener/design/agent.md`.
 
 ---
 

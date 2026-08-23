@@ -20,7 +20,7 @@
 // user-foreground, which is why the wiring lives in init-orchestrator.
 //
 // Spec: dev/dev-rtl105-2026-07-30T09:31-init-hook-distribution.md
-// Design: _devx/workstreams/retro-listener/design.md §Architecture (Install)
+// Design: _devx/workstreams/retro-listener/design/agent.md §Architecture (Install)
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";

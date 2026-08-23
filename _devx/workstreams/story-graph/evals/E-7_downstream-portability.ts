@@ -58,7 +58,7 @@ try {
   fx.writeSpec({ type: "dev", hash: "dwn000", slug: "down-zero", title: "Down zero", status: "done" });
   fx.writeSpec({ type: "dev", hash: "dwn111", slug: "down-one", title: "Down one", status: "ready" });
   fx.writeSpec({ type: "dev", hash: "dwn222", slug: "down-two", title: "Down two", status: "in-progress", fm: ["blocked-by: [dwn111]"] });
-  fx.write("_devx/workstreams/down-flow/plan.md", "# Plan — down-flow\n");
+  fx.write("_devx/workstreams/down-flow/plan/agent.md", "# Plan — down-flow\n");
   fx.write("DEV.md", [
     "# DEV",
     "",

@@ -21,7 +21,7 @@
 // which a second logical task in the same process could observe the set.
 //
 // Spec: dev/dev-mlc102-2026-07-28T09:02-backlog-mutation-lock.md
-// Design: _devx/workstreams/multi-loop-concurrency/design.md §Architecture 2
+// Design: _devx/workstreams/multi-loop-concurrency/design/agent.md §Architecture 2
 
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";

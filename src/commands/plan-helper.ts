@@ -458,7 +458,7 @@ export function runValidateEmit(
   );
 
   if (!result.epicFound) {
-    // v2d101 resolution order: _devx/workstreams/<slug>/plan.md first,
+    // v2d101 resolution order: _devx/workstreams/<slug>/plan/agent.md first,
     // then the frozen _bmad-output/planning-artifacts/epic-<slug>.md.
     err(
       `devx plan-helper validate-emit: no ${PLAN_REL} or epic file found for '${slug}' (tried: ${result.triedPaths.join(", ")})\n`,

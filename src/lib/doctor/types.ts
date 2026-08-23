@@ -45,7 +45,11 @@ export type FindingClass =
   | "bookkeeping-only-abandonment"
   /** `blocked_by:` naming a hash that is absent, already done, or struck —
    *  a blocker that can never clear. */
-  | "dead-blocker";
+  | "dead-blocker"
+  /** Flat-era workstream artifact (pre folder-per-artifact layout):
+   *  `<ws>/prd.md` where the engine now reads `<ws>/prd/agent.md`.
+   *  Report-only — the repair is a `git mv` the operator runs. */
+  | "flat-era-workstream";
 
 export interface Finding {
   class: FindingClass;

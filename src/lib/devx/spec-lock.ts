@@ -30,7 +30,7 @@
 // release call sites.
 //
 // Spec: dev/dev-mlc103-2026-07-28T09:02-spec-lock-lifecycle.md
-// Design: _devx/workstreams/multi-loop-concurrency/design.md §Architecture 4
+// Design: _devx/workstreams/multi-loop-concurrency/design/agent.md §Architecture 4
 
 import { readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";

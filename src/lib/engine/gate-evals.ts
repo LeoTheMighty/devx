@@ -11,7 +11,7 @@
 //   - P1+: gaps (missing artifact / exit 0 / deferred) ⇒ CONCERNS, never a
 //     block.
 //   - Deferred stubs are legal only for `tests-after` / `human` validation
-//     types, read from plan.md's Expectation-coverage table when present
+//     types, read from plan/agent.md's Expectation-coverage table when present
 //     (column `Validation type`); expectations without a plan row default
 //     to `tests-first` (must run).
 //   - `.md` artifacts (eval specs under evals/) are not mechanically
@@ -46,7 +46,7 @@ import {
 } from "./verdict.js";
 
 // ---------------------------------------------------------------------------
-// plan.md Expectation-coverage table (validation types + artifacts)
+// plan/agent.md Expectation-coverage table (validation types + artifacts)
 // ---------------------------------------------------------------------------
 
 export type ValidationType = "tests-first" | "tests-after" | "human" | "none";
@@ -68,7 +68,7 @@ const VALIDATION_TYPES: ReadonlySet<string> = new Set([
 
 /**
  * Parse the `| E-id | Priority | Verified in phase | Validation type |
- * Eval artifact | Coverage |` table out of plan.md. Column positions are
+ * Eval artifact | Coverage |` table out of plan/agent.md. Column positions are
  * resolved from the header row (not hardcoded) so column reordering or
  * added columns don't silently misparse. Returns [] when no table with an
  * `E-id` header exists — the caller treats every expectation as
@@ -280,7 +280,7 @@ export interface GateEvalsInputs {
   /** Absolute workstream dir (for evals/ artifact resolution). */
   workstreamAbs: string;
   expectations: string;
-  /** plan.md content, or null when absent (all rows default tests-first). */
+  /** plan/agent.md content, or null when absent (all rows default tests-first). */
   plan: string | null;
   runners: ProjectRunner[];
   exec: ShellExec;
@@ -440,7 +440,7 @@ function evaluateExpectation(
     return base;
   }
 
-  // Target: expectations.md Verified-by is the contract; plan.md's artifact
+  // Target: expectations.md Verified-by is the contract; plan/agent.md's artifact
   // column may refine it (e.g. Verified-by named evals/E-3_*.md at PRD time
   // and the plan pinned the concrete file).
   const target = planRow?.artifact ?? block.verifiedBy;

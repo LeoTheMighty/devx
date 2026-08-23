@@ -4,9 +4,9 @@
 //
 //   | Changed                  | Resets                                    | stage → |
 //   |--------------------------|-------------------------------------------|---------|
-//   | prd.md / expectations.md | all 4 gate flags                          | prd     |
-//   | design.md                | design_verified, plan_verified, evals_red | design  |
-//   | plan.md                  | plan_verified, evals_red                  | plan    |
+//   | prd/agent.md / expectations.md | all 4 gate flags                          | prd     |
+//   | design/agent.md                | design_verified, plan_verified, evals_red | design  |
+//   | plan/agent.md                  | plan_verified, evals_red                  | plan    |
 //
 // and prints the replay path — the ordered list of gate commands now open —
 // so the forward skills' refusals force actual absorption of the change.
@@ -16,7 +16,7 @@
 // silently resetting four gate flags would be the worst possible failure
 // shape for this command.
 //
-// Stage only ever rolls BACK: touching plan.md while the workstream is
+// Stage only ever rolls BACK: touching plan/agent.md while the workstream is
 // still at stage prd keeps stage prd (the earlier of current vs cascade
 // target wins). Gate flags are one-directional too — the cascade only
 // clears flags, never sets them.

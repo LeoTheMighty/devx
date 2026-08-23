@@ -12,6 +12,7 @@ import { realExecAsync } from "../exec.js";
 import {
   detectDeadBlockers,
   detectDeadOwners,
+  detectFlatWorkstreams,
   detectMirrorDrift,
   detectStaleLocks,
   detectWorktrees,
@@ -36,6 +37,7 @@ export async function collectFindings(
     ...detectMirrorDrift(base),
     ...detectDeadOwners(base),
     ...detectDeadBlockers(base),
+    ...detectFlatWorkstreams(base),
   ];
   let worktrees: Finding[] = [];
   try {

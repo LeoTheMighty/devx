@@ -1,5 +1,5 @@
 // Gate 1 — mechanical PRD validator (v2e101). Pure evaluation over the two
-// Gate-1 inputs (prd.md + expectations.md) plus the spec's blocked_by; the
+// Gate-1 inputs (prd/agent.md + expectations.md) plus the spec's blocked_by; the
 // CLI passthrough in src/commands/gate.ts owns resolution, writes, and exit
 // codes.
 //
@@ -14,8 +14,8 @@
 //      Threshold is numeric (contains a digit, no placeholder); Verified-by
 //      is a concrete runnable target (path-shaped, no placeholder).
 //   4. Bidirectional ID resolution: every `Covers:` ID resolves to a
-//      definition in prd.md (dangling refs fail); every `G-` goal defined
-//      in prd.md is covered by ≥1 expectation (orphan goals fail).
+//      definition in prd/agent.md (dangling refs fail); every `G-` goal defined
+//      in prd/agent.md is covered by ≥1 expectation (orphan goals fail).
 //   5. INTERVIEW-blocker check: the spec's `blocked_by:` must be empty.
 //
 // Pass → the CLI flips `prd_validated: true` + `stage: design` (both
@@ -53,11 +53,11 @@ export interface GatePrdInputs {
 export interface GatePrdResult {
   verdict: "PASS" | "FAIL";
   gaps: GateGap[];
-  /** IDs defined in prd.md — reused by callers for reporting. */
+  /** IDs defined in prd/agent.md — reused by callers for reporting. */
   definedIds: string[];
 }
 
-/** Sections gate-prd requires in prd.md (template order). `Evals seed` and
+/** Sections gate-prd requires in prd/agent.md (template order). `Evals seed` and
  *  `Open questions` are template-suggested but not gate-required — a PRD
  *  with fully-promoted expectations legitimately empties them. */
 export const REQUIRED_PRD_SECTIONS = [
@@ -145,7 +145,7 @@ export function splitSections(text: string): Section[] {
 // ---------------------------------------------------------------------------
 
 /**
- * IDs *defined* in prd.md. A definition is an ID at a defining position:
+ * IDs *defined* in prd/agent.md. A definition is an ID at a defining position:
  * bold (`**G-1**`) or a heading (`### FR-1: ...`) — matching the template's
  * two shapes. Mentions in running prose don't define.
  */

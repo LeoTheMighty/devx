@@ -16,11 +16,11 @@
 //   | 1 | stage retired                               | (nothing)               |
 //   | 2 | stage done, outcome unarmed OR pending+due  | /devx outcome <hash>    |
 //   | 3 | stage done, outcome scored or pending+early | (nothing / wait)        |
-//   | 4 | prd.md or expectations.md missing           | /devx prd <hash>        |
+//   | 4 | prd/agent.md or expectations.md missing           | /devx prd <hash>        |
 //   | 5 | ¬prd_validated                              | devx gate prd <hash>    |
-//   | 6 | design.md missing                           | /devx design <hash>     |
+//   | 6 | design/agent.md missing                           | /devx design <hash>     |
 //   | 7 | ¬design_verified                            | devx gate coverage <hash> |
-//   | 8 | plan.md missing                             | /devx plan <hash>       |
+//   | 8 | plan/agent.md missing                             | /devx plan <hash>       |
 //   | 9 | ¬plan_verified                              | devx gate coverage <hash> |
 //   | 10| ¬evals_red, evals/ empty                    | /devx red <hash>        |
 //   | 11| ¬evals_red, evals/ has artifacts            | devx gate evals <hash>  |
