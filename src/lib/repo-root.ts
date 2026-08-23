@@ -15,7 +15,7 @@
 // linked-worktree starts and pass the canonical cacheDir down explicitly.
 //
 // Spec: dev/dev-mlc101-2026-07-28T09:02-canonical-repo-root.md
-// Design: _devx/workstreams/multi-loop-concurrency/design.md §Architecture 1
+// Design: _devx/workstreams/multi-loop-concurrency/design/agent.md §Architecture 1
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, realpathSync } from "node:fs";

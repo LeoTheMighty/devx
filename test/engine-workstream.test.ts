@@ -49,13 +49,13 @@ describe("devx workstream new — scaffold", () => {
     expect(j.workstreamDir).toBe("_devx/workstreams/demo-feature");
     expect(j.noop).toBe(false);
 
-    expect(repo.exists("_devx/workstreams/demo-feature/prd.md")).toBe(true);
+    expect(repo.exists("_devx/workstreams/demo-feature/prd/agent.md")).toBe(true);
     expect(repo.exists("_devx/workstreams/demo-feature/expectations.md")).toBe(true);
     expect(repo.exists("_devx/workstreams/demo-feature/decisions")).toBe(true);
     expect(repo.exists("_devx/workstreams/demo-feature/checkpoints")).toBe(true);
     expect(repo.exists("_devx/workstreams/demo-feature/evals")).toBe(true);
-    // design.md / plan.md are NOT pre-created — drafted by their stages.
-    expect(repo.exists("_devx/workstreams/demo-feature/design.md")).toBe(false);
+    // design/agent.md / plan/agent.md are NOT pre-created — drafted by their stages.
+    expect(repo.exists("_devx/workstreams/demo-feature/design/agent.md")).toBe(false);
 
     const specRel = j.specPath as string;
     expect(specRel).toMatch(/^plan\/plan-abc123-2026-07-05T13:01-demo-feature\.md$/);
@@ -74,7 +74,7 @@ describe("devx workstream new — scaffold", () => {
 
   it("substitutes the workstream title into the copied templates", () => {
     newWs("demo-feature", "abc123");
-    const prd = repo.read("_devx/workstreams/demo-feature/prd.md");
+    const prd = repo.read("_devx/workstreams/demo-feature/prd/agent.md");
     expect(prd).toContain("# PRD — Demo Feature");
     expect(prd).not.toContain("<workstream title>");
   });
@@ -109,12 +109,12 @@ describe("devx workstream new — idempotency + refusals (seeded defects)", () =
   it("double-run is a clean no-op (exit 0, nothing rewritten)", () => {
     newWs("demo-feature", "abc123");
     // Author real content; the re-run must not clobber it.
-    repo.write("_devx/workstreams/demo-feature/prd.md", "# my real prd\n");
+    repo.write("_devx/workstreams/demo-feature/prd/agent.md", "# my real prd\n");
     const { code, io } = newWs("demo-feature", "abc123");
     expect(code).toBe(0);
     const j = io.json() as Record<string, unknown>;
     expect(j.noop).toBe(true);
-    expect(repo.read("_devx/workstreams/demo-feature/prd.md")).toBe("# my real prd\n");
+    expect(repo.read("_devx/workstreams/demo-feature/prd/agent.md")).toBe("# my real prd\n");
     expect(io.stderr()).toContain("already scaffolded");
   });
 
@@ -253,7 +253,7 @@ describe("createWorkstream — engine.workstreams_root override", () => {
       now: FIXED_NOW,
     });
     expect(result.workstreamDir).toBe("streams/custom-root");
-    expect(repo.exists("streams/custom-root/prd.md")).toBe(true);
+    expect(repo.exists("streams/custom-root/prd/agent.md")).toBe(true);
   });
 });
 
@@ -269,5 +269,84 @@ describe("devx workstream new — commander wiring (subprocess)", () => {
     const j = JSON.parse(stdout.trim()) as Record<string, unknown>;
     expect(j.hash).toBe("beef01");
     expect(repo.exists("_devx/workstreams/cli-smoke/expectations.md")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Folder-per-artifact hardening (adversarial review)
+// ---------------------------------------------------------------------------
+
+describe("scaffold never mints human-only files", () => {
+  it("creates prd/agent.md but NO outline.md / human.md anywhere", () => {
+    const repo = makeEngineRepo();
+    try {
+      const io = captureIo();
+      const code = runWorkstreamNew(["hardened-neg"], {}, {
+        out: io.out,
+        err: io.err,
+        projectPath: repo.configPath,
+      });
+      expect(code).toBe(0);
+      expect(repo.exists("_devx/workstreams/hardened-neg/prd/agent.md")).toBe(true);
+      for (const rel of [
+        "_devx/workstreams/hardened-neg/prd/outline.md",
+        "_devx/workstreams/hardened-neg/prd/human.md",
+        "_devx/workstreams/hardened-neg/prd/outline-critique.md",
+        "_devx/workstreams/hardened-neg/OUTLINE.md",
+      ]) {
+        expect(repo.exists(rel), `${rel} must not be scaffolded`).toBe(false);
+      }
+    } finally {
+      repo.cleanup();
+    }
+  });
+});
+
+describe("flat-era refusal", () => {
+  it("refuses to scaffold over a pre-migration workstream instead of minting a duplicate PRD", () => {
+    const repo = makeEngineRepo();
+    try {
+      repo.write("_devx/workstreams/flat-era/prd.md", "# real PRD content\n");
+      // Bound plan spec: the idempotent re-run path is where write-if-missing
+      // would otherwise mint a fresh template next to the real flat PRD.
+      repo.write(
+        "plan/plan-abc321-2026-08-23T10:00-flat-era.md",
+        [
+          "---",
+          "hash: abc321",
+          "type: plan",
+          "created: 2026-08-23T10:00:00-06:00",
+          "title: Flat Era",
+          "status: in-progress",
+          "stage: prd",
+          "entered_at: prd",
+          "gate_status:",
+          "  prd_validated: false",
+          "  design_verified: false",
+          "  plan_verified: false",
+          "  evals_red: false",
+          "outcome:",
+          "  status: null",
+          "  measure_by: null",
+          "workstream: _devx/workstreams/flat-era",
+          "---",
+          "",
+          "## Goal",
+          "x",
+        ].join("\n"),
+      );
+      const io = captureIo();
+      const code = runWorkstreamNew(["flat-era"], { hash: "abc321" }, {
+        out: io.out,
+        err: io.err,
+        projectPath: repo.configPath,
+      });
+      expect(code).toBe(1);
+      expect(io.stderr()).toContain("flat-era");
+      expect(io.stderr()).toContain("git mv");
+      expect(repo.exists("_devx/workstreams/flat-era/prd/agent.md")).toBe(false);
+    } finally {
+      repo.cleanup();
+    }
   });
 });

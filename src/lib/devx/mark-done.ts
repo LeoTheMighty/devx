@@ -15,7 +15,7 @@
 // three-flow contract — claim, cleanup, emission — with no manual regen
 // between any of them.
 //
-// WRITE-ONLY IN V1 (design.md, recorded non-blocking question): the skill
+// WRITE-ONLY IN V1 (design/agent.md, recorded non-blocking question): the skill
 // keeps owning `git add` + `git commit` + `git push`, symmetric with it
 // owning the merge itself. Every git call this module makes is READ-ONLY and
 // advisory: `rev-parse` (is this the main checkout?), `remote get-url`
@@ -34,7 +34,7 @@
 //     hook took at sgr104.
 //
 // Spec: dev/dev-sgr105-2026-08-02T13:57-mark-done-phase8.md
-// Design: _devx/workstreams/story-graph/design.md §Architecture 4
+// Design: _devx/workstreams/story-graph/design/agent.md §Architecture 4
 
 import { randomBytes } from "node:crypto";
 import { basename, join } from "node:path";

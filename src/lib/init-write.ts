@@ -43,7 +43,7 @@ import {
   readdirSync,
   statSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Document } from "yaml";
 
@@ -885,6 +885,34 @@ export interface WriteEngineTemplatesOpts {
   templatesRoot?: string;
 }
 
+/** All template files under `root`, as /-joined paths relative to it.
+ *  Depth-capped at 3 so a symlink cycle inside a customized template dir
+ *  can't stack-overflow devx init; stage folders nest exactly one level
+ *  today. Not .md-filtered — a future non-markdown scaffold (a runnable
+ *  eval stub, say) must not be silently skipped. */
+function listMdFilesRecursive(root: string, prefix: string, depth = 0): string[] {
+  if (depth > 3) return [];
+  const out: string[] = [];
+  for (const entry of readdirSync(join(root, ...prefix.split("/").filter(Boolean)), {
+    withFileTypes: true,
+  })) {
+    const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+    if (entry.isDirectory()) {
+      out.push(...listMdFilesRecursive(root, rel, depth + 1));
+    } else {
+      out.push(rel);
+    }
+  }
+  return out;
+}
+
+/** The template files the SHIPPED package carries, relative /-joined paths.
+ *  Consumed by init-upgrade's engine-templates detector so its presence
+ *  predicate self-updates as the template set grows. */
+export function listShippedEngineTemplates(): string[] {
+  return listMdFilesRecursive(join(defaultPrTemplateRoot(), "engine"), "").sort();
+}
+
 export function writeEngineTemplates(
   repoRoot: string,
   opts: WriteEngineTemplatesOpts = {},
@@ -913,18 +941,20 @@ export function writeEngineTemplates(
   const written: string[] = [];
   const skipped: string[] = [];
 
-  const names = readdirSync(srcDir)
-    .filter((n) => n.endsWith(".md"))
-    .sort();
+  // Recursive walk: the folder-per-artifact layout nests stage templates
+  // (prd/agent.md, prd/outline.md, …) one level deep — and a flat readdir
+  // would silently skip them, leaving upgraded repos unscaffoldable.
+  const names = listMdFilesRecursive(srcDir, "").sort();
   for (const name of names) {
-    const dest = join(destDir, name);
-    const rel = join("_devx", "templates", "engine", name);
+    const dest = join(destDir, ...name.split("/"));
+    const rel = join("_devx", "templates", "engine", ...name.split("/"));
     if (existsSync(dest)) {
       skipped.push(rel);
       continue;
     }
     if (!opts.dryRun) {
-      writeAtomic(dest, readTemplate(join(srcDir, name)));
+      mkdirSync(dirname(dest), { recursive: true });
+      writeAtomic(dest, readTemplate(join(srcDir, ...name.split("/"))));
     }
     written.push(rel);
   }

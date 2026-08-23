@@ -13,11 +13,12 @@
 // keeps gate modules todo-free.
 //
 // Spec: dev/dev-hfi103-2026-07-24T10:41-todo-sync-renderers-status.md
-// Design: _devx/workstreams/harness-fold-in/design.md §Interfaces
+// Design: _devx/workstreams/harness-fold-in/design/agent.md §Interfaces
 
 import { join } from "node:path";
 
 import { type EngineState, readEngineState } from "./frontmatter.js";
+import { TODO_REL } from "./artifacts.js";
 import {
   type TodoDoc,
   type TodoGroundTruth,
@@ -33,7 +34,7 @@ export interface TodoReadFs {
   readdir(path: string): string[];
 }
 
-export const TODO_FILENAME = "todo.md";
+export const TODO_FILENAME = TODO_REL;
 
 /**
  * Read + parse `<workstreamAbs>/todo.md`. Null when the file is absent

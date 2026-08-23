@@ -758,7 +758,7 @@ devx/
 
 ## Relationship to workstream artifacts (v2 engine)
 
-`_devx/workstreams/<slug>/` is the source of truth for **detailed** planning — the full prd.md, expectations.md, design.md, plan.md, and RED-gate evals per workstream (see `v2/02-engine.md` §3). devx's backlog files are a **lightweight index** on top of them.
+`_devx/workstreams/<slug>/` is the source of truth for **detailed** planning — the full prd/agent.md, expectations.md, design/agent.md, plan/agent.md, and RED-gate evals per workstream (see `v2/02-engine.md` §3). devx's backlog files are a **lightweight index** on top of them.
 
 - A `PLAN.md` entry points at `plan/plan-9c1d4a-epic-auth.md` (the workstream's index node), whose artifacts live in `_devx/workstreams/epic-auth/`.
 - A `DEV.md` entry points at `dev/dev-a3f2b9-*.md`, whose ACs are the working artifact for execution (one plan phase ≙ one dev spec ≙ one PR).

@@ -27,7 +27,7 @@
 //            named.
 //
 // Spec: plan/plan-c8e2d4-2026-07-14T10:41-usage-window-governor.md
-// Design: _devx/workstreams/usage-window-governor/design.md (D-UW1)
+// Design: _devx/workstreams/usage-window-governor/design/agent.md (D-UW1)
 
 import { describe, expect, it } from "vitest";
 

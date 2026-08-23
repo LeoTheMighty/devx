@@ -147,7 +147,7 @@ Steps:
 1. Re-read the spec: Goal, ACs, Technical notes, Status log (what prior
    sessions tried), and the parent (`from:`) epic/plan for locked decisions.
 2. If the spec belongs to a workstream (plan spec has `gate_status:`), read
-   `_devx/workstreams/<slug>/plan.md` for this phase's Verification plan +
+   `_devx/workstreams/<slug>/plan/agent.md` for this phase's Verification plan +
    Context, and locate the RED artifacts named in the Expectation-coverage
    table. `tests-first` phases MUST re-run their already-RED artifact and
    watch it fail NOW, before writing code — never re-author it to pass.

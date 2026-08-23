@@ -183,7 +183,7 @@ class.
 
 - `mark-done` is write-only in v1: the skill still owns `git add` / `commit` /
   `push`, symmetric with it owning the merge. Folding those in is a recorded
-  non-blocking question in `_devx/workstreams/story-graph/design.md`.
+  non-blocking question in `_devx/workstreams/story-graph/design/agent.md`.
 - The abandoned/superseded path (`~~…~~` row) stays a hand edit — mark-done
   deliberately covers the merged case only. Next revisit of the split/abandon
   flow picks it up.

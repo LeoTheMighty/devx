@@ -19,7 +19,7 @@ devx-helper mark-done`, plus the Phase-8 skill-prose rewrite that invokes
 it. E-5 goes green here. Closes the `git add -A` cleanup-commit class
 structurally (the 2026-07-29 erratum `ba3c65b`). Plan phase 5 of
 workstream story-graph — read
-`_devx/workstreams/story-graph/plan.md` §Phase 5; the RED artifact
+`_devx/workstreams/story-graph/plan/agent.md` §Phase 5; the RED artifact
 `evals/E-5_loop-freshness.ts` defines the three-flow contract and must
 flip green.
 

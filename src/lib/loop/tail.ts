@@ -38,6 +38,7 @@ import { extractAcChecklist, loadTemplate, renderPrBody } from "../pr-body.js";
 import { GhProbeError, hasWorkflowFiles, parseGhRunList } from "../devx/await-remote-ci.js";
 import { checkHold } from "../devx/hold-check.js";
 import { mergeGateFor, type GateSignals } from "../merge-gate.js";
+import { baseBranchFrom, classifyDiffNames } from "../engine/outline.js";
 import { type Exec } from "./git-tx.js";
 import { type GhRetryOpts, withGhRetry } from "../gh-retry.js";
 
@@ -293,11 +294,37 @@ export async function defaultTail(item: TailItem, ctx: TailCtx): Promise<TailOut
   }
 
   // ── 4. Merge gate (mrg101) — the ONLY path to main ─────────────────────
+  // Outline protection L2 in the overnight path: the same scan `devx
+  // outline check` runs, against this item's branch and the configured base
+  // branch. Best-effort fetch first — a stale remote-tracking ref would
+  // surface the human's own already-landed outline commits in the range and
+  // hand off a clean branch with a misleading reason (review HIGH); fetch
+  // failure degrades to the stale ref, which errs toward hand-off, never
+  // toward merge. git diff failure → null → fail closed.
+  let outlineClean: boolean | null = null;
+  const outlineBase = baseBranchFrom(ctx.merged);
+  exec("git", ["fetch", "origin", outlineBase], { cwd: ctx.repoRoot });
+  const od = exec(
+    "git",
+    [
+      "-c",
+      "core.quotePath=false",
+      "diff",
+      "--name-only",
+      `origin/${outlineBase}...${item.branch}`,
+    ],
+    { cwd: ctx.repoRoot },
+  );
+  if (od.exitCode === 0) {
+    outlineClean = classifyDiffNames(od.stdout.split("\n")).length === 0;
+  }
+
   const signals: GateSignals = {
     ciConclusion,
     lockdownActive: false,
     blockingReviewComments: blockingComments,
     coveragePctTouched: null,
+    outlineClean,
     ...autonomyFrom(ctx.merged),
   };
   const decision = mergeGateFor(ctx.mode, signals);

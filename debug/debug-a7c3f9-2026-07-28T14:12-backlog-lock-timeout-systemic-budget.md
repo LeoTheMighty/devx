@@ -67,4 +67,4 @@ reduce peer pressure on the lock).
 ## Links
 
 - Parent: `dev/dev-mlc104-2026-07-28T09:02-claim-contention-harness.md`
-- Design: `_devx/workstreams/multi-loop-concurrency/design.md` §Architecture 2/3
+- Design: `_devx/workstreams/multi-loop-concurrency/design/agent.md` §Architecture 2/3

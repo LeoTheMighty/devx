@@ -167,7 +167,7 @@ describe("parsePrdGoals", () => {
     expect(goals[0].text).toBe("latency ≤ 250 ms");
   });
 
-  it("CRLF prd.md keeps its goal text (comparator inference survives)", () => {
+  it("CRLF prd/agent.md keeps its goal text (comparator inference survives)", () => {
     const goals = parsePrdGoals(
       "## Goals\r\n\r\n- **G-1**: reach ≥ 100 users\r\n",
     );
@@ -411,7 +411,7 @@ function writeClosedWorkstream(
     ].join("\n"),
   );
   repo.mkdir(`_devx/workstreams/${slug}`);
-  repo.write(`_devx/workstreams/${slug}/prd.md`, validPrd());
+  repo.write(`_devx/workstreams/${slug}/prd/agent.md`, validPrd());
   repo.write(`_devx/workstreams/${slug}/expectations.md`, validExpectations());
 }
 

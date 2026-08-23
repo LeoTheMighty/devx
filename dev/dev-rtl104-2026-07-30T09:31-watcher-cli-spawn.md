@@ -123,5 +123,5 @@ must flip green.
 
 ## Links
 
-- Plan: `_devx/workstreams/retro-listener/plan.md` §Phase 4
-- Design: `_devx/workstreams/retro-listener/design.md` §Architecture (Spawn)
+- Plan: `_devx/workstreams/retro-listener/plan/agent.md` §Phase 4
+- Design: `_devx/workstreams/retro-listener/design/agent.md` §Architecture (Spawn)

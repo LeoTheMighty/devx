@@ -32,7 +32,7 @@
 //       safe reduction), so there is no failure path.
 //   0 — always for `listen`, on every path including garbage stdin and an
 //       unwritable queue. A hook that can fail a turn is worse than a missed
-//       detection (design.md §Constraints); the listener core is already total,
+//       detection (design/agent.md §Constraints); the listener core is already total,
 //       and the try/catch here is the second belt.
 //   0 — always for `route`; the verdict is on stdout as JSON, not in the exit
 //       status. A `propose` is a normal, expected answer, and an exit code a
@@ -52,8 +52,8 @@
 // Spec: dev/dev-hfi104-2026-07-24T10:41-devx-learn-skill.md (T4.2),
 //       dev/dev-rtl101-2026-07-30T09:31-listener-nudge-pin.md (T1.4),
 //       dev/dev-c808b1-2026-08-05T11:25-devx-learn-unattended-apply.md (route, report, propose)
-// Design: _devx/workstreams/harness-fold-in/design.md §Interfaces,
-//         _devx/workstreams/retro-listener/design.md §Interfaces
+// Design: _devx/workstreams/harness-fold-in/design/agent.md §Interfaces,
+//         _devx/workstreams/retro-listener/design/agent.md §Interfaces
 
 import { readFileSync } from "node:fs";
 import process from "node:process";

@@ -168,7 +168,7 @@ function seedWorkstream(titleLine: string): void {
     ].join("\n"),
   );
   repo.mkdir(WS);
-  repo.write(`${WS}/prd.md`, validPrd());
+  repo.write(`${WS}/prd/agent.md`, validPrd());
   repo.write(`${WS}/expectations.md`, validExpectations());
 }
 

@@ -468,7 +468,7 @@ learn:
 ```
 
 Consumed by `devx learn-watch` (rtl102) and the `/devx-init` hook install
-step; see `_devx/workstreams/retro-listener/design.md` §Interfaces.
+step; see `_devx/workstreams/retro-listener/design/agent.md` §Interfaces.
 
 `idle_minutes` is how long the session transcript must go unmodified before
 the watcher treats the session as over and spawns its retro; `retro_timeout_minutes`

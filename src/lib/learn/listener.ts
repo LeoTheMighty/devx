@@ -5,7 +5,7 @@
 // non-negotiables:
 //
 //   1. **Total.** {@link handleHookPayload} never throws. A hook that fails a
-//      turn is worse than a missed detection (design.md §Constraints), so every
+//      turn is worse than a missed detection (design/agent.md §Constraints), so every
 //      path — garbage payload, unwritable home, wedged lock — returns a result
 //      instead of raising. The CLI's try/catch is the second belt, not the
 //      first.
@@ -40,7 +40,7 @@
 // (its docstrings are the trap inventory).
 //
 // Spec: dev/dev-rtl101-2026-07-30T09:31-listener-nudge-pin.md (T1.3)
-// Design: _devx/workstreams/retro-listener/design.md §Architecture (Detect)
+// Design: _devx/workstreams/retro-listener/design/agent.md §Architecture (Detect)
 
 import type { BlockingAcquireOpts } from "../manage/lock.js";
 import { containsNudge } from "./nudge.js";

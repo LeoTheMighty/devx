@@ -138,6 +138,7 @@ describe("debug-6a913f — merge-gate resolves non-dev specs", () => {
     });
     const r = runGate(fx, "abc901", (cmd, args) => {
       if (cmd === "gh" && args[0] === "pr" && args[1] === "view") return GREEN_PR_VIEW;
+      if (cmd === "git" && args.includes("diff")) return { exitCode: 0, stdout: "", stderr: "" };
       throw new Error(`unexpected exec: ${cmd} ${args.join(" ")}`);
     });
     expect(r.decision).toEqual({ merge: true });
@@ -151,6 +152,7 @@ describe("debug-6a913f — merge-gate resolves non-dev specs", () => {
         return { stdout: JSON.stringify([{ number: 7, state: "OPEN" }]), stderr: "", exitCode: 0 };
       }
       if (cmd === "gh" && args[0] === "pr" && args[1] === "view") return GREEN_PR_VIEW;
+      if (cmd === "git" && args.includes("diff")) return { exitCode: 0, stdout: "", stderr: "" };
       throw new Error(`unexpected exec: ${cmd} ${args.join(" ")}`);
     });
     expect(r.code).toBe(0);

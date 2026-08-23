@@ -6,7 +6,7 @@
 //   gates: prd PASS · design FAIL · plan — · evals —
 //     design FAIL → report: <ws>/decisions/2026-07-24-design-verify.md · re-run: devx gate coverage <hash>
 //
-// Fallback rule per gate (design.md §Rendering): verdict ≠ null → verdict;
+// Fallback rule per gate (design/agent.md §Rendering): verdict ≠ null → verdict;
 // else flag true → PASS (legacy pre-verdict runs — shipped specs are never
 // rewritten, the flag-true fallback IS the migration); else `—` (never
 // evaluated, or cleared by `devx revise`). FAIL therefore renders visibly
@@ -22,7 +22,7 @@
 // renderer is table-testable without touching disk.
 //
 // Spec: dev/dev-hfi102-2026-07-24T10:41-gate-verdict-persistence.md (AC 4)
-// Design: _devx/workstreams/harness-fold-in/design.md §Rendering
+// Design: _devx/workstreams/harness-fold-in/design/agent.md §Rendering
 
 import {
   GATE_KEYS,
@@ -31,6 +31,7 @@ import {
   type Stage,
 } from "./frontmatter.js";
 import { type TodoDoc, currentFocus } from "./todo.js";
+import { DECISIONS_DIR_REL, RED_REPORT_REL } from "./artifacts.js";
 
 /** Rendered when a gate has no verdict and no legacy flag-true fallback. */
 export const NEVER_RUN = "—";
@@ -115,12 +116,12 @@ function failReportPointer(
   if (key === "evals") {
     return ctx.evalsReportExists === false
       ? null
-      : `${ws}/evals/RED-report.md`;
+      : `${ws}/${RED_REPORT_REL}`;
   }
   const mode = COVERAGE_MODE[key];
   if (mode === undefined) return null; // prd — re-run command only
   const report = newestDecisionReport(ctx.decisionNames ?? [], mode);
-  return report !== null ? `${ws}/decisions/${report}` : null;
+  return report !== null ? `${ws}/${DECISIONS_DIR_REL}/${report}` : null;
 }
 
 /**

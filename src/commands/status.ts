@@ -25,12 +25,13 @@
 // unreadable dirs/specs degrade per-entry, never a crash.
 //
 // Spec: dev/dev-hfi103-2026-07-24T10:41-todo-sync-renderers-status.md
-// Design: _devx/workstreams/harness-fold-in/design.md §Interfaces
+// Design: _devx/workstreams/harness-fold-in/design/agent.md §Interfaces
 
 import { join } from "node:path";
 import type { Command } from "commander";
 
 import { attachPhase } from "../lib/help.js";
+import * as artifacts from "../lib/engine/artifacts.js";
 import { loadEngineContext } from "../lib/engine/context.js";
 import {
   frontmatterParseError,
@@ -123,7 +124,7 @@ export function runStatus(opts: RunStatusOpts = {}): number {
         state.stage === "done" && state.outcome.status === "pending";
       if (!active && !outcomePending) continue;
 
-      const decisionsAbs = join(wsAbs, "decisions");
+      const decisionsAbs = artifacts.decisionsDirAbs(wsAbs);
       let decisionNames: readonly string[] = [];
       if (fs.exists(decisionsAbs)) {
         try {
@@ -136,7 +137,7 @@ export function runStatus(opts: RunStatusOpts = {}): number {
         hash,
         workstreamRel: wsRel,
         decisionNames,
-        evalsReportExists: fs.exists(join(wsAbs, "evals", "RED-report.md")),
+        evalsReportExists: fs.exists(artifacts.redReportAbs(wsAbs)),
       });
 
       let focusLine: string | null = null;

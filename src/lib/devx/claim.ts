@@ -1169,7 +1169,7 @@ export async function claimSpec(
     // board rendered against a tip that no longer exists, publishing the
     // exact drift this hook exists to prevent.
     //
-    // The plan's own rule for this file (plan.md §Phase dependencies): "On
+    // The plan's own rule for this file (plan/agent.md §Phase dependencies): "On
     // rebase conflict in GRAPH.md, never merge by hand — re-run `devx
     // graph`." Dropping it here is that rule, applied structurally: the
     // contended claim lands without a board, `devx graph --check` flags the

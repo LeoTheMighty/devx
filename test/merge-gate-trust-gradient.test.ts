@@ -20,6 +20,7 @@ function baseSignals(overrides: Partial<GateSignals>): GateSignals {
     lockdownActive: false,
     blockingReviewComments: 0,
     coveragePctTouched: 1.0,
+    outlineClean: true,
     count: 0,
     initialN: 0,
     ...overrides,

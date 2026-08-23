@@ -44,7 +44,7 @@ blast radius (every future claim) gets its own tour. Specs without
 
 ## Technical notes
 
-Design: `_devx/workstreams/mid-story-split/design.md` §Interfaces
+Design: `_devx/workstreams/mid-story-split/design/agent.md` §Interfaces
 (claimSpec extension). The dispatcher needs no change: follow-up rows are
 ordinary `[ ]` + `Status: ready` + `Blocked-by:` rows; `blockersResolved`
 (`src/lib/next/gather.ts:254`) already gates claimability — E-5 asserts

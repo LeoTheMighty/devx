@@ -13,7 +13,7 @@
 // iteration ceiling sleep-aware.
 //
 // Spec: dev/dev-uwg102-2026-08-21T14:30-uwg102.md
-// Design: _devx/workstreams/usage-window-governor/design.md § Architecture 2
+// Design: _devx/workstreams/usage-window-governor/design/agent.md § Architecture 2
 // Decision: decisions/D-UW1-pre-ladder-interception.md
 
 import type { UsageWindowHit } from "./usage-window.js";

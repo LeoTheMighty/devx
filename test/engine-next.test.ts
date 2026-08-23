@@ -148,7 +148,7 @@ describe("nextForWorkstream — decision table", () => {
     expect(d.command).toBe("/devx outcome abc123");
   });
 
-  it("prd.md missing → /devx prd (authoring precedes the gate)", () => {
+  it("prd/agent.md missing → /devx prd (authoring precedes the gate)", () => {
     const d = nextForWorkstream("abc123", state({}), artifacts({ prd: false }));
     expect(d.command).toBe("/devx prd abc123");
   });
@@ -310,7 +310,7 @@ describe("devx next — CLI driver", () => {
 
   it("routes to devx gate prd once the inputs exist", () => {
     seed(ALL_FALSE);
-    repo.write(`${WS}/prd.md`, "# real\n");
+    repo.write(`${WS}/prd/agent.md`, "# real\n");
     repo.write(`${WS}/expectations.md`, "# real\n");
     const { io } = next("abc123");
     expect((io.json() as { next: string }).next).toBe("devx gate prd abc123");
@@ -326,10 +326,10 @@ describe("devx next — CLI driver", () => {
       ].join("\n"),
       "red",
     );
-    repo.write(`${WS}/prd.md`, "x");
+    repo.write(`${WS}/prd/agent.md`, "x");
     repo.write(`${WS}/expectations.md`, "x");
-    repo.write(`${WS}/design.md`, "x");
-    repo.write(`${WS}/plan.md`, "x");
+    repo.write(`${WS}/design/agent.md`, "x");
+    repo.write(`${WS}/plan/agent.md`, "x");
     repo.write(`${WS}/evals/RED-report.md`, "stale report from a reverted run");
     const { io } = next("abc123");
     expect((io.json() as { next: string }).next).toBe("/devx red abc123");
@@ -345,10 +345,10 @@ describe("devx next — CLI driver", () => {
       ].join("\n"),
       "red",
     );
-    repo.write(`${WS}/prd.md`, "x");
+    repo.write(`${WS}/prd/agent.md`, "x");
     repo.write(`${WS}/expectations.md`, "x");
-    repo.write(`${WS}/design.md`, "x");
-    repo.write(`${WS}/plan.md`, "x");
+    repo.write(`${WS}/design/agent.md`, "x");
+    repo.write(`${WS}/plan/agent.md`, "x");
     repo.write(`${WS}/evals/E-1_smoke.md`, "eval spec");
     const { io } = next("abc123");
     expect((io.json() as { next: string }).next).toBe("devx gate evals abc123");

@@ -134,7 +134,7 @@ function seedWorkstream(stage: string): void {
     ].join("\n"),
   );
   repo.mkdir(WS);
-  repo.write(`${WS}/prd.md`, validPrd());
+  repo.write(`${WS}/prd/agent.md`, validPrd());
 }
 
 describe("E-5 — focus line at the CLI surfaces", () => {

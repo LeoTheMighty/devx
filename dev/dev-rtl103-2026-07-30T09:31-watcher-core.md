@@ -92,5 +92,5 @@ green.
 
 ## Links
 
-- Plan: `_devx/workstreams/retro-listener/plan.md` §Phase 3
-- Design: `_devx/workstreams/retro-listener/design.md` §Architecture (Watch)
+- Plan: `_devx/workstreams/retro-listener/plan/agent.md` §Phase 3
+- Design: `_devx/workstreams/retro-listener/design/agent.md` §Architecture (Watch)

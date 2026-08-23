@@ -69,15 +69,15 @@ function buildFixture(root: string): void {
   // will remove the tooling but keep the markdown; the Phase-0 stub must NOT
   // touch any of it. (The v2 eject contract has no framework tree — the old
   // `_bmad/` fixture dir went away with the v2x101 ejection.)
-  mkdirSync(join(root, "_devx", "templates", "engine"), { recursive: true });
+  mkdirSync(join(root, "_devx", "templates", "engine", "prd"), { recursive: true });
   writeFileSync(
-    join(root, "_devx", "templates", "engine", "prd.md"),
+    join(root, "_devx", "templates", "engine", "prd", "agent.md"),
     "# PRD template placeholder\n",
     "utf8",
   );
-  mkdirSync(join(root, "_devx", "workstreams", "sample"), { recursive: true });
+  mkdirSync(join(root, "_devx", "workstreams", "sample", "plan"), { recursive: true });
   writeFileSync(
-    join(root, "_devx", "workstreams", "sample", "plan.md"),
+    join(root, "_devx", "workstreams", "sample", "plan", "agent.md"),
     "# Plan placeholder\n",
     "utf8",
   );

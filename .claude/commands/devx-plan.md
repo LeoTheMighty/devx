@@ -43,6 +43,25 @@ from v1 (`docs/DESIGN.md`).
    `nudge-canonical` HTML-comment marker in
    `.claude/commands/devx-learn.md`; read it there and act on it.
    Reference it, never restate it.
+8. **Outline step (every stage, attended sessions).** Each stage folder
+   (`prd/ design/ plan/ evals/`) may hold a human-typed `outline.md` —
+   optional, NEVER agent-written (PreToolUse hook + `devx outline check`
+   in CI + merge-gate enforce this), never a gate input. At stage open:
+   absent → offer once: "an outline is optional but genuinely helpful —
+   run `devx outline init <hash> <stage>` from your own terminal and type
+   it yourself; typing it is the point." Present → read it (Read tool);
+   when you have findings (gaps, misinformation, design problems, places
+   to expand) write/refresh `<stage>/outline-critique.md`; when clean,
+   delete a stale critique. At PRD open also read the repo-root
+   `OUTLINE.md` as seed context (critique → `OUTLINE-CRITIQUE.md`).
+   Never `git add` an outline path — outlines reach `main` only via the
+   human's `devx outline commit`.
+9. **human.md (every stage, before its gate).** Write/refresh
+   `<stage>/human.md`: the succinct human digest — mermaid first, brevity
+   with nothing load-bearing dropped. When `<stage>/outline.md` exists,
+   its structure IS human.md's structure (the outline dictates the shape);
+   `agent.md` keeps the template's gate-required sections either way.
+   human.md is never a gate input; conflicts resolve to `agent.md`.
 
 ## Arguments
 
@@ -62,8 +81,9 @@ from v1 (`docs/DESIGN.md`).
 
 ## Stage: PRD
 
-Inputs: requirements seed, `LEARN.md`, existing backlogs, config. Artifacts:
-`_devx/workstreams/<slug>/prd.md` + `expectations.md` (templates:
+Inputs: requirements seed, `LEARN.md`, existing backlogs, config, repo-root
+`OUTLINE.md` (rule 8). Artifacts: `_devx/workstreams/<slug>/prd/agent.md` +
+`expectations.md` + `prd/human.md` (rule 9) (templates:
 `_devx/templates/engine/`).
 
 Todo step: run `devx todo sync <hash>` (the workstream's plan-spec hash —
@@ -78,8 +98,9 @@ free-nested lines, and check them as work lands. Derived `Stage:` /
    (codebase surfaces, prior art, external constraints) in parallel; keep
    the main context clean. No PRD from cold requirements.
 3. Interview the user through the template's sections **in order**, writing
-   each section to disk as it settles (interruption-survivable). Assign IDs
-   as you go: `G-` (business goals MUST be numeric + dated), `UC-`, `CAP-`,
+   each section to disk as it settles (interruption-survivable). When
+   `prd/outline.md` exists (rule 8), it drives emphasis and content within
+   those sections. Assign IDs as you go: `G-` (business goals MUST be numeric + dated), `UC-`, `CAP-`,
    `FR-`. IDs are never renumbered; traceability is by ID, not prose.
 4. Promote the Evals-seed into `expectations.md` E-blocks (≥
    `engine.expectations_min`, default 3): Priority, Covers (real IDs),
@@ -97,8 +118,9 @@ free-nested lines, and check them as work lands. Derived `Stage:` /
 
 ## Stage: Design
 
-Inputs: prd.md + expectations.md. Artifact: `design.md`. **No phases, no
-tasks — design is the approach, not the sequence.**
+Inputs: prd/agent.md + expectations.md. Artifacts: `design/agent.md` +
+`design/human.md` (rules 8–9 apply). **No phases, no tasks — design is the
+approach, not the sequence.**
 
 Todo step: `devx todo sync <hash>`, then expand + check this session's
 free-nested sub-items (contract in Stage: PRD).
@@ -114,7 +136,7 @@ free-nested sub-items (contract in Stage: PRD).
    working agreement), Design (architecture / interfaces / data), Migration
    plan, Resolved + Unresolved questions.
 4. Coverage gate: spawn one subagent to judge coverage — for every
-   `G-/UC-/CAP-/FR-` ID in prd.md, a row `{id, status: ✅|⚠️|❌, where,
+   `G-/UC-/CAP-/FR-` ID in prd/agent.md, a row `{id, status: ✅|⚠️|❌, where,
    note}`; write the JSON table to a temp file. Then run
    **`devx gate coverage <hash> --table <path>`** (the CLI owns
    completeness, verdict computation, and the decisions/ report; extras
@@ -126,7 +148,8 @@ free-nested sub-items (contract in Stage: PRD).
 
 ## Stage: Plan
 
-Inputs: design.md + expectations.md. Artifact: `plan.md`.
+Inputs: design/agent.md + expectations.md. Artifacts: `plan/agent.md` +
+`plan/human.md` (rules 8–9 apply).
 
 Todo step: `devx todo sync <hash>`, then expand + check this session's
 free-nested sub-items (contract in Stage: PRD).
@@ -148,8 +171,8 @@ free-nested sub-items (contract in Stage: PRD).
    subagents, each critiquing the full plan from its lens. **Grounding
    rule: every lens claim citing a file must be grep-verified or dropped.**
    Apply accepted findings; record the pass as an HTML comment marker at
-   the top of plan.md (`<!-- refined: critique <date> (lenses: …) -->`) and
-   a decisions/ entry.
+   the top of plan/agent.md (`<!-- refined: critique <date> (lenses: …) -->`)
+   and a decisions/ entry.
 5. Coverage gate, plan mode: subagent judges the E-id → phase map into a
    table JSON; run **`devx gate coverage <hash> --table <path>`**. The P0
    floor is mechanical: every P0 `full` + runnable artifact. PASS/CONCERNS
@@ -158,8 +181,9 @@ free-nested sub-items (contract in Stage: PRD).
 
 ## Stage: RED
 
-Inputs: plan.md coverage table + expectations.md. Artifacts:
-`evals/*` + `evals/RED-report.md`, then emitted dev specs.
+Inputs: plan/agent.md coverage table + expectations.md. Artifacts:
+`evals/*` + `evals/RED-report.md` (+ `evals/human.md`, rules 8–9), then
+emitted dev specs.
 
 Todo step: `devx todo sync <hash>`, then expand + check this session's
 free-nested sub-items (contract in Stage: PRD).
@@ -195,8 +219,12 @@ free-nested sub-items (contract in Stage: PRD).
    **Commit pathspec.** Stage by explicit path — never `git add -A`; `main`
    is the tree every concurrent session shares. The set is: every emitted
    `dev/dev-*.md`, `DEV.md`, `PLAN.md`, the plan spec, the workstream's
-   `todo.md` + `evals/`, **plus `GRAPH.md` iff `emit-retro-story` printed a
-   `graph=` key** (sgr104). That helper's stdout is one greppable key=value
+   `todo.md` + the evals files this stage authored BY NAME (`evals/E-*`,
+   `evals/RED-report.md`, and `evals/human.md` / `evals/outline-critique.md`
+   when written — never the `evals/` directory itself, which would sweep a
+   human `evals/outline.md` into the PR and wedge it at the diff scan),
+   **plus `GRAPH.md` iff `emit-retro-story` printed a `graph=` key**
+   (sgr104). That helper's stdout is one greppable key=value
    line — `spec=… dev_md=… [graph=…] [partial=…]`, not JSON — and `graph=`
    is present exactly when its GRAPH.md regen succeeded:
 
@@ -205,6 +233,10 @@ free-nested sub-items (contract in Stage: PRD).
    GRAPH_PATH=$(printf '%s' "$EMIT_LINE" | tr ' ' '\n' | sed -n 's/^graph=//p')
    git add -- <emitted specs> DEV.md PLAN.md <plan spec> <todo+evals> ${GRAPH_PATH}
    ```
+
+   **Outline paths are never in any stage's pathspec** — not here, not in
+   the PRD/Design/Plan stage commits. `outline-critique.md` and `human.md`
+   are agent artifacts and ARE staged with their stage's commit.
 
    Leave `${GRAPH_PATH}` **unquoted** — that is what makes it vanish when the
    key is absent. Quoting it passes `git add` an empty string, which is
@@ -258,4 +290,5 @@ The empty case (DEV.md has no `[ ]` ready entries) — emitted bare with no lead
   trackers, D-12 sizing invariant.
 - `_devx/templates/engine/` — artifact shapes.
 - `devx gate prd|coverage|evals`, `devx workstream new`, `devx revise`,
-  `devx next`, `devx plan-helper derive-branch|emit-retro-story|validate-emit`.
+  `devx next`, `devx plan-helper derive-branch|emit-retro-story|validate-emit`,
+  `devx outline init|commit|check|guard` (human-only outline files).

@@ -14,7 +14,7 @@
 // init-write + init-upgrade + init-skills own the scaffold writes.
 //
 // Spec: dev/dev-pin103-2026-07-14T12:02-init-noninteractive-scaffold.md
-// Plan: _devx/workstreams/portability-install/plan.md § Phase 3
+// Plan: _devx/workstreams/portability-install/plan/agent.md § Phase 3
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";

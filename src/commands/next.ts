@@ -43,6 +43,7 @@ import { join } from "node:path";
 import type { Command } from "commander";
 
 import { attachPhase } from "../lib/help.js";
+import * as artifacts from "../lib/engine/artifacts.js";
 import { type EngineContext, loadEngineContext } from "../lib/engine/context.js";
 import { nextForWorkstream } from "../lib/engine/next.js";
 import { renderFocusLine, renderGateSummary } from "../lib/engine/render.js";
@@ -278,22 +279,20 @@ function runWorkstreamNext(
 
   // evals/ counts as "authored" when it holds anything besides the report
   // this same pipeline writes (RED-report.md is an output, not an input).
-  const evalsAbs = join(ws.workstreamAbs, "evals");
+  const evalsAbs = artifacts.evalsDirAbs(ws.workstreamAbs);
   let evalsAuthored = false;
   if (fs.exists(evalsAbs)) {
-    evalsAuthored = fs
-      .readdir(evalsAbs)
-      .some((name) => name !== "RED-report.md" && !name.startsWith("."));
+    evalsAuthored = fs.readdir(evalsAbs).some(artifacts.isAuthoredEvalEntry);
   }
 
   const decision = nextForWorkstream(
     ws.hash,
     ws.state,
     {
-      prd: fs.exists(join(ws.workstreamAbs, "prd.md")),
-      expectations: fs.exists(join(ws.workstreamAbs, "expectations.md")),
-      design: fs.exists(join(ws.workstreamAbs, "design.md")),
-      plan: fs.exists(join(ws.workstreamAbs, "plan.md")),
+      prd: fs.exists(artifacts.prdAbs(ws.workstreamAbs)),
+      expectations: fs.exists(artifacts.expectationsAbs(ws.workstreamAbs)),
+      design: fs.exists(artifacts.designAbs(ws.workstreamAbs)),
+      plan: fs.exists(artifacts.planAbs(ws.workstreamAbs)),
       evalsAuthored,
     },
     // Row 2's pending-outcome branch is measure_by-gated (v2o101).
@@ -303,7 +302,7 @@ function runWorkstreamNext(
   // hfi102: the decisions/ listing feeds the FAIL fix-path pointers. An
   // unreadable decisions/ (e.g. a file squatting on the name) degrades to
   // re-run-only pointers rather than crashing the dispatcher.
-  const decisionsAbs = join(ws.workstreamAbs, "decisions");
+  const decisionsAbs = artifacts.decisionsDirAbs(ws.workstreamAbs);
   let decisionNames: readonly string[] = [];
   if (fs.exists(decisionsAbs)) {
     try {
@@ -345,9 +344,7 @@ function runWorkstreamNext(
         hash: ws.hash,
         workstreamRel: ws.workstreamRel,
         decisionNames,
-        evalsReportExists: fs.exists(
-          join(ws.workstreamAbs, "evals", "RED-report.md"),
-        ),
+        evalsReportExists: fs.exists(artifacts.redReportAbs(ws.workstreamAbs)),
       }),
       focus,
       todo_drift: todoDrift,

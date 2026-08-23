@@ -55,6 +55,7 @@ import {
   type DeriveBranchConfig,
   deriveBranch,
 } from "./derive-branch.js";
+import { PLAN_REL } from "../engine/artifacts.js";
 
 // Same hash regex as plan-helper.ts (3-12 alnum chars). Used for the
 // synthesized retro hash and for parsing dev/ filenames; story-list
@@ -130,7 +131,7 @@ export interface ValidateEmitResult {
   /** Path of the epic file the validator used (or, when not found, the
    *  frozen-archive path — kept for pre-v2d101 caller compatibility). */
   epicPath: string;
-  /** Which source resolved (v2d101): `_devx/workstreams/<slug>/plan.md`
+  /** Which source resolved (v2d101): `_devx/workstreams/<slug>/plan/agent.md`
    *  wins; the frozen `_bmad-output/planning-artifacts/epic-<slug>.md` is
    *  the historical fallback. Null when neither exists. */
   source: "workstream-plan" | "frozen-epic" | null;
@@ -180,7 +181,7 @@ export function validateEmit(
   //     archive — it never gains new epics, so a new slug that misses
   //     both paths is a genuine not-found.
   const wsRoot = workstreamsRootFrom(inputs.config);
-  const planRel = `${wsRoot}/${inputs.epicSlug}/plan.md`;
+  const planRel = `${wsRoot}/${inputs.epicSlug}/${PLAN_REL}`;
   const planPath = join(inputs.repoRoot, ...planRel.split("/"));
   const archiveRel = `_bmad-output/planning-artifacts/epic-${inputs.epicSlug}.md`;
   const archivePath = join(inputs.repoRoot, archiveRel);
@@ -295,14 +296,14 @@ export function validateEmit(
     }
     if (source === "workstream-plan") {
       // v2 shape: a spec claims the workstream via `from:` naming its
-      // plan.md, or via a `workstream:` frontmatter pointer. Boundary-
+      // plan/agent.md, or via a `workstream:` frontmatter pointer. Boundary-
       // anchored match rather than endsWith: `from: <path> (phase 2)`
       // trailing text must still count, and a suffix collision like
-      // `backup_devx/workstreams/<slug>/plan.md` must NOT (EC#13).
+      // `backup_devx/workstreams/<slug>/plan/agent.md` must NOT (EC#13).
       const fromVal = parseFrontmatterValue(body, "from");
       const wsVal = parseFrontmatterValue(body, "workstream");
       const fromClaimRe = new RegExp(
-        `(?:^|[\\s('"\`])${escapeRe(wsDirMarker)}/plan\\.md(?:$|[\\s)'"\`,;])`,
+        `(?:^|[\\s('"\`])${escapeRe(wsDirMarker)}/${escapeRe(PLAN_REL)}(?:$|[\\s)'"\`,;])`,
       );
       const claims =
         (fromVal !== null && fromClaimRe.test(fromVal)) ||
@@ -311,7 +312,7 @@ export function validateEmit(
         issues.push({
           severity: "error",
           check: "orphan-spec-claims-epic",
-          message: `spec for '${hash}' claims workstream '${wsDirMarker}' but no phase in plan.md tracks it`,
+          message: `spec for '${hash}' claims workstream '${wsDirMarker}' but no phase in ${PLAN_REL} tracks it`,
           location: `dev/${fn}`,
         });
       }
@@ -583,7 +584,7 @@ export function parseStoryHashes(epicBody: string): StoryHashRef[] {
  *   - a `(dev spec: <hash>)` marker on a `## Phase checklist` entry
  *     (`- [x] Phase 1: the ejection PR (dev spec: v2x101)`), or
  *   - a backticked `dev/dev-<hash>-…` reference on an "Execution tracker"
- *     line inside a phase's Overview (the v2x101 plan.md shape).
+ *     line inside a phase's Overview (the v2x101 plan/agent.md shape).
  *
  * Dedup keeps the first occurrence's line number. Two precision guards
  * (adversarial-review BH#10/EC#8):

@@ -32,6 +32,10 @@ export interface GateSignals {
   blockingReviewComments: number;
   /** Touched-line coverage in [0, 1], or `null` if not measured. */
   coveragePctTouched: number | null;
+  /** Outline protection L2: is the PR diff free of outline files? `null`
+   *  = the diff scan could not run (missing merge base / detached state) —
+   *  fails closed like every uncertain signal. */
+  outlineClean: boolean | null;
   /** Trust-gradient: number of clean promotions so far. */
   count: number;
   /** Trust-gradient: threshold below which agent merges require approval. */
@@ -70,9 +74,24 @@ export function mergeGateFor(
     return { merge: false, reason: `unknown mode: ${mode}` };
   }
 
-  // 3. LOCKDOWN — fixed reason, short-circuit.
+  // 3. LOCKDOWN — fixed reason, short-circuit. Runs BEFORE the outline
+  // check so LOCKDOWN's documented fixed-reason contract holds.
   if (mode === "LOCKDOWN") {
     return { merge: false, reason: "lockdown active; manual merge required" };
+  }
+
+  // 3.5 Outline protection (L2) — outline changes never ride in a PR, in
+  // any merging mode. Outlines are human-only and reach the base branch
+  // solely via the human's `devx outline commit`; a PR carrying one is a
+  // policy breach regardless of CI state.
+  if (signals.outlineClean !== true) {
+    return {
+      merge: false,
+      reason:
+        signals.outlineClean === false
+          ? "outline file changed in this PR — outlines reach main only via `devx outline commit` (human-run)"
+          : "outline diff scan unavailable — fail closed (run `devx outline check`)",
+    };
   }
 
   // 4. YOLO conditions — applied to YOLO, BETA, PROD.

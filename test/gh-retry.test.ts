@@ -384,8 +384,19 @@ describe("devx merge-gate under a transient 401", () => {
 
   it("merges through the flake with the shipped default", () => {
     const { code, stdout, calls } = run(fixture(), { sleep: noSleep });
+    // calls: gh pr view (401) → gh pr view (green) → git diff (outline L2).
     expect(code).toBe(0);
     expect(JSON.parse(stdout)).toEqual({ merge: true });
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
+    expect(calls[2]).toEqual({
+      cmd: "git",
+      args: [
+        "-c",
+        "core.quotePath=false",
+        "diff",
+        "--name-only",
+        "origin/main...feat/dev-flk101",
+      ],
+    });
   });
 });

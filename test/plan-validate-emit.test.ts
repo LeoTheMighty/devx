@@ -813,11 +813,11 @@ describe("runValidateEmit — CLI exit codes", () => {
     });
     expect(code).toBe(2);
     expect(cap.io.stdout).toBe("");
-    // v2d101: resolution tries the workstream plan.md first, then the
+    // v2d101: resolution tries the workstream plan/agent.md first, then the
     // frozen BMAD-era epic path — the diagnostic names both.
-    expect(cap.io.stderr).toContain("no plan.md or epic file found");
+    expect(cap.io.stderr).toContain("no plan/agent.md or epic file found");
     expect(cap.io.stderr).toContain(
-      "_devx/workstreams/does-not-exist/plan.md",
+      "_devx/workstreams/does-not-exist/plan/agent.md",
     );
     expect(cap.io.stderr).toContain("epic-does-not-exist.md");
   });
@@ -1253,11 +1253,11 @@ describe("validateEmit — CRLF normalization end-to-end", () => {
 });
 
 // ---------------------------------------------------------------------------
-// v2d101 — workstream-plan resolution (`_devx/workstreams/<slug>/plan.md`)
+// v2d101 — workstream-plan resolution (`_devx/workstreams/<slug>/plan/agent.md`)
 // ---------------------------------------------------------------------------
 
 const WS_SLUG = "demo-ws";
-const WS_PLAN_PATH = `${REPO_ROOT}/_devx/workstreams/${WS_SLUG}/plan.md`;
+const WS_PLAN_PATH = `${REPO_ROOT}/_devx/workstreams/${WS_SLUG}/plan/agent.md`;
 
 function wsFixture(): Tree {
   const fs = newMemoryFs();
@@ -1298,7 +1298,7 @@ Nothing.
 hash: v2a101
 type: dev
 title: core
-from: _devx/workstreams/demo-ws/plan.md
+from: _devx/workstreams/demo-ws/plan/agent.md
 status: ready
 branch: feat/dev-v2a101
 ---
@@ -1313,7 +1313,7 @@ Core.
 hash: v2a102
 type: dev
 title: polish
-from: _devx/workstreams/demo-ws/plan.md
+from: _devx/workstreams/demo-ws/plan/agent.md
 status: ready
 branch: feat/dev-v2a102
 ---
@@ -1335,7 +1335,7 @@ Polish.
 }
 
 describe("validateEmit — workstream-plan mode (v2d101)", () => {
-  it("resolves _devx/workstreams/<slug>/plan.md FIRST and validates clean", () => {
+  it("resolves _devx/workstreams/<slug>/plan/agent.md FIRST and validates clean", () => {
     const { fs, repoRoot } = wsFixture();
     const r = validateEmit(
       { repoRoot, epicSlug: WS_SLUG, config: SINGLE_BRANCH_CONFIG },
@@ -1348,7 +1348,7 @@ describe("validateEmit — workstream-plan mode (v2d101)", () => {
     expect(errs).toEqual([]);
   });
 
-  it("plan.md wins over a same-slug legacy epic file", () => {
+  it("plan/agent.md wins over a same-slug legacy epic file", () => {
     const { fs, repoRoot } = wsFixture();
     fs.put(
       `${REPO_ROOT}/_bmad-output/planning-artifacts/epic-${WS_SLUG}.md`,
@@ -1402,7 +1402,7 @@ describe("validateEmit — workstream-plan mode (v2d101)", () => {
 hash: v2a999
 type: dev
 title: stray
-from: _devx/workstreams/demo-ws/plan.md
+from: _devx/workstreams/demo-ws/plan/agent.md
 status: ready
 branch: feat/dev-v2a999
 ---
@@ -1449,7 +1449,7 @@ branch: feat/dev-v2a998
 hash: v2a101
 type: dev
 title: core
-from: _devx/workstreams/demo-ws/plan.md
+from: _devx/workstreams/demo-ws/plan/agent.md
 status: ready
 branch: develop/dev-v2a101
 ---
@@ -1496,7 +1496,7 @@ branch: develop/dev-v2a101
     ).toBeUndefined();
   });
 
-  it("neither plan.md nor epic exists → epicFound:false with both paths in triedPaths", () => {
+  it("neither plan/agent.md nor epic exists → epicFound:false with both paths in triedPaths", () => {
     const fs = newMemoryFs();
     fs.put(`${REPO_ROOT}/DEV.md`, "");
     const r = validateEmit(
@@ -1506,7 +1506,7 @@ branch: develop/dev-v2a101
     expect(r.epicFound).toBe(false);
     expect(r.source).toBeNull();
     expect(r.triedPaths).toEqual([
-      `${REPO_ROOT}/_devx/workstreams/ghost/plan.md`,
+      `${REPO_ROOT}/_devx/workstreams/ghost/plan/agent.md`,
       `${REPO_ROOT}/_bmad-output/planning-artifacts/epic-ghost.md`,
     ]);
   });
@@ -1515,7 +1515,7 @@ branch: develop/dev-v2a101
     const { fs, repoRoot } = wsFixture();
     // Same plan content re-homed under a custom root.
     fs.put(
-      `${REPO_ROOT}/custom/streams/${WS_SLUG}/plan.md`,
+      `${REPO_ROOT}/custom/streams/${WS_SLUG}/plan/agent.md`,
       fs.readFile(WS_PLAN_PATH),
     );
     fs.remove(WS_PLAN_PATH);
@@ -1531,7 +1531,7 @@ branch: develop/dev-v2a101
       fs,
     );
     expect(r.source).toBe("workstream-plan");
-    expect(r.epicPath).toBe(`${REPO_ROOT}/custom/streams/${WS_SLUG}/plan.md`);
+    expect(r.epicPath).toBe(`${REPO_ROOT}/custom/streams/${WS_SLUG}/plan/agent.md`);
   });
 });
 
@@ -1606,7 +1606,7 @@ describe("validateEmit — orphan-claim boundary matching (EC#13)", () => {
 hash: v2a997
 type: dev
 title: annotated
-from: _devx/workstreams/demo-ws/plan.md (phase 2)
+from: _devx/workstreams/demo-ws/plan/agent.md (phase 2)
 status: ready
 branch: feat/dev-v2a997
 ---
@@ -1629,7 +1629,7 @@ branch: feat/dev-v2a997
 hash: v2a996
 type: dev
 title: collide
-from: backup_devx/workstreams/demo-ws/plan.md
+from: backup_devx/workstreams/demo-ws/plan/agent.md
 status: ready
 branch: feat/dev-v2a996
 ---

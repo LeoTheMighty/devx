@@ -34,7 +34,7 @@ worktree (race R1 dead). Plan phase 1 of workstream multi-loop-concurrency.
 
 ## Technical notes
 
-Design: `_devx/workstreams/multi-loop-concurrency/design.md` §Architecture 1.
+Design: `_devx/workstreams/multi-loop-concurrency/design/agent.md` §Architecture 1.
 `findProjectConfig` (`src/lib/config-io.ts:43`) stays for config discovery;
 the canonical root check wraps it.
 

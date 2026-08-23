@@ -18,7 +18,7 @@ The detection half of the retro listener, end to end, plus the pin that makes
 the wire protocol safe to build on: a nudge printed at wrap-up becomes a
 durable queue entry, mechanically and never disruptively. Plan phase 1 of
 workstream retro-listener — read
-`_devx/workstreams/retro-listener/plan.md` §Phase 1 and `design.md`
+`_devx/workstreams/retro-listener/plan/agent.md` §Phase 1 and `design/agent.md`
 §Architecture (Detect/Queue/Pin) before starting; the RED artifacts
 (`evals/E-1`, `E-2`, `E-6`, `E-10`, `E-7`) define the API contract and must
 flip green.
@@ -112,6 +112,6 @@ flip green.
 
 ## Links
 
-- Plan: `_devx/workstreams/retro-listener/plan.md` §Phase 1
-- Design: `_devx/workstreams/retro-listener/design.md`
+- Plan: `_devx/workstreams/retro-listener/plan/agent.md` §Phase 1
+- Design: `_devx/workstreams/retro-listener/design/agent.md`
 - RED report: `_devx/workstreams/retro-listener/evals/RED-report.md`

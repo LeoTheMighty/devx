@@ -4,9 +4,9 @@
 //
 //   | Changed                  | Resets                                    | stage → |
 //   |--------------------------|-------------------------------------------|---------|
-//   | prd.md / expectations.md | all 4 gate flags                          | prd     |
-//   | design.md                | design_verified, plan_verified, evals_red | design  |
-//   | plan.md                  | plan_verified, evals_red                  | plan    |
+//   | prd/agent.md / expectations.md | all 4 gate flags                          | prd     |
+//   | design/agent.md                | design_verified, plan_verified, evals_red | design  |
+//   | plan/agent.md                  | plan_verified, evals_red                  | plan    |
 //
 // and prints the replay path — the ordered list of gate commands now open —
 // so the forward skills' refusals force actual absorption of the change.
@@ -16,7 +16,7 @@
 // silently resetting four gate flags would be the worst possible failure
 // shape for this command.
 //
-// Stage only ever rolls BACK: touching plan.md while the workstream is
+// Stage only ever rolls BACK: touching plan/agent.md while the workstream is
 // still at stage prd keeps stage prd (the earlier of current vs cascade
 // target wins). Gate flags are one-directional too — the cascade only
 // clears flags, never sets them.
@@ -32,6 +32,7 @@ import {
   type Stage,
   stageIndex,
 } from "./frontmatter.js";
+import { DESIGN_REL, EXPECTATIONS_REL, PLAN_REL, PRD_REL } from "./artifacts.js";
 
 export interface CascadeEntry {
   /** Artifact basename this row matches. */
@@ -42,22 +43,22 @@ export interface CascadeEntry {
 
 export const CASCADE_TABLE: CascadeEntry[] = [
   {
-    artifact: "prd.md",
+    artifact: PRD_REL,
     resets: ["prd_validated", "design_verified", "plan_verified", "evals_red"],
     stage: "prd",
   },
   {
-    artifact: "expectations.md",
+    artifact: EXPECTATIONS_REL,
     resets: ["prd_validated", "design_verified", "plan_verified", "evals_red"],
     stage: "prd",
   },
   {
-    artifact: "design.md",
+    artifact: DESIGN_REL,
     resets: ["design_verified", "plan_verified", "evals_red"],
     stage: "design",
   },
   {
-    artifact: "plan.md",
+    artifact: PLAN_REL,
     resets: ["plan_verified", "evals_red"],
     stage: "plan",
   },
@@ -65,10 +66,42 @@ export const CASCADE_TABLE: CascadeEntry[] = [
 
 export const KNOWN_ARTIFACTS = CASCADE_TABLE.map((e) => e.artifact);
 
-/** Cascade row for a touched path (matched on basename), or null. */
+/** Bare-stage shorthand: `--touched prd` names that stage's authoritative
+ *  artifact. evals has no cascade row (RED artifacts re-run, they don't
+ *  roll stages back), so it is deliberately absent. Flat-era names
+ *  (prd.md/design.md/plan.md) map to their stage rows too — every
+ *  pre-migration decisions/ report, todo, and in-flight session says
+ *  `--touched design.md`, and refusing those would silently leave stale
+ *  gate flags standing over a rewritten artifact (adversarial review). */
+const STAGE_SHORTHAND: Record<string, string> = {
+  prd: PRD_REL,
+  design: DESIGN_REL,
+  plan: PLAN_REL,
+  "prd.md": PRD_REL,
+  "design.md": DESIGN_REL,
+  "plan.md": PLAN_REL,
+};
+
+/** Cascade row for a touched path, or null. Matches the workstream-relative
+ *  key (`prd/agent.md`), a root-artifact basename (`expectations.md`), a
+ *  longer path ending in the key, or the bare stage shorthand (`prd`).
+ *  A bare `agent.md` is ambiguous across stages → null (refusal). human.md,
+ *  outline.md and outline-critique.md never cascade — a digest refresh or
+ *  outline critique must not reset gate flags. */
 export function cascadeFor(touched: string): CascadeEntry | null {
-  const base = touched.split("/").pop() ?? touched;
-  return CASCADE_TABLE.find((e) => e.artifact === base) ?? null;
+  const norm = touched.replace(/\\/g, "/").replace(/\/+$/, "");
+  const segs = norm.split("/").filter((s) => s !== "");
+  const last1 = segs[segs.length - 1] ?? "";
+  const last2 = segs.slice(-2).join("/");
+  const shorthand = segs.length === 1 ? STAGE_SHORTHAND[norm] : undefined;
+  return (
+    CASCADE_TABLE.find(
+      (e) =>
+        e.artifact === last2 ||
+        e.artifact === last1 ||
+        e.artifact === shorthand,
+    ) ?? null
+  );
 }
 
 export interface ReviseComputation {

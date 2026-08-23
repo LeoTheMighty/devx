@@ -18,7 +18,7 @@
 //
 // Spec: dev/dev-pin103-2026-07-14T12:02-init-noninteractive-scaffold.md
 // Spec: dev/dev-ini506-2026-04-26T19:35-init-failure-modes.md (AC #5, #8)
-// Plan: _devx/workstreams/portability-install/plan.md § Phase 3
+// Plan: _devx/workstreams/portability-install/plan/agent.md § Phase 3
 
 import { homedir } from "node:os";
 import { join } from "node:path";

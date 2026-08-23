@@ -27,6 +27,7 @@ function signals(overrides: Partial<GateSignals>): GateSignals {
     lockdownActive: false,
     blockingReviewComments: 0,
     coveragePctTouched: null,
+    outlineClean: true,
     ...NEUTRAL,
     ...overrides,
   };
@@ -190,5 +191,34 @@ describe("mergeGateFor truth table", () => {
     ) {
       expect(decision.reason ?? "").toContain(row.expect.reasonContains);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Outline protection (L2) — adversarial-review hardening
+// ---------------------------------------------------------------------------
+
+describe("outline protection signal", () => {
+  it("outlineClean: false blocks in every merging mode", () => {
+    for (const mode of ["YOLO", "BETA", "PROD"]) {
+      const d = mergeGateFor(
+        mode,
+        signals({ outlineClean: false, coveragePctTouched: 1.0 }),
+      );
+      expect(d.merge, mode).toBe(false);
+      expect(d.reason, mode).toContain("outline file changed in this PR");
+    }
+  });
+
+  it("outlineClean: null fails closed (scan unavailable)", () => {
+    const d = mergeGateFor("YOLO", signals({ outlineClean: null }));
+    expect(d.merge).toBe(false);
+    expect(d.reason).toContain("outline diff scan unavailable");
+  });
+
+  it("LOCKDOWN keeps its fixed reason even when the outline signal is dirty", () => {
+    const d = mergeGateFor("LOCKDOWN", signals({ outlineClean: false }));
+    expect(d.merge).toBe(false);
+    expect(d.reason).toBe("lockdown active; manual merge required");
   });
 });

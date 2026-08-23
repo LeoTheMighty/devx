@@ -15,14 +15,14 @@
 // always going to hit.
 //
 // THE MARKER SET IS SEEDED, NOT OBSERVED. These regexes come from known
-// message shapes, not from captured real transcripts (design.md § Risks).
+// message shapes, not from captured real transcripts (design/agent.md § Risks).
 // That asymmetry is why `detectUsageWindowHit` requires CORROBORATION: a
 // missed marker degrades to today's behavior, which is merely the status
 // quo, while a false positive would pause a healthy run. E-7's live night is
 // the only thing that closes the corpus gap; until it runs, fail narrow.
 //
 // Spec: dev/dev-uwg101-2026-08-21T14:30-uwg101.md
-// Design: _devx/workstreams/usage-window-governor/design.md § Architecture 1
+// Design: _devx/workstreams/usage-window-governor/design/agent.md § Architecture 1
 
 /**
  * How much of the transcript tail to scan, in UTF-16 code units.

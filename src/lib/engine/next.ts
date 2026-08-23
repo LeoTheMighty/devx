@@ -16,11 +16,11 @@
 //   | 1 | stage retired                               | (nothing)               |
 //   | 2 | stage done, outcome unarmed OR pending+due  | /devx outcome <hash>    |
 //   | 3 | stage done, outcome scored or pending+early | (nothing / wait)        |
-//   | 4 | prd.md or expectations.md missing           | /devx prd <hash>        |
+//   | 4 | prd/agent.md or expectations.md missing           | /devx prd <hash>        |
 //   | 5 | ¬prd_validated                              | devx gate prd <hash>    |
-//   | 6 | design.md missing                           | /devx design <hash>     |
+//   | 6 | design/agent.md missing                           | /devx design <hash>     |
 //   | 7 | ¬design_verified                            | devx gate coverage <hash> |
-//   | 8 | plan.md missing                             | /devx plan <hash>       |
+//   | 8 | plan/agent.md missing                             | /devx plan <hash>       |
 //   | 9 | ¬plan_verified                              | devx gate coverage <hash> |
 //   | 10| ¬evals_red, evals/ empty                    | /devx red <hash>        |
 //   | 11| ¬evals_red, evals/ has artifacts            | devx gate evals <hash>  |
@@ -30,6 +30,7 @@
 // Design: v2/05-dispatcher.md §2 rows 9–12; v2/02-engine.md §5
 
 import { type EngineState } from "./frontmatter.js";
+import { DESIGN_REL, EXPECTATIONS_REL, PLAN_REL, PRD_REL } from "./artifacts.js";
 import { isMeasureByDue, isOutcomeVerdict } from "./outcome.js";
 
 export interface WorkstreamArtifacts {
@@ -111,7 +112,7 @@ const TABLE: NextRow[] = [
     matches: (_s, a) => !a.prd || !a.expectations,
     decide: (hash) => ({
       command: `/devx prd ${hash}`,
-      reason: "prd.md / expectations.md not yet authored",
+      reason: `${PRD_REL} / ${EXPECTATIONS_REL} not yet authored`,
     }),
   },
   {
@@ -119,7 +120,7 @@ const TABLE: NextRow[] = [
     matches: (s) => !s.gateStatus.prd_validated,
     decide: (hash) => ({
       command: `devx gate prd ${hash}`,
-      reason: "Gate 1 open: prd.md + expectations.md exist but prd_validated is false",
+      reason: `Gate 1 open: ${PRD_REL} + ${EXPECTATIONS_REL} exist but prd_validated is false`,
     }),
   },
   {
@@ -127,7 +128,7 @@ const TABLE: NextRow[] = [
     matches: (_s, a) => !a.design,
     decide: (hash) => ({
       command: `/devx design ${hash}`,
-      reason: "design.md not yet authored",
+      reason: `${DESIGN_REL} not yet authored`,
     }),
   },
   {
@@ -135,7 +136,7 @@ const TABLE: NextRow[] = [
     matches: (s) => !s.gateStatus.design_verified,
     decide: (hash) => ({
       command: `devx gate coverage ${hash}`,
-      reason: "Gate 2 open: design.md exists but design_verified is false",
+      reason: `Gate 2 open: ${DESIGN_REL} exists but design_verified is false`,
     }),
   },
   {
@@ -143,7 +144,7 @@ const TABLE: NextRow[] = [
     matches: (_s, a) => !a.plan,
     decide: (hash) => ({
       command: `/devx plan ${hash}`,
-      reason: "plan.md not yet authored",
+      reason: `${PLAN_REL} not yet authored`,
     }),
   },
   {
@@ -151,7 +152,7 @@ const TABLE: NextRow[] = [
     matches: (s) => !s.gateStatus.plan_verified,
     decide: (hash) => ({
       command: `devx gate coverage ${hash}`,
-      reason: "Gate 3 open: plan.md exists but plan_verified is false",
+      reason: `Gate 3 open: ${PLAN_REL} exists but plan_verified is false`,
     }),
   },
   {

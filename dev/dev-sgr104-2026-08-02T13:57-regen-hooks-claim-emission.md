@@ -18,7 +18,7 @@ Make freshness structural on the two flows that already have CLI hosts:
 claim and RED emission. Split from the `mark-done` phase so each lands as
 one reviewable PR (both touch delicate transactional code). Plan phase 4
 of workstream story-graph — read
-`_devx/workstreams/story-graph/plan.md` §Phase 4. E-5 stays RED after this
+`_devx/workstreams/story-graph/plan/agent.md` §Phase 4. E-5 stays RED after this
 phase — it needs all three hooks and goes green in phase 5.
 
 ## Acceptance criteria

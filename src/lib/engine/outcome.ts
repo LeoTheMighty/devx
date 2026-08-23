@@ -30,7 +30,7 @@
 //
 // Per-goal verdicts are deterministic, not vibes (design tenet 5): an
 // explicit `--result G-n=hit|miss|partial` always wins; otherwise a goal
-// whose prd.md text carries an unambiguous `≥`/`>=`/`≤`/`<=` comparator is
+// whose prd/agent.md text carries an unambiguous `≥`/`>=`/`≤`/`<=` comparator is
 // compared mechanically against the supplied actual; anything else scores
 // `recorded` and the judgment lives in the Reading/Disposition prose.
 //
@@ -45,6 +45,7 @@ import {
   stageIndex,
 } from "./frontmatter.js";
 import { parseExpectations } from "./expectations.js";
+import { EXPECTATIONS_REL, PRD_REL } from "./artifacts.js";
 import { extractDefinedIds } from "./gate-prd.js";
 import { replayPath } from "./revise.js";
 import { formatDate } from "./verdict.js";
@@ -178,7 +179,7 @@ export function computeArm(
 export interface PrdGoal {
   /** "G-1" (uppercased). */
   id: string;
-  /** 1-based prd.md line of the definition. */
+  /** 1-based prd/agent.md line of the definition. */
   line: number;
   /** The goal's definition text (bullet body after the colon, wrapped
    *  continuation lines folded), "" when the shape is unrecognized. */
@@ -186,7 +187,7 @@ export interface PrdGoal {
 }
 
 /**
- * Extract the `G-` goals defined in prd.md, with their definition text.
+ * Extract the `G-` goals defined in prd/agent.md, with their definition text.
  * Definition positions come from gate-prd's extractDefinedIds (bold or
  * heading — the template's two shapes); the text is the remainder of the
  * defining bullet/heading line plus indented continuation lines (same
@@ -246,7 +247,7 @@ export interface GoalScoreInput {
 
 export interface GoalRow {
   id: string;
-  /** Target column: the goal's prd.md definition text. */
+  /** Target column: the goal's prd/agent.md definition text. */
   target: string;
   actual: string;
   source: string;
@@ -295,7 +296,7 @@ export interface GoalScoreComputation {
 }
 
 /**
- * Score every prd.md goal. Bidirectional coverage is required (the gate-prd
+ * Score every prd/agent.md goal. Bidirectional coverage is required (the gate-prd
  * orphan-check posture): a defined goal with no `--goal` flag refuses, and
  * a `--goal` flag naming an undefined goal refuses — a silent partial score
  * would undermine the whole loop.
@@ -306,20 +307,20 @@ export function computeGoalRows(
 ): GoalScoreComputation {
   if (goals.length === 0) {
     throw new OutcomeRefusal(
-      "prd.md defines no G- goals — nothing to score (outcome scoring is keyed to the PRD's numeric goals)",
+      `${PRD_REL} defines no G- goals — nothing to score (outcome scoring is keyed to the PRD's numeric goals)`,
     );
   }
   const defined = new Set(goals.map((g) => g.id));
   const missing = goals.filter((g) => !input.actuals.has(g.id)).map((g) => g.id);
   if (missing.length > 0) {
     throw new OutcomeRefusal(
-      `every prd.md goal needs a --goal flag; missing: ${missing.join(", ")}`,
+      `every ${PRD_REL} goal needs a --goal flag; missing: ${missing.join(", ")}`,
     );
   }
   for (const id of input.actuals.keys()) {
     if (!defined.has(id)) {
       throw new OutcomeRefusal(
-        `--goal names '${id}' but prd.md defines no such goal (defined: ${[...defined].join(", ")})`,
+        `--goal names '${id}' but ${PRD_REL} defines no such goal (defined: ${[...defined].join(", ")})`,
       );
     }
   }
@@ -327,7 +328,7 @@ export function computeGoalRows(
     for (const id of map.keys()) {
       if (!defined.has(id)) {
         throw new OutcomeRefusal(
-          `flag names '${id}' but prd.md defines no such goal`,
+          `flag names '${id}' but ${PRD_REL} defines no such goal`,
         );
       }
     }
@@ -427,7 +428,7 @@ export function computeTune(
   const unknown = normalized.filter((id) => !known.has(id));
   if (unknown.length > 0) {
     throw new OutcomeRefusal(
-      `--reopen names ${unknown.join(", ")} but expectations.md defines only: ${blocks.map((b) => b.id).join(", ") || "(none)"}`,
+      `--reopen names ${unknown.join(", ")} but ${EXPECTATIONS_REL} defines only: ${blocks.map((b) => b.id).join(", ") || "(none)"}`,
     );
   }
   // Reopen surface: the missed expectations' runnable artifacts, lowest

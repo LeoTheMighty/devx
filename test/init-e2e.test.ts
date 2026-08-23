@@ -302,10 +302,23 @@ describe("ini508 — empty fixture", () => {
     //     instantiate workstream artifacts from these).
     const engineDir = join(repo, "_devx", "templates", "engine");
     expect(existsSync(engineDir)).toBe(true);
-    const shipped = readdirSync(engineDir).sort();
+    // Recursive listing: stage templates nest one level deep.
+    const shipped: string[] = [];
+    const walkTemplates = (prefix: string): void => {
+      for (const entry of readdirSync(
+        join(engineDir, ...prefix.split("/").filter(Boolean)),
+        { withFileTypes: true },
+      )) {
+        const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+        if (entry.isDirectory()) walkTemplates(rel);
+        else shipped.push(rel);
+      }
+    };
+    walkTemplates("");
+    shipped.sort();
     // The canonical stage templates at minimum — prd/design/plan/red-report
     // are the four the /devx-plan stages consume directly.
-    for (const t of ["prd.md", "design.md", "plan.md", "red-report.md"]) {
+    for (const t of ["prd/agent.md", "design/agent.md", "plan/agent.md", "red-report.md"]) {
       expect(shipped).toContain(t);
     }
     // Orchestrator surfaced the write outcome.
@@ -361,7 +374,7 @@ describe("ini508 — empty fixture", () => {
     expect(first.status).toBe("completed");
 
     // User tunes one template; a re-run must not clobber it.
-    const tuned = join(repo, "_devx", "templates", "engine", "prd.md");
+    const tuned = join(repo, "_devx", "templates", "engine", "prd/agent.md");
     writeFileSync(tuned, "# user-tuned PRD template\n");
 
     const second = await runInit({
@@ -562,7 +575,11 @@ describe("ini508 — empty fixture", () => {
     expect(result.status).toBe("completed");
 
     expect(result.fresh?.hooks.action).toBe("created");
-    expect([...(result.fresh?.hooks.added ?? [])].sort()).toEqual(["SessionEnd", "Stop"]);
+    expect([...(result.fresh?.hooks.added ?? [])].sort()).toEqual([
+      "PreToolUse",
+      "SessionEnd",
+      "Stop",
+    ]);
 
     const settings = JSON.parse(
       readFileSync(join(repo, ".claude", "settings.json"), "utf8"),
@@ -570,6 +587,7 @@ describe("ini508 — empty fixture", () => {
     for (const event of ["Stop", "SessionEnd"]) {
       expect(JSON.stringify(settings.hooks[event])).toContain("devx learn-helper listen");
     }
+    expect(JSON.stringify(settings.hooks.PreToolUse)).toContain("devx outline guard");
   });
 
   it("merges into a user's existing settings without disturbing it (rtl105)", async () => {
@@ -765,7 +783,7 @@ describe("ini508 — partial-on-devx fixture", () => {
     // listener into the repo).
     expect(result.upgrade?.summary?.added).toBe(4);
     expect(
-      existsSync(join(repo, "_devx", "templates", "engine", "prd.md")),
+      existsSync(join(repo, "_devx", "templates", "engine", "prd/agent.md")),
     ).toBe(true);
   });
 

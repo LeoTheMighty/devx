@@ -5,10 +5,10 @@
 // it hands the CLI a tri-state table via `--table <json>`. EVERYTHING else
 // is mechanical and lives here:
 //
-//   - mode detection      (design.md exists ∧ ¬design_verified → design;
-//                          else plan.md ∧ ¬plan_verified → plan; the
+//   - mode detection      (design/agent.md exists ∧ ¬design_verified → design;
+//                          else plan/agent.md ∧ ¬plan_verified → plan; the
 //                          earlier open gate always wins)
-//   - source-ID extraction (design mode: G-/UC-/CAP-/FR- defs in prd.md;
+//   - source-ID extraction (design mode: G-/UC-/CAP-/FR- defs in prd/agent.md;
 //                          plan mode: E-ids in expectations.md)
 //   - table completeness  (every source ID has exactly one row)
 //   - verdict computation (FAIL = any ❌ or unmet P0 floor; CONCERNS =
@@ -36,6 +36,7 @@
 // Design: v2/02-engine.md §4.4; D-9 (verdict vocabulary)
 
 import { type EngineState } from "./frontmatter.js";
+import { DESIGN_REL, EXPECTATIONS_REL, PLAN_REL, PRD_REL } from "./artifacts.js";
 import {
   normalizePriority,
   parseExpectations,
@@ -93,14 +94,14 @@ export function detectCoverageMode(i: ModeDetectInputs): ModeDetectResult {
         "Gate 1 (prd) has not passed — run `devx gate prd` before any coverage gate",
     };
   }
-  // Earlier open gate wins: an unverified design.md takes precedence over
-  // an open plan gate even when plan.md also exists.
+  // Earlier open gate wins: an unverified design/agent.md takes precedence over
+  // an open plan gate even when plan/agent.md also exists.
   if (i.designExists && !gs.design_verified) return { mode: "design" };
   if (!gs.design_verified) {
     return {
       mode: null,
       refusal:
-        "design gate is open but design.md does not exist — run `/devx design` first",
+        `design gate is open but ${DESIGN_REL} does not exist — run \`/devx design\` first`,
     };
   }
   if (i.planExists && !gs.plan_verified) return { mode: "plan" };
@@ -108,7 +109,7 @@ export function detectCoverageMode(i: ModeDetectInputs): ModeDetectResult {
     return {
       mode: null,
       refusal:
-        "plan gate is open but plan.md does not exist — run `/devx plan` first",
+        `plan gate is open but ${PLAN_REL} does not exist — run \`/devx plan\` first`,
     };
   }
   return {
@@ -123,7 +124,7 @@ export function detectCoverageMode(i: ModeDetectInputs): ModeDetectResult {
 // ---------------------------------------------------------------------------
 
 /**
- * design mode: one row per G-/UC-/CAP-/FR- ID defined in prd.md.
+ * design mode: one row per G-/UC-/CAP-/FR- ID defined in prd/agent.md.
  * plan mode: one row per E-id in expectations.md.
  */
 export function extractSourceIds(
@@ -345,8 +346,9 @@ export function renderVerifyReport(args: {
   extras: CoverageExtra[];
 }): string {
   const { mode, computation: c } = args;
-  const source = mode === "design" ? "prd.md" : "design.md + expectations.md";
-  const subject = mode === "design" ? "design.md" : "plan.md";
+  const source =
+    mode === "design" ? PRD_REL : `${DESIGN_REL} + ${EXPECTATIONS_REL}`;
+  const subject = mode === "design" ? DESIGN_REL : PLAN_REL;
   const statusReason =
     c.verdict === "PASS"
       ? `All ${c.keyedRows.length} source IDs fully covered in ${mode} mode.`

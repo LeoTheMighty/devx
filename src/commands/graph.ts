@@ -32,7 +32,7 @@
 // validation · 2 config-load / root-resolution failure.
 //
 // Spec: dev/dev-sgr103-2026-08-02T13:57-graph-render-cli.md
-// Design: _devx/workstreams/story-graph/design.md §Architecture 4, §Interfaces
+// Design: _devx/workstreams/story-graph/design/agent.md §Architecture 4, §Interfaces
 
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";

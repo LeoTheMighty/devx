@@ -25,7 +25,7 @@ Optional:
 The devx engine is native: the stage templates (`_devx/templates/engine/` — prd, expectations, design, plan, red-report, checkpoint, decision, results), the gate CLIs (`devx gate prd|coverage|evals`), and the skill bodies all ship inside the `@devx/cli` npm package (see [`INSTALL.md`](../INSTALL.md) for the CLI install — a local global install from a checkout while the package is unpublished). `devx init` copies the templates into your repo under `_devx/`.
 
 Generated outputs live under:
-- `_devx/workstreams/<slug>/` — per-workstream planning artifacts: prd.md, expectations.md, design.md, plan.md, decisions/, checkpoints/, evals/ (version-controlled).
+- `_devx/workstreams/<slug>/` — per-workstream planning artifacts: prd/, design/, plan/ stage folders (agent.md + human.md + human-only outline.md + outline-critique.md each), expectations.md, decisions/, checkpoints/, evals/ (version-controlled).
 - `dev/`, `plan/`, etc. — the lightweight spec-file index the backlogs point at.
 
 *(Historical note: through Phases 0–1 devx ran on top of the BMAD framework. The v2 migration ejected it — see `v2/01-bmad-capture.md`. Repos from that era keep a frozen, read-only `_bmad-output/` archive; nothing reads or writes it.)*

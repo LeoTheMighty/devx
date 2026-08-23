@@ -1,6 +1,6 @@
 // `devx outcome arm|score <hash>` — the outcome loop's CLI passthrough
 // (v2o101; v2/02-engine.md §4.10). Thin driver over the pure evaluators in
-// src/lib/engine/outcome.ts: resolve hash → workstream, read prd.md /
+// src/lib/engine/outcome.ts: resolve hash → workstream, read prd/agent.md /
 // expectations.md / the results template, call the pure fns, apply the
 // frontmatter flips + write RESULTS.md, emit JSON.
 //
@@ -15,7 +15,7 @@
 //       [--reopen E-1,E-2] [--successor <slug>]
 //       [--reason <1-2 sentences>] [--notes <reading prose>]
 //       [--disposition <prose>]
-//     Scores every prd.md G- goal (bidirectional coverage required), writes
+//     Scores every prd/agent.md G- goal (bidirectional coverage required), writes
 //     `_devx/workstreams/<slug>/RESULTS.md` from the shipped template, and
 //     flips outcome.status. tune additionally clears evals_red + erases
 //     gate_verdicts.evals (hfi102 — no stale PASS survives the reopen) +
@@ -40,6 +40,7 @@ import { join } from "node:path";
 import type { Command } from "commander";
 
 import { attachPhase } from "../lib/help.js";
+import * as artifacts from "../lib/engine/artifacts.js";
 import { loadEngineContext } from "../lib/engine/context.js";
 import { applyEnginePatch, readEngineState } from "../lib/engine/frontmatter.js";
 import {
@@ -306,13 +307,13 @@ function scoreResolved(
   // truth, so overwrite and report it. A RESULTS.md with a SCORED status
   // never reaches this line — the already-scored refusal above is the
   // artifact's real protection.
-  const resultsAbs = join(ws.workstreamAbs, "RESULTS.md");
+  const resultsAbs = artifacts.resultsAbs(ws.workstreamAbs);
   const overwroteStaleResults = io.fs.exists(resultsAbs);
 
   // ---- Inputs. -------------------------------------------------------------
-  const prdAbs = join(ws.workstreamAbs, "prd.md");
+  const prdAbs = artifacts.prdAbs(ws.workstreamAbs);
   if (!io.fs.exists(prdAbs)) {
-    throw new OutcomeError(`${ws.workstreamRel}/prd.md not found — nothing to score against`);
+    throw new OutcomeError(`${ws.workstreamRel}/${artifacts.PRD_REL} not found — nothing to score against`);
   }
   const goals = parsePrdGoals(io.fs.readFile(prdAbs));
   const { rows } = computeGoalRows(goals, { actuals, sources, results });
@@ -328,10 +329,10 @@ function scoreResolved(
   // ---- Verdict-specific computation. ---------------------------------------
   let tune: ReturnType<typeof computeTune> | null = null;
   if (verdict === "tune") {
-    const expAbs = join(ws.workstreamAbs, "expectations.md");
+    const expAbs = artifacts.expectationsAbs(ws.workstreamAbs);
     if (!io.fs.exists(expAbs)) {
       throw new OutcomeError(
-        `${ws.workstreamRel}/expectations.md not found — tune's --reopen E-ids can't be validated`,
+        `${ws.workstreamRel}/${artifacts.EXPECTATIONS_REL} not found — tune's --reopen E-ids can't be validated`,
       );
     }
     tune = computeTune(
@@ -580,7 +581,7 @@ export function register(program: Command): void {
   outcome
     .command("score")
     .description(
-      "Score every prd.md G- goal vs reality, write RESULTS.md, and flip outcome.status. tune reopens via --reopen E-ids; restart links --successor lineage.",
+      "Score every prd/agent.md G- goal vs reality, write RESULTS.md, and flip outcome.status. tune reopens via --reopen E-ids; restart links --successor lineage.",
     )
     .argument("<hash>", "workstream (plan spec) hash")
     .requiredOption(
@@ -589,7 +590,7 @@ export function register(program: Command): void {
     )
     .option(
       "--goal <G-n=actual>",
-      "measured actual for a goal (repeatable; every prd.md goal required)",
+      "measured actual for a goal (repeatable; every prd/agent.md goal required)",
       collect,
       [] as string[],
     )

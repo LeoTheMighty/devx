@@ -51,7 +51,7 @@ describe("parsePlanCoverageTable", () => {
     ]);
   });
 
-  it("returns [] when plan.md has no E-id table", () => {
+  it("returns [] when plan/agent.md has no E-id table", () => {
     expect(parsePlanCoverageTable("# Plan\n\n| a | b |\n|---|---|\n| 1 | 2 |\n")).toEqual([]);
   });
 
@@ -424,10 +424,10 @@ function seed(flags: { plan_verified?: boolean; prd_validated?: boolean } = {}):
     ].join("\n"),
   );
   repo.mkdir(WS);
-  repo.write(`${WS}/prd.md`, validPrd());
+  repo.write(`${WS}/prd/agent.md`, validPrd());
   repo.write(`${WS}/expectations.md`, validExpectations());
-  repo.write(`${WS}/design.md`, "## Design\n");
-  repo.write(`${WS}/plan.md`, validPlan());
+  repo.write(`${WS}/design/agent.md`, "## Design\n");
+  repo.write(`${WS}/plan/agent.md`, validPlan());
   repo.write("test/demo.test.mjs", 'process.exit(1);\n');
   repo.write("test/perf.test.mjs", 'process.exit(1);\n');
 }

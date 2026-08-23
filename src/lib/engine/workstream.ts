@@ -4,12 +4,18 @@
 // directory a plan spec's engine artifacts live in (v2/02-engine.md §3):
 //
 //   _devx/workstreams/<slug>/
-//   ├── prd.md              ← from _devx/templates/engine/prd.md
+//   ├── prd/
+//   │   ├── agent.md        ← from _devx/templates/engine/prd/agent.md
+//   │   ├── human.md        ← agent-authored digest (stage writes it; not scaffolded)
+//   │   ├── outline.md      ← HUMAN-ONLY, optional (devx outline init; never scaffolded)
+//   │   └── outline-critique.md ← agent's critique (written when an outline exists)
+//   ├── design/             ← same quartet, authored at Design stage (not scaffolded)
+//   ├── plan/               ← same quartet, authored at Plan stage (not scaffolded)
 //   ├── expectations.md     ← from _devx/templates/engine/expectations.md
 //   ├── todo.md             ← from _devx/templates/engine/todo.md (hfi101)
 //   ├── decisions/          ← empty (dated verify/critique/revision reports)
 //   ├── checkpoints/        ← empty (per-phase verification reports)
-//   └── evals/              ← empty (RED-gate artifacts + RED-report.md)
+//   └── evals/              ← empty (RED-gate artifacts + RED-report.md + human-facing companions)
 //
 // and creates-or-extends the plan spec (`plan/plan-<hash>-<ts>-<slug>.md`)
 // with the engine frontmatter: `stage: prd`, `entered_at: prd`,
@@ -44,6 +50,13 @@ import {
   readEngineState,
 } from "./frontmatter.js";
 import { type EngineConfig } from "./config.js";
+import {
+  EXPECTATIONS_REL,
+  PRD_REL,
+  SCAFFOLD_SUBDIRS,
+  TODO_REL,
+  artifactAbs,
+} from "./artifacts.js";
 import { writeAtomic } from "../supervisor-internal.js";
 
 // ---------------------------------------------------------------------------
@@ -303,24 +316,38 @@ export function createWorkstream(
   }
 
   // ---- Scaffold the dir tree (write-if-missing everywhere). -------------
+  // Flat-era guard (adversarial review): on a pre-migration workstream,
+  // write-if-missing would mint a FRESH template prd/agent.md next to the
+  // real prd.md — the gate then reads the empty template and the real
+  // content is invisible. Refuse with the doctor recipe instead.
+  if (fs.exists(wsAbs)) {
+    for (const stage of ["prd", "design", "plan"]) {
+      if (fs.exists(join(wsAbs, `${stage}.md`))) {
+        throw new WorkstreamRefusal(
+          `workstream '${slug}' carries flat-era ${stage}.md (pre folder-per-artifact layout) — migrate first: ` +
+            `mkdir -p ${wsRel}/${stage} && git mv ${wsRel}/${stage}.md ${wsRel}/${stage}/agent.md (devx doctor lists every affected file)`,
+        );
+      }
+    }
+  }
   if (!fs.exists(wsAbs)) {
     fs.mkdirRecursive(wsAbs);
     created.dir = true;
   }
-  for (const sub of ["decisions", "checkpoints", "evals"]) {
+  for (const sub of SCAFFOLD_SUBDIRS) {
     const subAbs = join(wsAbs, sub);
     if (!fs.exists(subAbs)) fs.mkdirRecursive(subAbs);
   }
 
   const title = titleFromSlug(slug);
   for (const t of [
-    { name: "prd.md", key: "prd" as const },
-    { name: "expectations.md", key: "expectations" as const },
-    { name: "todo.md", key: "todo" as const },
+    { name: PRD_REL, key: "prd" as const },
+    { name: EXPECTATIONS_REL, key: "expectations" as const },
+    { name: TODO_REL, key: "todo" as const },
   ]) {
-    const dest = join(wsAbs, t.name);
+    const dest = artifactAbs(wsAbs, t.name);
     if (fs.exists(dest)) continue;
-    const templateAbs = join(repoRoot, TEMPLATES_DIR, t.name);
+    const templateAbs = join(repoRoot, TEMPLATES_DIR, ...t.name.split("/"));
     if (!fs.exists(templateAbs)) {
       throw new WorkstreamError(
         `engine template missing at ${TEMPLATES_DIR}/${t.name} — run \`devx init\` (v2 scaffold) first`,
@@ -329,6 +356,9 @@ export function createWorkstream(
     const body = fs
       .readFile(templateAbs)
       .replace(/<workstream title>/g, title);
+    // Stage-folder artifacts (prd/agent.md) need their parent dir first —
+    // realEngineFs.writeFile deliberately throws on a missing parent.
+    fs.mkdirRecursive(dirname(dest));
     fs.writeFile(dest, body);
     created[t.key] = true;
   }

@@ -65,6 +65,8 @@ runs, tests still run. YOLO relaxes the *gates* (what blocks merge), not the
 ├── MANUAL.md              ← things only the user can do
 ├── INTERVIEW.md           ← questions for the user
 ├── LEARN.md               ← process lessons (written by /devx-learn)
+├── OUTLINE.md             ← project-wide outline; HUMAN-ONLY (hook + CI enforced);
+│                            optional. Paired OUTLINE-CRITIQUE.md is agent-written.
 ├── GRAPH.md               ← GENERATED Mermaid story board (`devx graph`;
 │                            `--check` fails on drift — never hand-edit)
 ├── devx.config.yaml       ← every knob; see docs/CONFIG.md
@@ -72,7 +74,9 @@ runs, tests still run. YOLO relaxes the *gates* (what blocks merge), not the
 ├── plan/                  ← spec files (one per PLAN.md entry)
 ├── v2/                    ← native-engine design docs (engine, loop, decisions)
 ├── _devx/
-│   ├── workstreams/       ← engine workstream artifacts (prd/design/plan/evals per slug)
+│   ├── workstreams/       ← engine workstream artifacts per slug: prd/ design/ plan/
+│   │                        stage folders (agent.md authoritative + human.md digest +
+│   │                        human-only outline.md + outline-critique.md) + evals/
 │   ├── templates/engine/  ← stage templates shipped in the npm package
 │   └── config-schema.json ← devx.config.yaml JSON schema
 ├── docs/
@@ -206,7 +210,7 @@ skill is branch-model-aware; values below are this project's resolution.
    (The story-file step was retired at v2x101 after the skip pattern held
    49/49 stories across all 10 BMAD-era epics; see `v2/01-bmad-capture.md`.)
    If the spec belongs to a workstream, read
-   `_devx/workstreams/<slug>/plan.md` for this phase's Verification plan;
+   `_devx/workstreams/<slug>/plan/agent.md` for this phase's Verification plan;
    `tests-first` phases re-run their already-RED artifact and watch it fail
    NOW, before writing code.
 4. **Implement (native discipline)**: work directly from spec ACs +
@@ -260,6 +264,18 @@ Full contract: `.claude/commands/devx.md`.
 - **Status log is append-only.** Add lines; don't rewrite history.
 - **Worktrees are isolation, not staging.** Don't run a non-`/devx` flow inside
   a worktree; don't share a worktree across agents.
+- **Outline files are human-only.** `outline.md` in any workstream stage
+  folder and the repo-root `OUTLINE.md` are typed by the user, never by an
+  agent — enforced three ways: the PreToolUse hook (`devx outline guard`)
+  denies agent writes AND any Bash command whose text names a real outline
+  path (so write commit messages mentioning them via `git commit -F <file>`,
+  and edit docs about them with the Write/Edit tools, not heredocs); `devx
+  outline check` fails CI + merge-gate when a PR diff carries one; `devx
+  outline init|commit` refuse inside agent sessions. Agents READ outlines
+  freely (Read tool), critique them in `outline-critique.md`, and mirror
+  their structure in `human.md`. Shipped templates under `_devx/templates/`
+  are exempt (agent scaffolds). Offer once per attended planning stage; the
+  human runs `devx outline init <hash> <stage>` from their own terminal.
 - **Verify claim ownership before resuming.** A spec marked `in-progress` with
   an existing `.worktrees/dev-<hash>/` is **not** necessarily yours. The
   structural check shipped with roc101 (PR #60): `/devx` Phase 1's
@@ -314,8 +330,8 @@ Full contract: `.claude/commands/devx.md`.
 - `.claude/commands/devx.md` — `/devx` command spec (execute loop + retro
   stage); `.claude/commands/devx-plan.md` — planning stages (PRD → Design →
   Plan → RED).
-- `_devx/workstreams/<slug>/` — engine workstream artifacts (prd.md,
-  design.md, plan.md, evals/); spec files in `dev/` remain the lightweight
+- `_devx/workstreams/<slug>/` — engine workstream artifacts (prd/agent.md,
+  design/agent.md, plan/agent.md, evals/); spec files in `dev/` remain the lightweight
   index on top.
 - `_bmad-output/` — frozen BMAD-era archive (Phases 0–1 planning +
   implementation artifacts; read-only).

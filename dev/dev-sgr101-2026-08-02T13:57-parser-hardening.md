@@ -17,7 +17,7 @@ branch: feat/dev-sgr101
 Complete the backlog-row grammar where it lives (`src/lib/backlog/parse.ts`)
 so every consumer — gather, reconcile, scope, and the new graph — inherits
 it. Plan phase 1 of workstream story-graph — read
-`_devx/workstreams/story-graph/plan.md` §Phase 1 and `design.md`
+`_devx/workstreams/story-graph/plan/agent.md` §Phase 1 and `design/agent.md`
 §Architecture before starting. Pure parser PR: no graph code in this phase.
 The RED evals E-3/E-4 assert this tokenization end-to-end through the Phase
 3 CLI; this phase carries its own unit-test verification.

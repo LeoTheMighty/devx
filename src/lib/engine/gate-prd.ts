@@ -1,5 +1,5 @@
 // Gate 1 — mechanical PRD validator (v2e101). Pure evaluation over the two
-// Gate-1 inputs (prd.md + expectations.md) plus the spec's blocked_by; the
+// Gate-1 inputs (prd/agent.md + expectations.md) plus the spec's blocked_by; the
 // CLI passthrough in src/commands/gate.ts owns resolution, writes, and exit
 // codes.
 //
@@ -14,8 +14,8 @@
 //      Threshold is numeric (contains a digit, no placeholder); Verified-by
 //      is a concrete runnable target (path-shaped, no placeholder).
 //   4. Bidirectional ID resolution: every `Covers:` ID resolves to a
-//      definition in prd.md (dangling refs fail); every `G-` goal defined
-//      in prd.md is covered by ≥1 expectation (orphan goals fail).
+//      definition in prd/agent.md (dangling refs fail); every `G-` goal defined
+//      in prd/agent.md is covered by ≥1 expectation (orphan goals fail).
 //   5. INTERVIEW-blocker check: the spec's `blocked_by:` must be empty.
 //
 // Pass → the CLI flips `prd_validated: true` + `stage: design` (both
@@ -31,6 +31,7 @@ import {
   parseCoversIds,
   parseExpectations,
 } from "./expectations.js";
+import { EVALS_DIR_REL, EXPECTATIONS_REL, PRD_REL } from "./artifacts.js";
 
 export interface GateGap {
   /** Stable check identifier — grep-able (mirrors validate-emit's shape). */
@@ -52,11 +53,11 @@ export interface GatePrdInputs {
 export interface GatePrdResult {
   verdict: "PASS" | "FAIL";
   gaps: GateGap[];
-  /** IDs defined in prd.md — reused by callers for reporting. */
+  /** IDs defined in prd/agent.md — reused by callers for reporting. */
   definedIds: string[];
 }
 
-/** Sections gate-prd requires in prd.md (template order). `Evals seed` and
+/** Sections gate-prd requires in prd/agent.md (template order). `Evals seed` and
  *  `Open questions` are template-suggested but not gate-required — a PRD
  *  with fully-promoted expectations legitimately empties them. */
 export const REQUIRED_PRD_SECTIONS = [
@@ -144,7 +145,7 @@ export function splitSections(text: string): Section[] {
 // ---------------------------------------------------------------------------
 
 /**
- * IDs *defined* in prd.md. A definition is an ID at a defining position:
+ * IDs *defined* in prd/agent.md. A definition is an ID at a defining position:
  * bold (`**G-1**`) or a heading (`### FR-1: ...`) — matching the template's
  * two shapes. Mentions in running prose don't define.
  */
@@ -204,8 +205,8 @@ export function evaluateGatePrd(inputs: GatePrdInputs): GatePrdResult {
     if (!section) {
       gaps.push({
         check: "prd-section-missing",
-        message: `prd.md is missing the \`## ${required}\` section`,
-        location: "prd.md",
+        message: `${PRD_REL} is missing the \`## ${required}\` section`,
+        location: PRD_REL,
       });
       continue;
     }
@@ -213,8 +214,8 @@ export function evaluateGatePrd(inputs: GatePrdInputs): GatePrdResult {
     if (stripped.trim() === "") {
       gaps.push({
         check: "prd-section-empty",
-        message: `prd.md \`## ${required}\` has no content`,
-        location: `prd.md:${section.line}`,
+        message: `${PRD_REL} \`## ${required}\` has no content`,
+        location: `${PRD_REL}:${section.line}`,
       });
       continue;
     }
@@ -222,8 +223,8 @@ export function evaluateGatePrd(inputs: GatePrdInputs): GatePrdResult {
     if (placeholder) {
       gaps.push({
         check: "prd-section-placeholder",
-        message: `prd.md \`## ${required}\` still contains template furniture: ${placeholder}`,
-        location: `prd.md:${section.line}`,
+        message: `${PRD_REL} \`## ${required}\` still contains template furniture: ${placeholder}`,
+        location: `${PRD_REL}:${section.line}`,
       });
     }
   }
@@ -233,8 +234,8 @@ export function evaluateGatePrd(inputs: GatePrdInputs): GatePrdResult {
   if (blocks.length < inputs.expectationsMin) {
     gaps.push({
       check: "expectations-too-few",
-      message: `expectations.md has ${blocks.length} E-block(s); engine.expectations_min is ${inputs.expectationsMin}`,
-      location: "expectations.md",
+      message: `${EXPECTATIONS_REL} has ${blocks.length} E-block(s); engine.expectations_min is ${inputs.expectationsMin}`,
+      location: EXPECTATIONS_REL,
     });
   }
 
@@ -244,7 +245,7 @@ export function evaluateGatePrd(inputs: GatePrdInputs): GatePrdResult {
   const coveredIds = new Set<string>();
 
   for (const block of blocks) {
-    const loc = `expectations.md:${block.line}`;
+    const loc = `${EXPECTATIONS_REL}:${block.line}`;
     checkPriority(block, loc, gaps);
     checkExpectationEars(block, loc, gaps);
     checkThreshold(block, loc, gaps);
@@ -277,7 +278,7 @@ export function evaluateGatePrd(inputs: GatePrdInputs): GatePrdResult {
         if (!definedIds.has(id)) {
           gaps.push({
             check: "covers-id-dangling",
-            message: `${block.id} covers '${id}' but prd.md defines no such ID`,
+            message: `${block.id} covers '${id}' but ${PRD_REL} defines no such ID`,
             location: loc,
           });
         }
@@ -291,8 +292,8 @@ export function evaluateGatePrd(inputs: GatePrdInputs): GatePrdResult {
     if (!coveredIds.has(ref.id)) {
       gaps.push({
         check: "goal-uncovered",
-        message: `prd.md goal '${ref.id}' is not covered by any expectation`,
-        location: `prd.md:${ref.line}`,
+        message: `${PRD_REL} goal '${ref.id}' is not covered by any expectation`,
+        location: `${PRD_REL}:${ref.line}`,
       });
     }
   }
@@ -400,7 +401,7 @@ function checkVerifiedBy(block: EBlock, loc: string, gaps: GateGap[]): void {
   if (!isConcreteVerifiedBy(block.verifiedBy)) {
     gaps.push({
       check: "expectation-verified-by-vague",
-      message: `${block.id} Verified-by '${block.verifiedBy}' is not a concrete runnable target (expected a test path or evals/E-${block.id.slice(2)}_*.md)`,
+      message: `${block.id} Verified-by '${block.verifiedBy}' is not a concrete runnable target (expected a test path or ${EVALS_DIR_REL}/E-${block.id.slice(2)}_*.md)`,
       location: loc,
     });
   }

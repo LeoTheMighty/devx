@@ -59,5 +59,5 @@ retro-listener.
 
 ## Links
 
-- Plan: `_devx/workstreams/retro-listener/plan.md` §Phase 6
+- Plan: `_devx/workstreams/retro-listener/plan/agent.md` §Phase 6
 - Upstream rationale: mycase/8am-harness PR #36 §"routing the learnings"

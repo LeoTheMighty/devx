@@ -1177,13 +1177,13 @@ describe("gatherRepoSnapshot — backlogs, drift, claims, gates", () => {
         ].join("\n"),
       );
       repo.mkdir("_devx/workstreams/demo/evals");
-      repo.write("_devx/workstreams/demo/prd.md", "x");
+      repo.write("_devx/workstreams/demo/prd/agent.md", "x");
       repo.write("_devx/workstreams/demo/expectations.md", "x");
-      repo.write("_devx/workstreams/demo/design.md", "x");
-      repo.write("_devx/workstreams/demo/plan.md", "x");
+      repo.write("_devx/workstreams/demo/design/agent.md", "x");
+      repo.write("_devx/workstreams/demo/plan/agent.md", "x");
       // Dev item emitted from that workstream.
       writeSpec(repo, "dev", "lll333", "ready", [
-        "from: _devx/workstreams/demo/plan.md",
+        "from: _devx/workstreams/demo/plan/agent.md",
       ]);
       repo.write("DEV.md", `# DEV\n\n${backlogRow("dev", "lll333", "ready")}\n`);
 
@@ -1226,9 +1226,9 @@ describe("gatherRepoSnapshot — backlogs, drift, claims, gates", () => {
           "",
         ].join("\n"),
       );
-      repo.write("_devx/workstreams/vsum/prd.md", "x");
+      repo.write("_devx/workstreams/vsum/prd/agent.md", "x");
       repo.write("_devx/workstreams/vsum/expectations.md", "x");
-      repo.write("_devx/workstreams/vsum/design.md", "x");
+      repo.write("_devx/workstreams/vsum/design/agent.md", "x");
       repo.write(
         "_devx/workstreams/vsum/decisions/2026-07-04-design-verify.md",
         "old",
@@ -1284,10 +1284,10 @@ describe("gatherRepoSnapshot — backlogs, drift, claims, gates", () => {
         ].join("\n"),
       );
       repo.mkdir("_devx/workstreams/demo2/evals");
-      repo.write("_devx/workstreams/demo2/prd.md", "x");
+      repo.write("_devx/workstreams/demo2/prd/agent.md", "x");
       repo.write("_devx/workstreams/demo2/expectations.md", "x");
-      repo.write("_devx/workstreams/demo2/design.md", "x");
-      repo.write("_devx/workstreams/demo2/plan.md", "x");
+      repo.write("_devx/workstreams/demo2/design/agent.md", "x");
+      repo.write("_devx/workstreams/demo2/plan/agent.md", "x");
       repo.write("_devx/workstreams/demo2/evals/E-1_smoke.md", "eval");
       writeSpec(repo, "dev", "mmm444", "ready", [
         "workstream: _devx/workstreams/demo2",
@@ -1634,7 +1634,7 @@ describe("gatherRepoSnapshot — outcome-due workstreams (row 5.5)", () => {
           .replace("stage: done", "stage: red")
           .replace("  evals_red: true", "  evals_red: false"),
       );
-      for (const f of ["prd.md", "expectations.md", "design.md", "plan.md"]) {
+      for (const f of ["prd/agent.md", "expectations.md", "design/agent.md", "plan/agent.md"]) {
         repo.write(`_devx/workstreams/revised/${f}`, "x");
       }
       const s = gather(repo);
@@ -1982,9 +1982,9 @@ describe("devx next — repo-level CLI form", () => {
           "",
         ].join("\n"),
       );
-      repo.write("_devx/workstreams/sum/prd.md", "x");
+      repo.write("_devx/workstreams/sum/prd/agent.md", "x");
       repo.write("_devx/workstreams/sum/expectations.md", "x");
-      repo.write("_devx/workstreams/sum/design.md", "x");
+      repo.write("_devx/workstreams/sum/design/agent.md", "x");
       repo.write(
         "_devx/workstreams/sum/decisions/2026-07-05-design-verify.md",
         "report",

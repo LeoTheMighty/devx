@@ -23,7 +23,7 @@
 // restriction rather than an additive escape hatch.
 //
 // Spec: dev/dev-mlc106-2026-07-28T09:02-scope-model-flags.md
-// Design: _devx/workstreams/multi-loop-concurrency/design.md §Architecture 6
+// Design: _devx/workstreams/multi-loop-concurrency/design/agent.md §Architecture 6
 
 import { type DevRow, epicSlugify } from "../backlog/parse.js";
 

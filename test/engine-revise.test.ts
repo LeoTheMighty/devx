@@ -30,7 +30,7 @@ describe("cascade table (§4.9, pinned)", () => {
   it("matches the design doc row-for-row", () => {
     expect(CASCADE_TABLE).toEqual([
       {
-        artifact: "prd.md",
+        artifact: "prd/agent.md",
         resets: ["prd_validated", "design_verified", "plan_verified", "evals_red"],
         stage: "prd",
       },
@@ -40,12 +40,12 @@ describe("cascade table (§4.9, pinned)", () => {
         stage: "prd",
       },
       {
-        artifact: "design.md",
+        artifact: "design/agent.md",
         resets: ["design_verified", "plan_verified", "evals_red"],
         stage: "design",
       },
       {
-        artifact: "plan.md",
+        artifact: "plan/agent.md",
         resets: ["plan_verified", "evals_red"],
         stage: "plan",
       },
@@ -53,10 +53,10 @@ describe("cascade table (§4.9, pinned)", () => {
   });
 
   it("cascadeFor matches on basename, full paths included", () => {
-    expect(cascadeFor("prd.md")!.stage).toBe("prd");
-    expect(cascadeFor("_devx/workstreams/demo/design.md")!.stage).toBe("design");
+    expect(cascadeFor("prd/agent.md")!.stage).toBe("prd");
+    expect(cascadeFor("_devx/workstreams/demo/design/agent.md")!.stage).toBe("design");
     expect(cascadeFor("notes.md")).toBeNull();
-    expect(cascadeFor("prd.md.bak")).toBeNull();
+    expect(cascadeFor("prd/agent.md.bak")).toBeNull();
   });
 });
 
@@ -85,8 +85,8 @@ function allTrueState(
 }
 
 describe("computeRevise", () => {
-  it("prd.md from executing: clears all 4 flags, stage → prd, full replay", () => {
-    const c = computeRevise(allTrueState(), cascadeFor("prd.md")!, "abc123");
+  it("prd/agent.md from executing: clears all 4 flags, stage → prd, full replay", () => {
+    const c = computeRevise(allTrueState(), cascadeFor("prd/agent.md")!, "abc123");
     expect(c.flagsCleared).toEqual([
       "prd_validated",
       "design_verified",
@@ -103,16 +103,16 @@ describe("computeRevise", () => {
     ]);
   });
 
-  it("design.md: clears 3 flags, prd_validated survives", () => {
-    const c = computeRevise(allTrueState(), cascadeFor("design.md")!, "abc123");
+  it("design/agent.md: clears 3 flags, prd_validated survives", () => {
+    const c = computeRevise(allTrueState(), cascadeFor("design/agent.md")!, "abc123");
     expect(c.flagsCleared).toEqual(["design_verified", "plan_verified", "evals_red"]);
     expect(c.verdictsCleared).toEqual(["design", "plan", "evals"]);
     expect(c.stage).toBe("design");
     expect(c.replay[0]).toContain("gate coverage");
   });
 
-  it("plan.md: clears 2 flags, replay is coverage(plan) + evals", () => {
-    const c = computeRevise(allTrueState(), cascadeFor("plan.md")!, "abc123");
+  it("plan/agent.md: clears 2 flags, replay is coverage(plan) + evals", () => {
+    const c = computeRevise(allTrueState(), cascadeFor("plan/agent.md")!, "abc123");
     expect(c.flagsCleared).toEqual(["plan_verified", "evals_red"]);
     expect(c.replay).toEqual([
       "devx gate coverage abc123  # plan mode",
@@ -120,7 +120,7 @@ describe("computeRevise", () => {
     ]);
   });
 
-  it("stage never advances: touching plan.md at stage prd keeps stage prd", () => {
+  it("stage never advances: touching plan/agent.md at stage prd keeps stage prd", () => {
     const state = {
       ...allTrueState("prd"),
       gateStatus: {
@@ -130,7 +130,7 @@ describe("computeRevise", () => {
         evals_red: false,
       },
     };
-    const c = computeRevise(state, cascadeFor("plan.md")!, "abc123");
+    const c = computeRevise(state, cascadeFor("plan/agent.md")!, "abc123");
     expect(c.stage).toBe("prd");
     expect(c.flagsCleared).toEqual([]); // nothing was set — reports the delta
     expect(c.resets).toEqual(["plan_verified", "evals_red"]);
@@ -187,9 +187,9 @@ function seed(verdicts?: string[]): void {
     ].join("\n"),
   );
   repo.mkdir(WS);
-  repo.write(`${WS}/prd.md`, "# the prd\n");
-  repo.write(`${WS}/design.md`, "# the design\n");
-  repo.write(`${WS}/plan.md`, "# the plan\n");
+  repo.write(`${WS}/prd/agent.md`, "# the prd\n");
+  repo.write(`${WS}/design/agent.md`, "# the design\n");
+  repo.write(`${WS}/plan/agent.md`, "# the plan\n");
 }
 
 function revise(touched: string) {
@@ -202,9 +202,9 @@ function revise(touched: string) {
 }
 
 describe("devx revise — CLI driver", () => {
-  it("design.md cascade: flags reset, stage rolled back, replay printed", () => {
+  it("design/agent.md cascade: flags reset, stage rolled back, replay printed", () => {
     seed();
-    const { code, io } = revise("design.md");
+    const { code, io } = revise("design/agent.md");
     expect(code).toBe(0);
     const j = io.json() as Record<string, unknown>;
     expect(j.resets).toEqual(["design_verified", "plan_verified", "evals_red"]);
@@ -222,9 +222,9 @@ describe("devx revise — CLI driver", () => {
     expect(state.stage).toBe("design");
   });
 
-  it("design.md cascade erases reset gates' verdicts; prd's survives (hfi102)", () => {
+  it("design/agent.md cascade erases reset gates' verdicts; prd's survives (hfi102)", () => {
     seed(["prd: PASS", "design: CONCERNS", "plan: PASS", "evals: PASS"]);
-    const { code } = revise("design.md");
+    const { code } = revise("design/agent.md");
     expect(code).toBe(0);
     const state = readEngineState(repo.read(SPEC_REL));
     expect(state.gateVerdicts.prd).toBe("PASS");
@@ -241,7 +241,7 @@ describe("devx revise — CLI driver", () => {
       SPEC_REL,
       repo.read(SPEC_REL).replace("  plan_verified: true", "  plan_verified: false"),
     );
-    const { code } = revise("plan.md");
+    const { code } = revise("plan/agent.md");
     expect(code).toBe(0);
     const state = readEngineState(repo.read(SPEC_REL));
     expect(state.gateVerdicts.plan).toBe(null);
@@ -250,7 +250,7 @@ describe("devx revise — CLI driver", () => {
 
   it("legacy spec without gate_verdicts: revise stays clean (all-null map)", () => {
     seed();
-    const { code } = revise("plan.md");
+    const { code } = revise("plan/agent.md");
     expect(code).toBe(0);
     const state = readEngineState(repo.read(SPEC_REL));
     expect(state.gateVerdicts).toEqual({
@@ -261,7 +261,7 @@ describe("devx revise — CLI driver", () => {
     });
   });
 
-  it("expectations.md resets all four flags (same row as prd.md)", () => {
+  it("expectations.md resets all four flags (same row as prd/agent.md)", () => {
     seed();
     const { code } = revise("expectations.md");
     expect(code).toBe(0);
@@ -272,7 +272,7 @@ describe("devx revise — CLI driver", () => {
 
   it("accepts the workstream-relative path form", () => {
     seed();
-    const { code } = revise(`${WS}/plan.md`);
+    const { code } = revise(`${WS}/plan/agent.md`);
     expect(code).toBe(0);
     const state = readEngineState(repo.read(SPEC_REL));
     expect(state.gateStatus.design_verified).toBe(true); // untouched by plan row
@@ -282,13 +282,13 @@ describe("devx revise — CLI driver", () => {
 
   it("never edits the touched artifact itself", () => {
     seed();
-    revise("design.md");
-    expect(repo.read(`${WS}/design.md`)).toBe("# the design\n");
+    revise("design/agent.md");
+    expect(repo.read(`${WS}/design/agent.md`)).toBe("# the design\n");
   });
 
   it("preserves the status-log body through the frontmatter rewrite", () => {
     seed();
-    revise("prd.md");
+    revise("prd/agent.md");
     expect(repo.read(SPEC_REL)).toContain("- created.");
   });
 
@@ -298,14 +298,14 @@ describe("devx revise — CLI driver", () => {
     const { code, io } = revise("notes.md");
     expect(code).toBe(1);
     expect(io.stderr()).toContain("unknown artifact 'notes.md'");
-    expect(io.stderr()).toContain("prd.md, expectations.md, design.md, plan.md");
+    expect(io.stderr()).toContain("prd/agent.md, expectations.md, design/agent.md, plan/agent.md");
     expect(repo.read(SPEC_REL)).toBe(before);
   });
 
   it("refuses a path into a DIFFERENT workstream (exit 1)", () => {
     seed();
     const before = repo.read(SPEC_REL);
-    const { code, io } = revise("_devx/workstreams/other-stream/design.md");
+    const { code, io } = revise("_devx/workstreams/other-stream/design/agent.md");
     expect(code).toBe(1);
     expect(io.stderr()).toContain("not an artifact of workstream");
     expect(repo.read(SPEC_REL)).toBe(before);
@@ -322,7 +322,7 @@ describe("devx revise — CLI driver", () => {
   it("unknown hash → exit 2", () => {
     const { code, io } = (() => {
       const io2 = captureIo();
-      const c = runRevise(["zz9999"], { touched: "prd.md" }, {
+      const c = runRevise(["zz9999"], { touched: "prd/agent.md" }, {
         ...io2,
         projectPath: repo.configPath,
       });
@@ -334,9 +334,9 @@ describe("devx revise — CLI driver", () => {
 
   it("is idempotent: a second identical revise is a clean no-op re-write", () => {
     seed();
-    revise("plan.md");
+    revise("plan/agent.md");
     const afterFirst = repo.read(SPEC_REL);
-    const { code, io } = revise("plan.md");
+    const { code, io } = revise("plan/agent.md");
     expect(code).toBe(0);
     expect(repo.read(SPEC_REL)).toBe(afterFirst);
     expect((io.json() as { flags_cleared: string[] }).flags_cleared).toEqual([]);

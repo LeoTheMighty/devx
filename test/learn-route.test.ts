@@ -58,7 +58,7 @@ const APPLY_PATHS: Array<{ path: string; note: string }> = [
   { path: "test/learn-route.test.ts", note: "test" },
   { path: "LEARN.md", note: "root markdown" },
   { path: "devx.config.yaml", note: "repo config" },
-  { path: "_devx/templates/engine/prd.md", note: "packaged template" },
+  { path: "_devx/templates/engine/prd/agent.md", note: "packaged template" },
   { path: `${REPO}/src/cli.ts`, note: "absolute in-repo path" },
   { path: "src/lib/skills/x.ts", note: "'skills' nested under src is ordinary code" },
 ];

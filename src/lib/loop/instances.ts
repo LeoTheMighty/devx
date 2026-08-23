@@ -35,7 +35,7 @@
 // "not live" / "nothing reaped".
 //
 // Spec: dev/dev-mlc105-2026-07-28T09:02-instance-registry-admission.md
-// Design: _devx/workstreams/multi-loop-concurrency/design.md §Architecture 5
+// Design: _devx/workstreams/multi-loop-concurrency/design/agent.md §Architecture 5
 
 import { readFileSync, readdirSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { join } from "node:path";

@@ -19,7 +19,7 @@
 //   devx learn-watch list         # pending + readiness · last processed + outcomes
 //   devx learn-watch requeue <sid>  # put a processed session back on the queue
 //
-// Exit codes (design.md §Interfaces):
+// Exit codes (design/agent.md §Interfaces):
 //   0 — clean stop, including SIGINT ("queue is durable; restart anytime") and
 //       every `list`.
 //   1 — the watcher singleton is held (message names the lock path), or
@@ -34,8 +34,8 @@
 // progress as it happens rather than in 4KB bursts.
 //
 // Spec: dev/dev-rtl104-2026-07-30T09:31-watcher-cli-spawn.md (T4.4)
-// Design: _devx/workstreams/retro-listener/design.md §Interfaces
-// Plan: _devx/workstreams/retro-listener/plan.md §Phase 4
+// Design: _devx/workstreams/retro-listener/design/agent.md §Interfaces
+// Plan: _devx/workstreams/retro-listener/plan/agent.md §Phase 4
 
 import { readSync } from "node:fs";
 import process from "node:process";
@@ -346,7 +346,7 @@ export async function runLearnWatch(opts: WatchCmdOpts = {}): Promise<number> {
   return 0;
 }
 
-/** How many processed entries `list` shows (design.md §Interfaces: "last 5"). */
+/** How many processed entries `list` shows (design/agent.md §Interfaces: "last 5"). */
 export const LIST_DONE_TAIL = 5;
 
 /** A queue field as one display column: the value, or `?` when it is missing

@@ -18,8 +18,8 @@ wire the v2 plan into the live backlogs, per `v2/06-phases.md § V2.0`.
 
 ## Acceptance criteria
 
-- [ ] `_devx/templates/engine/` exists with 9 templates: `prd.md`,
-      `expectations.md`, `design.md`, `plan.md`, `decision.md`,
+- [ ] `_devx/templates/engine/` exists with 9 templates: `prd/agent.md`,
+      `expectations.md`, `design/agent.md`, `plan/agent.md`, `decision.md`,
       `red-report.md`, `checkpoint.md`, `lessons-entry.md`, `results.md` —
       shapes per `v2/02-engine.md` §4; every template JIRA/Confluence-free.
 - [ ] `expectations.md` template carries the exact E-block shape (Priority /

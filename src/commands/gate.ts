@@ -24,6 +24,7 @@ import { join } from "node:path";
 import type { Command } from "commander";
 
 import { attachPhase } from "../lib/help.js";
+import * as artifacts from "../lib/engine/artifacts.js";
 import { loadEngineContext } from "../lib/engine/context.js";
 import {
   FLAG_TO_GATE_KEY,
@@ -199,11 +200,11 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
 
   // Missing Gate-1 inputs are a refusal with a precise gap (exit 1), not an
   // error: the artifact simply hasn't been authored yet (/devx prd is next).
-  const prdAbs = join(ws.workstreamAbs, "prd.md");
-  const expAbs = join(ws.workstreamAbs, "expectations.md");
+  const prdAbs = artifacts.prdAbs(ws.workstreamAbs);
+  const expAbs = artifacts.expectationsAbs(ws.workstreamAbs);
   const missing: string[] = [];
-  if (!io.fs.exists(prdAbs)) missing.push("prd.md");
-  if (!io.fs.exists(expAbs)) missing.push("expectations.md");
+  if (!io.fs.exists(prdAbs)) missing.push(artifacts.PRD_REL);
+  if (!io.fs.exists(expAbs)) missing.push(artifacts.EXPECTATIONS_REL);
   if (missing.length > 0) {
     const gaps = missing.map((m) => ({
       check: "gate-input-missing",
@@ -274,8 +275,8 @@ export function runGateCoverage(
   if (!r.ok) return r.code;
   const { ws } = r;
 
-  const designAbs = join(ws.workstreamAbs, "design.md");
-  const planAbs = join(ws.workstreamAbs, "plan.md");
+  const designAbs = artifacts.designAbs(ws.workstreamAbs);
+  const planAbs = artifacts.planAbs(ws.workstreamAbs);
   const detected = detectCoverageMode({
     state: ws.state,
     designExists: io.fs.exists(designAbs),
@@ -310,8 +311,8 @@ export function runGateCoverage(
     return 2;
   }
 
-  const prdAbs = join(ws.workstreamAbs, "prd.md");
-  const expAbs = join(ws.workstreamAbs, "expectations.md");
+  const prdAbs = artifacts.prdAbs(ws.workstreamAbs);
+  const expAbs = artifacts.expectationsAbs(ws.workstreamAbs);
   const files = {
     prd: io.fs.exists(prdAbs) ? io.fs.readFile(prdAbs) : "",
     expectations: io.fs.exists(expAbs) ? io.fs.readFile(expAbs) : "",
@@ -319,7 +320,7 @@ export function runGateCoverage(
   const sourceIds = extractSourceIds(mode, files);
   if (sourceIds.length === 0) {
     io.err(
-      `devx gate coverage: no source IDs found in ${mode === "design" ? "prd.md" : "expectations.md"} — nothing to verify\n`,
+      `devx gate coverage: no source IDs found in ${mode === "design" ? artifacts.PRD_REL : artifacts.EXPECTATIONS_REL} — nothing to verify\n`,
     );
     return 2;
   }
@@ -356,10 +357,10 @@ export function runGateCoverage(
     computation,
     extras: parsed.table.extras,
   });
-  const reportRel = `${ws.workstreamRel}/decisions/${date}-${mode}-verify.md`;
-  const reportAbs = join(ws.workstreamAbs, "decisions", `${date}-${mode}-verify.md`);
+  const reportRel = `${ws.workstreamRel}/${artifacts.DECISIONS_DIR_REL}/${date}-${mode}-verify.md`;
+  const reportAbs = join(artifacts.decisionsDirAbs(ws.workstreamAbs), `${date}-${mode}-verify.md`);
   try {
-    io.fs.mkdirRecursive(join(ws.workstreamAbs, "decisions"));
+    io.fs.mkdirRecursive(artifacts.decisionsDirAbs(ws.workstreamAbs));
     io.fs.writeFile(reportAbs, report);
   } catch (e) {
     io.err(
@@ -485,14 +486,14 @@ export function runGateEvalsCli(
     return 1;
   }
 
-  const expAbs = join(ws.workstreamAbs, "expectations.md");
+  const expAbs = artifacts.expectationsAbs(ws.workstreamAbs);
   if (!io.fs.exists(expAbs)) {
     io.err(
-      `devx gate evals: ${ws.workstreamRel}/expectations.md not found — workstream state is inconsistent (plan_verified is true without Gate-1 inputs)\n`,
+      `devx gate evals: ${ws.workstreamRel}/${artifacts.EXPECTATIONS_REL} not found — workstream state is inconsistent (plan_verified is true without Gate-1 inputs)\n`,
     );
     return 2;
   }
-  const planAbs = join(ws.workstreamAbs, "plan.md");
+  const planAbs = artifacts.planAbs(ws.workstreamAbs);
   const expectations = io.fs.readFile(expAbs);
 
   // A typo'd --waive must not silently waive nothing and then demand RED
@@ -504,7 +505,7 @@ export function runGateEvalsCli(
     const unknown = waive.filter((id) => !known.has(id));
     if (unknown.length > 0) {
       io.err(
-        `devx gate evals: cannot waive ${unknown.join(", ")} — no such expectation in ${ws.workstreamRel}/expectations.md\n`,
+        `devx gate evals: cannot waive ${unknown.join(", ")} — no such expectation in ${ws.workstreamRel}/${artifacts.EXPECTATIONS_REL}\n`,
       );
       return 2;
     }
@@ -544,11 +545,11 @@ export function runGateEvalsCli(
 
   // Write the RED report — the record of the observed runs, PASS or FAIL.
   const date = formatDate(io.now());
-  const reportRel = `${ws.workstreamRel}/evals/RED-report.md`;
+  const reportRel = `${ws.workstreamRel}/${artifacts.RED_REPORT_REL}`;
   try {
-    io.fs.mkdirRecursive(join(ws.workstreamAbs, "evals"));
+    io.fs.mkdirRecursive(artifacts.evalsDirAbs(ws.workstreamAbs));
     io.fs.writeFile(
-      join(ws.workstreamAbs, "evals", "RED-report.md"),
+      artifacts.redReportAbs(ws.workstreamAbs),
       renderRedReport({
         workstreamRel: ws.workstreamRel,
         date,
@@ -620,7 +621,7 @@ export function register(program: Command): void {
   sub
     .command("prd")
     .description(
-      "Gate 1: placeholder/E-block/EARS/threshold/ID-resolution checks on prd.md + expectations.md; pass flips prd_validated + stage: design.",
+      `Gate 1: placeholder/E-block/EARS/threshold/ID-resolution checks on ${artifacts.PRD_REL} + ${artifacts.EXPECTATIONS_REL}; pass flips prd_validated + stage: design.`,
     )
     .argument("<hash>", "workstream (plan spec) hash")
     .action((hash: string) => {
@@ -643,7 +644,7 @@ export function register(program: Command): void {
   sub
     .command("evals")
     .description(
-      "Gate 4 (RED): run every expectation's Verified-by target via projects: runners; P0s must be observed failing; writes evals/RED-report.md.",
+      `Gate 4 (RED): run every expectation's Verified-by target via projects: runners; P0s must be observed failing; writes ${artifacts.RED_REPORT_REL}.`,
     )
     .argument("<hash>", "workstream (plan spec) hash")
     .option("--dry-run", "resolve artifacts + commands, run nothing, write nothing")

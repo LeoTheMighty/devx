@@ -17,7 +17,7 @@
 // `{ok:false, warning}` for the host to log and move past.
 //
 // Spec: dev/dev-sgr104-2026-08-02T13:57-regen-hooks-claim-emission.md
-// Design: _devx/workstreams/story-graph/design.md §Architecture 4
+// Design: _devx/workstreams/story-graph/design/agent.md §Architecture 4
 
 import { join } from "node:path";
 
