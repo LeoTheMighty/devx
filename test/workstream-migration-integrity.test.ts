@@ -39,7 +39,12 @@ describe("workstream migration integrity (folder-per-artifact)", () => {
       }
     });
 
-    it(`${slug}: every present stage folder carries its agent.md`, () => {
+    it(`${slug}: a stage folder with agent-side content carries agent.md`, () => {
+      // A stage dir holding ONLY human-side companions is legal — the
+      // human can `devx outline init` a stage before the agent authors it
+      // (artifacts.ts documents exactly this ordering). What must never
+      // exist is agent-side stage content without its agent.md.
+      const HUMAN_SIDE = new Set(["outline.md", "outline-critique.md", "human.md"]);
       for (const [stage, rel] of [
         ["prd", PRD_REL],
         ["design", DESIGN_REL],
@@ -47,9 +52,12 @@ describe("workstream migration integrity (folder-per-artifact)", () => {
       ] as const) {
         const stageDir = join(wsAbs, stage);
         if (!existsSync(stageDir)) continue; // stage not reached — legal
+        const entries = readdirSync(stageDir).filter((n) => !n.startsWith("."));
+        const agentSide = entries.filter((n) => !HUMAN_SIDE.has(n));
+        if (agentSide.length === 0) continue; // outline-first — legal
         expect(
           existsSync(artifactAbs(wsAbs, rel)),
-          `${slug}/${stage}/ exists without agent.md`,
+          `${slug}/${stage}/ holds agent-side files (${agentSide.join(", ")}) without agent.md`,
         ).toBe(true);
       }
     });

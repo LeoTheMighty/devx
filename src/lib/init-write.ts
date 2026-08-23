@@ -885,21 +885,32 @@ export interface WriteEngineTemplatesOpts {
   templatesRoot?: string;
 }
 
-/** All .md files under `root`, as /-joined paths relative to it (one or two
- *  levels — the stage folders nest exactly one level). */
-function listMdFilesRecursive(root: string, prefix: string): string[] {
+/** All template files under `root`, as /-joined paths relative to it.
+ *  Depth-capped at 3 so a symlink cycle inside a customized template dir
+ *  can't stack-overflow devx init; stage folders nest exactly one level
+ *  today. Not .md-filtered — a future non-markdown scaffold (a runnable
+ *  eval stub, say) must not be silently skipped. */
+function listMdFilesRecursive(root: string, prefix: string, depth = 0): string[] {
+  if (depth > 3) return [];
   const out: string[] = [];
   for (const entry of readdirSync(join(root, ...prefix.split("/").filter(Boolean)), {
     withFileTypes: true,
   })) {
     const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
     if (entry.isDirectory()) {
-      out.push(...listMdFilesRecursive(root, rel));
-    } else if (entry.name.endsWith(".md")) {
+      out.push(...listMdFilesRecursive(root, rel, depth + 1));
+    } else {
       out.push(rel);
     }
   }
   return out;
+}
+
+/** The template files the SHIPPED package carries, relative /-joined paths.
+ *  Consumed by init-upgrade's engine-templates detector so its presence
+ *  predicate self-updates as the template set grows. */
+export function listShippedEngineTemplates(): string[] {
+  return listMdFilesRecursive(join(defaultPrTemplateRoot(), "engine"), "").sort();
 }
 
 export function writeEngineTemplates(

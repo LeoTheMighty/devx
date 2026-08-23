@@ -316,6 +316,20 @@ export function createWorkstream(
   }
 
   // ---- Scaffold the dir tree (write-if-missing everywhere). -------------
+  // Flat-era guard (adversarial review): on a pre-migration workstream,
+  // write-if-missing would mint a FRESH template prd/agent.md next to the
+  // real prd.md — the gate then reads the empty template and the real
+  // content is invisible. Refuse with the doctor recipe instead.
+  if (fs.exists(wsAbs)) {
+    for (const stage of ["prd", "design", "plan"]) {
+      if (fs.exists(join(wsAbs, `${stage}.md`))) {
+        throw new WorkstreamRefusal(
+          `workstream '${slug}' carries flat-era ${stage}.md (pre folder-per-artifact layout) — migrate first: ` +
+            `mkdir -p ${wsRel}/${stage} && git mv ${wsRel}/${stage}.md ${wsRel}/${stage}/agent.md (devx doctor lists every affected file)`,
+        );
+      }
+    }
+  }
   if (!fs.exists(wsAbs)) {
     fs.mkdirRecursive(wsAbs);
     created.dir = true;

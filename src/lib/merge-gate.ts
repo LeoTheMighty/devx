@@ -74,10 +74,16 @@ export function mergeGateFor(
     return { merge: false, reason: `unknown mode: ${mode}` };
   }
 
-  // 2.5 Outline protection (L2) — outline changes never ride in a PR, in
-  // any mode. Outlines are human-only and reach main solely via the human's
-  // `devx outline commit`; a PR carrying one is a policy breach regardless
-  // of CI state.
+  // 3. LOCKDOWN — fixed reason, short-circuit. Runs BEFORE the outline
+  // check so LOCKDOWN's documented fixed-reason contract holds.
+  if (mode === "LOCKDOWN") {
+    return { merge: false, reason: "lockdown active; manual merge required" };
+  }
+
+  // 3.5 Outline protection (L2) — outline changes never ride in a PR, in
+  // any merging mode. Outlines are human-only and reach the base branch
+  // solely via the human's `devx outline commit`; a PR carrying one is a
+  // policy breach regardless of CI state.
   if (signals.outlineClean !== true) {
     return {
       merge: false,
@@ -86,11 +92,6 @@ export function mergeGateFor(
           ? "outline file changed in this PR — outlines reach main only via `devx outline commit` (human-run)"
           : "outline diff scan unavailable — fail closed (run `devx outline check`)",
     };
-  }
-
-  // 3. LOCKDOWN — fixed reason, short-circuit.
-  if (mode === "LOCKDOWN") {
-    return { merge: false, reason: "lockdown active; manual merge required" };
   }
 
   // 4. YOLO conditions — applied to YOLO, BETA, PROD.

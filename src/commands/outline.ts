@@ -30,9 +30,12 @@ import {
   OUTLINE_BASENAME,
   PROJECT_OUTLINE_REL,
   agentSessionRefusal,
+  baseBranchFrom,
   classifyDiffNames,
+  dequoteGitPath,
   guardDecision,
   isAgentSessionEnv,
+  isProtectedOutlinePath,
   renderDenyJson,
 } from "../lib/engine/outline.js";
 
@@ -88,22 +91,17 @@ export function runOutlineGuard(opts: RunOutlineOpts = {}): number {
   }
   const decision = guardDecision(payload);
   if (!decision.deny) return 0;
-  try {
-    io.out(`${renderDenyJson(decision.reason ?? "outline files are human-only")}\n`);
-    return 0;
-  } catch (e) {
-    // Fallback contract: exit 2 + stderr also reads as a block to the hook
-    // runner, so a serialization failure still denies.
-    io.err(`devx outline guard: ${decision.reason ?? "deny"}\n`);
-    return 2;
-  }
+  io.out(`${renderDenyJson(decision.reason ?? "outline files are human-only")}\n`);
+  return 0;
 }
 
 // ---------------------------------------------------------------------------
 // check
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_CHECK_RANGE = "origin/main...HEAD";
+/** Display form of the default range; the live base branch comes from
+ *  git.integration_branch / git.default_branch (falls back to main). */
+export const DEFAULT_CHECK_RANGE = "origin/<base>...HEAD";
 
 export function runOutlineCheck(
   flags: { diff?: string },
@@ -115,10 +113,16 @@ export function runOutlineCheck(
     io.err(`devx outline check: ${ctx.error}\n`);
     return 2;
   }
-  const range = flags.diff ?? DEFAULT_CHECK_RANGE;
-  const r = io.exec("git", ["diff", "--name-only", range], {
-    cwd: ctx.ctx.repoRoot,
-  });
+  const range =
+    flags.diff ?? `origin/${baseBranchFrom(ctx.ctx.merged)}...HEAD`;
+  // quotePath=false: git's default C-escaping of non-ASCII paths would slip
+  // past the basename classifier (review HIGH — L2 bypass for accented
+  // workstream slugs); dequoteGitPath in the classifier is the fallback.
+  const r = io.exec(
+    "git",
+    ["-c", "core.quotePath=false", "diff", "--name-only", range],
+    { cwd: ctx.ctx.repoRoot },
+  );
   if (r.exitCode !== 0) {
     io.err(
       `devx outline check: git diff failed for range '${range}' (missing merge base or unknown ref?): ${r.stderr.trim()}\n`,
@@ -167,6 +171,14 @@ export function runOutlineInit(
   let destAbs: string;
   let templateRel: string;
   if (flags.project === true) {
+    if (args.length > 0) {
+      // A mistyped stage invocation must not silently mint the ROOT outline
+      // (which init then refuses to overwrite — a sticky mistake).
+      io.err(
+        "devx outline init: --project takes no hash/stage arguments — drop them or drop the flag\n",
+      );
+      return 2;
+    }
     destAbs = join(repoRoot, PROJECT_OUTLINE_REL);
     templateRel = `_devx/templates/engine/${PROJECT_OUTLINE_REL}`;
   } else {
@@ -234,35 +246,74 @@ export function runOutlineCommit(
     io.err(`devx outline commit: ${ctx.error}\n`);
     return 2;
   }
-  const { repoRoot } = ctx.ctx;
+  const { repoRoot, merged } = ctx.ctx;
+
+  // Outlines live on the base branch only — committed here, they'd ride a
+  // feature branch's PR straight into the diff scan that blocks it, with no
+  // sanctioned way back (review MED). Refuse anywhere else.
+  const base = baseBranchFrom(merged);
+  const head = io.exec("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+    cwd: repoRoot,
+  });
+  if (head.exitCode !== 0) {
+    io.err(`devx outline commit: git rev-parse failed: ${head.stderr.trim()}\n`);
+    return 2;
+  }
+  const branch = head.stdout.trim();
+  if (branch !== base) {
+    io.err(
+      `devx outline commit: refusing on branch '${branch}' — outlines reach the repo only on '${base}' (a feature-branch outline commit would block that PR's merge). Switch to '${base}' and re-run.\n`,
+    );
+    return 1;
+  }
 
   // -uall: plain --porcelain collapses untracked dirs to `?? dir/`, which
   // would hide a brand-new workstream's nested outline.md entirely.
-  const st = io.exec("git", ["status", "--porcelain", "-uall"], { cwd: repoRoot });
+  // quotePath=false + dequote: non-ASCII paths arrive usable.
+  const st = io.exec(
+    "git",
+    ["-c", "core.quotePath=false", "status", "--porcelain", "-uall"],
+    { cwd: repoRoot },
+  );
   if (st.exitCode !== 0) {
     io.err(`devx outline commit: git status failed: ${st.stderr.trim()}\n`);
     return 2;
   }
-  // Porcelain v1: `XY <path>` or `XY <old> -> <new>` for renames — the
-  // post-rename path is the live one.
-  const changed = st.stdout
-    .split("\n")
-    .filter((l) => l.trim() !== "")
-    .map((l) => {
-      const path = l.slice(3);
-      const arrow = path.indexOf(" -> ");
-      return (arrow >= 0 ? path.slice(arrow + 4) : path).replace(/^"|"$/g, "");
-    });
-  const outlines = classifyDiffNames(changed);
+  // Porcelain v1: `XY <path>` or `XY <old> -> <new>` for renames. BOTH
+  // rename sides go in the candidate set — a pathspec commit that names
+  // only the new side would leave the old path alive in HEAD with a
+  // dangling staged deletion (review MED).
+  const changed: string[] = [];
+  for (const l of st.stdout.split("\n")) {
+    if (l.trim() === "") continue;
+    const path = l.slice(3);
+    const arrow = path.indexOf(" -> ");
+    if (arrow >= 0) {
+      changed.push(dequoteGitPath(path.slice(0, arrow)));
+      changed.push(dequoteGitPath(path.slice(arrow + 4)));
+    } else {
+      changed.push(dequoteGitPath(path));
+    }
+  }
+  const outlines = changed.filter((p) => p !== "" && isProtectedOutlinePath(p));
   if (outlines.length === 0) {
     io.err("devx outline commit: no outline changes in the working tree — nothing to commit\n");
     return 1;
   }
 
-  const add = io.exec("git", ["add", "--", ...outlines], { cwd: repoRoot });
-  if (add.exitCode !== 0) {
-    io.err(`devx outline commit: git add failed: ${add.stderr.trim()}\n`);
-    return 2;
+  // Stage only paths still present in the worktree — a rename's old side
+  // is already staged-deleted and matches no pathspec (`git add` would
+  // fatal). The commit pathspec below still names EVERY outline path, so
+  // the staged deletion rides along and the rename lands whole.
+  const toStage = outlines.filter((p) =>
+    io.fs.exists(join(repoRoot, ...p.split("/"))),
+  );
+  if (toStage.length > 0) {
+    const add = io.exec("git", ["add", "--", ...toStage], { cwd: repoRoot });
+    if (add.exitCode !== 0) {
+      io.err(`devx outline commit: git add failed: ${add.stderr.trim()}\n`);
+      return 2;
+    }
   }
   const message = flags.message ?? `outline: ${outlines.join(", ")}`;
   const commit = io.exec(

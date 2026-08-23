@@ -91,8 +91,9 @@ describe("engine prose-budget canary (S-1)", () => {
 
   it("counts at least the nine v2s101 templates plus the nested stage files (canary isn't scanning an empty dir)", () => {
     const found = listTemplateMdFiles();
-    // 8 flat survivors + 3 stage agent.md + 4×(human/outline/critique) +
-    // OUTLINE.md ≥ 21; the ≥9 floor predates the folder layout.
+    // 8 flat survivors + 3 stage agent.md + 3×3 stage companions +
+    // 3 evals companions + OUTLINE.md = 24 shipped today; ≥21 leaves
+    // headroom for deliberate removals. The ≥9 floor predates the layout.
     expect(found.length).toBeGreaterThanOrEqual(21);
     // The nested walk actually descends — a flat readdir would miss these.
     expect(found).toContain("prd/agent.md");
@@ -105,14 +106,17 @@ describe("engine prose-budget canary (S-1)", () => {
   // carries the execute arm — a surface the BMAD era also paid
   // (~48KB/story dev-story + code-review) inside its ~550KB total.
   //
-  // Measured at v2o101 (2026-07-05): planning surface 24,426 B (~23.9KB —
-  // well inside the 60KB budget); full run incl. devx.md 65,767 B
-  // (~64.2KB — ~7% over the 60KB end-to-end target, ~88% under the BMAD
-  // baseline). The honest S-1 verdict + both numbers are recorded in
-  // `_devx/retros/v2-migration-2026-07-05.md`; whether to trim devx.md
-  // (it carries six arms: execute/debug/address/retro/loop/dispatch) or
-  // raise the budget is a product call, not a test's. This assertion is a
-  // drift tripwire only — 2× budget — so unnoticed growth still fails CI
+  // Measured at v2o101 (2026-07-05): planning surface 24,426 B (~23.9KB);
+  // full run incl. devx.md 65,767 B (~64.2KB). Re-measured at the
+  // outline-folders restructure (2026-08-23): planning surface ~37.5KB
+  // (nested stage templates + the outline/human rules in devx-plan.md —
+  // still well inside the 60KB budget, no raise needed); full run incl.
+  // devx.md ~96.6KB — a real jump this change knowingly paid for the
+  // outline discipline prose, still under the 2× tripwire. INTERVIEW Q#9
+  // (the full-surface budget question) remains the open product call:
+  // trim devx.md (six arms: execute/debug/address/retro/loop/dispatch) or
+  // raise the budget — not a test's decision. This assertion is a drift
+  // tripwire only — 2× budget — so unnoticed growth still fails CI
   // without this test quietly re-deciding the budget question.
   it("S-1 full-run surface (+ devx.md execute arm) stays under the 2x drift tripwire", () => {
     let total = 0;

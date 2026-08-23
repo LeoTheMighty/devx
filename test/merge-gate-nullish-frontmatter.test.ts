@@ -92,7 +92,7 @@ function run(fx: Fixture, hash: string, prNumber: number | null): RunResult {
       };
     }
     if (joined.includes("pr view")) return greenView;
-    if (cmd === "git" && args[0] === "diff") {
+    if (cmd === "git" && args.includes("diff")) {
       // Outline L2 scan — clean tree in these fixtures.
       return { exitCode: 0, stdout: "", stderr: "" };
     }

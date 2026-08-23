@@ -95,8 +95,13 @@ outline guard`), the CI/merge-gate diff scan (`devx outline check` /
 `outlineClean`), and agent-session refusals on `devx outline init|commit`.
 When an outline exists it dictates human.md's structure; agent.md keeps the
 gate-required template sections. The repo root carries a project-wide
-`OUTLINE.md` + `OUTLINE-CRITIQUE.md` under the same rules, read as PRD seed
-context. Gates never read outline.md or human.md (todo.md-style firewall).
+`OUTLINE.md` (human-only, same rules) read as PRD seed context, paired with
+`OUTLINE-CRITIQUE.md` — which, like every outline-critique.md, is the
+AGENT'S product and stays agent-writable. Shipped templates under
+`_devx/templates/` are exempt from protection (agent scaffolds `devx
+outline init` instantiates from — without the exemption no template change
+could ever merge). Gates never read outline.md or human.md (todo.md-style
+firewall, pinned by test/outline-isolation.test.ts).
 
 (`_bmad-output/` is frozen history; `_devx/` already ships in the npm package
 and is the natural home. `docs/` stays human-authored.)

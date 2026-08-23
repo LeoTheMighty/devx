@@ -62,6 +62,16 @@ For anything feature/epic-sized, `/devx-plan` walks four stages. Each stage
 writes artifacts to `_devx/workstreams/<slug>/` and each gate is a mechanical
 CLI check (`devx gate …`) — the agent can't hand-wave past it.
 
+0. **Outline (optional, yours)** — before or during any stage you can type
+   an outline yourself: `devx outline init <hash> <stage>` from your own
+   terminal (not inside an agent session — it refuses there), then edit the
+   file and land it with `devx outline commit` on the base branch. Agents
+   can never write these files (a hook denies the write, CI and the merge
+   gate reject any PR carrying one); they read yours, critique it in
+   `outline-critique.md`, and shape the stage's `human.md` digest after its
+   structure. A repo-wide `OUTLINE.md` works the same via
+   `devx outline init --project`. Typing it out is the point — it is how
+   you stay genuinely in the loop rather than approving summaries.
 1. **PRD** — an interview with you. Produces `prd/agent.md` (goals, use cases,
    requirements, all with stable IDs) and `expectations.md` (≥3 testable
    "when X, the system SHALL Y" blocks with priorities and thresholds).

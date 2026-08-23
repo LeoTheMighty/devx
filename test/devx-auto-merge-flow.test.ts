@@ -276,7 +276,7 @@ function makeExec(script: ExecScript): (cmd: string, args: string[]) => ExecResu
     for (const r of script.responses) {
       if (joined.includes(r.match)) return r.result;
     }
-    if (cmd === "git" && args[0] === "diff") {
+    if (cmd === "git" && args.includes("diff")) {
       // Outline L2 scan — clean tree in these fixtures.
       return { exitCode: 0, stdout: "", stderr: "" };
     }

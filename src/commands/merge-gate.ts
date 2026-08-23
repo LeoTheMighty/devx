@@ -43,7 +43,7 @@ import { dirname, join } from "node:path";
 import type { Command } from "commander";
 
 import { findProjectConfig, loadMerged } from "../lib/config-io.js";
-import { classifyDiffNames } from "../lib/engine/outline.js";
+import { baseBranchFrom, classifyDiffNames } from "../lib/engine/outline.js";
 import {
   AmbiguousSpecHashError,
   SPEC_TYPE_DIRS,
@@ -476,14 +476,25 @@ export function runMergeGate(
   const lockdownActive = false;
 
   // Outline protection L2 — same scan `devx outline check` runs, gathered
-  // here so src/lib/merge-gate.ts stays pure (no-io pin). git failure →
+  // here so src/lib/merge-gate.ts stays pure (no-io pin). Diffs the PR's
+  // BRANCH against the configured base (not HEAD/origin-main — review
+  // HIGHs: HEAD is wherever the operator happens to be, and a develop-
+  // integration repo has no origin/main worth diffing). git failure →
   // null → the decision fn fails closed.
   let outlineClean: boolean | null = null;
-  const od = baseExec("git", ["diff", "--name-only", "origin/main...HEAD"], {
-    cwd: projectDir,
-  });
-  if (od.exitCode === 0) {
-    outlineClean = classifyDiffNames(od.stdout.split("\n")).length === 0;
+  const outlineBase = `origin/${baseBranchFrom(merged)}`;
+  for (const headRef of [branch, `origin/${branch}`]) {
+    const od = baseExec(
+      "git",
+      ["-c", "core.quotePath=false", "diff", "--name-only", `${outlineBase}...${headRef}`],
+      { cwd: projectDir },
+    );
+    if (od.exitCode === 0) {
+      outlineClean = classifyDiffNames(od.stdout.split("\n")).length === 0;
+      break;
+    }
+    // Local branch ref gone (gate run after cleanup / from another
+    // worktree state) — fall through to the remote-tracking ref.
   }
 
   const signals: GateSignals = {

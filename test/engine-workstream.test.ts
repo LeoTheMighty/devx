@@ -271,3 +271,82 @@ describe("devx workstream new — commander wiring (subprocess)", () => {
     expect(repo.exists("_devx/workstreams/cli-smoke/expectations.md")).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Folder-per-artifact hardening (adversarial review)
+// ---------------------------------------------------------------------------
+
+describe("scaffold never mints human-only files", () => {
+  it("creates prd/agent.md but NO outline.md / human.md anywhere", () => {
+    const repo = makeEngineRepo();
+    try {
+      const io = captureIo();
+      const code = runWorkstreamNew(["hardened-neg"], {}, {
+        out: io.out,
+        err: io.err,
+        projectPath: repo.configPath,
+      });
+      expect(code).toBe(0);
+      expect(repo.exists("_devx/workstreams/hardened-neg/prd/agent.md")).toBe(true);
+      for (const rel of [
+        "_devx/workstreams/hardened-neg/prd/outline.md",
+        "_devx/workstreams/hardened-neg/prd/human.md",
+        "_devx/workstreams/hardened-neg/prd/outline-critique.md",
+        "_devx/workstreams/hardened-neg/OUTLINE.md",
+      ]) {
+        expect(repo.exists(rel), `${rel} must not be scaffolded`).toBe(false);
+      }
+    } finally {
+      repo.cleanup();
+    }
+  });
+});
+
+describe("flat-era refusal", () => {
+  it("refuses to scaffold over a pre-migration workstream instead of minting a duplicate PRD", () => {
+    const repo = makeEngineRepo();
+    try {
+      repo.write("_devx/workstreams/flat-era/prd.md", "# real PRD content\n");
+      // Bound plan spec: the idempotent re-run path is where write-if-missing
+      // would otherwise mint a fresh template next to the real flat PRD.
+      repo.write(
+        "plan/plan-abc321-2026-08-23T10:00-flat-era.md",
+        [
+          "---",
+          "hash: abc321",
+          "type: plan",
+          "created: 2026-08-23T10:00:00-06:00",
+          "title: Flat Era",
+          "status: in-progress",
+          "stage: prd",
+          "entered_at: prd",
+          "gate_status:",
+          "  prd_validated: false",
+          "  design_verified: false",
+          "  plan_verified: false",
+          "  evals_red: false",
+          "outcome:",
+          "  status: null",
+          "  measure_by: null",
+          "workstream: _devx/workstreams/flat-era",
+          "---",
+          "",
+          "## Goal",
+          "x",
+        ].join("\n"),
+      );
+      const io = captureIo();
+      const code = runWorkstreamNew(["flat-era"], { hash: "abc321" }, {
+        out: io.out,
+        err: io.err,
+        projectPath: repo.configPath,
+      });
+      expect(code).toBe(1);
+      expect(io.stderr()).toContain("flat-era");
+      expect(io.stderr()).toContain("git mv");
+      expect(repo.exists("_devx/workstreams/flat-era/prd/agent.md")).toBe(false);
+    } finally {
+      repo.cleanup();
+    }
+  });
+});

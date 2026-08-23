@@ -219,8 +219,12 @@ free-nested sub-items (contract in Stage: PRD).
    **Commit pathspec.** Stage by explicit path — never `git add -A`; `main`
    is the tree every concurrent session shares. The set is: every emitted
    `dev/dev-*.md`, `DEV.md`, `PLAN.md`, the plan spec, the workstream's
-   `todo.md` + `evals/`, **plus `GRAPH.md` iff `emit-retro-story` printed a
-   `graph=` key** (sgr104). That helper's stdout is one greppable key=value
+   `todo.md` + the evals files this stage authored BY NAME (`evals/E-*`,
+   `evals/RED-report.md`, and `evals/human.md` / `evals/outline-critique.md`
+   when written — never the `evals/` directory itself, which would sweep a
+   human `evals/outline.md` into the PR and wedge it at the diff scan),
+   **plus `GRAPH.md` iff `emit-retro-story` printed a `graph=` key**
+   (sgr104). That helper's stdout is one greppable key=value
    line — `spec=… dev_md=… [graph=…] [partial=…]`, not JSON — and `graph=`
    is present exactly when its GRAPH.md regen succeeded:
 

@@ -68,11 +68,18 @@ export const KNOWN_ARTIFACTS = CASCADE_TABLE.map((e) => e.artifact);
 
 /** Bare-stage shorthand: `--touched prd` names that stage's authoritative
  *  artifact. evals has no cascade row (RED artifacts re-run, they don't
- *  roll stages back), so it is deliberately absent. */
+ *  roll stages back), so it is deliberately absent. Flat-era names
+ *  (prd.md/design.md/plan.md) map to their stage rows too — every
+ *  pre-migration decisions/ report, todo, and in-flight session says
+ *  `--touched design.md`, and refusing those would silently leave stale
+ *  gate flags standing over a rewritten artifact (adversarial review). */
 const STAGE_SHORTHAND: Record<string, string> = {
   prd: PRD_REL,
   design: DESIGN_REL,
   plan: PLAN_REL,
+  "prd.md": PRD_REL,
+  "design.md": DESIGN_REL,
+  "plan.md": PLAN_REL,
 };
 
 /** Cascade row for a touched path, or null. Matches the workstream-relative

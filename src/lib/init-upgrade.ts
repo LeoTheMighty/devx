@@ -50,6 +50,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { Document, isMap, isScalar, parseDocument } from "yaml";
 
 import { installHooks, installHooksOrFileManual } from "./init-hooks.js";
+import { listShippedEngineTemplates } from "./init-write.js";
 import {
   defaultDevxHome,
   readPackageVersion,
@@ -580,23 +581,19 @@ function defaultDetectPrTemplate(ctx: SurfaceContext): boolean {
 // v2x101: pre-v2 repos upgraded in place need the engine stage templates
 // the v2 planning stages instantiate from — fresh init writes them
 // (writeEngineTemplates); the upgrade path repairs their absence here.
-// Present = the NESTED sentinel exists. "Any top-level .md" would be
-// satisfied by a flat-era template dir (todo.md, expectations.md survive at
-// the root), so the folder-per-artifact upgrade would never install
-// prd/agent.md and the scaffolder would throw `engine template missing`.
-// The repair (writeEngineTemplates) is per-file write-if-missing, so it
-// back-fills nested files without clobbering anything the user edited.
+// Present = EVERY template the shipped package carries exists in the repo.
+// Weaker predicates keep re-creating the same bug one level down: "any
+// top-level .md" was satisfied by a flat-era dir, and a single nested
+// sentinel would go stale the moment a future release adds a template
+// (adversarial review). Comparing against the shipped set self-updates;
+// the repair (writeEngineTemplates) is per-file write-if-missing, so
+// back-fill never clobbers user edits.
 function defaultDetectEngineTemplates(ctx: SurfaceContext): boolean {
-  const sentinel = join(
-    ctx.repoRoot,
-    "_devx",
-    "templates",
-    "engine",
-    "prd",
-    "agent.md",
-  );
   try {
-    return existsSync(sentinel) && statSync(sentinel).isFile();
+    const shipped = listShippedEngineTemplates();
+    if (shipped.length === 0) return true; // no shipped set — nothing to repair
+    const destDir = join(ctx.repoRoot, "_devx", "templates", "engine");
+    return shipped.every((rel) => existsSync(join(destDir, ...rel.split("/"))));
   } catch {
     return false;
   }

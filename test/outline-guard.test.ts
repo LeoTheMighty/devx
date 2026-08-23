@@ -54,6 +54,32 @@ describe("isProtectedOutlinePath", () => {
     expect(isProtectedOutlinePath("src/outline.ts")).toBe(false);
     expect(isProtectedOutlinePath("docs/outline-notes.md")).toBe(false);
   });
+
+  it("scopes protection to root + workstreams — a docs site's own outline.md is untouched", () => {
+    expect(isProtectedOutlinePath("docs/outline.md")).toBe(false);
+    expect(isProtectedOutlinePath("website/docs/outline.md")).toBe(false);
+  });
+
+  it("is case-insensitive on the basename (APFS/NTFS resolve case-insensitively)", () => {
+    expect(isProtectedOutlinePath("_devx/workstreams/x/prd/Outline.md")).toBe(true);
+    expect(isProtectedOutlinePath("outline.md")).toBe(true);
+    expect(isProtectedOutlinePath("OUTLINE.MD")).toBe(true);
+  });
+
+  it("collapses ../ traversal — the template carve-out can't be dodged", () => {
+    expect(
+      isProtectedOutlinePath("_devx/templates/../workstreams/x/prd/outline.md"),
+    ).toBe(true);
+    expect(
+      isProtectedOutlinePath("/r/_devx/templates/engine/../../workstreams/x/prd/outline.md"),
+    ).toBe(true);
+  });
+
+  it("dequotes git's quotePath rendering before classifying", () => {
+    expect(
+      isProtectedOutlinePath('"_devx/workstreams/caf\\303\\251/prd/outline.md"'),
+    ).toBe(true);
+  });
 });
 
 describe("classifyDiffNames", () => {
@@ -99,16 +125,45 @@ describe("guardDecision", () => {
     expect(guardDecision(editPayload("Write", "/r/OUTLINE-CRITIQUE.md")).deny).toBe(false);
   });
 
-  it("denies Bash commands that reference an outline path", () => {
+  it("denies Bash commands that write/remove an outline path", () => {
     for (const cmd of [
       "echo hi > _devx/workstreams/x/prd/outline.md",
       "cat foo >> OUTLINE.md",
       "sed -i '' 's/a/b/' _devx/workstreams/x/plan/outline.md",
       "cp /tmp/x _devx/workstreams/x/evals/outline.md",
       "rm OUTLINE.md",
-      "cat _devx/workstreams/x/prd/outline.md",
+      "touch _devx/workstreams/x/prd/Outline.md",
     ]) {
       expect(guardDecision({ tool_name: "Bash", tool_input: { command: cmd } }).deny).toBe(true);
+    }
+  });
+
+  it("allows read-only diagnostics and index-only git verbs over outline paths", () => {
+    for (const cmd of [
+      "cat _devx/workstreams/x/prd/outline.md",
+      "grep -n goals _devx/workstreams/x/prd/outline.md",
+      "git log -- _devx/workstreams/x/prd/outline.md",
+      "git restore --staged _devx/workstreams/x/evals/outline.md",
+      "git rm --cached OUTLINE.md",
+    ]) {
+      expect(
+        guardDecision({ tool_name: "Bash", tool_input: { command: cmd } }).deny,
+        cmd,
+      ).toBe(false);
+    }
+  });
+
+  it("the allow-list never rides shell operators (chained-command bypass)", () => {
+    for (const cmd of [
+      "devx outline check && printf hi > _devx/workstreams/x/prd/outline.md",
+      "devx outline guard; echo hi > OUTLINE.md",
+      "cat _devx/workstreams/x/prd/outline.md > /tmp/copy && cp /tmp/copy _devx/workstreams/x/prd/outline.md",
+      "grep x $(echo _devx/workstreams/x/prd/outline.md)",
+    ]) {
+      expect(
+        guardDecision({ tool_name: "Bash", tool_input: { command: cmd } }).deny,
+        cmd,
+      ).toBe(true);
     }
   });
 

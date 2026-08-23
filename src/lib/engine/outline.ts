@@ -13,12 +13,16 @@
 //   L3 (human-side)  `devx outline init|commit` refuse under agent-session
 //                    env markers → isAgentSessionEnv()
 //
-// Protected set: any path whose basename is exactly `outline.md` (case-
-// sensitive), plus the repo-root `OUTLINE.md`. Deliberately basename-broad
-// rather than layout-aware: a future stage dir gains protection for free,
-// and the guard can never fall out of sync with the artifact layout.
-// `outline-critique.md` (workstream or root) is NOT protected — the critique
-// is the agent's product.
+// Protected set (adversarial-review hardened): a basename of `outline.md` /
+// `OUTLINE.md` in ANY case, but only at the repo root or under a
+// `workstreams` path segment — a docs site's own outline.md is not devx's
+// to police, and over-broad protection bricked legitimate diagnostics in
+// review. Paths are normalized first (backslashes, `.`/`..` segments), so
+// `_devx/templates/../workstreams/…` cannot dodge classification. Shipped
+// templates under `_devx/templates/` are the one exemption: agent-authored
+// scaffolds `devx outline init` instantiates from. `outline-critique.md`
+// (workstream or root) is NOT protected — the critique is the agent's
+// product.
 //
 // Design: v2/02-engine.md §3 (folder-per-artifact layout)
 
@@ -35,33 +39,109 @@ export { OUTLINE_BASENAME };
 /** Repo-root project outline (repo-relative path). */
 export const PROJECT_OUTLINE_REL = "OUTLINE.md";
 
-/** Repo-root project outline critique — agent-writable, listed here only so
- *  callers can name it without re-spelling. */
+/** Repo-root project outline critique — agent-writable (the critique is the
+ *  agent's product); named here so consumers and tests share the spelling. */
 export const PROJECT_OUTLINE_CRITIQUE_REL = "OUTLINE-CRITIQUE.md";
 
-/** Shipped outline TEMPLATES are the one exception: they are agent-authored
- *  scaffolds (`devx outline init` instantiates from them), not human
- *  outlines — without this carve-out every template change would fail the
- *  PR-diff scan and the hook would block devx's own packaging. */
-const TEMPLATE_PATH_RE = /(^|\/)_devx\/templates\//;
-
-/** True when a path (absolute or repo-relative, / or \ separated) names a
- *  protected outline file. */
-export function isProtectedOutlinePath(path: string): boolean {
-  const norm = path.replace(/\\/g, "/").replace(/\/+$/, "");
-  if (TEMPLATE_PATH_RE.test(norm)) return false;
-  const base = norm.split("/").pop() ?? norm;
-  if (base === OUTLINE_BASENAME) return true;
-  // Repo-root OUTLINE.md: exact basename match. A bare basename is how the
-  // diff scan sees it (git prints repo-relative paths), and an absolute
-  // editor path ends in /OUTLINE.md either way. OUTLINE-CRITIQUE.md is the
-  // agent's product and deliberately does not match.
-  return base === PROJECT_OUTLINE_REL;
+/** Normalize a path for classification: / separators, `.`/`..` segments
+ *  collapsed (so traversal can't dodge the template carve-out or sneak into
+ *  a workstream), trailing slashes dropped. Leading `..` that escape the
+ *  root are preserved as-is — they can only make a path LESS matchable. */
+function normalizeSegments(path: string): string[] {
+  const out: string[] = [];
+  for (const seg of path.replace(/\\/g, "/").split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === ".." && out.length > 0 && out[out.length - 1] !== "..") {
+      out.pop();
+      continue;
+    }
+    out.push(seg);
+  }
+  return out;
 }
 
-/** Filter a `git diff --name-only` listing down to protected outline paths. */
+/** Strip git's quotePath rendering (`"a/caf\303\251/x.md"`): surrounding
+ *  quotes plus C-style octal/character escapes. Callers should ALSO run git
+ *  with `-c core.quotePath=false`; this is the belt to that suspender. */
+export function dequoteGitPath(line: string): string {
+  const trimmed = line.trim();
+  if (!(trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2)) {
+    return trimmed;
+  }
+  const inner = trimmed.slice(1, -1);
+  const bytes: number[] = [];
+  for (let i = 0; i < inner.length; i++) {
+    if (inner[i] === "\\") {
+      const oct = inner.slice(i + 1, i + 4);
+      if (/^[0-7]{3}$/.test(oct)) {
+        bytes.push(parseInt(oct, 8));
+        i += 3;
+        continue;
+      }
+      i += 1; // \" \\ \t etc — take the escaped char literally
+      bytes.push(inner.charCodeAt(i));
+      continue;
+    }
+    bytes.push(inner.charCodeAt(i));
+  }
+  return Buffer.from(bytes).toString("utf8");
+}
+
+const OUTLINE_BASENAME_LC = OUTLINE_BASENAME.toLowerCase();
+
+/** True when a path (absolute or repo-relative, / or \ separated, any case
+ *  on the basename — macOS/Windows resolve case-insensitively) names a
+ *  protected outline file. */
+export function isProtectedOutlinePath(path: string): boolean {
+  const segs = normalizeSegments(dequoteGitPath(path));
+  if (segs.length === 0) return false;
+  const base = segs[segs.length - 1].toLowerCase();
+  if (base !== OUTLINE_BASENAME_LC) return false;
+  // Shipped templates are agent scaffolds — exempt. Segment-anchored on the
+  // normalized path, so `..` tricks were already collapsed away.
+  for (let i = 0; i + 1 < segs.length; i++) {
+    if (segs[i] === "_devx" && segs[i + 1] === "templates") return false;
+  }
+  // Scope: a single-segment path (the repo-root file, or a bare token in a
+  // Bash command — protect when we can't tell), anything under a
+  // `workstreams` segment, or the exact-uppercase project-outline name at
+  // any depth (Edit/Write hand the guard ABSOLUTE paths, from which the
+  // repo root is unknowable in a pure function). A docs site's own
+  // lowercase outline.md elsewhere in the tree is none of devx's business;
+  // an APFS lowercase-alias write to the root file is the one residual
+  // dodge, and L2's diff scan catches it at PR time by its tracked name.
+  if (segs.length === 1) return true;
+  if (segs[segs.length - 1] === PROJECT_OUTLINE_REL) return true;
+  return segs.some((s) => s === "workstreams");
+}
+
+/** Filter a `git diff --name-only` listing down to protected outline paths.
+ *  Returns the dequoted repo-relative paths. */
 export function classifyDiffNames(names: readonly string[]): string[] {
-  return names.map((n) => n.trim()).filter((n) => n !== "" && isProtectedOutlinePath(n));
+  return names
+    .map((n) => dequoteGitPath(n))
+    .filter((n) => n !== "" && isProtectedOutlinePath(n));
+}
+
+// ---------------------------------------------------------------------------
+// Base-branch resolution (shared by check / merge-gate / loop tail)
+// ---------------------------------------------------------------------------
+
+/** The branch outline diffs are computed against: git.integration_branch
+ *  when the repo runs a split model, else git.default_branch, else "main".
+ *  Read defensively from the merged config blob. */
+export function baseBranchFrom(merged: unknown): string {
+  const git =
+    typeof merged === "object" && merged !== null
+      ? ((merged as Record<string, unknown>).git as
+          | Record<string, unknown>
+          | undefined)
+      : undefined;
+  for (const key of ["integration_branch", "default_branch"] as const) {
+    const v = git?.[key];
+    if (typeof v === "string" && v.trim() !== "") return v.trim();
+  }
+  return "main";
 }
 
 // ---------------------------------------------------------------------------
@@ -71,17 +151,26 @@ export function classifyDiffNames(names: readonly string[]): string[] {
 /** Tools whose file target the guard inspects (hook matcher counterpart). */
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 
-/** Bash commands allowed to *mention* outline paths: the mechanical checks
- *  themselves. Everything else that references an outline in a Bash command
- *  is denied — reads go through the Read tool, writes are the human's. */
-const BASH_ALLOW_PREFIX_RE = /^\s*devx\s+outline\s+(check|guard)\b/;
+/** Shell metacharacters that can chain/substitute a second command. A
+ *  command carrying ANY of these never qualifies for the allow-list —
+ *  `devx outline check && cat > …/outline.md` must not ride the carve-out
+ *  (adversarial-review HIGH-1). */
+const SHELL_OPERATOR_RE = /[;&|`$(){}<>\n]/;
+
+/** Whole-command allow-list (only consulted when the command has no shell
+ *  operators): the mechanical outline commands themselves, plus read-only
+ *  diagnostics and index-only git verbs — review agents were locked out of
+ *  `grep`/`git log` over outline paths, and an accidentally staged outline
+ *  was un-unstageable without these. */
+const ALLOW_COMMAND_RE =
+  /^\s*(devx\s+outline\s+(check|guard)|grep|rg|ls|wc|head|tail|cat|git\s+(log|show|diff|status)|git\s+restore\s+--staged|git\s+rm\s+--cached|git\s+reset)\b/;
 
 /** Path-ish tokens mentioning an outline file inside a shell command —
  *  catches redirects, cp/mv/sed targets, heredocs, anything that names the
  *  file. Each token is then classified with isProtectedOutlinePath, so
  *  template-path mentions (agent-legitimate) pass while real outline
- *  references deny. */
-const BASH_OUTLINE_TOKEN_RE = /[^\s"'`=(),;]*(?:outline\.md|OUTLINE\.md)/g;
+ *  references deny. Case-insensitive: the filesystem is. */
+const BASH_OUTLINE_TOKEN_RE = /[^\s"'`=(),;]*outline\.md/gi;
 
 export interface GuardDecision {
   deny: boolean;
@@ -121,7 +210,8 @@ export function guardDecision(payload: unknown): GuardDecision {
 
   if (tool === "Bash") {
     const command = typeof input.command === "string" ? input.command : "";
-    if (command === "" || BASH_ALLOW_PREFIX_RE.test(command)) {
+    if (command === "") return { deny: false };
+    if (ALLOW_COMMAND_RE.test(command) && !SHELL_OPERATOR_RE.test(command)) {
       return { deny: false };
     }
     const tokens = command.match(BASH_OUTLINE_TOKEN_RE) ?? [];

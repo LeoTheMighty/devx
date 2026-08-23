@@ -116,6 +116,21 @@ describe("devx outline check", () => {
   });
 });
 
+describe("devx outline check — hardened classification", () => {
+  it("catches an outline under a non-ASCII workstream slug (quotePath)", () => {
+    const repo = makeGitRepo();
+    git(repo.root, "checkout", "-b", "feat/q");
+    repo.write("_devx/workstreams/caf\u00e9/prd/outline.md", "# smuggled\n");
+    git(repo.root, "add", "-A");
+    git(repo.root, "commit", "-m", "smuggle non-ascii");
+    const io = captureIo();
+    const code = runOutlineCheck({}, { out: io.out, err: io.err, projectPath: repo.configPath });
+    expect(code).toBe(1);
+    const j = io.json() as { touched: string[] };
+    expect(j.touched).toContain("_devx/workstreams/caf\u00e9/prd/outline.md");
+  });
+});
+
 describe("devx outline commit", () => {
   it("refuses inside an agent session before touching git", () => {
     const repo = makeGitRepo();
@@ -158,6 +173,51 @@ describe("devx outline commit", () => {
     expect(show).not.toContain("unrelated.txt");
     // …and the unrelated file is still dirty.
     expect(git(repo.root, "status", "--porcelain")).toContain("unrelated.txt");
+  });
+
+  it("refuses on a feature branch — outlines land on the base branch only", () => {
+    const repo = makeGitRepo();
+    git(repo.root, "checkout", "-b", "feat/somewhere");
+    repo.write("OUTLINE.md", "# typed here by mistake\n");
+    const io = captureIo();
+    const code = runOutlineCommit({}, {
+      out: io.out,
+      err: io.err,
+      projectPath: repo.configPath,
+      env: HUMAN_ENV,
+    });
+    expect(code).toBe(1);
+    expect(io.stderr()).toContain("refusing on branch 'feat/somewhere'");
+    expect(git(repo.root, "status", "--porcelain")).toContain("OUTLINE.md");
+  });
+
+  it("commits BOTH sides of a staged outline rename", () => {
+    const repo = makeGitRepo();
+    repo.write("_devx/workstreams/demo/prd/outline.md", "# v1\n");
+    git(repo.root, "add", "-A");
+    git(repo.root, "commit", "-m", "outline v1 (fixture setup)");
+    mkdirSync(join(repo.root, "_devx", "workstreams", "demo", "design"), {
+      recursive: true,
+    });
+    git(
+      repo.root,
+      "mv",
+      "_devx/workstreams/demo/prd/outline.md",
+      "_devx/workstreams/demo/design/outline.md",
+    );
+    const io = captureIo();
+    const code = runOutlineCommit({}, {
+      out: io.out,
+      err: io.err,
+      projectPath: repo.configPath,
+      env: HUMAN_ENV,
+    });
+    expect(code).toBe(0);
+    // Old path gone from HEAD, new path present, tree clean.
+    const files = git(repo.root, "ls-tree", "-r", "--name-only", "HEAD");
+    expect(files).toContain("_devx/workstreams/demo/design/outline.md");
+    expect(files).not.toContain("_devx/workstreams/demo/prd/outline.md");
+    expect(git(repo.root, "status", "--porcelain").trim()).toBe("");
   });
 
   it("exits 1 when the working tree has no outline changes", () => {
