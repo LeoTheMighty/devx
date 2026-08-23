@@ -145,7 +145,7 @@ export function register(program: Command): void {
     .argument("<hash>", "workstream (plan spec) hash")
     .requiredOption(
       "--touched <path>",
-      "the artifact being revised: prd.md | expectations.md | design.md | plan.md (basename or workstream-relative path)",
+      `the artifact being revised: ${KNOWN_ARTIFACTS.join(" | ")} (basename or workstream-relative path)`,
     )
     .action((hash: string, cmdOpts: { touched: string }) => {
       const code = runRevise([hash], { touched: cmdOpts.touched });

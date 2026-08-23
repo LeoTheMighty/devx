@@ -58,6 +58,7 @@ import type { Command } from "commander";
 import { findProjectConfig, loadMerged } from "../lib/config-io.js";
 import { engineConfigFrom } from "../lib/engine/config.js";
 import { attachPhase } from "../lib/help.js";
+import { PLAN_REL } from "../lib/engine/artifacts.js";
 import {
   type DeriveBranchConfig,
   deriveBranch,
@@ -460,7 +461,7 @@ export function runValidateEmit(
     // v2d101 resolution order: _devx/workstreams/<slug>/plan.md first,
     // then the frozen _bmad-output/planning-artifacts/epic-<slug>.md.
     err(
-      `devx plan-helper validate-emit: no plan.md or epic file found for '${slug}' (tried: ${result.triedPaths.join(", ")})\n`,
+      `devx plan-helper validate-emit: no ${PLAN_REL} or epic file found for '${slug}' (tried: ${result.triedPaths.join(", ")})\n`,
     );
     return 2;
   }

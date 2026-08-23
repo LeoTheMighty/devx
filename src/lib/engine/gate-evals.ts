@@ -38,6 +38,7 @@ import {
   parseExpectations,
 } from "./expectations.js";
 import { readEngineState } from "./frontmatter.js";
+import { EVALS_DIR_REL } from "./artifacts.js";
 import {
   INACTIVE_WAIVER,
   type Verdict,
@@ -317,7 +318,7 @@ function resolveArtifactPath(
   target: string,
 ): { abs: string; rel: string } {
   const cleaned = target.replace(/`/g, "").trim();
-  if (cleaned.startsWith("evals/")) {
+  if (cleaned.startsWith(`${EVALS_DIR_REL}/`)) {
     const abs = join(workstreamAbs, ...cleaned.split("/"));
     return { abs, rel: relative(repoRoot, abs).split(sep).join("/") };
   }

@@ -18,6 +18,7 @@
 import { join } from "node:path";
 
 import { type EngineState, readEngineState } from "./frontmatter.js";
+import { TODO_REL } from "./artifacts.js";
 import {
   type TodoDoc,
   type TodoGroundTruth,
@@ -33,7 +34,7 @@ export interface TodoReadFs {
   readdir(path: string): string[];
 }
 
-export const TODO_FILENAME = "todo.md";
+export const TODO_FILENAME = TODO_REL;
 
 /**
  * Read + parse `<workstreamAbs>/todo.md`. Null when the file is absent

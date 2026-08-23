@@ -31,6 +31,7 @@ import {
   type Stage,
 } from "./frontmatter.js";
 import { type TodoDoc, currentFocus } from "./todo.js";
+import { DECISIONS_DIR_REL, RED_REPORT_REL } from "./artifacts.js";
 
 /** Rendered when a gate has no verdict and no legacy flag-true fallback. */
 export const NEVER_RUN = "—";
@@ -115,12 +116,12 @@ function failReportPointer(
   if (key === "evals") {
     return ctx.evalsReportExists === false
       ? null
-      : `${ws}/evals/RED-report.md`;
+      : `${ws}/${RED_REPORT_REL}`;
   }
   const mode = COVERAGE_MODE[key];
   if (mode === undefined) return null; // prd — re-run command only
   const report = newestDecisionReport(ctx.decisionNames ?? [], mode);
-  return report !== null ? `${ws}/decisions/${report}` : null;
+  return report !== null ? `${ws}/${DECISIONS_DIR_REL}/${report}` : null;
 }
 
 /**

@@ -49,6 +49,7 @@ import {
 } from "../backlog/parse.js";
 import { type BacklogLockFn, withBacklogLock } from "../backlog/mutate.js";
 import { type EngineConfig } from "../engine/config.js";
+import { planAbs, todoAbs } from "../engine/artifacts.js";
 import {
   SPEC_TYPE_DIRS,
   applyEnginePatch,
@@ -346,7 +347,7 @@ function readOrderingSignals(
   };
 
   for (const slug of entries) {
-    const planMd = join(root, slug, "plan.md");
+    const planMd = planAbs(join(root, slug));
     if (fs.exists(planMd)) {
       let content = "";
       try {
@@ -359,7 +360,7 @@ function readOrderingSignals(
         if (m) record(m[2], Number(m[1]), "plan-pointer", slug);
       }
     }
-    const todoMd = join(root, slug, "todo.md");
+    const todoMd = todoAbs(join(root, slug));
     if (fs.exists(todoMd)) {
       let content = "";
       try {

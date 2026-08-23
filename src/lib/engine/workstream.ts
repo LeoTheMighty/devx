@@ -44,6 +44,13 @@ import {
   readEngineState,
 } from "./frontmatter.js";
 import { type EngineConfig } from "./config.js";
+import {
+  EXPECTATIONS_REL,
+  PRD_REL,
+  SCAFFOLD_SUBDIRS,
+  TODO_REL,
+  artifactAbs,
+} from "./artifacts.js";
 import { writeAtomic } from "../supervisor-internal.js";
 
 // ---------------------------------------------------------------------------
@@ -307,18 +314,18 @@ export function createWorkstream(
     fs.mkdirRecursive(wsAbs);
     created.dir = true;
   }
-  for (const sub of ["decisions", "checkpoints", "evals"]) {
+  for (const sub of SCAFFOLD_SUBDIRS) {
     const subAbs = join(wsAbs, sub);
     if (!fs.exists(subAbs)) fs.mkdirRecursive(subAbs);
   }
 
   const title = titleFromSlug(slug);
   for (const t of [
-    { name: "prd.md", key: "prd" as const },
-    { name: "expectations.md", key: "expectations" as const },
-    { name: "todo.md", key: "todo" as const },
+    { name: PRD_REL, key: "prd" as const },
+    { name: EXPECTATIONS_REL, key: "expectations" as const },
+    { name: TODO_REL, key: "todo" as const },
   ]) {
-    const dest = join(wsAbs, t.name);
+    const dest = artifactAbs(wsAbs, t.name);
     if (fs.exists(dest)) continue;
     const templateAbs = join(repoRoot, TEMPLATES_DIR, t.name);
     if (!fs.exists(templateAbs)) {

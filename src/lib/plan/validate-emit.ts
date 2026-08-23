@@ -55,6 +55,7 @@ import {
   type DeriveBranchConfig,
   deriveBranch,
 } from "./derive-branch.js";
+import { PLAN_REL } from "../engine/artifacts.js";
 
 // Same hash regex as plan-helper.ts (3-12 alnum chars). Used for the
 // synthesized retro hash and for parsing dev/ filenames; story-list
@@ -180,7 +181,7 @@ export function validateEmit(
   //     archive — it never gains new epics, so a new slug that misses
   //     both paths is a genuine not-found.
   const wsRoot = workstreamsRootFrom(inputs.config);
-  const planRel = `${wsRoot}/${inputs.epicSlug}/plan.md`;
+  const planRel = `${wsRoot}/${inputs.epicSlug}/${PLAN_REL}`;
   const planPath = join(inputs.repoRoot, ...planRel.split("/"));
   const archiveRel = `_bmad-output/planning-artifacts/epic-${inputs.epicSlug}.md`;
   const archivePath = join(inputs.repoRoot, archiveRel);
@@ -302,7 +303,7 @@ export function validateEmit(
       const fromVal = parseFrontmatterValue(body, "from");
       const wsVal = parseFrontmatterValue(body, "workstream");
       const fromClaimRe = new RegExp(
-        `(?:^|[\\s('"\`])${escapeRe(wsDirMarker)}/plan\\.md(?:$|[\\s)'"\`,;])`,
+        `(?:^|[\\s('"\`])${escapeRe(wsDirMarker)}/${escapeRe(PLAN_REL)}(?:$|[\\s)'"\`,;])`,
       );
       const claims =
         (fromVal !== null && fromClaimRe.test(fromVal)) ||
@@ -311,7 +312,7 @@ export function validateEmit(
         issues.push({
           severity: "error",
           check: "orphan-spec-claims-epic",
-          message: `spec for '${hash}' claims workstream '${wsDirMarker}' but no phase in plan.md tracks it`,
+          message: `spec for '${hash}' claims workstream '${wsDirMarker}' but no phase in ${PLAN_REL} tracks it`,
           location: `dev/${fn}`,
         });
       }

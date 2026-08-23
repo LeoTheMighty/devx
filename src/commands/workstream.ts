@@ -16,6 +16,7 @@
 import type { Command } from "commander";
 
 import { attachPhase } from "../lib/help.js";
+import { EXPECTATIONS_REL, PRD_REL } from "../lib/engine/artifacts.js";
 import { loadEngineContext } from "../lib/engine/context.js";
 import {
   type EngineFs,
@@ -95,7 +96,7 @@ export function register(program: Command): void {
   sub
     .command("new")
     .description(
-      "Scaffold a workstream: prd.md + expectations.md from templates, empty decisions/checkpoints/evals, plan-spec engine frontmatter. Idempotent.",
+      `Scaffold a workstream: ${PRD_REL} + ${EXPECTATIONS_REL} from templates, empty decisions/checkpoints/evals, plan-spec engine frontmatter. Idempotent.`,
     )
     .argument("<slug>", "workstream slug (kebab-case, ≤50 chars)")
     .option("--hash <hash>", "bind an existing plan spec instead of creating one")

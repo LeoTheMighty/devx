@@ -32,6 +32,7 @@ import {
   type Stage,
   stageIndex,
 } from "./frontmatter.js";
+import { DESIGN_REL, EXPECTATIONS_REL, PLAN_REL, PRD_REL } from "./artifacts.js";
 
 export interface CascadeEntry {
   /** Artifact basename this row matches. */
@@ -42,22 +43,22 @@ export interface CascadeEntry {
 
 export const CASCADE_TABLE: CascadeEntry[] = [
   {
-    artifact: "prd.md",
+    artifact: PRD_REL,
     resets: ["prd_validated", "design_verified", "plan_verified", "evals_red"],
     stage: "prd",
   },
   {
-    artifact: "expectations.md",
+    artifact: EXPECTATIONS_REL,
     resets: ["prd_validated", "design_verified", "plan_verified", "evals_red"],
     stage: "prd",
   },
   {
-    artifact: "design.md",
+    artifact: DESIGN_REL,
     resets: ["design_verified", "plan_verified", "evals_red"],
     stage: "design",
   },
   {
-    artifact: "plan.md",
+    artifact: PLAN_REL,
     resets: ["plan_verified", "evals_red"],
     stage: "plan",
   },

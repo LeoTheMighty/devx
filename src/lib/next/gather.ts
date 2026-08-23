@@ -37,6 +37,7 @@ import {
 } from "../engine/frontmatter.js";
 import { type EngineConfig } from "../engine/config.js";
 import { renderFocusLine, renderGateSummary } from "../engine/render.js";
+import * as wsArtifacts from "../engine/artifacts.js";
 import { computeTodoDrift } from "../engine/todo.js";
 import { loadTodoDoc, todoGroundTruth } from "../engine/todo-truth.js";
 import {
@@ -906,7 +907,7 @@ function gatherWorkstreamSignals(
       // unreadable decisions/ (e.g. a file squatting on the name) degrades
       // to re-run-only pointers with a warning — same posture as the
       // per-spec read failures above, never a dispatcher crash.
-      const decisionsAbs = wsAbs !== null ? join(wsAbs, "decisions") : null;
+      const decisionsAbs = wsAbs !== null ? wsArtifacts.decisionsDirAbs(wsAbs) : null;
       let decisionNames: readonly string[] = [];
       if (decisionsAbs !== null && fs.exists(decisionsAbs)) {
         try {
@@ -926,8 +927,7 @@ function gatherWorkstreamSignals(
           workstreamRel: wsRel,
           decisionNames,
           evalsReportExists:
-            wsAbs !== null &&
-            fs.exists(join(wsAbs, "evals", "RED-report.md")),
+            wsAbs !== null && fs.exists(wsArtifacts.redReportAbs(wsAbs)),
         }),
         focus,
       });
@@ -946,18 +946,16 @@ function artifactsFor(fs: NextFs, wsAbs: string | null): WorkstreamArtifacts {
       evalsAuthored: false,
     };
   }
-  const evalsAbs = join(wsAbs, "evals");
+  const evalsAbs = wsArtifacts.evalsDirAbs(wsAbs);
   let evalsAuthored = false;
   if (fs.exists(evalsAbs)) {
-    evalsAuthored = fs
-      .readdir(evalsAbs)
-      .some((n) => n !== "RED-report.md" && !n.startsWith("."));
+    evalsAuthored = fs.readdir(evalsAbs).some(wsArtifacts.isAuthoredEvalEntry);
   }
   return {
-    prd: fs.exists(join(wsAbs, "prd.md")),
-    expectations: fs.exists(join(wsAbs, "expectations.md")),
-    design: fs.exists(join(wsAbs, "design.md")),
-    plan: fs.exists(join(wsAbs, "plan.md")),
+    prd: fs.exists(wsArtifacts.prdAbs(wsAbs)),
+    expectations: fs.exists(wsArtifacts.expectationsAbs(wsAbs)),
+    design: fs.exists(wsArtifacts.designAbs(wsAbs)),
+    plan: fs.exists(wsArtifacts.planAbs(wsAbs)),
     evalsAuthored,
   };
 }

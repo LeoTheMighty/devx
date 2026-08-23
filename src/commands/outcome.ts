@@ -40,6 +40,7 @@ import { join } from "node:path";
 import type { Command } from "commander";
 
 import { attachPhase } from "../lib/help.js";
+import * as artifacts from "../lib/engine/artifacts.js";
 import { loadEngineContext } from "../lib/engine/context.js";
 import { applyEnginePatch, readEngineState } from "../lib/engine/frontmatter.js";
 import {
@@ -306,13 +307,13 @@ function scoreResolved(
   // truth, so overwrite and report it. A RESULTS.md with a SCORED status
   // never reaches this line — the already-scored refusal above is the
   // artifact's real protection.
-  const resultsAbs = join(ws.workstreamAbs, "RESULTS.md");
+  const resultsAbs = artifacts.resultsAbs(ws.workstreamAbs);
   const overwroteStaleResults = io.fs.exists(resultsAbs);
 
   // ---- Inputs. -------------------------------------------------------------
-  const prdAbs = join(ws.workstreamAbs, "prd.md");
+  const prdAbs = artifacts.prdAbs(ws.workstreamAbs);
   if (!io.fs.exists(prdAbs)) {
-    throw new OutcomeError(`${ws.workstreamRel}/prd.md not found — nothing to score against`);
+    throw new OutcomeError(`${ws.workstreamRel}/${artifacts.PRD_REL} not found — nothing to score against`);
   }
   const goals = parsePrdGoals(io.fs.readFile(prdAbs));
   const { rows } = computeGoalRows(goals, { actuals, sources, results });
@@ -328,10 +329,10 @@ function scoreResolved(
   // ---- Verdict-specific computation. ---------------------------------------
   let tune: ReturnType<typeof computeTune> | null = null;
   if (verdict === "tune") {
-    const expAbs = join(ws.workstreamAbs, "expectations.md");
+    const expAbs = artifacts.expectationsAbs(ws.workstreamAbs);
     if (!io.fs.exists(expAbs)) {
       throw new OutcomeError(
-        `${ws.workstreamRel}/expectations.md not found — tune's --reopen E-ids can't be validated`,
+        `${ws.workstreamRel}/${artifacts.EXPECTATIONS_REL} not found — tune's --reopen E-ids can't be validated`,
       );
     }
     tune = computeTune(
