@@ -37,6 +37,7 @@ import * as manageCommand from "./commands/manage.js";
 import * as mergeGateCommand from "./commands/merge-gate.js";
 import * as nextCommand from "./commands/next.js";
 import * as outcomeCommand from "./commands/outcome.js";
+import * as outlineCommand from "./commands/outline.js";
 import * as pauseCommand from "./commands/pause.js";
 import * as planHelperCommand from "./commands/plan-helper.js";
 import * as prBodyCommand from "./commands/pr-body.js";
@@ -76,6 +77,7 @@ const commands: CommandModule[] = [
   mergeGateCommand,
   nextCommand,
   outcomeCommand,
+  outlineCommand,
   pauseCommand,
   planHelperCommand,
   prBodyCommand,

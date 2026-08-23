@@ -92,6 +92,10 @@ function run(fx: Fixture, hash: string, prNumber: number | null): RunResult {
       };
     }
     if (joined.includes("pr view")) return greenView;
+    if (cmd === "git" && args[0] === "diff") {
+      // Outline L2 scan — clean tree in these fixtures.
+      return { exitCode: 0, stdout: "", stderr: "" };
+    }
     throw new Error(`unexpected exec call: ${joined}`);
   };
   const code = runMergeGate([hash], {}, {

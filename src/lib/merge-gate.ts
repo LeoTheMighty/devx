@@ -32,6 +32,10 @@ export interface GateSignals {
   blockingReviewComments: number;
   /** Touched-line coverage in [0, 1], or `null` if not measured. */
   coveragePctTouched: number | null;
+  /** Outline protection L2: is the PR diff free of outline files? `null`
+   *  = the diff scan could not run (missing merge base / detached state) —
+   *  fails closed like every uncertain signal. */
+  outlineClean: boolean | null;
   /** Trust-gradient: number of clean promotions so far. */
   count: number;
   /** Trust-gradient: threshold below which agent merges require approval. */
@@ -68,6 +72,20 @@ export function mergeGateFor(
   // 2. Mode validation — fail closed.
   if (!KNOWN_MODES.has(mode)) {
     return { merge: false, reason: `unknown mode: ${mode}` };
+  }
+
+  // 2.5 Outline protection (L2) — outline changes never ride in a PR, in
+  // any mode. Outlines are human-only and reach main solely via the human's
+  // `devx outline commit`; a PR carrying one is a policy breach regardless
+  // of CI state.
+  if (signals.outlineClean !== true) {
+    return {
+      merge: false,
+      reason:
+        signals.outlineClean === false
+          ? "outline file changed in this PR — outlines reach main only via `devx outline commit` (human-run)"
+          : "outline diff scan unavailable — fail closed (run `devx outline check`)",
+    };
   }
 
   // 3. LOCKDOWN — fixed reason, short-circuit.

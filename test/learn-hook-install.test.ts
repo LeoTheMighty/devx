@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   HOOK_COMMAND,
   HOOK_EVENTS,
+  HOOK_REGISTRATIONS,
   hookFragment,
   installHooks,
   installHooksOrFileManual,
@@ -75,8 +76,8 @@ describe("rtl105 — installHooks: fresh repo", () => {
     const parsed = JSON.parse(readFileSync(result.path, "utf8")) as {
       hooks: Record<string, unknown>;
     };
-    for (const event of HOOK_EVENTS) {
-      expect(JSON.stringify(parsed.hooks[event])).toContain(HOOK_COMMAND);
+    for (const reg of HOOK_REGISTRATIONS) {
+      expect(JSON.stringify(parsed.hooks[reg.event])).toContain(reg.command);
     }
   });
 
@@ -152,6 +153,7 @@ describe("rtl105 — installHooks: idempotence", () => {
               },
             ],
             SessionEnd: [{ hooks: [{ type: "command", command: `  ${HOOK_COMMAND}  ` }] }],
+            PreToolUse: hookFragment().hooks.PreToolUse,
           },
         },
         null,
@@ -202,7 +204,13 @@ describe("rtl105 — installHooks: merge preserves user ownership", () => {
       permissions: unknown;
     };
 
-    expect(merged.hooks.PreToolUse).toEqual(USER_SETTINGS.hooks.PreToolUse);
+    // The user's PreToolUse entry survives byte-intact at index 0; the
+    // outline guard is appended after it (PreToolUse is no longer an
+    // unrelated event — devx owns an entry there too).
+    const pre = merged.hooks.PreToolUse as unknown[];
+    expect(pre[0]).toEqual(USER_SETTINGS.hooks.PreToolUse[0]);
+    expect(pre).toHaveLength(2);
+    expect(JSON.stringify(pre[1])).toContain("devx outline guard");
     expect(merged.permissions).toEqual(USER_SETTINGS.permissions);
   });
 
@@ -215,12 +223,13 @@ describe("rtl105 — installHooks: merge preserves user ownership", () => {
     const result = installHooks({ repoRoot: sandbox });
 
     expect(result.action).toBe("merged");
-    expect(result.added).toEqual(["SessionEnd"]);
+    expect([...result.added].sort()).toEqual(["PreToolUse", "SessionEnd"]);
     const merged = JSON.parse(readFileSync(path, "utf8")) as {
-      hooks: { Stop: unknown[]; SessionEnd: unknown[] };
+      hooks: { Stop: unknown[]; SessionEnd: unknown[]; PreToolUse: unknown[] };
     };
     expect(merged.hooks.Stop).toHaveLength(1);
     expect(merged.hooks.SessionEnd).toHaveLength(1);
+    expect(merged.hooks.PreToolUse).toHaveLength(1);
   });
 
   it("merges into a settings file with no hooks section at all", () => {
@@ -338,7 +347,7 @@ describe("rtl105 — installHooksOrFileManual", () => {
     const step = installHooksOrFileManual({ repoRoot: sandbox });
 
     expect(step.action).toBe("created");
-    expect([...step.added].sort()).toEqual(["SessionEnd", "Stop"]);
+    expect([...step.added].sort()).toEqual(["PreToolUse", "SessionEnd", "Stop"]);
     expect(step.reason).toBeUndefined();
     // Nothing to defer to a human, so MANUAL.md is never created.
     expect(existsSync(manualPathOf(sandbox))).toBe(false);

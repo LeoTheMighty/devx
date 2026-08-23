@@ -1,8 +1,9 @@
 // rtl105 — Claude Code hook registration installer (`.claude/settings.json`).
 //
-// Registers the devx retro listener (`devx learn-helper listen`) on the Stop
-// and SessionEnd hook events of a consumer repo, so the closed loop inherits
-// detection with zero per-repo setup.
+// Registers devx's hook entries in a consumer repo: the retro listener
+// (`devx learn-helper listen`) on Stop + SessionEnd, and the outline guard
+// (`devx outline guard`) on PreToolUse — outline files are human-only, and
+// the guard is enforcement layer L1 (write-time denial). Zero per-repo setup.
 //
 // Ownership model (the `installSkills`/`decideSkillInstall` discipline of
 // src/lib/init-skills.ts, adapted): hooks are *entries inside a shared file*
@@ -28,29 +29,65 @@ import { appendManualEntry } from "./init-failure.js";
 import { writeAtomic } from "./supervisor-internal.js";
 
 // ---------------------------------------------------------------------------
-// The registration (single source; the shipped template fragment and this
+// The registrations (single source; the shipped template fragment and this
 // repo's committed .claude/settings.json are both pinned against it by
 // test/learn-hook-install.test.ts).
 // ---------------------------------------------------------------------------
 
-/** The command string that marks a hook entry devx-owned. Ownership is keyed
- *  on this exact string (whitespace-trimmed) — not on position, not on a
- *  marker comment, because settings.json has nowhere to put one. */
+/** The command string that marks the retro-listener entry devx-owned.
+ *  Ownership is keyed on the exact command string (whitespace-trimmed) — not
+ *  on position, not on a marker comment, because settings.json has nowhere
+ *  to put one. */
 export const HOOK_COMMAND = "devx learn-helper listen";
 
-/** The hook events the listener registers on. Stop carries the nudge check;
- *  SessionEnd closes the session out. */
-export const HOOK_EVENTS = ["Stop", "SessionEnd"] as const;
+/** Outline guard (L1): PreToolUse endpoint that denies agent writes to
+ *  outline.md / OUTLINE.md. src/lib/engine/outline.ts holds the decision. */
+export const OUTLINE_GUARD_COMMAND = "devx outline guard";
+
+/** Tools the guard inspects. Read/Grep deliberately absent — agents READ
+ *  outlines freely; they just never write them. */
+export const OUTLINE_GUARD_MATCHER = "Edit|Write|MultiEdit|NotebookEdit|Bash";
+
+export interface HookRegistration {
+  event: "Stop" | "SessionEnd" | "PreToolUse";
+  /** PreToolUse tool matcher; absent on lifecycle events. */
+  matcher?: string;
+  command: string;
+}
+
+/** Every hook entry devx owns, in install order. Ownership stays keyed on
+ *  the command string per event. */
+export const HOOK_REGISTRATIONS: readonly HookRegistration[] = [
+  { event: "Stop", command: HOOK_COMMAND },
+  { event: "SessionEnd", command: HOOK_COMMAND },
+  {
+    event: "PreToolUse",
+    matcher: OUTLINE_GUARD_MATCHER,
+    command: OUTLINE_GUARD_COMMAND,
+  },
+] as const;
+
+/** The hook events devx registers on (derived; kept as an export for the
+ *  orchestrator + tests). */
+export const HOOK_EVENTS = ["Stop", "SessionEnd", "PreToolUse"] as const;
 
 export type HookEvent = (typeof HOOK_EVENTS)[number];
+
+function registrationEntry(reg: HookRegistration): Record<string, unknown> {
+  const entry: Record<string, unknown> = {};
+  if (reg.matcher !== undefined) entry.matcher = reg.matcher;
+  entry.hooks = [{ type: "command", command: reg.command }];
+  return entry;
+}
 
 /** The settings fragment devx merges in. Returns a fresh deep copy each call
  *  so callers can mutate the result without corrupting the source of truth. */
 export function hookFragment(): { hooks: Record<string, unknown[]> } {
-  const entry = () => ({
-    hooks: [{ type: "command", command: HOOK_COMMAND }],
-  });
-  return { hooks: { Stop: [entry()], SessionEnd: [entry()] } };
+  const hooks: Record<string, unknown[]> = {};
+  for (const reg of HOOK_REGISTRATIONS) {
+    hooks[reg.event] = [...(hooks[reg.event] ?? []), registrationEntry(reg)];
+  }
+  return { hooks };
 }
 
 // ---------------------------------------------------------------------------
@@ -110,13 +147,13 @@ export function installHooks(opts: InstallHooksOpts): HookInstallOutcome {
   const hooks = readHooksSection(settings, path);
 
   const added: HookEvent[] = [];
-  for (const event of HOOK_EVENTS) {
-    const entries = readEventEntries(hooks, event, path);
-    if (entries.some(hasDevxCommand)) continue;
-    // Append, never prepend: the user's entries keep their indices, and the
-    // listener observes the session after any hook the user already ran.
-    hooks[event] = [...entries, ...fragment.hooks[event]!];
-    added.push(event);
+  for (const reg of HOOK_REGISTRATIONS) {
+    const entries = readEventEntries(hooks, reg.event, path);
+    if (entries.some((e) => hasDevxCommand(e, reg.command))) continue;
+    // Append, never prepend: the user's entries keep their indices, and our
+    // hook observes the session after any hook the user already ran.
+    hooks[reg.event] = [...entries, registrationEntry(reg)];
+    if (!added.includes(reg.event)) added.push(reg.event);
   }
 
   if (added.length === 0) {
@@ -178,7 +215,8 @@ export function installHooksOrFileManual(
       kind: `hook-install-${path}`,
       title: "Retro-listener hooks were not registered — settings.json needs a human",
       body: [
-        `devx could not merge its Stop/SessionEnd registrations into`,
+        `devx could not merge its hook registrations (retro listener +`,
+        `outline guard) into`,
         `\`${path}\`: ${reason}`,
         ``,
         `Fix (or move aside) that file and re-run \`/devx-init\`, or paste the`,
@@ -265,17 +303,17 @@ function readEventEntries(
   return entries;
 }
 
-/** True when a matcher group already carries the devx command — the one
- *  ownership signal. Tolerates a group the user extended with their own hooks
- *  alongside ours: it is still ours-is-present, so we add nothing. */
-function hasDevxCommand(entry: unknown): boolean {
+/** True when a matcher group already carries the given devx command — the
+ *  one ownership signal. Tolerates a group the user extended with their own
+ *  hooks alongside ours: it is still ours-is-present, so we add nothing. */
+function hasDevxCommand(entry: unknown, command: string): boolean {
   if (entry === null || typeof entry !== "object") return false;
   const inner = (entry as { hooks?: unknown }).hooks;
   if (!Array.isArray(inner)) return false;
   return inner.some((h) => {
     if (h === null || typeof h !== "object") return false;
-    const command = (h as { command?: unknown }).command;
-    return typeof command === "string" && command.trim() === HOOK_COMMAND;
+    const c = (h as { command?: unknown }).command;
+    return typeof c === "string" && c.trim() === command;
   });
 }
 

@@ -38,6 +38,7 @@ import { extractAcChecklist, loadTemplate, renderPrBody } from "../pr-body.js";
 import { GhProbeError, hasWorkflowFiles, parseGhRunList } from "../devx/await-remote-ci.js";
 import { checkHold } from "../devx/hold-check.js";
 import { mergeGateFor, type GateSignals } from "../merge-gate.js";
+import { classifyDiffNames } from "../engine/outline.js";
 import { type Exec } from "./git-tx.js";
 import { type GhRetryOpts, withGhRetry } from "../gh-retry.js";
 
@@ -293,11 +294,25 @@ export async function defaultTail(item: TailItem, ctx: TailCtx): Promise<TailOut
   }
 
   // ── 4. Merge gate (mrg101) — the ONLY path to main ─────────────────────
+  // Outline protection L2 in the overnight path: the same scan `devx
+  // outline check` runs, against this item's branch. git failure → null →
+  // fail closed (the tail hands off instead of merging).
+  let outlineClean: boolean | null = null;
+  const od = exec(
+    "git",
+    ["diff", "--name-only", `origin/main...${item.branch}`],
+    { cwd: ctx.repoRoot },
+  );
+  if (od.exitCode === 0) {
+    outlineClean = classifyDiffNames(od.stdout.split("\n")).length === 0;
+  }
+
   const signals: GateSignals = {
     ciConclusion,
     lockdownActive: false,
     blockingReviewComments: blockingComments,
     coveragePctTouched: null,
+    outlineClean,
     ...autonomyFrom(ctx.merged),
   };
   const decision = mergeGateFor(ctx.mode, signals);

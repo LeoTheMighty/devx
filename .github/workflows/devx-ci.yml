@@ -29,6 +29,9 @@ jobs:
         node: ['20']
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: the outline-check step diffs origin/main...HEAD.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -43,3 +46,10 @@ jobs:
 
       - name: Test
         run: npm test
+
+      # Outline protection L2: outline.md / OUTLINE.md changes never ride in
+      # a PR — they reach main only via the human's `devx outline commit`.
+      # PR-only: push-to-main has no base range to diff.
+      - name: Outline check
+        if: github.event_name == 'pull_request'
+        run: node dist/cli.js outline check --diff "origin/${{ github.base_ref }}...HEAD"

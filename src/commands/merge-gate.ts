@@ -43,6 +43,7 @@ import { dirname, join } from "node:path";
 import type { Command } from "commander";
 
 import { findProjectConfig, loadMerged } from "../lib/config-io.js";
+import { classifyDiffNames } from "../lib/engine/outline.js";
 import {
   AmbiguousSpecHashError,
   SPEC_TYPE_DIRS,
@@ -73,7 +74,11 @@ export interface RunMergeGateOpts {
   /** Test seam: explicit project config path (skip findProjectConfig walk). */
   projectPath?: string;
   /** Test seam: shell-out replacement for `gh ...`. */
-  exec?: (cmd: string, args: string[]) => ExecResult;
+  exec?: (
+    cmd: string,
+    args: string[],
+    o?: { cwd?: string },
+  ) => ExecResult;
   /**
    * Transient-failure retry tuning (debug-d7e8e5). The seam — injected or
    * real — is always retry-wrapped; `false` opts out.
@@ -160,8 +165,12 @@ export function readFrontmatter(specPath: string): ParsedFrontmatter {
   return result;
 }
 
-function defaultExec(cmd: string, args: string[]): ExecResult {
-  const r = spawnSync(cmd, args, { encoding: "utf8" });
+function defaultExec(
+  cmd: string,
+  args: string[],
+  o?: { cwd?: string },
+): ExecResult {
+  const r = spawnSync(cmd, args, { encoding: "utf8", cwd: o?.cwd });
   // spawnSync returns {error, status:null} when the spawn itself failed
   // (ENOENT, EACCES, …). Coercing `r.status ?? 0` would mask that as a
   // success and downstream JSON parse would silently produce empty results
@@ -466,11 +475,23 @@ export function runMergeGate(
   // /devx-manage (Phase 2); always false here until that lands.
   const lockdownActive = false;
 
+  // Outline protection L2 — same scan `devx outline check` runs, gathered
+  // here so src/lib/merge-gate.ts stays pure (no-io pin). git failure →
+  // null → the decision fn fails closed.
+  let outlineClean: boolean | null = null;
+  const od = baseExec("git", ["diff", "--name-only", "origin/main...HEAD"], {
+    cwd: projectDir,
+  });
+  if (od.exitCode === 0) {
+    outlineClean = classifyDiffNames(od.stdout.split("\n")).length === 0;
+  }
+
   const signals: GateSignals = {
     ciConclusion,
     lockdownActive,
     blockingReviewComments,
     coveragePctTouched,
+    outlineClean,
     count: trustCount,
     initialN: trustInitialN,
   };

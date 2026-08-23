@@ -56,6 +56,7 @@ function signals(overrides: Partial<GateSignals>): GateSignals {
     lockdownActive: false,
     blockingReviewComments: 0,
     coveragePctTouched: null,
+    outlineClean: true,
     ...NEUTRAL_TRUST,
     ...overrides,
   };
