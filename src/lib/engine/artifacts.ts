@@ -20,12 +20,29 @@ import { join } from "node:path";
 // Workstream-relative artifact paths (display form).
 // ---------------------------------------------------------------------------
 
+/** Stage folders (folder-per-artifact layout). Each holds agent.md (the
+ *  authoritative gate subject), human.md (agent-maintained digest),
+ *  outline.md (HUMAN-ONLY, optional), and outline-critique.md (the agent's
+ *  critique of the outline). evals/ is stage-folder-shaped too: E-*
+ *  artifacts + RED-report.md play the agent.md role there. */
+export const STAGE_DIRS = ["prd", "design", "plan", "evals"] as const;
+export type StageDir = (typeof STAGE_DIRS)[number];
+
+/** Authoritative artifact basename inside a stage folder. */
+export const AGENT_BASENAME = "agent.md";
+/** Agent-maintained succinct digest (mermaid-first). Never a gate input. */
+export const HUMAN_BASENAME = "human.md";
+/** Human-only outline. Never written by an agent; never a gate input. */
+export const OUTLINE_BASENAME = "outline.md";
+/** The agent's critique of the human's outline. Agent-writable. */
+export const OUTLINE_CRITIQUE_BASENAME = "outline-critique.md";
+
 /** PRD stage's authoritative artifact (Gate 1 subject). */
-export const PRD_REL = "prd.md";
+export const PRD_REL = "prd/agent.md";
 /** Design stage's authoritative artifact (Gate 2 subject). */
-export const DESIGN_REL = "design.md";
+export const DESIGN_REL = "design/agent.md";
 /** Plan stage's authoritative artifact (Gate 3 subject; coverage table + phases). */
-export const PLAN_REL = "plan.md";
+export const PLAN_REL = "plan/agent.md";
 /** EARS expectations — Gate 1 co-input, Gate 4 driver. Workstream root. */
 export const EXPECTATIONS_REL = "expectations.md";
 /** Derived working memory (`devx todo sync`). Workstream root; never a gate input. */
@@ -41,12 +58,29 @@ export const CHECKPOINTS_DIR_REL = "checkpoints";
 /** Outcome scoring output (devx outcome). */
 export const RESULTS_REL = "RESULTS.md";
 
-/** The subdirs `devx workstream new` creates empty. */
+/** The subdirs `devx workstream new` creates empty. `prd` is created by the
+ *  scaffold's own prd/agent.md write; design/ and plan/ appear when their
+ *  stage authors into them (or `devx outline init` gets there first). */
 export const SCAFFOLD_SUBDIRS = [
   DECISIONS_DIR_REL,
   CHECKPOINTS_DIR_REL,
   EVALS_DIR_REL,
 ] as const;
+
+/** Workstream-relative path of a stage-folder file. */
+export function stageFileRel(stage: StageDir, basename: string): string {
+  return `${stage}/${basename}`;
+}
+
+/** Workstream-relative outline path for a stage. */
+export const outlineRel = (stage: StageDir): string =>
+  stageFileRel(stage, OUTLINE_BASENAME);
+/** Workstream-relative outline-critique path for a stage. */
+export const outlineCritiqueRel = (stage: StageDir): string =>
+  stageFileRel(stage, OUTLINE_CRITIQUE_BASENAME);
+/** Workstream-relative human-digest path for a stage. */
+export const humanRel = (stage: StageDir): string =>
+  stageFileRel(stage, HUMAN_BASENAME);
 
 // ---------------------------------------------------------------------------
 // Absolute resolvers.
@@ -88,9 +122,9 @@ export const RED_REPORT_BASENAME = "RED-report.md";
  *  `devx next` between row 10 (author evals) and row 11 (run the gate). */
 const NON_AUTHORED_EVAL_ENTRIES = new Set([
   RED_REPORT_BASENAME,
-  "human.md",
-  "outline.md",
-  "outline-critique.md",
+  HUMAN_BASENAME,
+  OUTLINE_BASENAME,
+  OUTLINE_CRITIQUE_BASENAME,
 ]);
 
 /** True when an evals/ directory entry is an authored RED artifact

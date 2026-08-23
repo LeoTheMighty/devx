@@ -25,6 +25,9 @@ import {
   cascadeFor,
   computeRevise,
 } from "../lib/engine/revise.js";
+
+/** Stage shorthands cascadeFor accepts (`--touched prd`). */
+const STAGE_NAMES = new Set(["prd", "design", "plan"]);
 import {
   type EngineFs,
   WorkstreamError,
@@ -84,10 +87,12 @@ export function runRevise(
     return 1;
   }
 
-  // A slashed path must point INTO this workstream. `--touched prd.md`
-  // (bare basename) is trusted; `--touched _devx/workstreams/other/prd.md`
+  // A path beyond the workstream-relative key must point INTO this
+  // workstream. `--touched prd/agent.md` / `--touched prd` / a bare root
+  // basename is trusted; `--touched _devx/workstreams/other/prd/agent.md`
   // against this hash is a cross-workstream mistake and refused.
-  if (touched.includes("/") || touched.includes(sep)) {
+  const isRelKey = touched === entry.artifact || STAGE_NAMES.has(touched);
+  if (!isRelKey && (touched.includes("/") || touched.includes(sep))) {
     const expectedAbs = resolvePath(ws.workstreamAbs, entry.artifact);
     const touchedAbs = resolvePath(ctx.ctx.repoRoot, touched);
     if (touchedAbs !== expectedAbs) {
@@ -145,7 +150,7 @@ export function register(program: Command): void {
     .argument("<hash>", "workstream (plan spec) hash")
     .requiredOption(
       "--touched <path>",
-      `the artifact being revised: ${KNOWN_ARTIFACTS.join(" | ")} (basename or workstream-relative path)`,
+      `the artifact being revised: ${KNOWN_ARTIFACTS.join(" | ")} (workstream-relative path, root basename, or stage shorthand prd|design|plan)`,
     )
     .action((hash: string, cmdOpts: { touched: string }) => {
       const code = runRevise([hash], { touched: cmdOpts.touched });

@@ -96,7 +96,7 @@ describe("evaluateGatePrd — seeded defects", () => {
     expect(result.verdict).toBe("FAIL");
     const gap = result.gaps.find((g) => g.check === "goal-uncovered");
     expect(gap!.message).toContain("G-3");
-    expect(gap!.location).toMatch(/^prd\.md:\d+$/);
+    expect(gap!.location).toMatch(/^prd\/agent\.md:\d+$/);
   });
 
   it("uncovered UC-/CAP-/FR- IDs do NOT fail the gate (only G- is bidirectional)", () => {
@@ -292,7 +292,7 @@ function seedWorkstream(opts: { blockedBy?: string } = {}): void {
     ].join("\n"),
   );
   repo.mkdir(WS);
-  repo.write(`${WS}/prd.md`, validPrd());
+  repo.write(`${WS}/prd/agent.md`, validPrd());
   repo.write(`${WS}/expectations.md`, validExpectations());
 }
 
@@ -343,7 +343,7 @@ describe("devx gate prd — CLI driver", () => {
   it("FAIL on the raw template (all furniture) with per-section gaps", () => {
     seedWorkstream();
     // Overwrite with the shipped templates (title substituted, rest furniture).
-    repo.write(`${WS}/prd.md`, repo.read("_devx/templates/engine/prd.md"));
+    repo.write(`${WS}/prd/agent.md`, repo.read("_devx/templates/engine/prd/agent.md"));
     repo.write(`${WS}/expectations.md`, repo.read("_devx/templates/engine/expectations.md"));
     const { code, io } = gatePrd();
     expect(code).toBe(1);
@@ -360,15 +360,15 @@ describe("devx gate prd — CLI driver", () => {
     expect(gap!.message).toContain("q7");
   });
 
-  it("missing prd.md → exit 1 with gate-input-missing (refusal, not error)", () => {
+  it("missing prd/agent.md → exit 1 with gate-input-missing (refusal, not error)", () => {
     seedWorkstream();
-    repo.write(`${WS}/prd.md`, ""); // can't unlink via fixture; use fs seam instead
+    repo.write(`${WS}/prd/agent.md`, ""); // can't unlink via fixture; use fs seam instead
     const io = captureIo();
     const code = runGatePrd(["abc123"], {
       ...io,
       projectPath: repo.configPath,
       fs: {
-        exists: (p: string) => !p.endsWith("prd.md") || p.includes("templates"),
+        exists: (p: string) => !p.endsWith("prd/agent.md") || p.includes("templates"),
       },
     });
     expect(code).toBe(1);
@@ -403,7 +403,7 @@ describe("devx gate prd — CLI driver", () => {
         `---\nhash: abc123\ntype: plan\nstatus: in-progress\nstage: prd\nworkstream: ${WS}\n---\nbody\n`,
       );
       strict.mkdir(WS);
-      strict.write(`${WS}/prd.md`, validPrd());
+      strict.write(`${WS}/prd/agent.md`, validPrd());
       strict.write(`${WS}/expectations.md`, validExpectations());
       const io = captureIo();
       const code = runGatePrd(["abc123"], { ...io, projectPath: strict.configPath });

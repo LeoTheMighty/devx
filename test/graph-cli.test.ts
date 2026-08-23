@@ -182,7 +182,7 @@ function makeStdRepo(): Repo {
       row("-", SPECS[1], "Blocked-by: aaa111."),
       row(" ", SPECS[2]),
     ],
-    { "_devx/workstreams/ws-alpha/plan.md": "# Plan — ws-alpha\n" },
+    { "_devx/workstreams/ws-alpha/plan/agent.md": "# Plan — ws-alpha\n" },
   );
 }
 
@@ -343,8 +343,8 @@ describe("devx graph — scoping", () => {
         row("-", { hash: "bbb111", slug: "beta-one", title: "Beta one", status: "blocked" }, "Blocked-by: aaa111."),
       ],
       {
-        "_devx/workstreams/ws-alpha/plan.md": "# a\n",
-        "_devx/workstreams/ws-beta/plan.md": "# b\n",
+        "_devx/workstreams/ws-alpha/plan/agent.md": "# a\n",
+        "_devx/workstreams/ws-beta/plan/agent.md": "# b\n",
       },
     );
     const r = run(repo.root, { format: "json", workstream: ["ws-beta"] });

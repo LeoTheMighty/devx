@@ -71,13 +71,13 @@ function buildFixture(root: string): void {
   // `_bmad/` fixture dir went away with the v2x101 ejection.)
   mkdirSync(join(root, "_devx", "templates", "engine"), { recursive: true });
   writeFileSync(
-    join(root, "_devx", "templates", "engine", "prd.md"),
+    join(root, "_devx", "templates", "engine", "prd/agent.md"),
     "# PRD template placeholder\n",
     "utf8",
   );
   mkdirSync(join(root, "_devx", "workstreams", "sample"), { recursive: true });
   writeFileSync(
-    join(root, "_devx", "workstreams", "sample", "plan.md"),
+    join(root, "_devx", "workstreams", "sample", "plan/agent.md"),
     "# Plan placeholder\n",
     "utf8",
   );

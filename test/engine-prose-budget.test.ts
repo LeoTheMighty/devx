@@ -28,6 +28,23 @@ const STAGE_SKILL_SECTIONS: string[] = [
 
 const ENGINE_TEMPLATES_DIR = join(REAL_REPO_ROOT, "_devx", "templates", "engine");
 
+/** Every .md under the templates dir, /-joined relative names, recursive —
+ *  the folder-per-artifact layout nests stage templates one level deep, and
+ *  a flat readdir would silently under-count the budget. */
+function listTemplateMdFiles(): string[] {
+  const out: string[] = [];
+  const walk = (prefix: string): void => {
+    const dir = join(ENGINE_TEMPLATES_DIR, ...prefix.split("/").filter(Boolean));
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+      if (entry.isDirectory()) walk(rel);
+      else if (entry.name.endsWith(".md")) out.push(rel);
+    }
+  };
+  walk("");
+  return out.sort();
+}
+
 function budgetBytes(): number {
   // engine.prose_budget_kb read defensively from the real project config
   // (the `engine:` block doesn't exist until v2x101 — defaults apply).
@@ -46,9 +63,8 @@ describe("engine prose-budget canary (S-1)", () => {
   it("templates + stage skill sections fit inside engine.prose_budget_kb", () => {
     const surfaces: Array<{ path: string; bytes: number }> = [];
 
-    for (const name of readdirSync(ENGINE_TEMPLATES_DIR).sort()) {
-      if (!name.endsWith(".md")) continue;
-      const abs = join(ENGINE_TEMPLATES_DIR, name);
+    for (const name of listTemplateMdFiles()) {
+      const abs = join(ENGINE_TEMPLATES_DIR, ...name.split("/"));
       surfaces.push({
         path: `_devx/templates/engine/${name}`,
         bytes: statSync(abs).size,
@@ -73,9 +89,14 @@ describe("engine prose-budget canary (S-1)", () => {
     ).toBeLessThanOrEqual(budget);
   });
 
-  it("counts at least the nine v2s101 templates (canary isn't scanning an empty dir)", () => {
-    const found = readdirSync(ENGINE_TEMPLATES_DIR).filter((n) => n.endsWith(".md"));
-    expect(found.length).toBeGreaterThanOrEqual(9);
+  it("counts at least the nine v2s101 templates plus the nested stage files (canary isn't scanning an empty dir)", () => {
+    const found = listTemplateMdFiles();
+    // 8 flat survivors + 3 stage agent.md + 4×(human/outline/critique) +
+    // OUTLINE.md ≥ 21; the ≥9 floor predates the folder layout.
+    expect(found.length).toBeGreaterThanOrEqual(21);
+    // The nested walk actually descends — a flat readdir would miss these.
+    expect(found).toContain("prd/agent.md");
+    expect(found).toContain("evals/outline.md");
   });
 
   // S-1 full-run measurement (v2o101, migration retro): the prose actually
@@ -95,9 +116,8 @@ describe("engine prose-budget canary (S-1)", () => {
   // without this test quietly re-deciding the budget question.
   it("S-1 full-run surface (+ devx.md execute arm) stays under the 2x drift tripwire", () => {
     let total = 0;
-    for (const name of readdirSync(ENGINE_TEMPLATES_DIR).sort()) {
-      if (!name.endsWith(".md")) continue;
-      total += statSync(join(ENGINE_TEMPLATES_DIR, name)).size;
+    for (const name of listTemplateMdFiles()) {
+      total += statSync(join(ENGINE_TEMPLATES_DIR, ...name.split("/"))).size;
     }
     for (const rel of [...STAGE_SKILL_SECTIONS, ".claude/commands/devx.md"]) {
       total += Buffer.byteLength(

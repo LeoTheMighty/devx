@@ -66,10 +66,35 @@ export const CASCADE_TABLE: CascadeEntry[] = [
 
 export const KNOWN_ARTIFACTS = CASCADE_TABLE.map((e) => e.artifact);
 
-/** Cascade row for a touched path (matched on basename), or null. */
+/** Bare-stage shorthand: `--touched prd` names that stage's authoritative
+ *  artifact. evals has no cascade row (RED artifacts re-run, they don't
+ *  roll stages back), so it is deliberately absent. */
+const STAGE_SHORTHAND: Record<string, string> = {
+  prd: PRD_REL,
+  design: DESIGN_REL,
+  plan: PLAN_REL,
+};
+
+/** Cascade row for a touched path, or null. Matches the workstream-relative
+ *  key (`prd/agent.md`), a root-artifact basename (`expectations.md`), a
+ *  longer path ending in the key, or the bare stage shorthand (`prd`).
+ *  A bare `agent.md` is ambiguous across stages → null (refusal). human.md,
+ *  outline.md and outline-critique.md never cascade — a digest refresh or
+ *  outline critique must not reset gate flags. */
 export function cascadeFor(touched: string): CascadeEntry | null {
-  const base = touched.split("/").pop() ?? touched;
-  return CASCADE_TABLE.find((e) => e.artifact === base) ?? null;
+  const norm = touched.replace(/\\/g, "/").replace(/\/+$/, "");
+  const segs = norm.split("/").filter((s) => s !== "");
+  const last1 = segs[segs.length - 1] ?? "";
+  const last2 = segs.slice(-2).join("/");
+  const shorthand = segs.length === 1 ? STAGE_SHORTHAND[norm] : undefined;
+  return (
+    CASCADE_TABLE.find(
+      (e) =>
+        e.artifact === last2 ||
+        e.artifact === last1 ||
+        e.artifact === shorthand,
+    ) ?? null
+  );
 }
 
 export interface ReviseComputation {

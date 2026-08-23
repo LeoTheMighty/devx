@@ -9,7 +9,7 @@
 // queue the listener isn't writing to.
 //
 // Spec: dev/dev-rtl102-2026-07-30T09:31-learn-config-section.md
-// Plan: _devx/workstreams/retro-listener/plan.md §Phase 2
+// Plan: _devx/workstreams/retro-listener/plan/agent.md §Phase 2
 
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -43,7 +43,7 @@ describe("learnConfigFrom", () => {
     }
   });
 
-  it("defaults match design.md §Interfaces + devx.config.yaml §15c", () => {
+  it("defaults match design/agent.md §Interfaces + devx.config.yaml §15c", () => {
     expect(LEARN_DEFAULTS.idleMinutes).toBe(15);
     expect(LEARN_DEFAULTS.retroTimeoutMinutes).toBe(360);
     expect(LEARN_DEFAULTS.home).toBe("~/.claude/devx");

@@ -580,13 +580,23 @@ function defaultDetectPrTemplate(ctx: SurfaceContext): boolean {
 // v2x101: pre-v2 repos upgraded in place need the engine stage templates
 // the v2 planning stages instantiate from — fresh init writes them
 // (writeEngineTemplates); the upgrade path repairs their absence here.
-// Present = the dir exists and carries at least one .md template.
+// Present = the NESTED sentinel exists. "Any top-level .md" would be
+// satisfied by a flat-era template dir (todo.md, expectations.md survive at
+// the root), so the folder-per-artifact upgrade would never install
+// prd/agent.md and the scaffolder would throw `engine template missing`.
+// The repair (writeEngineTemplates) is per-file write-if-missing, so it
+// back-fills nested files without clobbering anything the user edited.
 function defaultDetectEngineTemplates(ctx: SurfaceContext): boolean {
-  const dir = join(ctx.repoRoot, "_devx", "templates", "engine");
-  if (!existsSync(dir)) return false;
+  const sentinel = join(
+    ctx.repoRoot,
+    "_devx",
+    "templates",
+    "engine",
+    "prd",
+    "agent.md",
+  );
   try {
-    if (!statSync(dir).isDirectory()) return false;
-    return readdirSync(dir).some((n) => n.endsWith(".md"));
+    return existsSync(sentinel) && statSync(sentinel).isFile();
   } catch {
     return false;
   }

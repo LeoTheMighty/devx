@@ -222,6 +222,10 @@ describe("cli303 — devx --help command listing", () => {
                                      at workstream close; score the PRD's G- goals vs
                                      reality into RESULTS.md with verdict
                                      keep|tune|restart|retire.
+        outline                      Human-only outline files (outline.md /
+                                     OUTLINE.md). guard = PreToolUse hook endpoint;
+                                     check = PR-diff scan; init/commit = human-side
+                                     helpers that refuse inside agent sessions.
         plan-helper                  Helpers invoked by the /devx-plan skill body
                                      (Phase 1). Subcommand-driven; mirrors \`devx
                                      merge-gate\`'s passthrough pattern.

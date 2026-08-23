@@ -38,6 +38,11 @@ describe("isProtectedOutlinePath", () => {
     expect(isProtectedOutlinePath("/abs/repo/OUTLINE.md")).toBe(true);
   });
 
+  it("does NOT protect shipped outline templates (agent-authored scaffolds)", () => {
+    expect(isProtectedOutlinePath("_devx/templates/engine/prd/outline.md")).toBe(false);
+    expect(isProtectedOutlinePath("/abs/repo/_devx/templates/engine/OUTLINE.md")).toBe(false);
+  });
+
   it("does NOT protect the agent's critique files", () => {
     expect(isProtectedOutlinePath("_devx/workstreams/x/prd/outline-critique.md")).toBe(false);
     expect(isProtectedOutlinePath("OUTLINE-CRITIQUE.md")).toBe(false);
@@ -105,6 +110,25 @@ describe("guardDecision", () => {
     ]) {
       expect(guardDecision({ tool_name: "Bash", tool_input: { command: cmd } }).deny).toBe(true);
     }
+  });
+
+  it("allows Bash commands that only touch outline TEMPLATES", () => {
+    expect(
+      guardDecision({
+        tool_name: "Bash",
+        tool_input: { command: "git add _devx/templates/engine/prd/outline.md" },
+      }).deny,
+    ).toBe(false);
+    // …but a mixed command naming a real outline still denies.
+    expect(
+      guardDecision({
+        tool_name: "Bash",
+        tool_input: {
+          command:
+            "cp _devx/templates/engine/prd/outline.md _devx/workstreams/x/prd/outline.md",
+        },
+      }).deny,
+    ).toBe(true);
   });
 
   it("carves out `devx outline check|guard` Bash invocations", () => {

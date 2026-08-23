@@ -46,7 +46,7 @@ function seedWorkstream(): void {
     ].join("\n"),
   );
   repo.mkdir(WS);
-  repo.write(`${WS}/prd.md`, validPrd());
+  repo.write(`${WS}/prd/agent.md`, validPrd());
 }
 
 /** Linked dev spec with status done — the phase-pointer ground truth. */
@@ -154,7 +154,7 @@ describe("E-4 — repo-level `devx next` advisory todo-drift rows", () => {
     );
     // Full artifact set so no earlier v1 row (4/6/8) reopens a stage —
     // existence checks only, content is irrelevant here.
-    for (const f of ["expectations.md", "design.md", "plan.md"]) {
+    for (const f of ["expectations.md", "design/agent.md", "plan/agent.md"]) {
       repo.write(`${WS}/${f}`, "x");
     }
     seedDoneDevSpec();

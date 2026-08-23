@@ -132,7 +132,7 @@ function seedRepo(flags: {
     ].join("\n"),
   );
   repo.mkdir(WS);
-  repo.write(`${WS}/prd.md`, validPrd());
+  repo.write(`${WS}/prd/agent.md`, validPrd());
   repo.write(`${WS}/expectations.md`, validExpectations());
   if (flags.todo !== null) repo.write(`${WS}/todo.md`, flags.todo);
   return repo;
@@ -163,7 +163,7 @@ function traceGate(
     if (gate === "prd") {
       code = runGatePrd(["abc123"], common);
     } else if (gate === "coverage") {
-      repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
+      repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
       repo.write("table.json", designTable());
       code = runGateCoverage(
         ["abc123"],
@@ -174,8 +174,8 @@ function traceGate(
         `${WS}/decisions/${formatDate(FIXED_NOW())}-design-verify.md`,
       );
     } else {
-      repo.write(`${WS}/design.md`, "## Design\n");
-      repo.write(`${WS}/plan.md`, validPlan());
+      repo.write(`${WS}/design/agent.md`, "## Design\n");
+      repo.write(`${WS}/plan/agent.md`, validPlan());
       repo.write("test/demo.test.mjs", "process.exit(1);\n");
       repo.write("test/perf.test.mjs", "process.exit(1);\n");
       code = runGateEvalsCli(["abc123"], {}, {

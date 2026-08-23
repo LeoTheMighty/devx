@@ -43,7 +43,7 @@ import {
   readdirSync,
   statSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Document } from "yaml";
 
@@ -885,6 +885,23 @@ export interface WriteEngineTemplatesOpts {
   templatesRoot?: string;
 }
 
+/** All .md files under `root`, as /-joined paths relative to it (one or two
+ *  levels — the stage folders nest exactly one level). */
+function listMdFilesRecursive(root: string, prefix: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(join(root, ...prefix.split("/").filter(Boolean)), {
+    withFileTypes: true,
+  })) {
+    const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+    if (entry.isDirectory()) {
+      out.push(...listMdFilesRecursive(root, rel));
+    } else if (entry.name.endsWith(".md")) {
+      out.push(rel);
+    }
+  }
+  return out;
+}
+
 export function writeEngineTemplates(
   repoRoot: string,
   opts: WriteEngineTemplatesOpts = {},
@@ -913,18 +930,20 @@ export function writeEngineTemplates(
   const written: string[] = [];
   const skipped: string[] = [];
 
-  const names = readdirSync(srcDir)
-    .filter((n) => n.endsWith(".md"))
-    .sort();
+  // Recursive walk: the folder-per-artifact layout nests stage templates
+  // (prd/agent.md, prd/outline.md, …) one level deep — and a flat readdir
+  // would silently skip them, leaving upgraded repos unscaffoldable.
+  const names = listMdFilesRecursive(srcDir, "").sort();
   for (const name of names) {
-    const dest = join(destDir, name);
-    const rel = join("_devx", "templates", "engine", name);
+    const dest = join(destDir, ...name.split("/"));
+    const rel = join("_devx", "templates", "engine", ...name.split("/"));
     if (existsSync(dest)) {
       skipped.push(rel);
       continue;
     }
     if (!opts.dryRun) {
-      writeAtomic(dest, readTemplate(join(srcDir, name)));
+      mkdirSync(dirname(dest), { recursive: true });
+      writeAtomic(dest, readTemplate(join(srcDir, ...name.split("/"))));
     }
     written.push(rel);
   }

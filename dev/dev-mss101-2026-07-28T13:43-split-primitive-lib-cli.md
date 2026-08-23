@@ -58,7 +58,7 @@ seam. Plan phase 1 of workstream mid-story-split.
 
 ## Technical notes
 
-Design: `_devx/workstreams/mid-story-split/design.md` §Architecture 1.
+Design: `_devx/workstreams/mid-story-split/design/agent.md` §Architecture 1.
 Rollback posture mirrors `claimSpec` capture-originals / restore-on-partial
 (`src/lib/devx/claim.ts:632-691`); `withBacklogLock` bodies stay
 synchronous (`src/lib/backlog/mutate.ts:82`). Ownership guard:

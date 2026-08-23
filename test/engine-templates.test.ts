@@ -7,10 +7,23 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const engineDir = join(repoRoot, "_devx", "templates", "engine");
 
 const EXPECTED_TEMPLATES = [
-  "prd.md",
+  "prd/agent.md",
+  "prd/human.md",
+  "prd/outline.md",
+  "prd/outline-critique.md",
+  "design/agent.md",
+  "design/human.md",
+  "design/outline.md",
+  "design/outline-critique.md",
+  "plan/agent.md",
+  "plan/human.md",
+  "plan/outline.md",
+  "plan/outline-critique.md",
+  "evals/human.md",
+  "evals/outline.md",
+  "evals/outline-critique.md",
+  "OUTLINE.md",
   "expectations.md",
-  "design.md",
-  "plan.md",
   "decision.md",
   "red-report.md",
   "checkpoint.md",
@@ -26,7 +39,17 @@ const FORBIDDEN = /jira|confluence|atlassian/i;
 
 describe("engine templates (v2s101)", () => {
   it("ships all engine templates", () => {
-    const found = readdirSync(engineDir).filter((f) => f.endsWith(".md"));
+    // Recursive: stage templates nest one level deep (prd/agent.md, …).
+    const found: string[] = [];
+    const walk = (prefix: string): void => {
+      const dir = join(engineDir, ...prefix.split("/").filter(Boolean));
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+        if (entry.isDirectory()) walk(rel);
+        else if (entry.name.endsWith(".md")) found.push(rel);
+      }
+    };
+    walk("");
     for (const name of EXPECTED_TEMPLATES) {
       expect(found, `missing template ${name}`).toContain(name);
     }

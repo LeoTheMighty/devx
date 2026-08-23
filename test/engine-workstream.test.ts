@@ -49,13 +49,13 @@ describe("devx workstream new — scaffold", () => {
     expect(j.workstreamDir).toBe("_devx/workstreams/demo-feature");
     expect(j.noop).toBe(false);
 
-    expect(repo.exists("_devx/workstreams/demo-feature/prd.md")).toBe(true);
+    expect(repo.exists("_devx/workstreams/demo-feature/prd/agent.md")).toBe(true);
     expect(repo.exists("_devx/workstreams/demo-feature/expectations.md")).toBe(true);
     expect(repo.exists("_devx/workstreams/demo-feature/decisions")).toBe(true);
     expect(repo.exists("_devx/workstreams/demo-feature/checkpoints")).toBe(true);
     expect(repo.exists("_devx/workstreams/demo-feature/evals")).toBe(true);
-    // design.md / plan.md are NOT pre-created — drafted by their stages.
-    expect(repo.exists("_devx/workstreams/demo-feature/design.md")).toBe(false);
+    // design/agent.md / plan/agent.md are NOT pre-created — drafted by their stages.
+    expect(repo.exists("_devx/workstreams/demo-feature/design/agent.md")).toBe(false);
 
     const specRel = j.specPath as string;
     expect(specRel).toMatch(/^plan\/plan-abc123-2026-07-05T13:01-demo-feature\.md$/);
@@ -74,7 +74,7 @@ describe("devx workstream new — scaffold", () => {
 
   it("substitutes the workstream title into the copied templates", () => {
     newWs("demo-feature", "abc123");
-    const prd = repo.read("_devx/workstreams/demo-feature/prd.md");
+    const prd = repo.read("_devx/workstreams/demo-feature/prd/agent.md");
     expect(prd).toContain("# PRD — Demo Feature");
     expect(prd).not.toContain("<workstream title>");
   });
@@ -109,12 +109,12 @@ describe("devx workstream new — idempotency + refusals (seeded defects)", () =
   it("double-run is a clean no-op (exit 0, nothing rewritten)", () => {
     newWs("demo-feature", "abc123");
     // Author real content; the re-run must not clobber it.
-    repo.write("_devx/workstreams/demo-feature/prd.md", "# my real prd\n");
+    repo.write("_devx/workstreams/demo-feature/prd/agent.md", "# my real prd\n");
     const { code, io } = newWs("demo-feature", "abc123");
     expect(code).toBe(0);
     const j = io.json() as Record<string, unknown>;
     expect(j.noop).toBe(true);
-    expect(repo.read("_devx/workstreams/demo-feature/prd.md")).toBe("# my real prd\n");
+    expect(repo.read("_devx/workstreams/demo-feature/prd/agent.md")).toBe("# my real prd\n");
     expect(io.stderr()).toContain("already scaffolded");
   });
 
@@ -253,7 +253,7 @@ describe("createWorkstream — engine.workstreams_root override", () => {
       now: FIXED_NOW,
     });
     expect(result.workstreamDir).toBe("streams/custom-root");
-    expect(repo.exists("streams/custom-root/prd.md")).toBe(true);
+    expect(repo.exists("streams/custom-root/prd/agent.md")).toBe(true);
   });
 });
 

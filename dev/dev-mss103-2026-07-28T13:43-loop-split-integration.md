@@ -66,7 +66,7 @@ mid-story-split. Parallel-safe with mss102.
 
 ## Technical notes
 
-Design: `_devx/workstreams/mid-story-split/design.md` §Architecture 3-4.
+Design: `_devx/workstreams/mid-story-split/design/agent.md` §Architecture 3-4.
 Workers never write specs/backlogs — the driver performs every split.
 Progress oracles reused, none added: `iterationsGood` counters,
 `isBookkeepingOnlyWorktree` (`git-tx.ts:288`), `diffStat` (`git-tx.ts:317`).

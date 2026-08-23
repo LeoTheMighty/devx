@@ -22,12 +22,15 @@
 //
 // Design: v2/02-engine.md §3 (folder-per-artifact layout)
 
+import { OUTLINE_BASENAME } from "./artifacts.js";
+
 // ---------------------------------------------------------------------------
 // Protected-path classification
 // ---------------------------------------------------------------------------
 
-/** Basename of every human-only outline inside a workstream. */
-export const OUTLINE_BASENAME = "outline.md";
+/** Basename of every human-only outline inside a workstream (re-exported
+ *  from the layout source of truth). */
+export { OUTLINE_BASENAME };
 
 /** Repo-root project outline (repo-relative path). */
 export const PROJECT_OUTLINE_REL = "OUTLINE.md";
@@ -36,10 +39,17 @@ export const PROJECT_OUTLINE_REL = "OUTLINE.md";
  *  callers can name it without re-spelling. */
 export const PROJECT_OUTLINE_CRITIQUE_REL = "OUTLINE-CRITIQUE.md";
 
+/** Shipped outline TEMPLATES are the one exception: they are agent-authored
+ *  scaffolds (`devx outline init` instantiates from them), not human
+ *  outlines — without this carve-out every template change would fail the
+ *  PR-diff scan and the hook would block devx's own packaging. */
+const TEMPLATE_PATH_RE = /(^|\/)_devx\/templates\//;
+
 /** True when a path (absolute or repo-relative, / or \ separated) names a
  *  protected outline file. */
 export function isProtectedOutlinePath(path: string): boolean {
   const norm = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  if (TEMPLATE_PATH_RE.test(norm)) return false;
   const base = norm.split("/").pop() ?? norm;
   if (base === OUTLINE_BASENAME) return true;
   // Repo-root OUTLINE.md: exact basename match. A bare basename is how the
@@ -66,9 +76,12 @@ const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
  *  is denied — reads go through the Read tool, writes are the human's. */
 const BASH_ALLOW_PREFIX_RE = /^\s*devx\s+outline\s+(check|guard)\b/;
 
-/** Textual outline reference inside a shell command. Catches redirects,
- *  cp/mv/sed targets, heredocs — anything that names the file. */
-const BASH_OUTLINE_REF_RE = /(^|[\s/\\"'`=(:,])(outline\.md|OUTLINE\.md)\b/;
+/** Path-ish tokens mentioning an outline file inside a shell command —
+ *  catches redirects, cp/mv/sed targets, heredocs, anything that names the
+ *  file. Each token is then classified with isProtectedOutlinePath, so
+ *  template-path mentions (agent-legitimate) pass while real outline
+ *  references deny. */
+const BASH_OUTLINE_TOKEN_RE = /[^\s"'`=(),;]*(?:outline\.md|OUTLINE\.md)/g;
 
 export interface GuardDecision {
   deny: boolean;
@@ -111,7 +124,8 @@ export function guardDecision(payload: unknown): GuardDecision {
     if (command === "" || BASH_ALLOW_PREFIX_RE.test(command)) {
       return { deny: false };
     }
-    if (BASH_OUTLINE_REF_RE.test(command)) {
+    const tokens = command.match(BASH_OUTLINE_TOKEN_RE) ?? [];
+    if (tokens.some((t) => isProtectedOutlinePath(t))) {
       return {
         deny: true,
         reason: `Bash command references an outline file — denied: ${DENY_COMMON}`,

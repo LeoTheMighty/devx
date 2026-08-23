@@ -17,7 +17,7 @@ branch: feat/dev-sgr107
 Prove the packaged CLI works in downstream-shaped repos (FR-6) and file
 the human path for friend-finder-mesh + palateful. Pure verification +
 distribution tail — no new product features. Plan phase 7 of workstream
-story-graph — read `_devx/workstreams/story-graph/plan.md` §Phase 7; the
+story-graph — read `_devx/workstreams/story-graph/plan/agent.md` §Phase 7; the
 RED artifact `evals/E-7_downstream-portability.ts` defines the contract
 and must flip green. Parallel-safe with sgr104/sgr105/sgr106.
 

@@ -17,7 +17,7 @@ branch: feat/dev-sgr102
 The one genuinely new read-model: `buildGraphModel()` in
 `src/lib/graph/model.ts` (new) assembling nodes/edges/groups/warnings from
 the hardened parsers. Pure library, no CLI yet. Plan phase 2 of workstream
-story-graph — read `_devx/workstreams/story-graph/plan.md` §Phase 2 and
+story-graph — read `_devx/workstreams/story-graph/plan/agent.md` §Phase 2 and
 `design.md` §Data (the GraphModel interface is pinned there, including the
 four warning codes `unknown-blocker` / `edge-drift` / `hyphen-key` /
 `heading-fallback`).

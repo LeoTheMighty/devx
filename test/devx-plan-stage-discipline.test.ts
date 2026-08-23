@@ -52,7 +52,7 @@ describe("/devx-plan stage discipline (v2e102)", () => {
   it("pins the load-bearing stage rules", () => {
     for (const rule of [
       "Gates gate passing and execution, not authoring",
-      "No phases, no\ntasks — design is the approach, not the sequence",
+      "No phases, no tasks — design is the\napproach, not the sequence",
       "sized to land as a single reviewable PR",
       "every lens claim citing a file must be grep-verified or dropped",
       "fail *for the right reason*",

@@ -18,7 +18,7 @@ The user-visible surface — deterministic Mermaid renderer + thin
 `devx graph` CLI — and the phase where all four P0 render/check/hardening
 evals go green. Ends with the live-repo run and the initial GRAPH.md
 commit. Plan phase 3 of workstream story-graph — read
-`_devx/workstreams/story-graph/plan.md` §Phase 3; the RED artifacts
+`_devx/workstreams/story-graph/plan/agent.md` §Phase 3; the RED artifacts
 (`evals/E-1` … `E-4`) define the CLI contract and must flip green.
 
 **Attended-only: loop must `--exclude`** — T3.6's GitHub-render

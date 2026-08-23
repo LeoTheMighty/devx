@@ -63,7 +63,7 @@ describe("detectCoverageMode", () => {
     expect((r as { refusal: string }).refusal).toContain("Gate 1");
   });
 
-  it("design mode when design.md exists and design_verified is false", () => {
+  it("design mode when design/agent.md exists and design_verified is false", () => {
     const r = detectCoverageMode({
       state: stateWith({}),
       designExists: true,
@@ -72,7 +72,7 @@ describe("detectCoverageMode", () => {
     expect(r.mode).toBe("design");
   });
 
-  it("earlier open gate wins: design mode even when plan.md also exists", () => {
+  it("earlier open gate wins: design mode even when plan/agent.md also exists", () => {
     const r = detectCoverageMode({
       state: stateWith({}),
       designExists: true,
@@ -81,7 +81,7 @@ describe("detectCoverageMode", () => {
     expect(r.mode).toBe("design");
   });
 
-  it("plan mode when design is verified and plan.md exists", () => {
+  it("plan mode when design is verified and plan/agent.md exists", () => {
     const r = detectCoverageMode({
       state: stateWith({ design_verified: true }),
       designExists: true,
@@ -118,7 +118,7 @@ describe("detectCoverageMode", () => {
 describe("extractSourceIds", () => {
   const files = { prd: validPrd(), expectations: validExpectations() };
 
-  it("design mode pulls the prd.md ID set", () => {
+  it("design mode pulls the prd/agent.md ID set", () => {
     expect(extractSourceIds("design", files)).toEqual([
       "G-1",
       "G-2",
@@ -303,10 +303,10 @@ function seed(flags: {
     ].join("\n"),
   );
   repo.mkdir(WS);
-  repo.write(`${WS}/prd.md`, validPrd());
+  repo.write(`${WS}/prd/agent.md`, validPrd());
   repo.write(`${WS}/expectations.md`, validExpectations());
-  if (flags.design !== false) repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
-  if (flags.plan) repo.write(`${WS}/plan.md`, "## Plan\n\nreal.\n");
+  if (flags.design !== false) repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
+  if (flags.plan) repo.write(`${WS}/plan/agent.md`, "## Plan\n\nreal.\n");
 }
 
 function gateCoverage(tableJson?: string) {

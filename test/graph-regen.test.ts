@@ -388,7 +388,7 @@ describe("regenerateGraph — never throws", () => {
         ...SPECS[0],
         fm: ["plan: _devx/ws/alpha"],
       }),
-      [`${R}/_devx/ws/alpha/plan.md`]: "# Plan — alpha\n",
+      [`${R}/_devx/ws/alpha/plan/agent.md`]: "# Plan — alpha\n",
     });
     const withDefault = captureWrite();
     regenerateGraph(mapFs(wsFiles), R, ENGINE_DEFAULTS, {

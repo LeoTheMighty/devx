@@ -69,7 +69,7 @@ function seedSpec(flags: {
     ].join("\n"),
   );
   repo.mkdir(WS);
-  repo.write(`${WS}/prd.md`, validPrd());
+  repo.write(`${WS}/prd/agent.md`, validPrd());
   repo.write(`${WS}/expectations.md`, validExpectations());
 }
 
@@ -118,7 +118,7 @@ describe("gate prd — verdict persistence", () => {
     seedSpec({});
     const before = repo.read(SPEC_REL);
     const { code } = gatePrd({
-      exists: (p) => !p.endsWith("prd.md") || p.includes("templates"),
+      exists: (p) => !p.endsWith("prd/agent.md") || p.includes("templates"),
     });
     expect(code).toBe(1);
     expect(repo.read(SPEC_REL)).toBe(before);
@@ -147,7 +147,7 @@ function gateCoverage(tableJson?: string) {
 describe("gate coverage — verdict persistence", () => {
   it("design PASS writes gate_verdicts.design", () => {
     seedSpec({ prd_validated: true, stage: "design" });
-    repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
+    repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
     expect(gateCoverage(designTable()).code).toBe(0);
     const s = state();
     expect(s.gateVerdicts.design).toBe("PASS");
@@ -156,7 +156,7 @@ describe("gate coverage — verdict persistence", () => {
 
   it("design CONCERNS advances the gate AND records CONCERNS", () => {
     seedSpec({ prd_validated: true, stage: "design" });
-    repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
+    repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
     expect(gateCoverage(designTable({ "CAP-1": "partial" })).code).toBe(0);
     const s = state();
     expect(s.gateVerdicts.design).toBe("CONCERNS");
@@ -165,7 +165,7 @@ describe("gate coverage — verdict persistence", () => {
 
   it("design FAIL writes the verdict only — flags and stage untouched", () => {
     seedSpec({ prd_validated: true, stage: "design" });
-    repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
+    repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
     expect(gateCoverage(designTable({ "FR-1": "missing" })).code).toBe(1);
     const s = state();
     expect(s.gateVerdicts.design).toBe("FAIL");
@@ -175,8 +175,8 @@ describe("gate coverage — verdict persistence", () => {
 
   it("plan PASS writes gate_verdicts.plan (coverage keys by evaluated surface)", () => {
     seedSpec({ prd_validated: true, design_verified: true, stage: "plan" });
-    repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
-    repo.write(`${WS}/plan.md`, "## Plan\n\nreal.\n");
+    repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
+    repo.write(`${WS}/plan/agent.md`, "## Plan\n\nreal.\n");
     expect(gateCoverage(planTable()).code).toBe(0);
     const s = state();
     expect(s.gateVerdicts.plan).toBe("PASS");
@@ -186,8 +186,8 @@ describe("gate coverage — verdict persistence", () => {
 
   it("plan FAIL (P0 floor) writes gate_verdicts.plan only", () => {
     seedSpec({ prd_validated: true, design_verified: true, stage: "plan" });
-    repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
-    repo.write(`${WS}/plan.md`, "## Plan\n\nreal.\n");
+    repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
+    repo.write(`${WS}/plan/agent.md`, "## Plan\n\nreal.\n");
     expect(gateCoverage(planTable({ "E-1": { artifact: null } })).code).toBe(1);
     const s = state();
     expect(s.gateVerdicts.plan).toBe("FAIL");
@@ -204,7 +204,7 @@ describe("gate coverage — verdict persistence", () => {
 
   it("exit-2 error (missing --table) writes nothing", () => {
     seedSpec({ prd_validated: true, stage: "design" });
-    repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
+    repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
     const before = repo.read(SPEC_REL);
     expect(gateCoverage(undefined).code).toBe(2);
     expect(repo.read(SPEC_REL)).toBe(before);
@@ -222,8 +222,8 @@ function seedEvals(flags: { plan_verified?: boolean } = {}): void {
     design_verified: true,
     plan_verified: flags.plan_verified ?? true,
   });
-  repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
-  repo.write(`${WS}/plan.md`, validPlan());
+  repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
+  repo.write(`${WS}/plan/agent.md`, validPlan());
   repo.write("test/demo.test.mjs", "process.exit(1);\n");
   repo.write("test/perf.test.mjs", "process.exit(1);\n");
 }
@@ -258,7 +258,7 @@ describe("gate evals — verdict persistence", () => {
   });
 
   it("CONCERNS (P1+ gap) flips the flag AND records CONCERNS verbatim", () => {
-    // No plan.md → every row tests-first; E-1/E-2 (demo.test.mjs) observed
+    // No plan/agent.md → every row tests-first; E-1/E-2 (demo.test.mjs) observed
     // RED, E-3's artifact (test/perf.test.mjs) missing → P2 gap →
     // CONCERNS. Pins that the combined patch writes result.verdict, not a
     // hardcoded PASS (adversarial-review test-gap finding).
@@ -268,7 +268,7 @@ describe("gate evals — verdict persistence", () => {
       design_verified: true,
       plan_verified: true,
     });
-    repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
+    repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
     repo.write("test/demo.test.mjs", "process.exit(1);\n");
     expect(gateEvals().code).toBe(0);
     const s = state();
@@ -323,7 +323,7 @@ function seedBrokenSpec(flags: {
     ].join("\n"),
   );
   repo.mkdir(WS);
-  repo.write(`${WS}/prd.md`, validPrd());
+  repo.write(`${WS}/prd/agent.md`, validPrd());
   repo.write(`${WS}/expectations.md`, validExpectations());
 }
 
@@ -346,7 +346,7 @@ describe("FAIL verdict write failure — gap diagnostics are never swallowed", (
 
   it("gate coverage: the JSON still names the verify report already on disk", () => {
     seedBrokenSpec({ prd_validated: true, stage: "design" });
-    repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
+    repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
     const before = repo.read(SPEC_REL);
     const { code, io } = gateCoverage(designTable({ "FR-1": "missing" }));
     expect(code).toBe(2);
@@ -375,14 +375,14 @@ describe("devx revise — post-revise verdict clearing", () => {
   it("gate-written verdicts read null after revise; earlier stages survive", () => {
     // Real lifecycle: gate prd PASSes (writes prd: PASS), gate coverage
     // FAILs in design mode (writes design: FAIL, flag stays false), then
-    // design.md is revised — the FAIL must be erased, prd's PASS kept.
+    // design/agent.md is revised — the FAIL must be erased, prd's PASS kept.
     seedSpec({});
     expect(gatePrd().code).toBe(0);
-    repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
+    repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
     expect(gateCoverage(designTable({ "FR-1": "missing" })).code).toBe(1);
     expect(state().gateVerdicts).toMatchObject({ prd: "PASS", design: "FAIL" });
 
-    expect(revise("design.md").code).toBe(0);
+    expect(revise("design/agent.md").code).toBe(0);
     const s = state();
     expect(s.gateVerdicts.prd).toBe("PASS");
     expect(s.gateVerdicts.design).toBe(null);
@@ -390,10 +390,10 @@ describe("devx revise — post-revise verdict clearing", () => {
     expect(s.gateVerdicts.evals).toBe(null);
   });
 
-  it("prd.md revise erases all four verdicts", () => {
+  it("prd/agent.md revise erases all four verdicts", () => {
     seedSpec({});
     expect(gatePrd().code).toBe(0);
-    expect(revise("prd.md").code).toBe(0);
+    expect(revise("prd/agent.md").code).toBe(0);
     const s = state();
     expect(s.gateVerdicts).toEqual({
       prd: null,
@@ -408,16 +408,16 @@ describe("devx revise — post-revise verdict clearing", () => {
     // FAIL → revise → the summary must drop back to `—`, not keep FAIL.
     seedSpec({});
     expect(gatePrd().code).toBe(0);
-    repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
+    repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
     expect(gateCoverage(designTable({ "FR-1": "missing" })).code).toBe(1);
-    expect(revise("design.md").code).toBe(0);
+    expect(revise("design/agent.md").code).toBe(0);
     expect(next().summary).toBe("gates: prd PASS · design — · plan — · evals —");
   });
 
   it("replay-path stdout shape is unchanged by verdict clearing", () => {
     seedSpec({});
     expect(gatePrd().code).toBe(0);
-    const { code, io } = revise("prd.md");
+    const { code, io } = revise("prd/agent.md");
     expect(code).toBe(0);
     expect(Object.keys(io.json() as Record<string, unknown>).sort()).toEqual([
       "flags_cleared",
@@ -462,7 +462,7 @@ describe("devx next — FAIL vs never-run (T2.5)", () => {
     // decisions/2026-07-24-design-verify.md); never-run gates stay `—`.
     seedSpec({});
     expect(gatePrd().code).toBe(0);
-    repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
+    repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
     expect(gateCoverage(designTable({ "FR-1": "missing" })).code).toBe(1);
 
     const { verdicts, summary } = next();
@@ -492,7 +492,7 @@ describe("devx next — FAIL vs never-run (T2.5)", () => {
     // degrade the fix path, not die (adversarial-review finding).
     seedSpec({});
     expect(gatePrd().code).toBe(0);
-    repo.write(`${WS}/design.md`, "## Design\n\nreal.\n");
+    repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
     expect(gateCoverage(designTable({ "FR-1": "missing" })).code).toBe(1);
     rmSync(join(repo.root, WS, "decisions"), { recursive: true });
     repo.write(`${WS}/decisions`, "not a directory");

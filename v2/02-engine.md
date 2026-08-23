@@ -75,14 +75,28 @@ in a sibling directory:
 
 ```
 _devx/workstreams/<slug>/
-├── prd.md              # Gate 1 input
-├── expectations.md     # Gate 1 input (the E-blocks)
-├── design.md           # Gate 2 subject
-├── plan.md             # Gate 3 subject; phase checklist = execution tracker
-├── decisions/          # dated decision/critique/verify reports
-├── checkpoints/        # per-phase verification reports
-└── evals/              # RED-gate runnable artifacts + RED-report.md
+├── prd/
+│   ├── agent.md            # Gate 1 input (authoritative, full verbosity)
+│   ├── human.md            # agent-maintained digest, mermaid-first; never a gate input
+│   ├── outline.md          # HUMAN-ONLY, optional (devx outline init); never a gate input
+│   └── outline-critique.md # the agent's critique of the outline; non-gating
+├── design/                 # same quartet; agent.md = Gate 2 subject
+├── plan/                   # same quartet; agent.md = Gate 3 subject; phase checklist = execution tracker
+├── expectations.md         # Gate 1 input (the E-blocks)
+├── decisions/              # dated decision/critique/verify reports
+├── checkpoints/            # per-phase verification reports
+└── evals/                  # RED-gate runnable artifacts + RED-report.md
+                            # + human.md / outline.md / outline-critique.md companions
 ```
+
+Outlines are the human-in-the-loop spine: typed by the human (typing is the
+point), never written by an agent — enforced by the PreToolUse hook (`devx
+outline guard`), the CI/merge-gate diff scan (`devx outline check` /
+`outlineClean`), and agent-session refusals on `devx outline init|commit`.
+When an outline exists it dictates human.md's structure; agent.md keeps the
+gate-required template sections. The repo root carries a project-wide
+`OUTLINE.md` + `OUTLINE-CRITIQUE.md` under the same rules, read as PRD seed
+context. Gates never read outline.md or human.md (todo.md-style firewall).
 
 (`_bmad-output/` is frozen history; `_devx/` already ships in the npm package
 and is the natural home. `docs/` stays human-authored.)
@@ -113,11 +127,11 @@ STATE.md Notes section almost exactly — convergent evolution; keep ours).
 ## 4. Stage specs
 
 ### 4.1 PRD stage (`/devx prd <slug|hash>`)
-Interview-style authoring of `prd.md` + `expectations.md`. Incremental
+Interview-style authoring of `prd/agent.md` + `expectations.md`. Incremental
 per-section writes (interruption-survivable). Reads LEARN.md back first
 ("a prior workstream found X — budget for it").
 
-`prd.md` shape (v1 shape upgraded with IDs):
+`prd/agent.md` shape (v1 shape upgraded with IDs):
 - Problem / Goals (user goals + **numeric** business/project goals, `G-n`) /
   Non-goals / Users / Use cases (`UC-n`) / Capabilities (`CAP-n`) / Feature
   requirements (`FR-n`) / Evals seed / Open questions.
@@ -150,7 +164,7 @@ to cross-reference other active workstreams + LEARN.md and writes
 ### 4.3 Design stage (`/devx design <hash>`)
 Collaborative: **asks the user's design questions first**, grounds discussion
 in real code (config: `engine.code_citation_hints` paths), then drafts
-`design.md`: Overview / Constraints / Risks / Trade-offs / Out of scope /
+`design/agent.md`: Overview / Constraints / Risks / Trade-offs / Out of scope /
 Assumptions / Discarded considerations / **Wrap-don't-duplicate check** (v1's
 working agreement, recast from harness's "Configuration, not Code") / Design
 (architecture, interfaces, data) / Migration plan / Resolved + Unresolved
@@ -160,9 +174,9 @@ Compliance Scope, Reviewers signoff matrix, Document Information tracker rows.
 
 ### 4.4 Gate 2 & 3 — `devx gate coverage <hash>` (CLI + one subagent)
 State-aware two-mode gate, ported near-verbatim:
-- **design mode** (design exists ∧ ¬design_verified): source = prd.md — one
+- **design mode** (design exists ∧ ¬design_verified): source = prd/agent.md — one
   row per `G-/UC-/CAP-/FR-` ID: ✅ covered / ⚠️ partial / ❌ missing.
-- **plan mode**: source = design.md — one row per `E-id` + design-decision →
+- **plan mode**: source = design/agent.md — one row per `E-id` + design-decision →
   phase map. **P0 floor**: every P0 expectation `full` and naming a runnable
   artifact path.
 
@@ -185,7 +199,7 @@ semantic covered/partial judgment is a single schema-constrained subagent.
 
 ### 4.5 Plan stage (`/devx plan <hash>`)
 Asks the user for a rough phase breakdown first, explores code, drafts
-`plan.md`: Current state / Desired state / What we're NOT doing / Expectation
+`plan/agent.md`: Current state / Desired state / What we're NOT doing / Expectation
 Coverage table (`E-id | Priority | Verified in phase | Type | Artifact |
 full/partial`) / Phase checklist / per-phase blocks (Overview, Files-with-why,
 Context, Verification plan `tests-first|tests-after|human|none` + success
@@ -242,9 +256,14 @@ cascade reset table:
 
 | Changed | Resets | stage → |
 |---|---|---|
-| prd.md / expectations.md | all 4 gate flags | prd |
-| design.md | design_verified, plan_verified, evals_red | design |
-| plan.md | plan_verified, evals_red | plan |
+| prd/agent.md / expectations.md | all 4 gate flags | prd |
+| design/agent.md | design_verified, plan_verified, evals_red | design |
+| plan/agent.md | plan_verified, evals_red | plan |
+
+(human.md / outline.md / outline-critique.md never cascade — a digest
+refresh or outline edit must not reset gate flags. `--touched` accepts the
+workstream-relative path, a root basename, or the stage shorthand `prd` /
+`design` / `plan`.)
 
 Forward skills' refusals force the replay; `gate coverage` re-verification
 forces actual absorption. Blast radius is ID-scoped via `Covers:` — only
@@ -314,6 +333,7 @@ config sections untouched.
 | `devx next [<hash>]` | pure decision function |
 | `devx workstream new <slug>` | scaffolder (templates → `_devx/workstreams/`) |
 | `devx revise <hash> --touched <file>` | cascade-reset applier |
+| `devx outline guard\|check\|init\|commit` | outline protection (hook endpoint, diff scan, human-side helpers) |
 | `devx loop …` | see `04-overnight-loop.md` |
 
 Skill bodies added/rewritten: the `/devx` dispatcher + stage sections

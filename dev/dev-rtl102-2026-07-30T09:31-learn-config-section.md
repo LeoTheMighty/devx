@@ -62,5 +62,5 @@ safe with rtl101 (no shared files).
 
 ## Links
 
-- Plan: `_devx/workstreams/retro-listener/plan.md` §Phase 2
-- Design: `_devx/workstreams/retro-listener/design.md` §Interfaces
+- Plan: `_devx/workstreams/retro-listener/plan/agent.md` §Phase 2
+- Design: `_devx/workstreams/retro-listener/design/agent.md` §Interfaces

@@ -4,12 +4,18 @@
 // directory a plan spec's engine artifacts live in (v2/02-engine.md §3):
 //
 //   _devx/workstreams/<slug>/
-//   ├── prd.md              ← from _devx/templates/engine/prd.md
+//   ├── prd/
+//   │   ├── agent.md        ← from _devx/templates/engine/prd/agent.md
+//   │   ├── human.md        ← agent-authored digest (stage writes it; not scaffolded)
+//   │   ├── outline.md      ← HUMAN-ONLY, optional (devx outline init; never scaffolded)
+//   │   └── outline-critique.md ← agent's critique (written when an outline exists)
+//   ├── design/             ← same quartet, authored at Design stage (not scaffolded)
+//   ├── plan/               ← same quartet, authored at Plan stage (not scaffolded)
 //   ├── expectations.md     ← from _devx/templates/engine/expectations.md
 //   ├── todo.md             ← from _devx/templates/engine/todo.md (hfi101)
 //   ├── decisions/          ← empty (dated verify/critique/revision reports)
 //   ├── checkpoints/        ← empty (per-phase verification reports)
-//   └── evals/              ← empty (RED-gate artifacts + RED-report.md)
+//   └── evals/              ← empty (RED-gate artifacts + RED-report.md + human-facing companions)
 //
 // and creates-or-extends the plan spec (`plan/plan-<hash>-<ts>-<slug>.md`)
 // with the engine frontmatter: `stage: prd`, `entered_at: prd`,
@@ -327,7 +333,7 @@ export function createWorkstream(
   ]) {
     const dest = artifactAbs(wsAbs, t.name);
     if (fs.exists(dest)) continue;
-    const templateAbs = join(repoRoot, TEMPLATES_DIR, t.name);
+    const templateAbs = join(repoRoot, TEMPLATES_DIR, ...t.name.split("/"));
     if (!fs.exists(templateAbs)) {
       throw new WorkstreamError(
         `engine template missing at ${TEMPLATES_DIR}/${t.name} — run \`devx init\` (v2 scaffold) first`,
@@ -336,6 +342,9 @@ export function createWorkstream(
     const body = fs
       .readFile(templateAbs)
       .replace(/<workstream title>/g, title);
+    // Stage-folder artifacts (prd/agent.md) need their parent dir first —
+    // realEngineFs.writeFile deliberately throws on a missing parent.
+    fs.mkdirRecursive(dirname(dest));
     fs.writeFile(dest, body);
     created[t.key] = true;
   }

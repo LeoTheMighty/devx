@@ -17,7 +17,7 @@ branch: feat/dev-sgr106
 Complete the durable edge set mechanically (FR-5): the adds-only,
 idempotent `devx graph backfill` plus the attended devx-repo run in the
 same PR. Plan phase 6 of workstream story-graph — read
-`_devx/workstreams/story-graph/plan.md` §Phase 6; the RED artifact
+`_devx/workstreams/story-graph/plan/agent.md` §Phase 6; the RED artifact
 `evals/E-6_backfill.ts` defines the contract and must flip green. This is
 the FR-5 exception to the render-time warn-only fence.
 

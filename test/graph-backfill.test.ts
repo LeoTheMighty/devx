@@ -422,7 +422,7 @@ function workstreamFixture(extra: Record<string, string> = {}): Fixture {
   });
   return makeFs({
     "devx.config.yaml": "mode: yolo\n",
-    "_devx/workstreams/ws-steps/plan.md": "# Plan — ws-steps\n",
+    "_devx/workstreams/ws-steps/plan/agent.md": "# Plan — ws-steps\n",
     [p1]: c1,
     [p2]: c2,
     "DEV.md": [
@@ -495,24 +495,24 @@ describe("derived edges", () => {
     ).toMatchObject({ to: "stp222" });
   });
 
-  it("reads ordering from a plan.md `(dev spec: <hash>)` pointer", () => {
+  it("reads ordering from a plan/agent.md `(dev spec: <hash>)` pointer", () => {
     const [pa, ca] = spec({
       hash: "ptr111",
       slug: "ptr-one",
       title: "Ptr one",
       status: "done",
-      fm: ["from: _devx/workstreams/ws-ptr/plan.md"],
+      fm: ["from: _devx/workstreams/ws-ptr/plan/agent.md"],
     });
     const [pb, cb] = spec({
       hash: "ptr222",
       slug: "ptr-two",
       title: "Ptr two",
       status: "ready",
-      fm: ["from: _devx/workstreams/ws-ptr/plan.md"],
+      fm: ["from: _devx/workstreams/ws-ptr/plan/agent.md"],
     });
     const fx = makeFs({
       "devx.config.yaml": "mode: yolo\n",
-      "_devx/workstreams/ws-ptr/plan.md": [
+      "_devx/workstreams/ws-ptr/plan/agent.md": [
         "# Plan — ws-ptr",
         "",
         "- [x] Phase 1: the first one (dev spec: ptr111)",
@@ -543,18 +543,18 @@ describe("derived edges", () => {
       slug: "todo-one",
       title: "Todo one",
       status: "done",
-      fm: ["from: _devx/workstreams/ws-todo/plan.md"],
+      fm: ["from: _devx/workstreams/ws-todo/plan/agent.md"],
     });
     const [pb, cb] = spec({
       hash: "tdo222",
       slug: "todo-two",
       title: "Todo two",
       status: "ready",
-      fm: ["from: _devx/workstreams/ws-todo/plan.md"],
+      fm: ["from: _devx/workstreams/ws-todo/plan/agent.md"],
     });
     const fx = makeFs({
       "devx.config.yaml": "mode: yolo\n",
-      "_devx/workstreams/ws-todo/plan.md": "# Plan — ws-todo\n",
+      "_devx/workstreams/ws-todo/plan/agent.md": "# Plan — ws-todo\n",
       "_devx/workstreams/ws-todo/todo.md": [
         "# Todo — ws-todo",
         "",
@@ -665,18 +665,18 @@ describe("pass 2 — underivable report", () => {
       slug: "orphan-one",
       title: "Orphan one",
       status: "ready",
-      fm: ["from: _devx/workstreams/ws-orphan/plan.md", "phase: 1"],
+      fm: ["from: _devx/workstreams/ws-orphan/plan/agent.md", "phase: 1"],
     });
     const [pb, cb] = spec({
       hash: "und111",
       slug: "orphan-und",
       title: "Orphan und",
       status: "ready",
-      fm: ["from: _devx/workstreams/ws-orphan/plan.md"],
+      fm: ["from: _devx/workstreams/ws-orphan/plan/agent.md"],
     });
     return makeFs({
       "devx.config.yaml": "mode: yolo\n",
-      "_devx/workstreams/ws-orphan/plan.md": "# Plan — ws-orphan\n\nProse only.\n",
+      "_devx/workstreams/ws-orphan/plan/agent.md": "# Plan — ws-orphan\n\nProse only.\n",
       [pa]: ca,
       [pb]: cb,
       "DEV.md": [

@@ -5,7 +5,7 @@
 // trued list; resolution errors exit 2.
 //
 // Spec: dev/dev-hfi103-2026-07-24T10:41-todo-sync-renderers-status.md
-// Design: _devx/workstreams/harness-fold-in/design.md §Interfaces
+// Design: _devx/workstreams/harness-fold-in/design/agent.md §Interfaces
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 

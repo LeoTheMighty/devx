@@ -79,5 +79,5 @@ the contract and must flip green.
 
 ## Links
 
-- Plan: `_devx/workstreams/retro-listener/plan.md` §Phase 5
-- Design: `_devx/workstreams/retro-listener/design.md` §Architecture (Install)
+- Plan: `_devx/workstreams/retro-listener/plan/agent.md` §Phase 5
+- Design: `_devx/workstreams/retro-listener/design/agent.md` §Architecture (Install)
