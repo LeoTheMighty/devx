@@ -97,7 +97,14 @@ When an outline exists it dictates human.md's structure; agent.md keeps the
 gate-required template sections. The repo root carries a project-wide
 `OUTLINE.md` (human-only, same rules) read as PRD seed context, paired with
 `OUTLINE-CRITIQUE.md` — which, like every outline-critique.md, is the
-AGENT'S product and stays agent-writable. Shipped templates under
+AGENT'S product and stays agent-writable. A critique is a pure function of
+the outline as it stands: when the outline changes the critique is
+regenerated whole against the new text, never amended on top of the old one
+and never referencing it — a finding survives only because the current
+outline still earns it, so the live critique stays a worklist rather than a
+changelog. Resolved findings move to a delta record —
+`decisions/<date>-outline-critique-delta.md` — never accumulating inside the
+critique. Shipped templates under
 `_devx/templates/` are exempt from protection (agent scaffolds `devx
 outline init` instantiates from — without the exemption no template change
 could ever merge). Gates never read outline.md or human.md (todo.md-style
