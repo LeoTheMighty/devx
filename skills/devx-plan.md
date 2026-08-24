@@ -62,10 +62,11 @@ from v1 (`docs/DESIGN.md`).
    overwrite the whole critique. Do not open the previous critique before
    writing it, and never quote, diff against, carry forward, or reconcile
    with it — a finding survives only because the current outline earns it
-   again. Same rule for `OUTLINE-CRITIQUE.md`. Continuity (what the human
-   changed, why a finding is gone) is a delta record, not critique
-   content: it belongs in `decisions/<date>-<stage>-critique.md`, the
-   workstream's `checkpoint.md`, or the plan spec's status log.
+   again — the live critique is a worklist, never a changelog. Same rule
+   for `OUTLINE-CRITIQUE.md`. Continuity (what the human changed, why a
+   finding is gone) is a delta record, not critique content: resolved
+   findings move to `decisions/<date>-outline-critique-delta.md`, and the
+   stage's status log records that the round happened.
 9. **human.md (every stage, before its gate).** Write/refresh
    `<stage>/human.md`: the succinct human digest — mermaid first, brevity
    with nothing load-bearing dropped. When `<stage>/outline.md` exists,

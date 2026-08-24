@@ -101,8 +101,9 @@ AGENT'S product and stays agent-writable. A critique is a pure function of
 the outline as it stands: when the outline changes the critique is
 regenerated whole against the new text, never amended on top of the old one
 and never referencing it — a finding survives only because the current
-outline still earns it. The before/after story is a delta record and lives
-in `decisions/` (and the workstream `checkpoint.md`), never inside the
+outline still earns it, so the live critique stays a worklist rather than a
+changelog. Resolved findings move to a delta record —
+`decisions/<date>-outline-critique-delta.md` — never accumulating inside the
 critique. Shipped templates under
 `_devx/templates/` are exempt from protection (agent scaffolds `devx
 outline init` instantiates from — without the exemption no template change
