@@ -276,6 +276,14 @@ Full contract: `.claude/commands/devx.md`.
   their structure in `human.md`. Shipped templates under `_devx/templates/`
   are exempt (agent scaffolds). Offer once per attended planning stage; the
   human runs `devx outline init <hash> <stage>` from their own terminal.
+- **A critique tracks only the latest outline.** When an outline changes,
+  re-read it whole and overwrite `outline-critique.md` (or
+  `OUTLINE-CRITIQUE.md`) whole — don't open the old critique first, and never
+  quote, diff against, carry forward, or reconcile with it. A finding that
+  belongs stays only because the current outline earns it again. The
+  before/after story (what the human changed, why a finding is gone) is a
+  delta record: `decisions/<date>-<stage>-critique.md`, the workstream
+  `checkpoint.md`, or the status log — never critique content.
 - **Verify claim ownership before resuming.** A spec marked `in-progress` with
   an existing `.worktrees/dev-<hash>/` is **not** necessarily yours. The
   structural check shipped with roc101 (PR #60): `/devx` Phase 1's

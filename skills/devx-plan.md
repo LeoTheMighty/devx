@@ -51,11 +51,21 @@ from v1 (`docs/DESIGN.md`).
    run `devx outline init <hash> <stage>` from your own terminal and type
    it yourself; typing it is the point." Present → read it (Read tool);
    when you have findings (gaps, misinformation, design problems, places
-   to expand) write/refresh `<stage>/outline-critique.md`; when clean,
-   delete a stale critique. At PRD open also read the repo-root
+   to expand) write `<stage>/outline-critique.md`; when clean, delete a
+   stale critique. At PRD open also read the repo-root
    `OUTLINE.md` as seed context (critique → `OUTLINE-CRITIQUE.md`).
    Never `git add` an outline path — outlines reach `main` only via the
    human's `devx outline commit`.
+
+   **A critique is regenerated, never amended.** It is a pure function of
+   the outline as it stands right now: re-read the whole outline, then
+   overwrite the whole critique. Do not open the previous critique before
+   writing it, and never quote, diff against, carry forward, or reconcile
+   with it — a finding survives only because the current outline earns it
+   again. Same rule for `OUTLINE-CRITIQUE.md`. Continuity (what the human
+   changed, why a finding is gone) is a delta record, not critique
+   content: it belongs in `decisions/<date>-<stage>-critique.md`, the
+   workstream's `checkpoint.md`, or the plan spec's status log.
 9. **human.md (every stage, before its gate).** Write/refresh
    `<stage>/human.md`: the succinct human digest — mermaid first, brevity
    with nothing load-bearing dropped. When `<stage>/outline.md` exists,
