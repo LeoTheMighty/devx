@@ -71,6 +71,18 @@ abandoned-while-done class.
 
 - [x] `plan/plan-62bcd1-2026-08-02T09:00-story-graph.md` — Story Graph: auto-generated GRAPH.md (Mermaid DAG of all specs grouped by workstream/epic), edge-source union + tokenizer hardening, loop regeneration hooks, assisted backfill porting friend-finder-mesh + palateful. Status: done (all 7 phases merged PRs #110/#111/#112/#114/#117/#118/#120 by 2026-08-05; retro 2026-08-06 `RETRO-2026-08-06.md`; outcome armed, measure-by 2026-09-20; G-2 attended legs = MANUAL.md MV-sgr107.1–.3). Blocked-by: —. Related: db36af (doctor owns drift *fixing*; graph only warns).
 
+## Docs layout resolution (2026-09-01)
+
+Owner-requested 2026-09-01: `engine.docs_layout` is a two-valued key with one
+production consumer (`devx outline init`). The four gates, `devx next`,
+`todo sync`, `revise` and `outcome` all resolve past it to a hardcoded
+folder-per-artifact path, and the two purpose-built project-level resolvers in
+`artifacts.ts` have zero callers — so `project-level` is a protected filename
+set, not a layout. `docs/CONFIG.md` §15 rule 5 and `config-schema.json:939`
+both claim otherwise.
+
+- [/] `plan/plan-a494be-2026-09-01T14:31-docs-layout-resolution.md` — Docs layout resolution: one stage-subject resolver consumed by every artifact call site, `docs_layout` on `EngineConfig`, `workstream: .` under project-level, layout-aware scaffolding, four hand-join bypasses rewired, `devx layout migrate --to <layout>`, and the two false doc claims corrected. Status: in-planning (Gate 1 PASS 2026-09-01; stage: design). Blocked-by: —. Related: lay101 (one-doc-set enforcement — adjacent, explicitly out of scope here). Migration case: ClassyLights `b7e38f`/`scene-engine`, mid-flight at the plan gate.
+
 ## Cross-cutting plans
 
 Independent of phase sequencing — pick up once their named blockers clear.
