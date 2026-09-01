@@ -115,9 +115,10 @@ export function parseRegistry(md: string): Registry {
   let header: string[] | null = null;
 
   for (const line of lines) {
-    // A `###` subsection ENDS the bank table — §4.1's layout table lives
-    // inside §4, and inheriting §4's header would parse its rows as bank
-    // keys (which is exactly how the phantom `workstream` key appeared).
+    // A `###` subsection ENDS the bank table — §4 carries subsections (§4.1)
+    // whose own content would otherwise inherit §4's header and be parsed as
+    // bank rows. That is exactly how the phantom `workstream` key appeared,
+    // back when §4.1 held the layout table.
     const sub = /^###\s+/.test(line);
     if (sub) {
       section = null;

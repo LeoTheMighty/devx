@@ -407,6 +407,7 @@ observability:
 ```yaml
 engine:
   workstreams_root: _devx/workstreams   # where per-workstream artifacts live
+  docs_layout: workstream               # workstream | project-level — the tree's SHAPE
   archive_root: _devx/archive           # closed/retired workstreams move here
   code_citation_hints: []               # paths the design stage grounds discussion in
   expectations_min: 3                   # Gate 1 floor: ≥N E-blocks in expectations.md
@@ -420,6 +421,63 @@ engine:
 Full engine contract: `v2/02-engine.md` §7. A leftover `bmad:` key from a
 pre-v2 config loads with a deprecation warning, not an error (migration shim
 in config-io); the section itself was retired at v2x101.
+
+### `docs_layout` — the two shapes
+
+`workstream` (default) is the folder-per-artifact tree: one slug per unit of
+work, many in flight at once, rooted at `engine.workstreams_root`.
+
+`project-level` is the flat shape for a repo where only one thing is ever
+being designed at a time — the docs sit at the repo root and there is no slug.
+
+| Artifact | `workstream` | `project-level` |
+| --- | --- | --- |
+| PRD (Gate 1 subject) | `<root>/<slug>/prd/agent.md` | `prd.md` |
+| PRD human digest | `<root>/<slug>/prd/human.md` | `prd-human.md` |
+| PRD outline (human-only) | `<root>/<slug>/prd/outline.md` | `prd-outline.md` |
+| PRD outline critique | `<root>/<slug>/prd/outline-critique.md` | `prd-outline-critique.md` |
+| Design (Gate 2 subject) | `<root>/<slug>/design/agent.md` | `design.md` |
+| Design outline / critique | `<root>/<slug>/design/…` | `design-outline.md` / `design-outline-critique.md` |
+| Plan (Gate 3 subject) | `<root>/<slug>/plan/agent.md` | `plan.md` |
+| Plan outline / critique | `<root>/<slug>/plan/…` | `plan-outline.md` / `plan-outline-critique.md` |
+| Expectations | `<root>/<slug>/expectations.md` | `expectations.md` |
+| RED artifacts | `<root>/<slug>/evals/` | `evals/` |
+| Working memory | `<root>/<slug>/todo.md` | `todo.md` |
+| Decision records | `<root>/<slug>/decisions/` | `decisions/` |
+
+Four rules make the choice safe rather than merely cosmetic:
+
+1. **This is config, not a preference.** It was a preference-bank key
+   (`docs.layout`) until 2026-09-01, and that was a mistake: the layout names
+   where files the whole repo shares get written, so two contributors
+   resolving it differently would split the artifact tree in half. Same
+   reasoning that always kept `workstreams_root` out of the bank. The old key
+   is still read as a fallback (`docsLayoutFrom()`) so no repo silently flips
+   layout on upgrade, and still validates so an existing config loads — but
+   `engine.docs_layout` wins when both are present, and the old one should be
+   deleted. See `docs/PERSONALIZATION.md` §3.
+2. **Outlines stay human-only in both layouts.** `project-level` renames the
+   outline files, and a rename that moved them out from under
+   `isProtectedOutlinePath()` would silently drop the guarantee three
+   enforcement layers exist to make. The classifier therefore recognizes the
+   `<stage>-outline.md` root names too, and `<stage>-outline-critique.md`
+   stays agent-writable, as its folder-shaped counterpart already is.
+   `devx outline init` resolves this key to decide where a scaffold lands.
+3. **`project-level` holds exactly one in-flight doc set.** Wanting a second
+   concurrent unit of work *is* the signal to switch layouts, rather than
+   scattering a second PRD across the root. **Not mechanically enforced
+   today**: the refusal used to live in `/devx-personalize` (which no longer
+   owns the key), and neither `devx workstream new` nor config validation
+   carries it yet — tracked as `dev-lay101`.
+4. **Gate subjects are unchanged.** A gate resolves its subject through the
+   layout, so the same `devx gate prd` runs against `prd/agent.md` or
+   `prd.md` and returns the same verdict for the same content. Layout is not
+   a gate input.
+
+**`docs_layout` and `workstreams_root` compose.** The former chooses the
+*shape* of the tree; the latter names *where* a workstream tree is rooted. A
+repo that wants `devx/active/<slug>` sets `engine.workstreams_root:
+devx/active` and leaves `engine.docs_layout: workstream`.
 
 **`reading_guide_roles`** names the columns of the **Reading Guide** — the
 mandatory annotated table of contents that opens every design human render
@@ -629,7 +687,6 @@ relocate the queue, set the env var too.
 ```yaml
 personalization:
   role: engineer                     # engineer | pm | both
-  docs.layout: workstream            # workstream | project-level
   autonomy.action_mode: propose-only # propose-only | auto-safe
   review.above_threshold_shape: parallel
   output.verbosity: full             # terse | full
@@ -655,24 +712,15 @@ Four things distinguish this block from every other section above:
   auto-pass, or reorder a gate, refusal, or record is **void** at runtime —
   ignored, and reported verbatim. A gate stays reproducible from committed
   artifacts alone whatever a profile says.
-- **Keys are dotted strings, not nested maps.** `docs.layout` is one key, not
-  `docs: { layout: ... }` — the bank's key names are the registry's key names,
-  so a grep for a key finds every place it is set.
+- **Keys are dotted strings, not nested maps.** `notify.channel` is one key,
+  not `notify: { channel: ... }` — the bank's key names are the registry's key
+  names, so a grep for a key finds every place it is set.
 
-**`docs.layout` and `engine.workstreams_root` compose.** The former chooses
-the *shape* of the artifact tree (folder-per-artifact under a slug, vs flat at
-the repo root); the latter names *where* a workstream tree is rooted, and
-stays a config value because two contributors resolving different roots would
-split the tree in half. A repo that wants `devx/active/<slug>` sets
-`engine.workstreams_root: devx/active` and leaves `docs.layout: workstream`.
-
-**Outlines stay human-only in both layouts.** `project-level` renames them to
-`<stage>-outline.md` at the repo root, and `isProtectedOutlinePath()`
-classifies those names too — a layout switch that moved an outline out from
-under the guard would silently drop the guarantee three enforcement layers
-exist to make. `devx outline init` reads this key to decide where a scaffold
-lands (`--layout` overrides it for a single run); the scaffold body, the
-never-overwrite rule, and the human-only guarantee are identical either way.
+**The artifact layout is NOT in this block.** It was (`docs.layout`) until
+2026-09-01; it now lives at `engine.docs_layout` (§15), because it names where
+files the whole repo shares get written rather than how one person likes to
+work. The old key still validates and is still read as a fallback, so an
+existing config keeps its layout — but it belongs in `engine:` now.
 
 ---
 

@@ -88,10 +88,10 @@ condition a preflight blocks on; blocking it would deadlock.
    only · everywhere · this workstream · the repo. Default to
    **individual-global** for working-style keys (`role`, `output.verbosity`,
    `autonomy.action_mode`) and **individual-repo** for anything naming a
-   repo-specific surface (`docs.layout`, `notify.channel`, `execute.*`) — a
-   doc-layout preference that follows someone into an unrelated repo is a
-   bug, not a convenience. Repo scope is never chosen silently: it is a
-   commit, so it goes through Step 6.
+   repo-specific surface (`notify.channel`, `execute.*`) — a notification
+   channel that follows someone into an unrelated repo is a bug, not a
+   convenience. Repo scope is never chosen silently: it is a commit, so it
+   goes through Step 6.
 5. **Write the profile(s).** Create parent directories as needed. Set
    `personalization_version: <bank_version>`, append every explicitly-answered
    key to `answered:`, preserve keys and comments already present.
@@ -106,17 +106,21 @@ condition a preflight blocks on; blocking it would deadlock.
    stricter repo value overrode, and state which skills were blocked and are
    now unblocked.
 
-## `docs.layout` — ask this one carefully
+## The doc layout is not yours to record
 
-It is the only core key that moves files. Two extra obligations:
+"Which layout do I want?" arrives here constantly and belongs to config: it
+is `engine.docs_layout` in `devx.config.yaml`, not a bank key (§3 records why
+— it names where files the whole repo shares get written). Route it per Step
+3, and carry the two obligations the ask still deserves:
 
-- **State the migration cost before recording it.** Switching layouts on a
+- **State the migration cost before they change it.** Switching layouts on a
   repo that already has artifacts means moving them; say how many and where
-  they would land (§4.1's table), and offer to stop rather than half-move a
-  tree.
-- **Refuse `project-level` where a second workstream is already in flight.**
-  The layout holds exactly one doc set; a repo with two live slugs is telling
-  you which layout it needs. Name the slugs found.
+  they would land (`docs/CONFIG.md` §15's table), and offer to stop rather
+  than half-move a tree.
+- **Say that `project-level` holds exactly one in-flight doc set.** A repo
+  with two live slugs is telling them which layout it needs — name the slugs
+  found. Nothing enforces this mechanically yet (`dev-lay101`), which is
+  precisely why saying it here matters.
 
 ## Just-in-time asks
 
@@ -167,8 +171,9 @@ in its own reviewed PR.
   runtime (§2).
 - Writing anything under `~/.claude/devx/` into a commit, a PR body, or a
   workstream artifact.
-- Recording `docs.layout: project-level` while more than one workstream is in
-  flight.
+- Recording the doc layout in a profile at all — it is `engine.docs_layout`
+  in committed config, and a profile copy would be inert (no runtime reader
+  consults the individual layers for it) while looking authoritative.
 
 ## Style
 

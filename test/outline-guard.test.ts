@@ -336,6 +336,18 @@ const AGENT_ENV = { CLAUDECODE: "1" } as Record<string, string | undefined>;
 
 const PROJECT_LEVEL_CONFIG = [
   "mode: YOLO",
+  "engine:",
+  "  docs_layout: project-level",
+  "projects:",
+  "  - name: cli",
+  "    path: .",
+  "",
+].join("\n");
+
+/** The pre-2026-09-01 spelling: the layout as a preference-bank key. Still
+ *  honored so an existing repo does not silently flip layout on upgrade. */
+const LEGACY_LAYOUT_CONFIG = [
+  "mode: YOLO",
   "personalization:",
   "  docs.layout: project-level",
   "projects:",
@@ -498,6 +510,20 @@ describe("runOutlineInit", () => {
         "plan-outline.md",
         "evals-outline.md",
       ],
+    });
+  });
+
+  it("still honors the legacy personalization docs.layout key", () => {
+    // Moved to engine.docs_layout on 2026-09-01. A repo that answered the old
+    // key must keep its layout on upgrade — silently reverting to
+    // `workstream` would scaffold into a tree that repo does not use.
+    const repo = repoWithWorkstream(LEGACY_LAYOUT_CONFIG);
+    const { code, io } = init(repo, ["prd"]);
+    expect(code).toBe(0);
+    expect(io.json()).toEqual({
+      layout: "project-level",
+      created: ["prd-outline.md"],
+      skipped: [],
     });
   });
 

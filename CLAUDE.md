@@ -285,7 +285,7 @@ Full contract: `.claude/commands/devx.md`.
   move.
 - **Outline files are human-only — in every layout.** `outline.md` in any
   workstream stage folder, the repo-root `OUTLINE.md`, and (under
-  `docs.layout: project-level`) the `<stage>-outline.md` root files are typed
+  `engine.docs_layout: project-level`) the `<stage>-outline.md` root files are typed
   by the user, never by an
   agent — enforced three ways: the PreToolUse hook (`devx outline guard`)
   denies agent writes AND any Bash command whose text names a real outline

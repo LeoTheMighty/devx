@@ -41,7 +41,7 @@ protocol:
 
 ```yaml
 personalization_version: 1                 # the bank_version this file was last completed against
-answered: [role, docs.layout, ...]         # keys explicitly answered by a human
+answered: [role, plan.phase_appetite, ...] # keys explicitly answered by a human
 ```
 
 **There is no separate sentinel file.** The answer file *is* the marker — a
@@ -106,9 +106,9 @@ engine:
   workstreams_root: devx/active
 ```
 
-`docs.layout` (core key 2) chooses the *shape* of the tree; `workstreams_root`
-names *where* it is rooted. They compose, and neither can stand in for the
-other.
+`engine.docs_layout` chooses the *shape* of the tree; `engine.workstreams_root`
+names *where* it is rooted. They compose, neither can stand in for the other,
+and **both are config, not bank keys** — see §3.
 
 ---
 
@@ -132,8 +132,20 @@ quoting the clause it would breach.
 
 ### Questions we rewrote, and why
 
-Four asks fail the test as posed. All four are recorded here so the rejected
+Five asks fail the test as posed. All five are recorded here so the rejected
 reading cannot creep back in a later revision.
+
+- **"Let me pick the doc layout."** — Routed to config, and it was banked in
+  error until 2026-09-01. `docs.layout` failed rule 3 (**owned**): three
+  skills declared it, and it names where files the WHOLE REPO shares get
+  written, so two contributors resolving it differently split the artifact
+  tree in half — the exact reasoning that had already kept
+  `engine.workstreams_root` out of the bank. The banked version was also
+  inert: the interview defaulted it to *individual-repo* scope, while the
+  only runtime reader (`docsLayoutFrom()`) read the committed layer alone, so
+  an answer at the default scope changed nothing. Now `engine.docs_layout` in
+  `devx.config.yaml` — typed, schema-validated, PR-reviewed. See
+  `docs/CONFIG.md` for the two shapes and what each moves.
 
 - **"Let the agent write my outlines."** — Refused. Outline files are
   human-only under three enforcement layers (the PreToolUse hook, `devx
@@ -164,65 +176,32 @@ reading cannot creep back in a later revision.
 
 ## 4. The core bank
 
-Ten questions. Answered once, at the first run of any writing skill, before
+Nine questions. Answered once, at the first run of any writing skill, before
 it does its work (§5). Every one governs behavior devx would otherwise have
 to guess.
 
 | # | Key | Type · options | Default | Strictness | Owning skill(s) | What changes |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | `role` | `engineer` \| `pm` \| `both` | `both` | n/a | devx-plan, devx, devx-interview | Prompt altitude and which next-command rows surface. A `pm` never gets git instructions or worktree mechanics |
-| 2 | `docs.layout` | `workstream` \| `project-level` | `workstream` | n/a | devx-plan, devx, devx-walk | Where stage artifacts live — see §4.1. **Rail:** outlines stay human-only in both layouts |
-| 3 | `autonomy.action_mode` | `propose-only` \| `auto-safe` | `propose-only` | `propose-only` stricter | devx (address arm), devx-learn | Whether a plan-level approval covers the low-risk batch without item-level re-confirmation. **Rails unchanged:** never acts before plan approval returns; gated-artifact amendments and any delete/overwrite always confirm explicitly |
-| 4 | `design.outline_coaching` | `standard` \| `exhaustive` | `standard` | `exhaustive` stricter | devx-plan | `exhaustive` additionally requires every codebase-research finding to be explicitly dispositioned by an outline bullet before the outline is agreed complete. Both keep the rule that the **human** writes the bullets |
-| 5 | `plan.phase_appetite` | `fine` \| `standard` \| `coarse` | `standard` | n/a | devx-plan | Default phase sizing proposed before you are asked |
-| 6 | `review.above_threshold_shape` | `parallel` \| `sequential-multi-lens` \| `empirical-leg` | `parallel` | n/a | devx | Which sanctioned Phase 4 shape runs on a substantial surface (>500 lines / multi-regex / marker-bearing). **Rail:** plain single-pass is not selectable; the shape used is still stated in the status-log line |
-| 7 | `review.findings_destination` | `pr-inline` \| `chat` \| `both` | `both` | n/a | devx | Where review findings land. **Rail:** the findings are recorded regardless — this routes the *notification*, not the record |
-| 8 | `notify.channel` | string \| `null` | `null` | n/a | devx, devx-plan, loop | Where devx notifications go. `null` = no pings |
-| 9 | `notify.threshold` | `never` \| `blockers` \| `gate-results` \| `all` | `blockers` | n/a | devx, devx-plan, loop | How much reaches that channel |
-| 10 | `output.verbosity` | `terse` \| `full` | `full` | n/a | all | Narration density. **Rails — `terse` never suppresses:** a gate verdict block, a refusal and its reason, an evidence/failure report, a void-and-report notice, or the `/devx-learn` friction nudge. That last one is not style: `learn-listener` greps the nudge sentence verbatim, so suppressing it would silently disable retro detection |
+| 2 | `autonomy.action_mode` | `propose-only` \| `auto-safe` | `propose-only` | `propose-only` stricter | devx (address arm), devx-learn | Whether a plan-level approval covers the low-risk batch without item-level re-confirmation. **Rails unchanged:** never acts before plan approval returns; gated-artifact amendments and any delete/overwrite always confirm explicitly |
+| 3 | `design.outline_coaching` | `standard` \| `exhaustive` | `standard` | `exhaustive` stricter | devx-plan | `exhaustive` additionally requires every codebase-research finding to be explicitly dispositioned by an outline bullet before the outline is agreed complete. Both keep the rule that the **human** writes the bullets |
+| 4 | `plan.phase_appetite` | `fine` \| `standard` \| `coarse` | `standard` | n/a | devx-plan | Default phase sizing proposed before you are asked |
+| 5 | `review.above_threshold_shape` | `parallel` \| `sequential-multi-lens` \| `empirical-leg` | `parallel` | n/a | devx | Which sanctioned Phase 4 shape runs on a substantial surface (>500 lines / multi-regex / marker-bearing). **Rail:** plain single-pass is not selectable; the shape used is still stated in the status-log line |
+| 6 | `review.findings_destination` | `pr-inline` \| `chat` \| `both` | `both` | n/a | devx | Where review findings land. **Rail:** the findings are recorded regardless — this routes the *notification*, not the record |
+| 7 | `notify.channel` | string \| `null` | `null` | n/a | devx, devx-plan, loop | Where devx notifications go. `null` = no pings |
+| 8 | `notify.threshold` | `never` \| `blockers` \| `gate-results` \| `all` | `blockers` | n/a | devx, devx-plan, loop | How much reaches that channel |
+| 9 | `output.verbosity` | `terse` \| `full` | `full` | n/a | all | Narration density. **Rails — `terse` never suppresses:** a gate verdict block, a refusal and its reason, an evidence/failure report, a void-and-report notice, or the `/devx-learn` friction nudge. That last one is not style: `learn-listener` greps the nudge sentence verbatim, so suppressing it would silently disable retro detection |
 
-### 4.1 `docs.layout` — the two shapes
+### 4.1 What is NOT in the bank
 
-`workstream` (default) is today's folder-per-artifact tree: one slug per unit
-of work, many in flight at once, rooted at `engine.workstreams_root`.
+Two things a reader looks for here and will not find, because both name
+where files the whole repo shares get written — repo policy, not preference:
 
-`project-level` is the flat shape for a repo where only one thing is ever
-being designed at a time — the docs sit at the repo root and there is no slug.
-
-| Artifact | `workstream` | `project-level` |
-| --- | --- | --- |
-| PRD (Gate 1 subject) | `<root>/<slug>/prd/agent.md` | `prd.md` |
-| PRD human digest | `<root>/<slug>/prd/human.md` | `prd-human.md` |
-| PRD outline (human-only) | `<root>/<slug>/prd/outline.md` | `prd-outline.md` |
-| PRD outline critique | `<root>/<slug>/prd/outline-critique.md` | `prd-outline-critique.md` |
-| Design (Gate 2 subject) | `<root>/<slug>/design/agent.md` | `design.md` |
-| Design outline / critique | `<root>/<slug>/design/…` | `design-outline.md` / `design-outline-critique.md` |
-| Plan (Gate 3 subject) | `<root>/<slug>/plan/agent.md` | `plan.md` |
-| Plan outline / critique | `<root>/<slug>/plan/…` | `plan-outline.md` / `plan-outline-critique.md` |
-| Expectations | `<root>/<slug>/expectations.md` | `expectations.md` |
-| RED artifacts | `<root>/<slug>/evals/` | `evals/` |
-| Working memory | `<root>/<slug>/todo.md` | `todo.md` |
-| Decision records | `<root>/<slug>/decisions/` | `decisions/` |
-
-Three rules make the choice safe rather than merely cosmetic:
-
-1. **Outlines stay human-only in both layouts.** `project-level` renames the
-   outline files, and a rename that moved them out from under
-   `isProtectedOutlinePath()` would silently drop the guarantee three
-   enforcement layers exist to make — the exact failure shape §3 rejects. The
-   classifier therefore recognizes the `<stage>-outline.md` root names too,
-   and `<stage>-outline-critique.md` stays agent-writable, as its
-   folder-shaped counterpart already is.
-2. **`project-level` holds exactly one in-flight doc set.** Wanting a second
-   concurrent unit of work *is* the signal to switch layouts, rather than
-   scattering a second PRD across the root. Enforced today at the interview
-   (`/devx-personalize` refuses to record `project-level` while more than one
-   workstream is in flight, naming the slugs it found); `devx workstream new`
-   does not yet carry the matching refusal.
-3. **Gate subjects are unchanged.** A gate resolves its subject through the
-   layout, so the same `devx gate prd` runs against `prd/agent.md` or
-   `prd.md` and returns the same verdict for the same content. Layout is not
-   a gate input.
+- **The artifact layout** — `engine.docs_layout` (`workstream` |
+  `project-level`). Was banked as `docs.layout` until 2026-09-01; §3 records
+  why it was routed out. The two shapes, and what each one moves, are
+  documented in `docs/CONFIG.md` §15.
+- **Where the tree is rooted** — `engine.workstreams_root` (§2).
 
 ---
 

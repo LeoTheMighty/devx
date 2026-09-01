@@ -936,6 +936,11 @@
         "workstreams_root": {
           "type": "string"
         },
+        "docs_layout": {
+          "description": "Shape of the artifact tree. `workstream` (default) is the folder-per-artifact tree under engine.workstreams_root: one slug per unit of work, many in flight at once. `project-level` is the flat repo-root shape (prd.md / design.md / plan.md plus their `<stage>-outline.md` counterparts) for a repo that only ever designs one thing at a time, and it holds exactly ONE in-flight doc set. Committed repo policy rather than a personal preference, for the same reason workstreams_root is: it names where files the WHOLE REPO shares get written, so two contributors resolving it differently would split the artifact tree in half. Gate subjects resolve through the layout — the same gate returns the same verdict for the same content either way — and outline files stay human-only in BOTH layouts. See docs/CONFIG.md.",
+          "type": "string",
+          "enum": ["workstream", "project-level"]
+        },
         "archive_root": {
           "type": "string"
         },
@@ -1062,7 +1067,7 @@
           "enum": ["engineer", "pm", "both"]
         },
         "docs.layout": {
-          "description": "Where stage artifacts live. `workstream` (default) is the folder-per-artifact tree under engine.workstreams_root; `project-level` is the flat repo-root shape (prd.md / design.md / plan.md and their `<stage>-outline.md` counterparts) for a repo that only ever designs one thing at a time. Outline files stay human-only in BOTH layouts. Chooses the SHAPE of the tree; engine.workstreams_root names where it is rooted. See PERSONALIZATION.md §4.1.",
+          "description": "DEPRECATED — the layout moved to `engine.docs_layout`, because it is committed repo policy rather than a personal preference: it names where files the whole repo shares get written. Still accepted here so an existing config validates, and still READ as a fallback so a repo that answered it does not silently flip layout on upgrade; `engine.docs_layout` wins when both are present. Move it and delete this key.",
           "type": "string",
           "enum": ["workstream", "project-level"]
         },
