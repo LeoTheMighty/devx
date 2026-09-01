@@ -9,6 +9,23 @@
 > (`learn.auto_apply`, see below) swaps the human prune for an evidence bar
 > and a path predicate — it never swaps out a guard.
 
+## Step 0 — Preference keys (no preflight)
+
+**Preference keys** (resolved per `docs/PERSONALIZATION.md` §2; load only these):
+
+| Key | Core | What it changes here |
+| --- | :-: | --- |
+| `autonomy.action_mode` | ● | Whether the user's prune approval covers the whole kept set, or each row re-confirms before it is applied |
+| `output.verbosity` | ● | Narration density — never suppresses a refusal or the evidence table |
+| `retro.depth` | | How much a workstream-close retro asks for |
+
+**This skill deliberately carries no profile preflight.** A meta-skill that
+only runs once everything else is unblocked is useless precisely when a
+blocked session is the one worth retro-ing — an unanswerable preflight is
+exactly the kind of friction this skill exists to mine. It reads the keys
+above when they are answered and falls through to registry defaults when they
+are not, silently.
+
 ## Mining scope
 
 - **Current session only.** The material is this conversation's thread —
@@ -40,7 +57,7 @@ bucket's destination, one at a time.
 
 ## Routing
 
-Every kept row goes to **exactly one** outlet. Walk the five in order and
+Every kept row goes to **exactly one** outlet. Walk the six in order and
 stop at the **first match** — the walk is the decision, not a menu, so the
 same judgment is never asked twice. The one exception is a genuine tie:
 a tie is not a first match, so keep walking and settle it with the
@@ -55,14 +72,28 @@ outlet its evidence actually reaches and no wider.
 2. **Project preference** — the machinery is right; this repo wants it
    dialed differently. Destination: a proposed `devx.config.yaml` change
    (a proposal, never a silent edit).
-3. **Product/workstream lesson** — true about the thing being built, not
+3. **Mistake made twice** — a *coding* mistake the agent repeated in the
+   target repo (not a devx-machinery failure): the same wrong assumption
+   about this codebase, made again after already being corrected once.
+   Destination: a ready-to-paste `CLAUDE.md` snippet for **that repo**,
+   handed back to the user — **never committed by this skill**, in the devx
+   repo or any other. `CLAUDE.md` is loaded into every agent's context in
+   that repo, so it is the widest thing a retro can write and the one most
+   worth a human's eyes before it lands.
+
+   **The bar is literally twice.** One occurrence is a mistake; two is a
+   missing instruction. A single wrong assumption routes to outlet 4 and
+   waits — this outlet exists to catch the pattern, not to accumulate
+   folklore, and a `CLAUDE.md` that grows a line per session stops being
+   read. State both occurrences as evidence or the row does not qualify.
+4. **Product/workstream lesson** — true about the thing being built, not
    about the tool that built it. Destination: a LEARN.md candidate line for
    the next retro to promote.
-4. **Personal preference** — how *this one person* likes to work; nobody
+5. **Personal preference** — how *this one person* likes to work; nobody
    else's run changes. Destination: a `~/.claude/` snippet **presented to
    the user to paste themselves, and NEVER committed** — it touches no file
    in the repo, opens no branch, and leaves no trace in git.
-5. **Dropped** — nothing above matched. It stays noted in the evidence
+6. **Dropped** — nothing above matched. It stays noted in the evidence
    table; nothing is written anywhere.
 
 Three rules keep the routing checkable:
@@ -193,7 +224,7 @@ is written through:
 
 ```
 devx learn-helper propose <payload.json>                    # docs/updates + dev/ spec + DEV.md row
-devx learn-helper propose <payload.json> --target personal  # outlet 4, never committed
+devx learn-helper propose <payload.json> --target personal  # outlet 5, never committed
 ```
 
 The repo target writes `docs/updates/<date>-<slug>.md`, a `dev/` spec, and a

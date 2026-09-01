@@ -147,6 +147,9 @@ describe("engineConfigFrom — defensive engine.* reads (AC #12)", () => {
       workstreamsRoot: "_devx/workstreams",
       expectationsMin: 3,
       proseBudgetKb: 60,
+      // §31 Reading Guide columns — defaults to the plan-stage critique
+      // lenses so a repo has one reviewer vocabulary, not two.
+      readingGuideRoles: ["pm", "architect", "dev", "qa"],
     });
   });
 

@@ -953,6 +953,15 @@
           "type": "number",
           "exclusiveMinimum": 0
         },
+        "reading_guide_roles": {
+          "description": "Column set for the Reading Guide on a design human render — the annotated ToC that doubles as an audience map. Defaults to the plan-stage critique lenses ([pm, architect, dev, qa]) so the document is mapped in a vocabulary the repo already uses rather than a parallel one. Columns are the scarce resource: add a role only when it would carry at least one ● outside Overview. Derivation-only — the guide's PRESENCE is never gated on config, and no personalization key can suppress it.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
         "critique": {
           "type": "object",
           "properties": {
@@ -1039,6 +1048,160 @@
         "auto_apply": {
           "description": "Let an unattended /devx-learn run apply its routed framework fixes (branch \u2192 local CI \u2192 PR \u2192 mode merge gate) instead of stopping at an evidence table nobody is sitting in front of (c808b1). Default false \u2014 an unattended run that opens PRs must be opted into, not inherited by anyone who installs devx, and it is deliberately NOT implied by learn.auto_allow (that knob only lets the watcher spawn a retro). Turning it on never widens WHAT may be applied: wedge paths (.claude/**, skills/**, settings.json, anything outside the repo) and locked machinery stay proposal-only in every mode.",
           "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "personalization": {
+      "description": "The REPO/TEAM layer (layer 4) of the preference bank documented in docs/PERSONALIZATION.md. Individual layers live in ~/.claude/devx/ and are never committed; this block is the only committed one, so it is the only one that binds contributors. It is a FLOOR, not a peer: where a value here is stricter than what an individual profile resolved, this one wins outright (PERSONALIZATION.md §2). Nothing here is a gate input — a value that would skip, weaken, auto-pass, or reorder a gate, refusal, or record is void at runtime and reported verbatim. Keys, defaults, and strictness directions are defined once in docs/PERSONALIZATION.md; this schema constrains shape only.",
+      "type": "object",
+      "properties": {
+        "role": {
+          "description": "Prompt altitude and which next-command rows surface. A `pm` never receives git or worktree mechanics. Default `both`.",
+          "type": "string",
+          "enum": ["engineer", "pm", "both"]
+        },
+        "docs.layout": {
+          "description": "Where stage artifacts live. `workstream` (default) is the folder-per-artifact tree under engine.workstreams_root; `project-level` is the flat repo-root shape (prd.md / design.md / plan.md and their `<stage>-outline.md` counterparts) for a repo that only ever designs one thing at a time. Outline files stay human-only in BOTH layouts. Chooses the SHAPE of the tree; engine.workstreams_root names where it is rooted. See PERSONALIZATION.md §4.1.",
+          "type": "string",
+          "enum": ["workstream", "project-level"]
+        },
+        "autonomy.action_mode": {
+          "description": "Whether a plan-level approval covers the low-risk batch without item-level re-confirmation. `propose-only` (default) is stricter. Rails unchanged: never acts before plan approval returns; gated-artifact amendments and any delete/overwrite always confirm explicitly.",
+          "type": "string",
+          "enum": ["propose-only", "auto-safe"]
+        },
+        "design.outline_coaching": {
+          "description": "How hard the Design stage pushes before agreeing your outline is complete. `exhaustive` is stricter — it additionally requires every codebase-research finding to be explicitly dispositioned by an outline bullet. Both keep the rule that the HUMAN writes the bullets. Default `standard`.",
+          "type": "string",
+          "enum": ["standard", "exhaustive"]
+        },
+        "plan.phase_appetite": {
+          "description": "Default phase sizing proposed at the Plan stage before you are asked. Default `standard`.",
+          "type": "string",
+          "enum": ["fine", "standard", "coarse"]
+        },
+        "review.above_threshold_shape": {
+          "description": "Which sanctioned Phase 4 adversarial shape runs on a substantial surface (>500 lines / multi-regex / marker-bearing). Never governs WHETHER one runs — self-review is non-skippable per CLAUDE.md. Plain single-pass is not an option: it was measured at 4 findings against a peer median of 16. Default `parallel`.",
+          "type": "string",
+          "enum": ["parallel", "sequential-multi-lens", "empirical-leg"]
+        },
+        "review.findings_destination": {
+          "description": "Where review findings are announced. The findings are recorded regardless — this routes the notification, not the record. Default `both`.",
+          "type": "string",
+          "enum": ["pr-inline", "chat", "both"]
+        },
+        "notify.channel": {
+          "description": "Where devx notifications go. `null` = no pings. Default null.",
+          "type": ["string", "null"]
+        },
+        "notify.threshold": {
+          "description": "How much reaches that channel. Default `blockers`.",
+          "type": "string",
+          "enum": ["never", "blockers", "gate-results", "all"]
+        },
+        "output.verbosity": {
+          "description": "Narration density. `terse` NEVER suppresses: a gate verdict block, a refusal and its reason, an evidence/failure report, a void-and-report notice, or the /devx-learn friction nudge — learn-listener greps that nudge sentence verbatim, so suppressing it would silently disable retro detection. Default `full`.",
+          "type": "string",
+          "enum": ["terse", "full"]
+        },
+        "docs.human_render": {
+          "description": "When a stage's human.md digest is refreshed from the authoritative artifact. Default `on-gate-pass`.",
+          "type": "string",
+          "enum": ["on-gate-pass", "on-stage-write", "on-request"]
+        },
+        "design.diagram_density": {
+          "description": "How many mermaid diagrams the human render carries. Default `standard`.",
+          "type": "string",
+          "enum": ["minimal", "standard", "rich"]
+        },
+        "plan.wave_execution": {
+          "description": "Whether parallel-safe phases are offered as the default execution path. Default `opt-in`.",
+          "type": "string",
+          "enum": ["opt-in", "default"]
+        },
+        "plan.risks_depth": {
+          "description": "`interrogated` (default) runs the riskiest-phase / what-breaks / rollback interrogation before the plan review loop.",
+          "type": "string",
+          "enum": ["standard", "interrogated"]
+        },
+        "execute.worktree": {
+          "description": "Per-spec worktree vs in-place. Default true.",
+          "type": "boolean"
+        },
+        "execute.commit_convention": {
+          "description": "Commit message shape. A repo with a committed convention overrides an individual value by the §2 floor — this repo's CLAUDE.md pins `conventional`. Default `conventional`.",
+          "type": "string",
+          "enum": ["conventional", "plain"]
+        },
+        "execute.auto_advance": {
+          "description": "Continue to the next ready spec after a merged one, or stop and report. Default false.",
+          "type": "boolean"
+        },
+        "execute.pr_labels": {
+          "description": "Labels applied to spec PRs. Default [].",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "execute.reviewers": {
+          "description": "Reviewers requested on spec PRs. Default [].",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "git.pr_state": {
+          "description": "Whether the spec PR opens as a draft. Default `ready`.",
+          "type": "string",
+          "enum": ["draft", "ready"]
+        },
+        "evals.validation_source": {
+          "description": "Where a run of record executes. Default `both`.",
+          "type": "string",
+          "enum": ["local", "ci", "both"]
+        },
+        "qa.exploratory_depth": {
+          "description": "How far an attended Layer-2 pass goes before reporting. Default `brief`.",
+          "type": "string",
+          "enum": ["brief", "full"]
+        },
+        "retro.depth": {
+          "description": "How much the retro asks for at workstream close. Default `full`.",
+          "type": "string",
+          "enum": ["brief", "full"]
+        },
+        "outcome.window_days": {
+          "description": "Default measure_by offset armed at retro, in days. Default 28.",
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "next.default_scope": {
+          "description": "What `devx next` ranks over when no scope flag is given. Default `repo`.",
+          "type": "string",
+          "enum": ["repo", "workstream", "epic"]
+        },
+        "interview.batch_size": {
+          "description": "How many INTERVIEW.md questions one walk offers before checking in. Default 5.",
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "walk.dig_depth": {
+          "description": "Whether a question that needs trying rather than reading may propose a spike. Default `spike-offered`.",
+          "type": "string",
+          "enum": ["read-only", "spike-offered"]
+        },
+        "safety.protected_paths": {
+          "description": "Paths that must never receive an agent commit. Add-only from an individual layer — an individual may extend this list, never shorten a committed one. Default [].",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "safety.production_touch": {
+          "description": "Posture on production-touching work. `never` (default) is the floor; `confirm` is NOT selectable by an individual where this layer committed `never`.",
+          "type": "string",
+          "enum": ["never", "confirm"]
+        },
+        "safety.long_op_confirm_s": {
+          "description": "Confirm before an operation expected to exceed this many seconds. Default 120.",
+          "type": "integer",
+          "exclusiveMinimum": 0
         }
       },
       "additionalProperties": false

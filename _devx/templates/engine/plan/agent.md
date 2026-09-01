@@ -19,6 +19,24 @@
 <scope fence — anything here appearing in a diff is an "extra requiring
 product approval">
 
+## Risks
+
+<!-- IMPLEMENTATION-level risks — distinct from design/agent.md's Risks,
+     which are risks of the APPROACH. These are risks of the SEQUENCE: what
+     this ordering exposes, what a phase cannot roll back, where an estimate
+     is a guess. Written from the Plan-stage interrogation (skill step 1b),
+     not invented afterwards.
+
+     One row per risk. `Phase` names where it bites. `Rollback` is what you
+     actually do when it does — "revert the PR" only counts when the phase
+     really is revert-safe; say so plainly when it is not. Advisory at the
+     gate: a plan with no Risks section is CONCERNS at most, never FAIL, and
+     plans predating this section are grandfathered. -->
+
+| Risk | Phase | Blast radius | Rollback |
+|---|---|---|---|
+| <what could go wrong, specifically> | <n> | <low/med/high> | <what you do about it> |
+
 ## Expectation coverage
 
 | E-id | Priority | Verified in phase | Validation type | Eval artifact | Coverage |

@@ -22,6 +22,7 @@
 //   | 10  | PLAN.md has ready plan items                     | plan-prd          |
 //   | 10.5| TEST.md has unclaimed QA walkthroughs            | explore-qa        |
 //   | 11  | nothing ready, blocked items exist               | report-blocked    |
+//   |     |   → /devx-walk (the health queue's resolver)      |                   |
 //   | 12  | genuinely empty                                  | propose-interview |
 //
 // Row 5.5 (v2o101): inserted as a fractional row rather than renumbering —
@@ -651,7 +652,11 @@ const row11: RowFn = (s) => {
   return {
     row: 11,
     action: "report-blocked",
-    command: null,
+    // Was `null` — the one row in this table that named no command, which is
+    // exactly when a "single next command" is worth most. `/devx-walk`
+    // resolves one blocker per invocation: pick by a fixed rule, dig against
+    // code truth, propose, route back to the entry's writer.
+    command: "/devx-walk",
     detail: `nothing is ready; ${s.blocked.length} blocked item(s): ${lines}`,
   };
 };

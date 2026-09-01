@@ -83,6 +83,47 @@ export const humanRel = (stage: StageDir): string =>
   stageFileRel(stage, HUMAN_BASENAME);
 
 // ---------------------------------------------------------------------------
+// Project-level layout (`docs.layout: project-level`).
+// ---------------------------------------------------------------------------
+//
+// The flat repo-root shape for a repo that only ever designs one thing at a
+// time: no slug, no stage folders, one doc set. The folder-per-artifact names
+// collapse into `<stage>`-prefixed root files — `prd/agent.md` → `prd.md`,
+// `prd/outline.md` → `prd-outline.md`, and so on.
+//
+// Both layouts resolve to the SAME gate subjects for the same content: layout
+// is not a gate input. The one thing that must survive the switch is the
+// human-only guarantee on outlines — see `outline.ts`, which classifies these
+// root names too. A rename that moved an outline out from under the guard
+// would silently drop a guarantee three enforcement layers exist to make.
+//
+// Registry: docs/PERSONALIZATION.md §4.1.
+
+/** Repo-relative authoritative artifact for a stage, project-level layout
+ *  (`prd.md`, `design.md`, `plan.md`; `evals` keeps its directory). */
+export const projectAgentRel = (stage: StageDir): string =>
+  stage === "evals" ? EVALS_DIR_REL : `${stage}.md`;
+
+/** Repo-relative human digest for a stage, project-level layout. */
+export const projectHumanRel = (stage: StageDir): string => `${stage}-human.md`;
+
+/** Repo-relative HUMAN-ONLY outline for a stage, project-level layout. */
+export const projectOutlineRel = (stage: StageDir): string =>
+  `${stage}-${OUTLINE_BASENAME}`;
+
+/** Repo-relative outline critique for a stage, project-level layout.
+ *  Agent-writable, exactly as its folder-shaped counterpart is. */
+export const projectOutlineCritiqueRel = (stage: StageDir): string =>
+  `${stage}-${OUTLINE_CRITIQUE_BASENAME}`;
+
+/** Every project-level outline basename, lowercased — the protected set the
+ *  path classifier adds under this layout. Derived from STAGE_DIRS so a new
+ *  stage cannot arrive with an unprotected outline. */
+export const PROJECT_LEVEL_OUTLINE_BASENAMES: readonly string[] = STAGE_DIRS.map(
+  (s) => projectOutlineRel(s).toLowerCase(),
+);
+
+// ---------------------------------------------------------------------------
 // Absolute resolvers.
 // ---------------------------------------------------------------------------
 

@@ -80,6 +80,51 @@ describe("isProtectedOutlinePath", () => {
       isProtectedOutlinePath('"_devx/workstreams/caf\\303\\251/prd/outline.md"'),
     ).toBe(true);
   });
+
+  // docs.layout: project-level — the flat repo-root shape. Without these the
+  // layout switch would silently un-protect every outline in the repo.
+  it("protects project-level stage outlines at the repo root", () => {
+    expect(isProtectedOutlinePath("prd-outline.md")).toBe(true);
+    expect(isProtectedOutlinePath("design-outline.md")).toBe(true);
+    expect(isProtectedOutlinePath("plan-outline.md")).toBe(true);
+    expect(isProtectedOutlinePath("evals-outline.md")).toBe(true);
+  });
+
+  it("protects project-level outlines handed over as absolute paths", () => {
+    // Edit/Write hand the guard absolute paths; the repo root is unknowable
+    // in a pure function, so these match at any depth.
+    expect(isProtectedOutlinePath("/abs/repo/design-outline.md")).toBe(true);
+    expect(isProtectedOutlinePath("C:\\repo\\plan-outline.md")).toBe(true);
+  });
+
+  it("is case-insensitive on project-level outline basenames", () => {
+    expect(isProtectedOutlinePath("PRD-Outline.md")).toBe(true);
+    expect(isProtectedOutlinePath("/abs/repo/DESIGN-OUTLINE.MD")).toBe(true);
+  });
+
+  it("does NOT protect project-level critiques — the critique is the agent's product", () => {
+    expect(isProtectedOutlinePath("prd-outline-critique.md")).toBe(false);
+    expect(isProtectedOutlinePath("design-outline-critique.md")).toBe(false);
+    expect(isProtectedOutlinePath("/abs/repo/plan-outline-critique.md")).toBe(false);
+  });
+
+  it("does NOT protect project-level agent/human artifacts", () => {
+    expect(isProtectedOutlinePath("prd.md")).toBe(false);
+    expect(isProtectedOutlinePath("design.md")).toBe(false);
+    expect(isProtectedOutlinePath("prd-human.md")).toBe(false);
+  });
+
+  it("exempts shipped project-level outline templates, like every other scaffold", () => {
+    expect(isProtectedOutlinePath("_devx/templates/engine/prd-outline.md")).toBe(false);
+    expect(
+      isProtectedOutlinePath("/abs/repo/_devx/templates/engine/design-outline.md"),
+    ).toBe(false);
+  });
+
+  it("does NOT protect an unrelated file that merely ends in -outline.md", () => {
+    expect(isProtectedOutlinePath("docs/course-outline.md")).toBe(false);
+    expect(isProtectedOutlinePath("chapter-outline.md")).toBe(false);
+  });
 });
 
 describe("classifyDiffNames", () => {

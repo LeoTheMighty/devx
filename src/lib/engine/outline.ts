@@ -15,7 +15,9 @@
 //
 // Protected set (adversarial-review hardened): a basename of `outline.md` /
 // `OUTLINE.md` in ANY case, but only at the repo root or under a
-// `workstreams` path segment — a docs site's own outline.md is not devx's
+// `workstreams` path segment — plus, under `docs.layout: project-level`, the
+// `<stage>-outline.md` root names at any depth (docs/PERSONALIZATION.md
+// §4.1) — a docs site's own outline.md is not devx's
 // to police, and over-broad protection bricked legitimate diagnostics in
 // review. Paths are normalized first (backslashes, `.`/`..` segments), so
 // `_devx/templates/../workstreams/…` cannot dodge classification. Shipped
@@ -26,7 +28,7 @@
 //
 // Design: v2/02-engine.md §3 (folder-per-artifact layout)
 
-import { OUTLINE_BASENAME } from "./artifacts.js";
+import { OUTLINE_BASENAME, PROJECT_LEVEL_OUTLINE_BASENAMES } from "./artifacts.js";
 
 // ---------------------------------------------------------------------------
 // Protected-path classification
@@ -89,6 +91,25 @@ export function dequoteGitPath(line: string): string {
 
 const OUTLINE_BASENAME_LC = OUTLINE_BASENAME.toLowerCase();
 
+/** Project-level layout basenames (`prd-outline.md`, `design-outline.md`, …),
+ *  lowercased. Under `docs.layout: project-level` the outline files leave the
+ *  stage folders and land at the repo root under these names; without them in
+ *  the protected set the layout switch would silently un-protect every
+ *  outline in the repo — the human-only guarantee is layout-independent by
+ *  design (docs/PERSONALIZATION.md §4.1 rule 1).
+ *
+ *  These are matched at ANY depth, like the exact-uppercase root outline and
+ *  for the same reason: Edit/Write hand the guard ABSOLUTE paths, from which
+ *  the repo root is unknowable in a pure function. The over-broad-protection
+ *  risk that scoped the bare `outline.md` match does not apply here — a
+ *  third-party tree is vanishingly unlikely to ship a file named
+ *  `design-outline.md`, whereas `outline.md` is a common docs-site filename.
+ *
+ *  `<stage>-outline-critique.md` is deliberately NOT in this set: the critique
+ *  is the agent's product in both layouts. It is a distinct basename, so it
+ *  can never match here by accident. */
+const PROJECT_LEVEL_OUTLINE_SET = new Set(PROJECT_LEVEL_OUTLINE_BASENAMES);
+
 /** True when a path (absolute or repo-relative, / or \ separated, any case
  *  on the basename — macOS/Windows resolve case-insensitively) names a
  *  protected outline file. */
@@ -96,7 +117,16 @@ export function isProtectedOutlinePath(path: string): boolean {
   const segs = normalizeSegments(dequoteGitPath(path));
   if (segs.length === 0) return false;
   const base = segs[segs.length - 1].toLowerCase();
-  if (base !== OUTLINE_BASENAME_LC) return false;
+  if (base !== OUTLINE_BASENAME_LC) {
+    // Project-level layout: protected regardless of depth, but still exempt
+    // under _devx/templates/ (shipped agent scaffolds), same as every other
+    // protected name.
+    if (!PROJECT_LEVEL_OUTLINE_SET.has(base)) return false;
+    for (let i = 0; i + 1 < segs.length; i++) {
+      if (segs[i] === "_devx" && segs[i + 1] === "templates") return false;
+    }
+    return true;
+  }
   // Shipped templates are agent scaffolds — exempt. Segment-anchored on the
   // normalized path, so `..` tricks were already collapsed away.
   for (let i = 0; i + 1 < segs.length; i++) {

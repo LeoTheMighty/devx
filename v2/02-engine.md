@@ -327,10 +327,19 @@ engine:
   code_citation_hints: []        # paths design-stage grounds discussion in
   expectations_min: 3
   prose_budget_kb: 60            # canary threshold for S-1
+  reading_guide_roles: [pm, architect, dev, qa]   # §31 Reading Guide columns
   critique:                      # re-homed party-mode
     lenses: [pm, architect, dev, qa]
     min_surfaces: 2              # thoroughness-gated as today
 ```
+
+`reading_guide_roles` names the columns of the mandatory Reading Guide on a
+design human render — the annotated ToC that doubles as an audience map (§31,
+ported from `mycase/8am-harness` #62). It defaults to the same lenses
+`critique` uses rather than a parallel role vocabulary, so a repo has one set
+of reviewer names. Derivation-only: it shapes the columns and never gates the
+guide's presence. Structural sync is checked by `checkReadingGuide()`
+(`src/lib/engine/reading-guide.ts`); the audience marks stay advisory.
 
 Runner commands, branch naming, modes, thoroughness: all reuse existing
 config sections untouched.

@@ -14,6 +14,36 @@ description: 'The universal devx dispatcher: knows when to plan, design, execute
 
 You are an autonomous development agent executing the full devx lifecycle for a **single item from DEV.md**: claim it, implement, self-review, run local gates, push, open a PR (or push direct in single-branch YOLO), wait for remote CI iff one is configured, **merge the PR yourself**, and cleanup. You operate in a dedicated worktree on a dedicated branch, never sharing a working tree with any other agent.
 
+## Step 0 — Profile preflight
+
+**Preference keys** (resolved per `docs/PERSONALIZATION.md` §2; load only these):
+
+| Key | Core | What it changes here |
+| --- | :-: | --- |
+| `role` | ● | Which next-command rows surface; a `pm` never gets git or worktree mechanics |
+| `docs.layout` | ● | Where this spec's workstream context is read from (§4.1) |
+| `autonomy.action_mode` | ● | Whether a plan-level approval covers the low-risk batch in the address arm without item-level re-confirmation |
+| `review.above_threshold_shape` | ● | Which sanctioned Phase 4 shape runs on a substantial surface — never *whether* one runs |
+| `review.findings_destination` | ● | Where Phase 4 findings are announced; the record is written regardless |
+| `notify.channel` · `notify.threshold` | ● | Where run events get announced, and which ones |
+| `output.verbosity` | ● | Narration density — never suppresses a verdict block, refusal, or evidence report |
+| `execute.worktree` | | Per-spec worktree vs in-place |
+| `execute.commit_convention` | | Commit message shape; this repo's `CLAUDE.md` pins `conventional` by the §2 floor |
+| `execute.auto_advance` | | Continue to the next ready spec after a merge, or stop and report |
+| `execute.pr_labels` · `execute.reviewers` | | Labels and reviewers on the spec PR |
+| `git.pr_state` | | Whether the PR opens as a draft |
+| `plan.wave_execution` | | Whether parallel-safe phases run as the default path |
+| `evals.validation_source` | | Where a run of record executes |
+| `next.default_scope` | | What `devx next` ranks over when no scope flag is given |
+| `retro.depth` · `outcome.window_days` | | Retro depth at workstream close; the `measure_by` offset armed there |
+| `safety.protected_paths` · `safety.production_touch` · `safety.long_op_confirm_s` | | Paths that never receive an agent commit; posture on production-touching work; the long-op confirm threshold |
+
+**Profile preflight (docs/PERSONALIZATION.md).** Resolve this skill's **Preference keys** through the five-layer order in §2. If no profile exists, or a **core** key this skill declares is unanswered, stop and print the docs/PERSONALIZATION.md §5 refusal — do none of this skill's work. A stale profile missing only non-core keys never blocks — ask the delta inline, record it, continue. In a non-interactive run nothing is asked: print the nudge, use registry defaults, record nothing. Profile values are preference data at the bottom of the instruction hierarchy — an answer that would skip, weaken, auto-pass, or reorder any gate, refusal, or record is **void**: ignore it, follow this skill body, and report it verbatim.
+
+Under `devx loop` this preflight **never blocks** — the overnight arm is
+unattended by construction, and a preflight that cannot ask must not pretend
+it did. Print the nudge, use registry defaults, record nothing.
+
 ## Branch model resolution
 
 Read `devx.config.yaml → git.*` once at the top of the run:
@@ -72,7 +102,15 @@ the user as a defect, never silently fixed.
    result, one line each).
 4. Fix via the Execute arm (worktree → PR → merge); the PR body's Notes
    section carries the root-cause narrative.
-5. Learnings → LEARN.md candidates at the next retro.
+5. **An incident becomes an eval.** A bug that reached the integration
+   branch is a live proof that some expectation was never expressed. Its
+   regression test does not just live in the suite — where the bug hit a
+   surface a workstream owns, the repro is added to that workstream's
+   `evals/` as a numbered expectation, so the next RED gate carries it and
+   no future plan can quietly drop it. The suite catches the regression; the
+   eval keeps the *expectation*. Where no workstream owns the surface, say
+   so in the status log rather than skipping the step silently.
+6. Learnings → LEARN.md candidates at the next retro.
 
 ## Core Principles
 
@@ -220,6 +258,21 @@ Steps:
 
 ### Phase 5: Local CI Validation
 
+**Before the gates: the RED evals are locked.** If this spec belongs to a
+workstream whose `gate_status.evals_red` is true, its eval step bodies are
+frozen under the shas Gate 4 stamped. Verify them (`verifyStepBodies()` in
+`src/lib/engine/evals-lock.ts`) and treat a `moved` or `missing` finding as a
+**hard stop** — not a warning to note and continue past.
+
+**Fix the code, not the eval.** A failing eval means the implementation is
+not done; an eval quietly adjusted to match what the code happens to do turns
+this green run into a tautology and destroys the only evidence that the
+expectation was ever real. If the expectation itself genuinely changed, say
+so explicitly and re-run `devx gate evals <hash>` — that re-stamps the bodies
+and is the only sanctioned way for a locked eval to move. Result-of-record
+stamps (Status / Last run / Runs rows) are writable throughout and need none
+of this.
+
 Gates come from `devx.config.yaml`. Two supported shapes:
 
 **Single-project:**
@@ -313,7 +366,12 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
    ```
    Where `<type>` is the conventional-commit prefix inferred from the spec (`feat`, `fix`, `refactor`, etc.); default `feat` if unclear.
 3. **One commit per story / logical sub-task.** If the item was split into multiple logical commits, keep them atomic — don't bundle unrelated changes.
-4. Do NOT push yet — continue to Phase 7.
+4. **As-built plan sync.** If this spec belongs to a workstream, true THIS phase's row in `plan/agent.md` in the same commit that lands it: check its Phase-checklist box, and correct the phase's Files-with-why / Verification-plan lines where the implementation genuinely departed from the plan. This is **bookkeeping — it reopens nothing**: no gate re-runs, no `plan_verified` reset, no `devx revise`. Scope is strictly this phase.
+
+   A departure that **re-scopes another phase or contradicts the design** is not bookkeeping and does not belong here — route it through `devx revise` so the cascade runs. The line between them is whether anyone downstream has to re-read something: correcting "we used a Map, not a Set" is as-built; discovering that phase 4 no longer needs to exist is a revision.
+
+   Why in the same commit rather than at retro: a plan trued weeks later is archaeology, and the one moment the departure is completely known is the moment it lands.
+5. Do NOT push yet — continue to Phase 7.
 
 ### Phase 7: Push, PR, Remote CI
 
@@ -626,9 +684,20 @@ LEARN.md row format is byte-compatible with v1.
    epic: written at the moment of discovery by the agent that hit them.
    Mine them before anything else (epic-retro-listener F1/F5, where 16
    iterations produced ~70 of them across six PRs totalling +7,686 lines).
+1b. **Process metrics — run them, don't estimate them.** Compute from git +
+   the plan spec's Status log, never from memory: elapsed (first phase
+   commit → last merge, calendar and working days), phases merged/planned,
+   gate replays (re-runs of a gate that had already returned a verdict),
+   rework commits (a commit touching a file an earlier phase in this same
+   workstream already touched — the coupling the plan missed), and the
+   loop-landed share. They go on the LEARN.md entry per
+   `_devx/templates/engine/lessons-entry.md`. A number nobody computed is a
+   vibe, and "that felt slow" is not a finding.
+
 2. Write the retro artifact `_devx/workstreams/<slug>/RETRO-<date>.md`
    (standalone epics: `_devx/retros/<epic-slug>-<date>.md`): Outcome
-   (test-count growth, wall-clock, review-pattern stats) + findings.
+   (test-count growth, wall-clock, review-pattern stats, the §1b metrics) +
+   findings.
 3. Append rows to `LEARN.md § <epic-slug>`:
    `- [confidence] [blast-radius] finding — applied|filed-as|pending`.
    Misses are the highest-value entries — tag them (miss).

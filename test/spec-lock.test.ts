@@ -456,7 +456,12 @@ describe("pickNextItem spec-lock masking", () => {
 // ---------------------------------------------------------------------------
 
 describe("gather spec-lock surfaces", () => {
-  const ENGINE = { workstreamsRoot: "_devx/workstreams", expectationsMin: 3, proseBudgetKb: 60 };
+  const ENGINE = {
+    workstreamsRoot: "_devx/workstreams",
+    expectationsMin: 3,
+    proseBudgetKb: 60,
+    readingGuideRoles: ["pm", "architect", "dev", "qa"],
+  };
 
   function gatherFixture(status: "in-progress" | "ready", lockBody: string | null): string {
     tmp = mkdtempSync(join(tmpdir(), "devx-spec-lock-gather-"));

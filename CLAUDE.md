@@ -264,8 +264,29 @@ Full contract: `.claude/commands/devx.md`.
 - **Status log is append-only.** Add lines; don't rewrite history.
 - **Worktrees are isolation, not staging.** Don't run a non-`/devx` flow inside
   a worktree; don't share a worktree across agents.
-- **Outline files are human-only.** `outline.md` in any workstream stage
-  folder and the repo-root `OUTLINE.md` are typed by the user, never by an
+- **Preferences are answered, not assumed.** Every choice devx would
+  otherwise hardcode — doc layout, autonomy, review shape, verbosity — comes
+  from the bounded bank in `docs/PERSONALIZATION.md`, resolved through five
+  layers with the committed repo layer as a **floor, not a peer**. Writing
+  skills block until the core bank is answered; `devx loop` and any other
+  non-interactive run never block (a preflight that cannot ask must not
+  pretend it did). No preference can skip, weaken, auto-pass, or reorder a
+  gate, refusal, or record — such a value is **void** at runtime and reported
+  verbatim. An ask that fails the askable-question test routes to
+  `devx.config.yaml`, to a `CLAUDE.md` agreement, or to a refusal naming the
+  clause. Set yours with `/devx-personalize`.
+- **Fix the code, not the eval.** Once Gate 4 passes, each eval's step body is
+  locked by a sha stamped in `gate_status.red_eval_shas`. Its result of record
+  (Status / Last run / Runs rows) stays writable; its *steps* do not. An eval
+  softened during implementation turns a green run into a tautology and
+  destroys the only evidence the expectation was ever real. If the
+  expectation genuinely changed, say so and re-run `devx gate evals <hash>` —
+  that re-stamps it, and it is the only sanctioned way for a locked eval to
+  move.
+- **Outline files are human-only — in every layout.** `outline.md` in any
+  workstream stage folder, the repo-root `OUTLINE.md`, and (under
+  `docs.layout: project-level`) the `<stage>-outline.md` root files are typed
+  by the user, never by an
   agent — enforced three ways: the PreToolUse hook (`devx outline guard`)
   denies agent writes AND any Bash command whose text names a real outline
   path (so write commit messages mentioning them via `git commit -F <file>`,
@@ -333,12 +354,17 @@ Full contract: `.claude/commands/devx.md`.
 - `v2/README.md` + `v2/02-engine.md` — the native engine (stages, gates,
   workstreams); `v2/07-decisions.md` — the v2 decision ledger.
 - `docs/CONFIG.md` — every knob in `devx.config.yaml`.
+- `docs/PERSONALIZATION.md` — the preference bank: keys, defaults, scopes,
+  the five-layer resolution, and the askable-question test.
 - `docs/MODES.md` — what each mode does to each subsystem.
 - `docs/ROADMAP.md` — phased buildout + locked cross-epic decisions
   (Phases 2+ re-cut by `v2/06-phases.md`).
 - `.claude/commands/devx.md` — `/devx` command spec (execute loop + retro
   stage); `.claude/commands/devx-plan.md` — planning stages (PRD → Design →
-  Plan → RED).
+  Plan → RED); `.claude/commands/devx-walk.md` — the health queue's resolver
+  (one blocker per invocation: pick by rule → dig against code → propose →
+  route to the writer); `.claude/commands/devx-personalize.md` — the
+  preference interview.
 - `_devx/workstreams/<slug>/` — engine workstream artifacts (prd/agent.md,
   design/agent.md, plan/agent.md, evals/); spec files in `dev/` remain the lightweight
   index on top.
