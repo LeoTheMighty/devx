@@ -2,11 +2,17 @@
 //
 //   guard   PreToolUse hook endpoint: reads the hook JSON on stdin, denies
 //           agent writes to outline files (L1). Allow = silence + exit 0.
-//   check   Mechanical diff scan: outline changes never ride in a PR (L2).
+//   check   Mechanical diff scan: an AUTHORED outline never rides in a PR
+//           (L2). A pristine scaffold does — it holds nothing a human typed.
 //           Exit 0 clean / 1 outline-in-diff / 2 signal trouble.
-//   init    Human-side scaffold for an outline (L3). Refuses in agent
-//           sessions — outlines exist ⟺ a human typed them.
-//   commit  Human-side commit of ONLY outline paths (L3). Same refusal.
+//   init    Bootstrap an EMPTY outline — the one outline write an agent may
+//           make. Never overwrites, in any layout, ever.
+//   commit  Human-side commit of ONLY outline paths (L3). Refuses in agent
+//           sessions — an outline reaches the repo because a human sent it.
+//
+// init resolves `docs.layout` (docs/PERSONALIZATION.md §4.1), so the same
+// command scaffolds `<ws>/<stage>/outline.md` under the workstream layout and
+// `<stage>-outline.md` at the repo root under project-level.
 //
 // Exit codes follow the gate convention (0 ok / 1 refusal-or-dirty / 2 error).
 //
@@ -27,7 +33,16 @@ import {
   resolveWorkstream,
 } from "../lib/engine/workstream.js";
 import {
+  DOCS_LAYOUTS,
+  type DocsLayout,
   OUTLINE_BASENAME,
+  STAGE_DIRS,
+  type StageDir,
+  docsLayoutFrom,
+  projectOutlineRel,
+} from "../lib/engine/artifacts.js";
+import {
+  type OutlineKind,
   PROJECT_OUTLINE_REL,
   agentSessionRefusal,
   baseBranchFrom,
@@ -36,8 +51,15 @@ import {
   guardDecision,
   isAgentSessionEnv,
   isProtectedOutlinePath,
+  outlineKindOf,
   renderDenyJson,
 } from "../lib/engine/outline.js";
+import {
+  BOOTSTRAP_STAGES,
+  gitShowReader,
+  partitionOutlinePaths,
+  scaffoldBody,
+} from "../lib/engine/outline-scaffold.js";
 
 export interface RunOutlineOpts {
   out?: (s: string) => void;
@@ -103,6 +125,34 @@ export function runOutlineGuard(opts: RunOutlineOpts = {}): number {
  *  git.integration_branch / git.default_branch (falls back to main). */
 export const DEFAULT_CHECK_RANGE = "origin/<base>...HEAD";
 
+/** `EngineFs.readFile` narrowed to the null-on-missing shape the scaffold
+ *  comparison wants (a missing template is a fact, not an error). */
+function readFileOrNull(fs: EngineFs): (abs: string) => string | null {
+  return (abs) => {
+    try {
+      return fs.exists(abs) ? fs.readFile(abs) : null;
+    } catch {
+      return null;
+    }
+  };
+}
+
+/** Where the right-hand side of a diff range's content lives.
+ *
+ *  `A...B` / `A..B` → the commit B: that content is what would merge, and
+ *  reading the working tree instead would let an uncommitted edit flip the
+ *  verdict either way. A BARE rev (`devx outline check --diff HEAD~1`) is
+ *  git's two-arg form, whose right-hand side IS the working tree — reading
+ *  the named rev there would compare against the wrong side entirely. */
+export function contentSourceForRange(
+  range: string,
+): { at: "rev"; rev: string } | { at: "worktree" } {
+  const dots = range.includes("...") ? "..." : range.includes("..") ? ".." : null;
+  if (dots === null) return { at: "worktree" };
+  const rhs = range.slice(range.indexOf(dots) + dots.length).trim();
+  return { at: "rev", rev: rhs === "" ? "HEAD" : rhs };
+}
+
 export function runOutlineCheck(
   flags: { diff?: string },
   opts: RunOutlineOpts = {},
@@ -129,9 +179,29 @@ export function runOutlineCheck(
     );
     return 2;
   }
-  const touched = classifyDiffNames(r.stdout.split("\n"));
-  io.out(`${JSON.stringify({ clean: touched.length === 0, touched, range })}\n`);
-  return touched.length === 0 ? 0 : 1;
+  // Name-based classification first (L2's original scan), then the scaffold
+  // exemption: a file still byte-identical to what `devx outline init` wrote
+  // carries nothing a human typed, so blocking it would only punish
+  // bootstrapping. Everything else — including a DELETED outline — blocks.
+  const outlines = classifyDiffNames(r.stdout.split("\n"));
+  const readFile = readFileOrNull(io.fs);
+  const source = contentSourceForRange(range);
+  const { authored, scaffolds } = partitionOutlinePaths(
+    outlines,
+    {
+      repoRoot: ctx.ctx.repoRoot,
+      readFile,
+      readAtRev:
+        source.at === "rev"
+          ? gitShowReader(io.exec, ctx.ctx.repoRoot, source.rev)
+          : (rel) => readFile(join(ctx.ctx.repoRoot, ...rel.split("/"))),
+    },
+    outlineKindOf,
+  );
+  io.out(
+    `${JSON.stringify({ clean: authored.length === 0, touched: authored, scaffolds, range })}\n`,
+  );
+  return authored.length === 0 ? 0 : 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -139,61 +209,149 @@ export function runOutlineCheck(
 // ---------------------------------------------------------------------------
 
 /** Stage folders an outline can live in. */
-export const OUTLINE_STAGES = ["prd", "design", "plan", "evals"] as const;
+export const OUTLINE_STAGES = STAGE_DIRS;
 
-const BUILTIN_SKELETON = `<!-- outline.md — HUMAN-ONLY. Agents never edit this file (hook + CI enforced).
-     Type the structure and the load-bearing facts yourself — the typing is
-     the point. Agents read it, critique it in outline-critique.md, and use
-     it as the spine of human.md. Commit with: devx outline commit -->
+/** The nudge every scaffold carries into the caller's terminal: creating the
+ *  file is mechanical, filling it in is not. Printed on stderr so JSON stdout
+ *  stays machine-clean. */
+const TYPE_IT_YOURSELF =
+  "outlines are human-only — this created an EMPTY scaffold. Type the bullets " +
+  "yourself (that is the point), then land them with `devx outline commit`.";
 
-# Outline
+/** Where a scaffold lands, given the resolved layout. */
+interface OutlineTarget {
+  kind: OutlineKind;
+  /** Repo-relative POSIX path (display + JSON form). */
+  rel: string;
+  abs: string;
+}
 
--
-`;
+function targetFor(
+  kind: OutlineKind,
+  layout: DocsLayout,
+  repoRoot: string,
+  wsAbs: string | null,
+): OutlineTarget {
+  if (kind.kind === "project") {
+    return {
+      kind,
+      rel: PROJECT_OUTLINE_REL,
+      abs: join(repoRoot, PROJECT_OUTLINE_REL),
+    };
+  }
+  if (layout === "project-level") {
+    const rel = projectOutlineRel(kind.stage);
+    return { kind, rel, abs: join(repoRoot, rel) };
+  }
+  // Workstream layout — wsAbs is resolved before this is called.
+  const abs = join(wsAbs as string, kind.stage, OUTLINE_BASENAME);
+  return { kind, rel: relative(repoRoot, abs).split("\\").join("/"), abs };
+}
 
 export function runOutlineInit(
   args: string[],
-  flags: { project?: boolean },
+  flags: { project?: boolean; all?: boolean; layout?: string },
   opts: RunOutlineOpts = {},
 ): number {
   const io = ioOf(opts);
-  if (isAgentSessionEnv(io.env)) {
-    io.err(`${agentSessionRefusal("init")}\n`);
-    return 1;
-  }
+  // No agent-session refusal here (unlike `commit`): init only ever CREATES
+  // the empty scaffold — the never-overwrite rule below means it cannot
+  // touch a byte a human typed, so bootstrapping the file is safe for anyone
+  // to run. See src/lib/engine/outline.ts, L3 note.
   const ctx = loadEngineContext(opts.projectPath);
   if (!ctx.ok) {
     io.err(`devx outline init: ${ctx.error}\n`);
     return 2;
   }
-  const { repoRoot, engine } = ctx.ctx;
+  const { repoRoot, engine, merged } = ctx.ctx;
 
-  let destAbs: string;
-  let templateRel: string;
+  if (flags.layout !== undefined && !(DOCS_LAYOUTS as readonly string[]).includes(flags.layout)) {
+    io.err(
+      `devx outline init: unknown layout '${flags.layout}' — expected one of ${DOCS_LAYOUTS.join(", ")}\n`,
+    );
+    return 2;
+  }
+  const layout: DocsLayout = (flags.layout as DocsLayout | undefined) ?? docsLayoutFrom(merged);
+
+  if (flags.project === true && flags.all === true) {
+    io.err(
+      "devx outline init: --project and --all are different scaffolds — run them separately\n",
+    );
+    return 2;
+  }
+
+  // ── Which outlines does this invocation cover? ─────────────────────────
+  let kinds: OutlineKind[];
+  let hash: string | undefined;
   if (flags.project === true) {
     if (args.length > 0) {
       // A mistyped stage invocation must not silently mint the ROOT outline
-      // (which init then refuses to overwrite — a sticky mistake).
+      // (which init then skips forever after — a sticky mistake).
       io.err(
         "devx outline init: --project takes no hash/stage arguments — drop them or drop the flag\n",
       );
       return 2;
     }
-    destAbs = join(repoRoot, PROJECT_OUTLINE_REL);
-    templateRel = `_devx/templates/engine/${PROJECT_OUTLINE_REL}`;
-  } else {
-    const [hash, stage] = args;
-    if (!hash || !stage) {
-      io.err("usage: devx outline init <hash> <stage>  |  devx outline init --project\n");
-      return 2;
-    }
-    if (!(OUTLINE_STAGES as readonly string[]).includes(stage)) {
+    kinds = [{ kind: "project" }];
+  } else if (layout === "project-level") {
+    // Flat repo-root shape: no workstream, so the only argument is a stage.
+    if (args.length > 1) {
       io.err(
-        `devx outline init: unknown stage '${stage}' — expected one of ${OUTLINE_STAGES.join(", ")}\n`,
+        `devx outline init: docs.layout is project-level — there is no workstream hash here; run 'devx outline init ${args[1]}'\n`,
       );
       return 2;
     }
-    let wsAbs: string;
+    const stage = args[0];
+    if (flags.all === true) {
+      if (stage !== undefined) {
+        io.err("devx outline init: --all takes no stage argument\n");
+        return 2;
+      }
+      kinds = BOOTSTRAP_STAGES.map((s) => ({ kind: "stage", stage: s }) as const);
+    } else {
+      if (stage === undefined) {
+        io.err(
+          "usage: devx outline init <stage>  |  devx outline init --all  |  devx outline init --project   (docs.layout: project-level)\n",
+        );
+        return 2;
+      }
+      if (!(OUTLINE_STAGES as readonly string[]).includes(stage)) {
+        io.err(
+          `devx outline init: unknown stage '${stage}' — expected one of ${OUTLINE_STAGES.join(", ")}\n`,
+        );
+        return 2;
+      }
+      kinds = [{ kind: "stage", stage: stage as StageDir }];
+    }
+  } else {
+    const [hashArg, stage] = args;
+    if (!hashArg || (!stage && flags.all !== true)) {
+      io.err(
+        "usage: devx outline init <hash> <stage>  |  devx outline init <hash> --all  |  devx outline init --project\n",
+      );
+      return 2;
+    }
+    hash = hashArg;
+    if (flags.all === true) {
+      if (stage !== undefined) {
+        io.err("devx outline init: --all takes no stage argument\n");
+        return 2;
+      }
+      kinds = BOOTSTRAP_STAGES.map((s) => ({ kind: "stage", stage: s }) as const);
+    } else {
+      if (!(OUTLINE_STAGES as readonly string[]).includes(stage as string)) {
+        io.err(
+          `devx outline init: unknown stage '${stage}' — expected one of ${OUTLINE_STAGES.join(", ")}\n`,
+        );
+        return 2;
+      }
+      kinds = [{ kind: "stage", stage: stage as StageDir }];
+    }
+  }
+
+  // ── Resolve the workstream once (workstream layout, stage targets) ─────
+  let wsAbs: string | null = null;
+  if (hash !== undefined) {
     try {
       wsAbs = resolveWorkstream(repoRoot, hash, engine, io.fs).workstreamAbs;
     } catch (e) {
@@ -207,24 +365,31 @@ export function runOutlineInit(
       }
       throw e;
     }
-    destAbs = join(wsAbs, stage, OUTLINE_BASENAME);
-    templateRel = `_devx/templates/engine/${stage}/${OUTLINE_BASENAME}`;
   }
 
-  if (io.fs.exists(destAbs)) {
-    io.err(
-      `devx outline init: ${relative(repoRoot, destAbs)} already exists — outlines are never overwritten\n`,
-    );
-    return 1;
+  // ── Write, never overwrite ─────────────────────────────────────────────
+  const scaffoldIo = { repoRoot, readFile: readFileOrNull(io.fs) };
+  const created: string[] = [];
+  const skipped: string[] = [];
+  for (const kind of kinds) {
+    const target = targetFor(kind, layout, repoRoot, wsAbs);
+    if (io.fs.exists(target.abs)) {
+      // THE rule: an existing outline is the human's, whatever it contains.
+      skipped.push(target.rel);
+      continue;
+    }
+    io.fs.mkdirRecursive(join(target.abs, ".."));
+    io.fs.writeFile(target.abs, scaffoldBody(kind, scaffoldIo));
+    created.push(target.rel);
   }
-  const templateAbs = join(repoRoot, ...templateRel.split("/"));
-  const body = io.fs.exists(templateAbs)
-    ? io.fs.readFile(templateAbs)
-    : BUILTIN_SKELETON;
-  io.fs.mkdirRecursive(join(destAbs, ".."));
-  io.fs.writeFile(destAbs, body);
-  const rel = relative(repoRoot, destAbs).split("\\").join("/");
-  io.out(`${JSON.stringify({ created: rel })}\n`);
+
+  io.out(`${JSON.stringify({ layout, created, skipped })}\n`);
+  if (skipped.length > 0) {
+    io.err(
+      `devx outline init: left ${skipped.join(", ")} untouched — outlines are never overwritten\n`,
+    );
+  }
+  if (created.length > 0) io.err(`devx outline init: ${TYPE_IT_YOURSELF}\n`);
   return 0;
 }
 
@@ -364,18 +529,29 @@ export function register(program: Command): void {
   sub
     .command("init")
     .description(
-      "Scaffold an outline for a workstream stage (or --project for the repo-root OUTLINE.md). Human-only: refuses inside agent sessions.",
+      "Bootstrap an EMPTY outline scaffold — for a workstream stage, or (docs.layout: project-level) a repo-root <stage>-outline.md, or --project for OUTLINE.md. NEVER overwrites, so anyone (agent included) may run it; the human types the bullets.",
     )
-    .argument("[hash]", "workstream (plan spec) hash")
+    .argument("[hash]", "workstream (plan spec) hash — omitted under docs.layout: project-level")
     .argument("[stage]", `stage folder: ${OUTLINE_STAGES.join(" | ")}`)
     .option("--project", "scaffold the repo-root OUTLINE.md instead")
-    .action((hash: string | undefined, stage: string | undefined, cmdOpts: { project?: boolean }) => {
-      const code = runOutlineInit(
-        [hash ?? "", stage ?? ""].filter((a) => a !== ""),
-        { project: cmdOpts.project },
-      );
-      if (code !== 0) process.exit(code);
-    });
+    .option("--all", "scaffold every stage outline that is still missing")
+    .option(
+      "--layout <layout>",
+      `override the resolved docs.layout: ${DOCS_LAYOUTS.join(" | ")}`,
+    )
+    .action(
+      (
+        hash: string | undefined,
+        stage: string | undefined,
+        cmdOpts: { project?: boolean; all?: boolean; layout?: string },
+      ) => {
+        const code = runOutlineInit(
+          [hash ?? "", stage ?? ""].filter((a) => a !== ""),
+          { project: cmdOpts.project, all: cmdOpts.all, layout: cmdOpts.layout },
+        );
+        if (code !== 0) process.exit(code);
+      },
+    );
 
   sub
     .command("commit")

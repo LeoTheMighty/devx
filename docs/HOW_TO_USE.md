@@ -63,15 +63,24 @@ writes artifacts to `_devx/workstreams/<slug>/` and each gate is a mechanical
 CLI check (`devx gate …`) — the agent can't hand-wave past it.
 
 0. **Outline (optional, yours)** — before or during any stage you can type
-   an outline yourself: `devx outline init <hash> <stage>` from your own
-   terminal (not inside an agent session — it refuses there), then edit the
-   file and land it with `devx outline commit` on the base branch. Agents
-   can never write these files (a hook denies the write, CI and the merge
-   gate reject any PR carrying one); they read yours, critique it in
-   `outline-critique.md`, and shape the stage's `human.md` digest after its
-   structure. A repo-wide `OUTLINE.md` works the same via
-   `devx outline init --project`. Typing it out is the point — it is how
-   you stay genuinely in the loop rather than approving summaries.
+   an outline yourself. `devx outline init <hash> <stage>` creates the empty
+   scaffold (the agent may run this for you at stage open — it can only ever
+   *create*, never overwrite); you type the bullets and land them with
+   `devx outline commit` on the base branch, from your own terminal. Agents
+   can never edit the file's content (a hook denies the write, CI and the
+   merge gate reject any PR carrying an authored one); they read yours,
+   critique it in `outline-critique.md`, and shape the stage's `human.md`
+   digest after its structure. Under `docs.layout: project-level` the same
+   file is `<stage>-outline.md` at the repo root and the same command finds
+   it; `--all` scaffolds every stage at once, and a repo-wide `OUTLINE.md`
+   works the same via `devx outline init --project`.
+
+   **Write it in bullets, nothing else** — one thought per bullet, ≤ 12
+   words, nested two spaces for detail, names in `ticks`, code as excerpts
+   (`fn()`) never blocks. The scaffold ships with those rules and a per-stage
+   skeleton. Extremely brief is the target: the whole file should read in
+   under a minute. Typing it out is the point — it is how you stay genuinely
+   in the loop rather than approving summaries.
 1. **PRD** — an interview with you. Produces `prd/agent.md` (goals, use cases,
    requirements, all with stable IDs) and `expectations.md` (≥3 testable
    "when X, the system SHALL Y" blocks with priorities and thresholds).

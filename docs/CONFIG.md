@@ -670,7 +670,9 @@ split the tree in half. A repo that wants `devx/active/<slug>` sets
 `<stage>-outline.md` at the repo root, and `isProtectedOutlinePath()`
 classifies those names too — a layout switch that moved an outline out from
 under the guard would silently drop the guarantee three enforcement layers
-exist to make.
+exist to make. `devx outline init` reads this key to decide where a scaffold
+lands (`--layout` overrides it for a single run); the scaffold body, the
+never-overwrite rule, and the human-only guarantee are identical either way.
 
 ---
 

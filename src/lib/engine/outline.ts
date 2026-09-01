@@ -10,8 +10,15 @@
 //   L1 (write-time)  PreToolUse hook → `devx outline guard` → guardDecision()
 //   L2 (merge-time)  `devx outline check` diff scan → classifyDiffNames();
 //                    also surfaced as merge-gate's `outlineClean` signal
-//   L3 (human-side)  `devx outline init|commit` refuse under agent-session
-//                    env markers → isAgentSessionEnv()
+//   L3 (human-side)  `devx outline commit` refuses under agent-session env
+//                    markers → isAgentSessionEnv()
+//
+// One agent-runnable seam exists, and only one: `devx outline init`. It
+// CREATES the empty scaffold and never overwrites, so it cannot touch a byte
+// a human typed — bootstrapping the file is mechanical, filling it in is the
+// human's act. A pristine scaffold is therefore not a human artifact, and L2
+// lets it ride a PR (`devx outline check` compares content against the
+// scaffold body before blocking).
 //
 // Protected set (adversarial-review hardened): a basename of `outline.md` /
 // `OUTLINE.md` in ANY case, but only at the repo root or under a
@@ -28,7 +35,13 @@
 //
 // Design: v2/02-engine.md §3 (folder-per-artifact layout)
 
-import { OUTLINE_BASENAME, PROJECT_LEVEL_OUTLINE_BASENAMES } from "./artifacts.js";
+import {
+  OUTLINE_BASENAME,
+  PROJECT_LEVEL_OUTLINE_BASENAMES,
+  STAGE_DIRS,
+  type StageDir,
+  projectOutlineRel,
+} from "./artifacts.js";
 
 // ---------------------------------------------------------------------------
 // Protected-path classification
@@ -145,6 +158,40 @@ export function isProtectedOutlinePath(path: string): boolean {
   return segs.some((s) => s === "workstreams");
 }
 
+/** Which scaffold a protected outline path was born from: a stage outline
+ *  (either layout) or the repo-root project outline. `null` = the path is
+ *  protected but its origin is unknowable (a bare `outline.md` token with no
+ *  stage parent), in which case callers must treat it as human-authored —
+ *  the fail-closed direction. */
+export type OutlineKind = { kind: "stage"; stage: StageDir } | { kind: "project" };
+
+const PROJECT_LEVEL_OUTLINE_STAGE = new Map<string, StageDir>(
+  STAGE_DIRS.map((s) => [projectOutlineRel(s).toLowerCase(), s]),
+);
+
+/** Classify a protected outline path by the scaffold it would be initialized
+ *  from. Layout-agnostic on purpose: `prd/outline.md` (workstream) and
+ *  `prd-outline.md` (project-level) are the same stage's outline, and the
+ *  same template body backs both. */
+export function outlineKindOf(path: string): OutlineKind | null {
+  const segs = normalizeSegments(dequoteGitPath(path));
+  if (segs.length === 0) return null;
+  const base = segs[segs.length - 1];
+  const baseLc = base.toLowerCase();
+  const projectLevelStage = PROJECT_LEVEL_OUTLINE_STAGE.get(baseLc);
+  if (projectLevelStage !== undefined) return { kind: "stage", stage: projectLevelStage };
+  if (baseLc !== OUTLINE_BASENAME_LC) return null;
+  // Workstream layout: the parent folder names the stage.
+  const parent = segs.length >= 2 ? segs[segs.length - 2] : undefined;
+  if (parent !== undefined && (STAGE_DIRS as readonly string[]).includes(parent)) {
+    return { kind: "stage", stage: parent as StageDir };
+  }
+  // The repo-root project outline is spelled in caps; a lowercase bare
+  // `outline.md` with no stage parent has no known scaffold.
+  if (base === PROJECT_OUTLINE_REL) return { kind: "project" };
+  return null;
+}
+
 /** Filter a `git diff --name-only` listing down to protected outline paths.
  *  Returns the dequoted repo-relative paths. */
 export function classifyDiffNames(names: readonly string[]): string[] {
@@ -191,9 +238,14 @@ const SHELL_OPERATOR_RE = /[;&|`$(){}<>\n]/;
  *  operators): the mechanical outline commands themselves, plus read-only
  *  diagnostics and index-only git verbs — review agents were locked out of
  *  `grep`/`git log` over outline paths, and an accidentally staged outline
- *  was un-unstageable without these. */
+ *  was un-unstageable without these.
+ *
+ *  `init` is on the list deliberately: it is the ONE write an agent may make
+ *  to an outline, and it can only ever create the pristine scaffold (it
+ *  refuses to overwrite, so it can never touch a byte the human typed).
+ *  `commit` is NOT — landing an outline in the repo stays human-side. */
 const ALLOW_COMMAND_RE =
-  /^\s*(devx\s+outline\s+(check|guard)|grep|rg|ls|wc|head|tail|cat|git\s+(log|show|diff|status)|git\s+restore\s+--staged|git\s+rm\s+--cached|git\s+reset)\b/;
+  /^\s*(devx\s+outline\s+(check|guard|init)|grep|rg|ls|wc|head|tail|cat|git\s+(log|show|diff|status)|git\s+restore\s+--staged|git\s+rm\s+--cached|git\s+reset)\b/;
 
 /** Path-ish tokens mentioning an outline file inside a shell command —
  *  catches redirects, cp/mv/sed targets, heredocs, anything that names the
@@ -210,8 +262,9 @@ export interface GuardDecision {
 const DENY_COMMON =
   "outline files are human-only (typed by the user; the whole point is that " +
   "a human authored them). Read outlines with the Read tool; critique them " +
-  "in outline-critique.md; ask the user to edit via `devx outline init` / " +
-  "`devx outline commit` from their own terminal.";
+  "in outline-critique.md. To bootstrap an EMPTY one, run " +
+  "`devx outline init` (creates the scaffold, never overwrites) and ask the " +
+  "user to type the bullets and land them with `devx outline commit`.";
 
 /** Decide a PreToolUse hook payload. Unknown/malformed input allows —
  *  the guard must never brick unrelated tool use. */
@@ -286,7 +339,8 @@ export function isAgentSessionEnv(
   });
 }
 
-/** Refusal text for `devx outline init|commit` under an agent session. */
+/** Refusal text for a human-only outline subcommand (today: `commit`) run
+ *  under an agent session. `init` is exempt — see the L3 note in the header. */
 export function agentSessionRefusal(subcommand: string): string {
   return (
     `devx outline ${subcommand}: refusing to run inside an agent session ` +

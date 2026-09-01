@@ -9,7 +9,12 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { runOutlineCheck, runOutlineCommit } from "../src/commands/outline.js";
+import {
+  contentSourceForRange,
+  runOutlineCheck,
+  runOutlineCommit,
+} from "../src/commands/outline.js";
+import { builtinSkeleton } from "../src/lib/engine/outline-scaffold.js";
 import { captureIo } from "./fixtures/engine-repo.js";
 
 const HUMAN_ENV = {} as Record<string, string | undefined>;
@@ -73,7 +78,12 @@ describe("devx outline check", () => {
     const io = captureIo();
     const code = runOutlineCheck({}, { out: io.out, err: io.err, projectPath: repo.configPath });
     expect(code).toBe(0);
-    expect(io.json()).toEqual({ clean: true, touched: [], range: "origin/main...HEAD" });
+    expect(io.json()).toEqual({
+      clean: true,
+      touched: [],
+      scaffolds: [],
+      range: "origin/main...HEAD",
+    });
   });
 
   it("exits 1 and names the outline paths when the branch carries one", () => {
@@ -232,5 +242,125 @@ describe("devx outline commit", () => {
     });
     expect(code).toBe(1);
     expect(io.stderr()).toContain("no outline changes");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The scaffold exemption — `devx outline init` output may ride a PR
+// ---------------------------------------------------------------------------
+
+describe("devx outline check — pristine scaffolds", () => {
+  /** Scaffold an outline the way `devx outline init` does, then commit it on
+   *  a feature branch — the exact shape an agent-bootstrapped outline takes
+   *  when it reaches a PR. */
+  function branchWithScaffold(
+    repo: Repo,
+    rel: string,
+    kind: Parameters<typeof builtinSkeleton>[0],
+    branch: string,
+  ): void {
+    git(repo.root, "checkout", "-b", branch);
+    repo.write(rel, builtinSkeleton(kind));
+    git(repo.root, "add", "-A");
+    git(repo.root, "commit", "-m", "scaffold outline");
+  }
+
+  it("lets an untouched scaffold through, and names it", () => {
+    const repo = makeGitRepo();
+    branchWithScaffold(
+      repo,
+      "_devx/workstreams/demo/prd/outline.md",
+      { kind: "stage", stage: "prd" },
+      "feat/scaffold",
+    );
+    const io = captureIo();
+    const code = runOutlineCheck({}, { out: io.out, err: io.err, projectPath: repo.configPath });
+    expect(code).toBe(0);
+    const j = io.json() as { clean: boolean; touched: string[]; scaffolds: string[] };
+    expect(j.clean).toBe(true);
+    expect(j.touched).toEqual([]);
+    expect(j.scaffolds).toEqual(["_devx/workstreams/demo/prd/outline.md"]);
+  });
+
+  it("blocks the moment a human types into it", () => {
+    const repo = makeGitRepo();
+    branchWithScaffold(
+      repo,
+      "_devx/workstreams/demo/prd/outline.md",
+      { kind: "stage", stage: "prd" },
+      "feat/typed",
+    );
+    repo.write(
+      "_devx/workstreams/demo/prd/outline.md",
+      `${builtinSkeleton({ kind: "stage", stage: "prd" })}* my own bullet\n`,
+    );
+    git(repo.root, "add", "-A");
+    git(repo.root, "commit", "-m", "human types a bullet");
+    const io = captureIo();
+    const code = runOutlineCheck({}, { out: io.out, err: io.err, projectPath: repo.configPath });
+    expect(code).toBe(1);
+    const j = io.json() as { touched: string[]; scaffolds: string[] };
+    expect(j.touched).toEqual(["_devx/workstreams/demo/prd/outline.md"]);
+    expect(j.scaffolds).toEqual([]);
+  });
+
+  it("exempts project-level root scaffolds too (layout-independent)", () => {
+    const repo = makeGitRepo();
+    branchWithScaffold(
+      repo,
+      "design-outline.md",
+      { kind: "stage", stage: "design" },
+      "feat/project-level",
+    );
+    const io = captureIo();
+    expect(
+      runOutlineCheck({}, { out: io.out, err: io.err, projectPath: repo.configPath }),
+    ).toBe(0);
+    expect((io.json() as { scaffolds: string[] }).scaffolds).toEqual(["design-outline.md"]);
+  });
+
+  it("blocks a DELETED outline — losing one is as bad as editing one", () => {
+    const repo = makeGitRepo();
+    repo.write("OUTLINE.md", "# typed by the human\n");
+    git(repo.root, "add", "-A");
+    git(repo.root, "commit", "-m", "human outline on main");
+    git(repo.root, "push", "origin", "main");
+    git(repo.root, "checkout", "-b", "feat/delete");
+    git(repo.root, "rm", "OUTLINE.md");
+    git(repo.root, "commit", "-m", "drop the outline");
+    const io = captureIo();
+    const code = runOutlineCheck({}, { out: io.out, err: io.err, projectPath: repo.configPath });
+    expect(code).toBe(1);
+    expect((io.json() as { touched: string[] }).touched).toEqual(["OUTLINE.md"]);
+  });
+
+  it("blocks a protected path with no knowable scaffold (fail closed)", () => {
+    const repo = makeGitRepo();
+    git(repo.root, "checkout", "-b", "feat/unknown");
+    // Under a workstreams segment but not in a stage folder: protected by
+    // name, unclassifiable by origin.
+    repo.write("_devx/workstreams/demo/outline.md", "whatever\n");
+    git(repo.root, "add", "-A");
+    git(repo.root, "commit", "-m", "odd outline");
+    const io = captureIo();
+    expect(
+      runOutlineCheck({}, { out: io.out, err: io.err, projectPath: repo.configPath }),
+    ).toBe(1);
+  });
+});
+
+describe("contentSourceForRange", () => {
+  it("takes the right-hand side of a range, defaulting to HEAD", () => {
+    expect(contentSourceForRange("origin/main...HEAD")).toEqual({ at: "rev", rev: "HEAD" });
+    expect(contentSourceForRange("origin/main...feat/x")).toEqual({ at: "rev", rev: "feat/x" });
+    expect(contentSourceForRange("main..feat/y")).toEqual({ at: "rev", rev: "feat/y" });
+    expect(contentSourceForRange("origin/main...")).toEqual({ at: "rev", rev: "HEAD" });
+  });
+
+  it("reads the WORKING TREE for git's two-arg form", () => {
+    // `git diff --name-only HEAD~1` compares the working tree against HEAD~1;
+    // the content under judgement is on disk, not at the named rev.
+    expect(contentSourceForRange("HEAD~1")).toEqual({ at: "worktree" });
+    expect(contentSourceForRange("main")).toEqual({ at: "worktree" });
   });
 });

@@ -292,11 +292,26 @@ Full contract: `.claude/commands/devx.md`.
   path (so write commit messages mentioning them via `git commit -F <file>`,
   and edit docs about them with the Write/Edit tools, not heredocs); `devx
   outline check` fails CI + merge-gate when a PR diff carries one; `devx
-  outline init|commit` refuse inside agent sessions. Agents READ outlines
+  outline commit` refuses inside agent sessions. Agents READ outlines
   freely (Read tool), critique them in `outline-critique.md`, and mirror
   their structure in `human.md`. Shipped templates under `_devx/templates/`
-  are exempt (agent scaffolds). Offer once per attended planning stage; the
-  human runs `devx outline init <hash> <stage>` from their own terminal.
+  are exempt (agent scaffolds).
+- **`devx outline init` is the one exception, and it can only create.** An
+  agent may run it to bootstrap the EMPTY scaffold in either layout
+  (`devx outline init <hash> <stage>`, `devx outline init <stage>` under
+  `project-level`, `--all` for every stage, `--project` for `OUTLINE.md`).
+  It NEVER overwrites: an existing outline is skipped, reported, and left
+  byte-identical, so no typed bullet can be lost. A pristine scaffold is
+  not a human artifact and rides a PR freely — `devx outline check`, the
+  merge gate, and the overnight loop all compare content against the
+  scaffold body before blocking. Everything after the first typed bullet is
+  the human's: they type, they run `devx outline commit` on the base
+  branch. Offer once per attended planning stage, after scaffolding.
+- **An outline is bullets, and only bullets.** One thought per bullet,
+  ≤ 12 words, nested two spaces deeper for detail, names in `ticks`, code
+  as excerpts (`fn()`) and never blocks, no paragraphs or tables. The
+  scaffold ships these rules in its header comment; a critique that finds
+  the outline drifting into prose says so.
 - **A critique tracks only the latest outline.** When an outline changes,
   re-read it whole and overwrite `outline-critique.md` (or
   `OUTLINE-CRITIQUE.md`) whole — don't open the old critique first, and never

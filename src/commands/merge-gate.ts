@@ -43,7 +43,8 @@ import { dirname, join } from "node:path";
 import type { Command } from "commander";
 
 import { findProjectConfig, loadMerged } from "../lib/config-io.js";
-import { baseBranchFrom, classifyDiffNames } from "../lib/engine/outline.js";
+import { baseBranchFrom } from "../lib/engine/outline.js";
+import { scanOutlineDiff } from "../lib/engine/outline-scaffold.js";
 import {
   AmbiguousSpecHashError,
   SPEC_TYPE_DIRS,
@@ -490,7 +491,14 @@ export function runMergeGate(
       { cwd: projectDir },
     );
     if (od.exitCode === 0) {
-      outlineClean = classifyDiffNames(od.stdout.split("\n")).length === 0;
+      // Scaffold exemption included: an outline still byte-identical to what
+      // `devx outline init` wrote holds nothing the human typed, so it is not
+      // the thing this signal exists to catch.
+      outlineClean = scanOutlineDiff(od.stdout, {
+        repoRoot: projectDir,
+        exec: (cmd, args, o) => baseExec(cmd, args, o),
+        rev: headRef,
+      }).clean;
       break;
     }
     // Local branch ref gone (gate run after cleanup / from another
