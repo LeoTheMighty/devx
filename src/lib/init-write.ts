@@ -504,6 +504,10 @@ export function renderInitConfig(opts: RenderOpts): string {
     // loop budgets); see v2/02-engine.md §7 + v2/04-overnight-loop.md §3.
     engine: {
       workstreams_root: "_devx/workstreams",
+      // N14, written EXPLICITLY rather than left to the shipped default: the
+      // layout decides where every artifact lands, and a key absent from the
+      // file is a question nobody was asked (docs/CONFIG.md §15).
+      docs_layout: config.engine?.docs_layout ?? "workstream",
       archive_root: "_devx/archive",
       code_citation_hints: [],
       expectations_min: 3,

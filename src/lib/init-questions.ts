@@ -44,11 +44,18 @@ export type QuestionId =
   | "n10"
   | "n11"
   | "n12"
-  | "n13";
+  | "n13"
+  | "n14";
 
 export type Mode = "YOLO" | "BETA" | "PROD" | "LOCKDOWN";
 
 export type GitStrategy = "single-branch" | "develop-main-split";
+
+/** Shape of the artifact tree — `engine.docs_layout`. Committed repo policy,
+ *  never a preference (docs/CONFIG.md §15): it names where files the whole
+ *  repo shares get written. Asked here because init is the only moment the
+ *  answer is cheap — once a tree exists, changing it means moving artifacts. */
+export type DocsLayout = "workstream" | "project-level";
 
 export interface Question {
   id: QuestionId;
@@ -185,6 +192,7 @@ export interface PartialConfig {
     autonomy?: { initial_n?: number; rollback_penalty?: number };
   };
   ci?: { provider?: "github-actions" | "none" };
+  engine?: { docs_layout?: DocsLayout };
   qa?: { browser_harness?: "playwright" | "cypress" | "none" };
   notifications?: {
     channels?: unknown[];
@@ -284,6 +292,13 @@ export const QUESTIONS: readonly Question[] = Object.freeze([
     prompt: "Notifications — email / push / digest? Quiet hours?",
     hint:
       "default: email digest at 09:00 + push only for INTERVIEW + MANUAL + system-critical.",
+  },
+  {
+    id: "n14",
+    prompt:
+      "Docs layout — many things planned in parallel (workstream), or one at a time (project-level)?",
+    hint:
+      "workstream = a folder per unit of work under engine.workstreams_root; project-level = flat docs at the repo root, exactly one in flight. Changing it later means moving artifacts.",
   },
 ]);
 
@@ -437,6 +452,26 @@ export function evaluateSkipTable(
         channels: userPrefs.notifications.channels ?? [],
         quietHours: userPrefs.notifications.quiet_hours ?? null,
       },
+      requiresConfirm: false,
+    };
+  }
+
+  // N14 — a repo with history gets `workstream` silently. Two reasons, and
+  // both are about not spending a prompt on a foregone conclusion:
+  // `project-level` holds exactly ONE in-flight doc set, which an existing
+  // codebase almost never wants; and `workstream` is the layout that never
+  // needs a migration later, while the flat shape does. A greenfield repo
+  // (no commits) IS asked — there the flat shape is genuinely plausible and
+  // the user is already deciding everything else.
+  //
+  // Either way the key is WRITTEN explicitly into devx.config.yaml with the
+  // reason in the transcript, so an inferred layout is visible and one line
+  // to change — never a silent default nobody saw.
+  if (state.hasCommits) {
+    skips.n14 = {
+      reason:
+        "existing repo with history — workstream (parallel units of work; no migration later)",
+      defaultValue: "workstream",
       requiresConfirm: false,
     };
   }
@@ -748,6 +783,14 @@ export function buildConfig(
 
   const dailyCap = answers.n12 as number | null | undefined;
 
+  // N14. Default `workstream`: it is the shape every existing repo runs, and
+  // it is the one that degrades gracefully — a project-level repo that wanted
+  // parallel work has to move files, while a workstream repo that only ever
+  // runs one slug is merely carrying an extra folder level.
+  const docsLayoutAnswer = answers.n14 as DocsLayout | undefined;
+  const docsLayout: DocsLayout =
+    docsLayoutAnswer === "project-level" ? "project-level" : "workstream";
+
   const notifications = answers.n13 as
     | { channels?: unknown[]; quietHours?: string | null }
     | undefined;
@@ -774,6 +817,7 @@ export function buildConfig(
       },
     },
     ci: { provider: infra?.ciProvider ?? "github-actions" },
+    engine: { docs_layout: docsLayout },
     qa: { browser_harness: infra?.browserHarness ?? "playwright" },
     notifications: {
       channels: notifications?.channels ?? [

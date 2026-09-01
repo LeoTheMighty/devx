@@ -145,6 +145,23 @@ export function gatherRepoSnapshot(opts: GatherOpts): RepoSnapshot {
   const warnings: string[] = [];
   const drift: DriftEntry[] = [];
 
+  // ── Unset artifact layout (advisory) ────────────────────────────────────
+  // `devx init` writes `engine.docs_layout` explicitly (N14); a repo that
+  // predates that runs on a default nobody chose, and the layout decides
+  // where every stage artifact is read and written.
+  //
+  // A warning on `devx next`, deliberately, and nowhere heavier: this is a
+  // read-only surface that never blocks (PERSONALIZATION.md §5's rule for
+  // nudges), whereas a `devx doctor` finding would flip that command's exit
+  // code to 3 for every pre-existing repo with no `--fix` able to clear it.
+  // An unclearable red check is how a true signal gets trained away.
+  if (docsLayoutUnset(opts.merged)) {
+    warnings.push(
+      "engine.docs_layout is unset — artifacts resolve through the `workstream` " +
+        "default nobody chose. Set it in devx.config.yaml (docs/CONFIG.md §15).",
+    );
+  }
+
   // ── Backlog rows ────────────────────────────────────────────────────────
   const devRows = readBacklogRows(fs, repoRoot, "DEV.md", warnings);
   const debugRows = readBacklogRows(fs, repoRoot, "DEBUG.md", warnings);
@@ -1135,6 +1152,23 @@ function gatherManagerHeartbeat(
     warnings.push(`manager heartbeat unreadable: ${errMessage(e)}`);
     return dead;
   }
+}
+
+/** True when neither the config key nor its legacy bank spelling is present.
+ *  Mirrors `docsLayoutFrom()`'s two reads — a repo that answered the old key
+ *  HAS chosen a layout, and nagging it would be noise. */
+function docsLayoutUnset(merged: unknown): boolean {
+  if (!merged || typeof merged !== "object") return false;
+  const m = merged as Record<string, unknown>;
+  const section = (name: string): Record<string, unknown> | undefined => {
+    const v = m[name];
+    return typeof v === "object" && v !== null ? (v as Record<string, unknown>) : undefined;
+  };
+  const set = (v: unknown): boolean => typeof v === "string" && v.trim() !== "";
+  return (
+    !set(section("engine")?.docs_layout) &&
+    !set(section("personalization")?.["docs.layout"])
+  );
 }
 
 function heartbeatIntervalFrom(merged: unknown): number {

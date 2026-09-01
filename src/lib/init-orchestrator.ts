@@ -480,6 +480,7 @@ export interface ScriptedAnswers {
   };
   n12?: number | null;
   n13?: { channels?: unknown[]; quietHours?: string | null };
+  n14?: import("./init-questions.js").DocsLayout;
 }
 
 /** Build an AnswerProvider that returns the scripted answer for each question
