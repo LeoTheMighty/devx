@@ -13,10 +13,10 @@
   - Hand-edits are legal — the next writer reconciles.
 -->
 
-- [ ] Stage: PRD
-- [ ] Gate: prd
-- [ ] Stage: Design
-- [ ] Gate: coverage(design)
+- [x] Stage: PRD
+- [x] Gate: prd
+- [x] Stage: Design
+- [x] Gate: coverage(design)
 - [ ] Stage: Plan
 - [ ] Gate: coverage(plan)
 - [ ] Stage: RED
