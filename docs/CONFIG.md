@@ -445,9 +445,18 @@ being designed at a time — the docs sit at the repo root and there is no slug.
 | Working memory | `<root>/<slug>/todo.md` | `todo.md` |
 | Decision records | `<root>/<slug>/decisions/` | `decisions/` |
 
-Four rules make the choice safe rather than merely cosmetic:
+Five rules make the choice safe rather than merely cosmetic:
 
-1. **This is config, not a preference.** It was a preference-bank key
+1. **You are asked once, and the answer is written down.** `devx init` asks it
+   (N14) and writes the key explicitly rather than leaning on the default —
+   except on a repo that already has commits, where `workstream` is inferred
+   silently with the reason in the transcript (an existing codebase almost
+   never wants the one-doc-set shape, and `workstream` never needs a migration
+   later). A repo predating the question gets an advisory warning from
+   `devx next`, and the writing skills ask before their first artifact write —
+   the canonical ask is the `layout-ask-canonical` block in
+   `.claude/commands/devx-personalize.md`.
+2. **This is config, not a preference.** It was a preference-bank key
    (`docs.layout`) until 2026-09-01, and that was a mistake: the layout names
    where files the whole repo shares get written, so two contributors
    resolving it differently would split the artifact tree in half. Same
@@ -456,20 +465,20 @@ Four rules make the choice safe rather than merely cosmetic:
    layout on upgrade, and still validates so an existing config loads — but
    `engine.docs_layout` wins when both are present, and the old one should be
    deleted. See `docs/PERSONALIZATION.md` §3.
-2. **Outlines stay human-only in both layouts.** `project-level` renames the
+3. **Outlines stay human-only in both layouts.** `project-level` renames the
    outline files, and a rename that moved them out from under
    `isProtectedOutlinePath()` would silently drop the guarantee three
    enforcement layers exist to make. The classifier therefore recognizes the
    `<stage>-outline.md` root names too, and `<stage>-outline-critique.md`
    stays agent-writable, as its folder-shaped counterpart already is.
    `devx outline init` resolves this key to decide where a scaffold lands.
-3. **`project-level` holds exactly one in-flight doc set.** Wanting a second
+4. **`project-level` holds exactly one in-flight doc set.** Wanting a second
    concurrent unit of work *is* the signal to switch layouts, rather than
    scattering a second PRD across the root. **Not mechanically enforced
    today**: the refusal used to live in `/devx-personalize` (which no longer
    owns the key), and neither `devx workstream new` nor config validation
    carries it yet — tracked as `dev-lay101`.
-4. **Gate subjects are unchanged.** A gate resolves its subject through the
+5. **Gate subjects are unchanged.** A gate resolves its subject through the
    layout, so the same `devx gate prd` runs against `prd/agent.md` or
    `prd.md` and returns the same verdict for the same content. Layout is not
    a gate input.
@@ -743,6 +752,7 @@ Out of all the above, the interview only asks where a sensible default can't be 
 | 11 | **Git strategy: develop branch + main protection? PR vs direct? squash vs merge?** | `git.*` (recommends split for non-YOLO; both knobs are optional) |
 | 12 | **Promotion: auto after N green, or always ask?** | `promotion.autonomy.*` |
 | 13 | **Notifications: which channels + which events?** | `notifications.*` |
+| 14 | **Docs layout: many things in parallel, or one at a time?** | `engine.docs_layout` (inferred as `workstream` on a repo with commits — see §15) |
 
 Everything else is defaulted by mode + shape + thoroughness. The user edits `devx.config.yaml` directly later, or runs `devx config set <key> <value>` for one-offs.
 

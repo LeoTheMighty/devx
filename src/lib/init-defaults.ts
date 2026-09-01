@@ -32,7 +32,7 @@ import { writeAtomic } from "./supervisor-internal.js";
  *  an assumption the user should review. Rendered into INTERVIEW.md by
  *  appendDeferredDecisions after the scaffold lands. */
 export interface DeferredDecision {
-  /** Question id (n1..n13), "q32" (mode×shape conflict halt), a halt kind
+  /** Question id (n1..n14), "q32" (mode×shape conflict halt), a halt kind
    *  ("halt-uncommitted-changes", …), or "detached-head". Doubles as the
    *  INTERVIEW.md idempotency-anchor key. */
   questionId: QuestionId | "q32" | string;
@@ -230,6 +230,19 @@ export function buildDefaultsAsk(state: InitState, opts: BuildDefaultsAskOpts = 
         // default. (buildConfig coalesces the null quietHours to its own
         // "22:00-08:00" default — inert while channels is empty.)
         return { channels: [], quietHours: null };
+      case "n14":
+        // Asked at all ⇒ the skip table found no commits, so this is a
+        // greenfield repo and the layout is a genuine product choice we are
+        // making for the user. `workstream` because it is the shape that
+        // never needs a migration later — but record it, because the flat
+        // shape is exactly what a single-purpose new project might want.
+        deferred.push({
+          questionId: "n14",
+          prompt: ctx.question.prompt,
+          chosen: "workstream",
+          why: "greenfield repo, nobody to ask — workstream never needs a migration later; switch to project-level now if this repo will only ever design one thing at a time",
+        });
+        return "workstream";
       default:
         // A new question landed without a non-interactive default — fail
         // loud so bare `devx init` can't silently invent an answer.

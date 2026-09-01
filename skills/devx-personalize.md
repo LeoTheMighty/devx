@@ -122,6 +122,46 @@ is `engine.docs_layout` in `devx.config.yaml`, not a bank key (§3 records why
   found. Nothing enforces this mechanically yet (`dev-lay101`), which is
   precisely why saying it here matters.
 
+<!-- layout-ask-canonical -->
+### The layout ask (canonical — every skill quotes this, none restates it)
+
+`devx init` writes `engine.docs_layout` explicitly (N14), so an unset key
+means one thing: a repo that predates the question. Every skill that reads or
+writes stage artifacts runs this once, and `devx next` carries the matching
+advisory warning.
+
+**When.** Before the run's first artifact read or write, and only then. Not at
+session start (a read-only run should not interrogate anyone), and never
+mid-action.
+
+**Ask.** One question, both options named by what they *do*, not what they are
+called:
+
+> Docs layout isn't set for this repo. Many things planned in parallel
+> (**workstream** — a folder per unit of work under `engine.workstreams_root`),
+> or one at a time (**project-level** — flat docs at the repo root, exactly one
+> in flight)? `workstream` is the default and the one that never needs a
+> migration later.
+
+**Then.** Write the answer under `engine:` in `devx.config.yaml`, say that you
+wrote it, and continue the run. It is a one-line committed config edit, not a
+profile entry — never record it in `~/.claude/devx/`, where no runtime reader
+would ever see it.
+
+**Rails.**
+
+- **Ask once, ever.** A repo with the key set is answered; a repo that carries
+  the legacy `personalization: docs.layout` is *also* answered — that value is
+  still honored, and re-asking would be noise.
+- **Never assume silently.** Proceeding on the default without saying so is
+  the exact failure this ask exists to close.
+- **Never block.** In a non-interactive run (`devx loop`, CI, headless) there
+  is nobody to ask: use `workstream`, say so in the run's output, write
+  nothing. A preflight that cannot ask must not pretend it did (§5).
+- **Never migrate as a side effect.** If they pick a layout that disagrees
+  with the artifacts already on disk, say so and stop — moving a tree is the
+  human's call, and the two obligations above apply.
+
 ## Just-in-time asks
 
 The non-core bank (§6) is asked by its **owning skill**, not here — at the

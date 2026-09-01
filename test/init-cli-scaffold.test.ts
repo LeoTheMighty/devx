@@ -299,6 +299,20 @@ describe("pin103 — buildDefaultsAsk mirrors the skip table's mode inference", 
     );
   });
 
+  it("takes workstream for n14 unattended AND records it as a deferred decision", () => {
+    // A greenfield repo is the only case where n14 is asked at all (the skip
+    // table infers it once there are commits). Unattended there is nobody to
+    // ask, so the layout is a product decision devx made — which makes it
+    // exactly the kind of answer INTERVIEW.md exists to surface.
+    const { ask, deferred } = buildDefaultsAsk(fakeState({ hasCommits: false }), {
+      warn: () => {},
+    });
+    expect(ask(askFor("n14"))).toBe("workstream");
+    const d = deferred.find((x) => x.questionId === "n14");
+    expect(d?.chosen).toBe("workstream");
+    expect(d?.why).toContain("project-level");
+  });
+
   it("onHalt records the bypassed halt as a deferred decision and proceeds", () => {
     const warned: string[] = [];
     const { onHalt, deferred } = buildDefaultsAsk(fakeState({}), {

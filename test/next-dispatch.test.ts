@@ -769,7 +769,7 @@ function gather(
 ) {
   return gatherRepoSnapshot({
     repoRoot: repo.root,
-    merged: {},
+    merged: { engine: { docs_layout: "workstream" } },
     engine: {
       workstreamsRoot: "_devx/workstreams",
       expectationsMin: 3,
@@ -782,6 +782,73 @@ function gather(
     skipGh: opts.skipGh,
   });
 }
+
+describe("gatherRepoSnapshot — unset docs layout (advisory)", () => {
+  /** Warnings mentioning the layout, for a given merged-config blob. */
+  function layoutWarnings(merged: unknown): string[] {
+    const repo = makeEngineRepo();
+    try {
+      const snapshot = gatherRepoSnapshot({
+        repoRoot: repo.root,
+        merged,
+        engine: {
+          workstreamsRoot: "_devx/workstreams",
+          expectationsMin: 3,
+          proseBudgetKb: 60,
+          readingGuideRoles: ["pm", "architect", "dev", "qa"],
+        },
+        exec: fakeGh([]),
+        now: () => NOW,
+        skipGh: true,
+      });
+      return snapshot.warnings.filter((w) => w.includes("docs_layout"));
+    } finally {
+      repo.cleanup();
+    }
+  }
+
+  it("nudges once when no layout has ever been chosen", () => {
+    const w = layoutWarnings({});
+    expect(w).toHaveLength(1);
+    expect(w[0]).toContain("docs/CONFIG.md");
+  });
+
+  it("stays silent once engine.docs_layout is set", () => {
+    expect(layoutWarnings({ engine: { docs_layout: "workstream" } })).toEqual([]);
+    expect(layoutWarnings({ engine: { docs_layout: "project-level" } })).toEqual([]);
+  });
+
+  it("stays silent for a repo that answered the LEGACY bank key", () => {
+    // It has chosen a layout, and docsLayoutFrom() still honors it. Nagging
+    // there would be noise, and noise is how a true nudge gets ignored.
+    expect(
+      layoutWarnings({ personalization: { "docs.layout": "project-level" } }),
+    ).toEqual([]);
+  });
+
+  it("is a warning, never a blocker — the snapshot still resolves", () => {
+    const repo = makeEngineRepo();
+    try {
+      const snapshot = gatherRepoSnapshot({
+        repoRoot: repo.root,
+        merged: {},
+        engine: {
+          workstreamsRoot: "_devx/workstreams",
+          expectationsMin: 3,
+          proseBudgetKb: 60,
+          readingGuideRoles: ["pm", "architect", "dev", "qa"],
+        },
+        exec: fakeGh([]),
+        now: () => NOW,
+        skipGh: true,
+      });
+      expect(snapshot.devReady).toBeDefined();
+      expect(snapshot.warnings.length).toBeGreaterThan(0);
+    } finally {
+      repo.cleanup();
+    }
+  });
+});
 
 describe("gatherRepoSnapshot — heartbeat (row 1 inputs)", () => {
   it("fresh manager heartbeat → live", () => {
@@ -1810,7 +1877,7 @@ describe("gatherRepoSnapshot — staleness + normalization hardening", () => {
       repo.write("DEV.md", "# DEV\n");
       const s = gatherRepoSnapshot({
         repoRoot: repo.root,
-        merged: {},
+        merged: { engine: { docs_layout: "workstream" } },
         engine: {
           workstreamsRoot: "_devx/workstreams",
           expectationsMin: 3,
@@ -1842,7 +1909,7 @@ describe("gatherRepoSnapshot — staleness + normalization hardening", () => {
       const specSuffix = "dev/dev-bad111-2026-07-05T12:00-fixture.md";
       const s = gatherRepoSnapshot({
         repoRoot: repo.root,
-        merged: {},
+        merged: { engine: { docs_layout: "workstream" } },
         engine: {
           workstreamsRoot: "_devx/workstreams",
           expectationsMin: 3,

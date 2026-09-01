@@ -2,7 +2,7 @@
 //
 // Three load-bearing scenarios from the spec ACs:
 //   - best-case 3   — mature returning user with ~/.devx/config.yaml
-//   - worst-case 13 — empty repo, first-time user
+//   - worst-case 14 — empty repo, first-time user
 //   - mid-case ~7   — partial signals available
 //
 // Plus targeted coverage of the skip-table evaluator, Q32 mode×shape
@@ -137,6 +137,7 @@ function defaultAnswers(): Record<QuestionId, unknown> {
     n11: { ciProvider: "github-actions", browserHarness: "playwright" },
     n12: null,
     n13: { channels: [], quietHours: "22:00-08:00" },
+    n14: "workstream",
   };
 }
 
@@ -248,6 +249,19 @@ describe("ini501 — evaluateSkipTable", () => {
     expect(skips.n13).toBeDefined();
   });
 
+  it("existing history → N14 docs layout inferred as workstream", () => {
+    const skips = evaluateSkipTable({ ...baseState(), hasCommits: true });
+    expect(skips.n14?.defaultValue).toBe("workstream");
+    expect(skips.n14?.requiresConfirm).toBe(false);
+    expect(skips.n14?.reason).toContain("workstream");
+  });
+
+  it("greenfield repo → N14 is asked, never inferred", () => {
+    // The flat shape is only plausible on an empty repo, and that is exactly
+    // where the user is already deciding everything else.
+    expect(evaluateSkipTable({ ...baseState(), hasCommits: false }).n14).toBeUndefined();
+  });
+
   it("baseline empty state → no skips", () => {
     const skips = evaluateSkipTable({ ...baseState(), inferredShape: null });
     // Without any signals at all (and inferredShape forced null), nothing skips.
@@ -260,7 +274,7 @@ describe("ini501 — evaluateSkipTable", () => {
 // ---------------------------------------------------------------------------
 
 describe("ini501 — runInitQuestions — best / mid / worst", () => {
-  it("worst-case: empty repo, no user prefs → 13 prompts, complete config", async () => {
+  it("worst-case: empty repo, no user prefs → 14 prompts, complete config", async () => {
     const state = emptyRepoState();
     const { ask, asks } = scripted(defaultAnswers());
     const result = await runInitQuestions({
@@ -269,12 +283,12 @@ describe("ini501 — runInitQuestions — best / mid / worst", () => {
       ask,
     });
     expect(result.aborted).toBe(false);
-    expect(result.counts.total).toBe(13);
-    expect(result.counts.promptsShown).toBe(13);
-    expect(result.counts.asked).toBe(13);
+    expect(result.counts.total).toBe(14);
+    expect(result.counts.promptsShown).toBe(14);
+    expect(result.counts.asked).toBe(14);
     expect(result.counts.confirmed).toBe(0);
     expect(result.counts.inferredSilently).toBe(0);
-    expect(asks).toHaveLength(13);
+    expect(asks).toHaveLength(14);
     // Every question asked, in narrative order.
     expect(asks.map((a) => a.question.id)).toEqual(QUESTIONS.map((q) => q.id));
     // Config has every required top-level field.
@@ -339,8 +353,8 @@ describe("ini501 — runInitQuestions — best / mid / worst", () => {
     // Expect somewhere in the 6–8 range (one confirm + ~6 asks).
     expect(result.counts.promptsShown).toBeGreaterThanOrEqual(6);
     expect(result.counts.promptsShown).toBeLessThanOrEqual(8);
-    // Each question lands somewhere — total is always 13.
-    expect(Object.keys(result.answers)).toHaveLength(13);
+    // Each question lands somewhere — total is always 14.
+    expect(Object.keys(result.answers)).toHaveLength(14);
     // All silent skips landed.
     const silent = result.transcript.filter((t) => t.kind === "inferred-silently").map((t) => t.id);
     expect(silent).toEqual(expect.arrayContaining(["n3", "n4", "n5", "n11", "n13"]));
@@ -425,7 +439,8 @@ describe("ini501 — halts and Q32 conflict", () => {
       onHalt: () => true,
     });
     expect(result.aborted).toBe(false);
-    expect(result.counts.promptsShown).toBe(13);
+    // Empty repo → N14 (docs layout) is asked, hence 14 not 13.
+    expect(result.counts.promptsShown).toBe(14);
   });
 
   it("Q32 mode×shape conflict (YOLO + production-careful) detected", () => {
@@ -513,6 +528,23 @@ describe("ini501 — confirm rejection path", () => {
 // ---------------------------------------------------------------------------
 // buildConfig — direct unit coverage
 // ---------------------------------------------------------------------------
+
+describe("ini501 — buildConfig: engine.docs_layout (N14)", () => {
+  it("carries the answer through", () => {
+    const cfg = buildConfig(emptyRepoState(), {
+      ...defaultAnswers(),
+      n14: "project-level",
+    });
+    expect(cfg.engine?.docs_layout).toBe("project-level");
+  });
+
+  it("defaults to workstream on an absent or unrecognized answer", () => {
+    for (const n14 of [undefined, "", "flat", 7, null]) {
+      const cfg = buildConfig(emptyRepoState(), { ...defaultAnswers(), n14 });
+      expect(cfg.engine?.docs_layout, String(n14)).toBe("workstream");
+    }
+  });
+});
 
 describe("ini501 — buildConfig", () => {
   it("YOLO + empty-dream → single-branch + thoroughness=send-it", () => {

@@ -159,6 +159,7 @@ const SCRIPTED_ANSWERS_BASE: ScriptedAnswers = {
   n11: { ciProvider: "github-actions", browserHarness: "playwright" },
   n12: null,
   n13: { channels: [{ kind: "email", to: "test@example.com", digest_only: true }], quietHours: "22:00-08:00" },
+  n14: "workstream",
 };
 
 const ALL_BACKLOGS: ReadonlyArray<string> = [
