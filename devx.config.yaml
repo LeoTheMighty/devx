@@ -329,6 +329,7 @@ observability:
 
 engine:
   workstreams_root: _devx/workstreams
+  docs_layout: workstream        # folder-per-artifact under workstreams_root
   archive_root: _devx/archive
   code_citation_hints: []        # paths the design stage grounds discussion in
   expectations_min: 3
@@ -450,8 +451,6 @@ personalization:
   # Phase 4 is non-skippable; this chooses only WHICH sanctioned shape runs on
   # a substantial surface. `parallel` is the cross-epic-promoted default.
   review.above_threshold_shape: parallel
-  # Folder-per-artifact under engine.workstreams_root (_devx/workstreams).
-  docs.layout: workstream
   # Floor. Nothing here touches production; an individual cannot select
   # `confirm` while this is committed.
   safety.production_touch: never

@@ -22,9 +22,9 @@
 //
 // Protected set (adversarial-review hardened): a basename of `outline.md` /
 // `OUTLINE.md` in ANY case, but only at the repo root or under a
-// `workstreams` path segment — plus, under `docs.layout: project-level`, the
+// `workstreams` path segment — plus, under `engine.docs_layout: project-level`, the
 // `<stage>-outline.md` root names at any depth (docs/PERSONALIZATION.md
-// §4.1) — a docs site's own outline.md is not devx's
+// CONFIG.md §15) — a docs site's own outline.md is not devx's
 // to police, and over-broad protection bricked legitimate diagnostics in
 // review. Paths are normalized first (backslashes, `.`/`..` segments), so
 // `_devx/templates/../workstreams/…` cannot dodge classification. Shipped
@@ -105,11 +105,11 @@ export function dequoteGitPath(line: string): string {
 const OUTLINE_BASENAME_LC = OUTLINE_BASENAME.toLowerCase();
 
 /** Project-level layout basenames (`prd-outline.md`, `design-outline.md`, …),
- *  lowercased. Under `docs.layout: project-level` the outline files leave the
+ *  lowercased. Under `engine.docs_layout: project-level` the outline files leave the
  *  stage folders and land at the repo root under these names; without them in
  *  the protected set the layout switch would silently un-protect every
  *  outline in the repo — the human-only guarantee is layout-independent by
- *  design (docs/PERSONALIZATION.md §4.1 rule 1).
+ *  design (docs/CONFIG.md §15, `docs_layout` rule 2).
  *
  *  These are matched at ANY depth, like the exact-uppercase root outline and
  *  for the same reason: Edit/Write hand the guard ABSOLUTE paths, from which

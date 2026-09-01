@@ -10,7 +10,7 @@
 //   commit  Human-side commit of ONLY outline paths (L3). Refuses in agent
 //           sessions — an outline reaches the repo because a human sent it.
 //
-// init resolves `docs.layout` (docs/PERSONALIZATION.md §4.1), so the same
+// init resolves `engine.docs_layout` (docs/CONFIG.md §15), so the same
 // command scaffolds `<ws>/<stage>/outline.md` under the workstream layout and
 // `<stage>-outline.md` at the repo root under project-level.
 //
@@ -297,7 +297,7 @@ export function runOutlineInit(
     // Flat repo-root shape: no workstream, so the only argument is a stage.
     if (args.length > 1) {
       io.err(
-        `devx outline init: docs.layout is project-level — there is no workstream hash here; run 'devx outline init ${args[1]}'\n`,
+        `devx outline init: engine.docs_layout is project-level — there is no workstream hash here; run 'devx outline init ${args[1]}'\n`,
       );
       return 2;
     }
@@ -311,7 +311,7 @@ export function runOutlineInit(
     } else {
       if (stage === undefined) {
         io.err(
-          "usage: devx outline init <stage>  |  devx outline init --all  |  devx outline init --project   (docs.layout: project-level)\n",
+          "usage: devx outline init <stage>  |  devx outline init --all  |  devx outline init --project   (engine.docs_layout: project-level)\n",
         );
         return 2;
       }
@@ -529,15 +529,15 @@ export function register(program: Command): void {
   sub
     .command("init")
     .description(
-      "Bootstrap an EMPTY outline scaffold — for a workstream stage, or (docs.layout: project-level) a repo-root <stage>-outline.md, or --project for OUTLINE.md. NEVER overwrites, so anyone (agent included) may run it; the human types the bullets.",
+      "Bootstrap an EMPTY outline scaffold — for a workstream stage, or (engine.docs_layout: project-level) a repo-root <stage>-outline.md, or --project for OUTLINE.md. NEVER overwrites, so anyone (agent included) may run it; the human types the bullets.",
     )
-    .argument("[hash]", "workstream (plan spec) hash — omitted under docs.layout: project-level")
+    .argument("[hash]", "workstream (plan spec) hash — omitted under engine.docs_layout: project-level")
     .argument("[stage]", `stage folder: ${OUTLINE_STAGES.join(" | ")}`)
     .option("--project", "scaffold the repo-root OUTLINE.md instead")
     .option("--all", "scaffold every stage outline that is still missing")
     .option(
       "--layout <layout>",
-      `override the resolved docs.layout: ${DOCS_LAYOUTS.join(" | ")}`,
+      `override the resolved engine.docs_layout: ${DOCS_LAYOUTS.join(" | ")}`,
     )
     .action(
       (

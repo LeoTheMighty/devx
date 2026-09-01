@@ -83,7 +83,7 @@ export const humanRel = (stage: StageDir): string =>
   stageFileRel(stage, HUMAN_BASENAME);
 
 // ---------------------------------------------------------------------------
-// Project-level layout (`docs.layout: project-level`).
+// Project-level layout (`engine.docs_layout: project-level`).
 // ---------------------------------------------------------------------------
 //
 // The flat repo-root shape for a repo that only ever designs one thing at a
@@ -97,7 +97,7 @@ export const humanRel = (stage: StageDir): string =>
 // root names too. A rename that moved an outline out from under the guard
 // would silently drop a guarantee three enforcement layers exist to make.
 //
-// Registry: docs/PERSONALIZATION.md §4.1.
+// Registry: docs/CONFIG.md §15 (engine.docs_layout).
 
 /** Repo-relative authoritative artifact for a stage, project-level layout
  *  (`prd.md`, `design.md`, `plan.md`; `evals` keeps its directory). */
@@ -127,34 +127,49 @@ export const PROJECT_LEVEL_OUTLINE_BASENAMES: readonly string[] = STAGE_DIRS.map
 // Layout resolution.
 // ---------------------------------------------------------------------------
 
-/** The two artifact-tree shapes (docs/PERSONALIZATION.md §4.1). */
+/** The two artifact-tree shapes (docs/CONFIG.md §15). */
 export const DOCS_LAYOUTS = ["workstream", "project-level"] as const;
 export type DocsLayout = (typeof DOCS_LAYOUTS)[number];
 
 /** Shipped default — the folder-per-artifact tree. */
 export const DEFAULT_DOCS_LAYOUT: DocsLayout = "workstream";
 
-/** Resolve `docs.layout` from a merged config blob. Read defensively (the
- *  same shape `baseBranchFrom` reads): the committed `personalization:` block
- *  is the repo/team layer, and an unknown or malformed value resolves to the
- *  shipped default rather than throwing — a layout is a *shape* preference,
- *  never a gate input, so it must not be able to brick a command.
+/** Legacy home: the preference bank's `docs.layout` key, before the layout
+ *  moved to `engine.docs_layout` in committed config. Still READ so a repo
+ *  that answered it does not silently flip layout on upgrade; never written.
+ *  Remove once no config in the wild carries it. */
+const LEGACY_LAYOUT_KEY = "docs.layout";
+
+function sectionOf(merged: unknown, name: string): Record<string, unknown> | undefined {
+  if (typeof merged !== "object" || merged === null) return undefined;
+  const section = (merged as Record<string, unknown>)[name];
+  return typeof section === "object" && section !== null
+    ? (section as Record<string, unknown>)
+    : undefined;
+}
+
+function asLayout(v: unknown): DocsLayout | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return (DOCS_LAYOUTS as readonly string[]).includes(t) ? (t as DocsLayout) : null;
+}
+
+/** Resolve the artifact-tree layout from a merged config blob.
  *
- *  Individual profile layers (`~/.claude/devx/*.yml`) are not read here: they
- *  are per-person and uncommitted, whereas every consumer of this function
- *  writes or classifies files the whole repo shares. */
+ *  `engine.docs_layout` is the home, alongside `engine.workstreams_root`, and
+ *  for the same reason that key was never banked: it names where files the
+ *  WHOLE REPO shares get written, so two contributors resolving it
+ *  differently would split the artifact tree in half. That is repo policy —
+ *  committed, schema-validated, PR-reviewed — not a personal preference.
+ *
+ *  Read defensively (the same shape `baseBranchFrom` reads): an unknown or
+ *  malformed value resolves to the shipped default rather than throwing. A
+ *  layout is a *shape*, never a gate input, so it must not brick a command. */
 export function docsLayoutFrom(merged: unknown): DocsLayout {
-  const personalization =
-    typeof merged === "object" && merged !== null
-      ? ((merged as Record<string, unknown>).personalization as
-          | Record<string, unknown>
-          | undefined)
-      : undefined;
-  const v = personalization?.["docs.layout"];
-  if (typeof v === "string") {
-    const t = v.trim();
-    if ((DOCS_LAYOUTS as readonly string[]).includes(t)) return t as DocsLayout;
-  }
+  const fromEngine = asLayout(sectionOf(merged, "engine")?.docs_layout);
+  if (fromEngine !== null) return fromEngine;
+  const legacy = asLayout(sectionOf(merged, "personalization")?.[LEGACY_LAYOUT_KEY]);
+  if (legacy !== null) return legacy;
   return DEFAULT_DOCS_LAYOUT;
 }
 

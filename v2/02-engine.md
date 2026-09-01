@@ -97,7 +97,7 @@ outline guard`), the CI/merge-gate diff scan (`devx outline check` /
 `devx outline init` is the single agent-runnable seam: it creates the EMPTY
 scaffold and refuses to overwrite, so it cannot touch a byte a human typed,
 and a file still byte-identical to that scaffold is exempt from the diff scan
-(all three L2 sites share one `scanOutlineDiff`). Under `docs.layout:
+(all three L2 sites share one `scanOutlineDiff`). Under `engine.docs_layout:
 project-level` the file is `<stage>-outline.md` at the repo root — same
 scaffold body, same protection, same commands.
 

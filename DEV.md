@@ -273,3 +273,7 @@ uwgspk is parallel-safe with all of them.
 - [ ] `dev/dev-uwg104-2026-08-21T14:30-uwg104.md` — Live overnight ride-through. **HUMAN-GATED** — needs a supervised night riding a real reset; scoped alone so uwg101-103 ship green without it (the pin105 shape). Discharges MANUAL MV2.1. Status: ready. Blocked-by: uwg103.
 - [ ] `dev/dev-uwgspk-2026-08-21T14:30-uwgspk.md` — Spike: does a usage-probe API exist at all? Findings doc only, timeboxed to one story. Parallel-safe with uwg101-104. Status: ready. From: epic-usage-window-governor.
 - [ ] `dev/dev-uwgret-2026-08-21T13:14-retro-usage-window-governor.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: uwg101, uwg102, uwg103.
+
+### Standalone — config/layout hygiene
+
+- [ ] `dev/dev-lay101-2026-09-01T12:40-project-level-single-docset-guard.md` — Enforce `project-level`'s one-doc-set rule at the config seam (`devx workstream new` refusal + a `devx doctor` finding, one shared predicate). Replaces the `/devx-personalize` refusal that lost its home when the layout moved from the preference bank to `engine.docs_layout`. Status: ready. Blocked-by: —.

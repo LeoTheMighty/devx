@@ -20,6 +20,8 @@ import {
   designAbs,
   evalsDirAbs,
   expectationsAbs,
+  DEFAULT_DOCS_LAYOUT,
+  docsLayoutFrom,
   isAuthoredEvalEntry,
   planAbs,
   prdAbs,
@@ -73,5 +75,54 @@ describe("isAuthoredEvalEntry", () => {
 
   it("excludes dotfiles", () => {
     expect(isAuthoredEvalEntry(".DS_Store")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// docsLayoutFrom — the layout is CONFIG (engine.docs_layout), not a preference
+// ---------------------------------------------------------------------------
+
+describe("docsLayoutFrom", () => {
+  it("reads engine.docs_layout", () => {
+    expect(docsLayoutFrom({ engine: { docs_layout: "project-level" } })).toBe(
+      "project-level",
+    );
+    expect(docsLayoutFrom({ engine: { docs_layout: "workstream" } })).toBe("workstream");
+    expect(docsLayoutFrom({ engine: { docs_layout: "  project-level  " } })).toBe(
+      "project-level",
+    );
+  });
+
+  it("falls back to the legacy bank key so an upgrade never flips a layout", () => {
+    expect(docsLayoutFrom({ personalization: { "docs.layout": "project-level" } })).toBe(
+      "project-level",
+    );
+  });
+
+  it("prefers engine.docs_layout when both are present", () => {
+    expect(
+      docsLayoutFrom({
+        engine: { docs_layout: "workstream" },
+        personalization: { "docs.layout": "project-level" },
+      }),
+    ).toBe("workstream");
+  });
+
+  it("defaults on absent, malformed, or out-of-enum input", () => {
+    for (const merged of [
+      undefined,
+      null,
+      {},
+      "nonsense",
+      { engine: null },
+      { engine: "flat" },
+      { engine: { docs_layout: "flat" } },
+      { engine: { docs_layout: 7 } },
+      { engine: {}, personalization: { "docs.layout": "sideways" } },
+    ]) {
+      expect(docsLayoutFrom(merged), JSON.stringify(merged ?? null)).toBe(
+        DEFAULT_DOCS_LAYOUT,
+      );
+    }
   });
 });

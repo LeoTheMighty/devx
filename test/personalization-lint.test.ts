@@ -54,15 +54,23 @@ describe("parseRegistry", () => {
   });
 
   it("parses both banks", () => {
-    expect(reg.keys.filter((k) => k.core).length).toBeGreaterThanOrEqual(10);
+    expect(reg.keys.filter((k) => k.core).length).toBeGreaterThanOrEqual(9);
     expect(reg.keys.filter((k) => !k.core).length).toBeGreaterThanOrEqual(15);
   });
 
-  it("carries docs.layout as a core key with a default and owners", () => {
-    const k = reg.keys.find((x) => x.key === "docs.layout");
+  it("carries role as a core key with a default and owners", () => {
+    const k = reg.keys.find((x) => x.key === "role");
     expect(k?.core).toBe(true);
-    expect(k?.defaultValue).toBe("workstream");
+    expect(k?.defaultValue).toBe("both");
     expect(k?.owners).toContain("devx-plan");
+  });
+
+  it("does NOT bank the doc layout — it is engine.docs_layout in config", () => {
+    // Routed out 2026-09-01 (PERSONALIZATION.md §3): it names where files the
+    // whole repo shares get written, so it is repo policy, not a preference.
+    // A regression here means a skill can declare it again and the bank would
+    // silently accept an inert key.
+    expect(reg.keys.map((k) => k.key)).not.toContain("docs.layout");
   });
 
   it("extracts the canonical preflight paragraph", () => {
@@ -124,7 +132,7 @@ describe("lintPersonalization — synthetic drift is caught", () => {
 
   it("flags a core/non-core disagreement", () => {
     const p = lintPersonalization(reg, [
-      { skill: "devx", keys: [{ key: "docs.layout", core: false }], preflight: null },
+      { skill: "devx", keys: [{ key: "role", core: false }], preflight: null },
     ]);
     expect(p.some((x) => x.kind === "core-mismatch")).toBe(true);
   });

@@ -70,7 +70,7 @@ CLI check (`devx gate …`) — the agent can't hand-wave past it.
    can never edit the file's content (a hook denies the write, CI and the
    merge gate reject any PR carrying an authored one); they read yours,
    critique it in `outline-critique.md`, and shape the stage's `human.md`
-   digest after its structure. Under `docs.layout: project-level` the same
+   digest after its structure. Under `engine.docs_layout: project-level` the same
    file is `<stage>-outline.md` at the repo root and the same command finds
    it; `--all` scaffolds every stage at once, and a repo-wide `OUTLINE.md`
    works the same via `devx outline init --project`.
