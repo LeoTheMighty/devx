@@ -427,3 +427,31 @@ projects:
     lint: bun run lint
     test: bun test
     coverage: bun test --coverage
+
+# ---------------------------------------------------------------------------
+# 16. Personalization — the REPO layer of the preference bank
+# ---------------------------------------------------------------------------
+#
+# One layer of five (workstream > individual-this-repo > individual-global >
+# THIS BLOCK > registry default), and a floor rather than a peer: where a value
+# here is stricter than what an individual profile resolved, this one wins.
+# Registry — every key, default, strictness direction, owning skill:
+# docs/PERSONALIZATION.md. Nothing here is a gate input.
+#
+# This repo is a solo pre-launch dogfood, so only the values that are genuinely
+# repo policy are committed; everything else resolves from ~/.claude/devx/ or
+# the registry default.
+
+personalization:
+  # Pinned by CLAUDE.md § Working agreements — one commit per story, with a
+  # conventional-commit prefix. Committed here so an individual `plain` cannot
+  # loosen it.
+  execute.commit_convention: conventional
+  # Phase 4 is non-skippable; this chooses only WHICH sanctioned shape runs on
+  # a substantial surface. `parallel` is the cross-epic-promoted default.
+  review.above_threshold_shape: parallel
+  # Folder-per-artifact under engine.workstreams_root (_devx/workstreams).
+  docs.layout: workstream
+  # Floor. Nothing here touches production; an individual cannot select
+  # `confirm` while this is committed.
+  safety.production_touch: never

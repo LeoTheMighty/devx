@@ -196,13 +196,17 @@ describe("hfi104 — /devx-learn skill body carries the pinned sections (static)
     expect(intro).toMatch(/coin-flip rule below/i);
   });
 
-  it("pins the five outlets in order", () => {
+  it("pins the six outlets in order", () => {
     const outlets = [
       /^1\. \*\*Framework fix\*\*/m,
       /^2\. \*\*Project preference\*\*/m,
-      /^3\. \*\*Product\/workstream lesson\*\*/m,
-      /^4\. \*\*Personal preference\*\*/m,
-      /^5\. \*\*Dropped\*\*/m,
+      // Outlet 3 (mistake-made-twice → target CLAUDE.md) is the SDLC-playbook
+      // adoption: widest thing a retro can write, so it sits above the
+      // narrower per-repo and per-person outlets.
+      /^3\. \*\*Mistake made twice\*\*/m,
+      /^4\. \*\*Product\/workstream lesson\*\*/m,
+      /^5\. \*\*Personal preference\*\*/m,
+      /^6\. \*\*Dropped\*\*/m,
     ];
     let cursor = -1;
     for (const outlet of outlets) {
@@ -225,11 +229,25 @@ describe("hfi104 — /devx-learn skill body carries the pinned sections (static)
   it("keeps the personal-preference outlet uncommittable", () => {
     // The one outlet that must never touch the repo — presented, not applied.
     const personal = ROUTING.slice(
-      ROUTING.indexOf("4. **Personal preference**"),
-      ROUTING.indexOf("5. **Dropped**"),
+      ROUTING.indexOf("5. **Personal preference**"),
+      ROUTING.indexOf("6. **Dropped**"),
     );
     expect(personal).toMatch(/presented to\s*\n?\s*the user/i);
     expect(personal).toMatch(/NEVER committed/);
+  });
+
+  it("keeps the mistake-twice outlet uncommittable, and bars it at one occurrence", () => {
+    // CLAUDE.md loads into every agent's context in the target repo — the
+    // widest thing a retro can write, and the reason this outlet hands back
+    // a snippet rather than committing one.
+    const twice = ROUTING.slice(
+      ROUTING.indexOf("3. **Mistake made twice**"),
+      ROUTING.indexOf("4. **Product/workstream lesson**"),
+    );
+    expect(twice).toMatch(/never committed by this skill/i);
+    expect(twice).toMatch(/`CLAUDE\.md`/);
+    // One occurrence is a mistake; two is a missing instruction.
+    expect(twice).toMatch(/bar is literally twice/i);
   });
 
   it("pins the three checkability rules", () => {

@@ -775,6 +775,7 @@ function gatherSplitFixture(files: Map<string, string>) {
       workstreamsRoot: "_devx/workstreams",
       expectationsMin: 3,
       proseBudgetKb: 60,
+      readingGuideRoles: ["pm", "architect", "dev", "qa"],
     },
     fs: makeNextFs(files),
     now: () => FIXED_NOW,

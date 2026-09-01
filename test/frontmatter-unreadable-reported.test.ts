@@ -34,6 +34,7 @@ const ENGINE = {
   workstreamsRoot: "_devx/workstreams",
   expectationsMin: 3,
   proseBudgetKb: 60,
+  readingGuideRoles: ["pm", "architect", "dev", "qa"],
 };
 
 /** The colon shape (dev-mgr102/mgr103, debug-7b3e2a): a bare `: ` inside an

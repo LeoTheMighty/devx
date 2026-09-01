@@ -223,4 +223,6 @@ for it at PRD time.
 | What's the state of everything? | `devx status` / `devx next` |
 | Respond to PR review comments | `/devx address <pr>` |
 | Answer agent questions | `/devx-interview` |
+| Resolve a blocker nobody knows the answer to | `/devx-walk` |
+| Set how devx should work for you | `/devx-personalize` |
 | Did the thing we shipped work? | `devx outcome <hash>` |

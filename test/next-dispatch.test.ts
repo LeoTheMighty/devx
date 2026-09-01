@@ -500,7 +500,8 @@ describe("decideRepoNext — each row fires in isolation", () => {
     const d = rowOf(s);
     expect(d.row).toBe(11);
     expect(d.action).toBe("report-blocked");
-    expect(d.command).toBeNull();
+    // The health queue has a resolver now — this row used to name no command.
+    expect(d.command).toBe("/devx-walk");
     expect(d.detail).toContain("blk001");
     expect(d.detail).toContain("dep001");
     expect(d.detail).toContain("/devx-someone");
@@ -773,6 +774,7 @@ function gather(
       workstreamsRoot: "_devx/workstreams",
       expectationsMin: 3,
       proseBudgetKb: 60,
+      readingGuideRoles: ["pm", "architect", "dev", "qa"],
     },
     exec: opts.exec ?? fakeGh([]),
     now: () => NOW,
@@ -1813,6 +1815,7 @@ describe("gatherRepoSnapshot — staleness + normalization hardening", () => {
           workstreamsRoot: "_devx/workstreams",
           expectationsMin: 3,
           proseBudgetKb: 60,
+          readingGuideRoles: ["pm", "architect", "dev", "qa"],
         },
         exec: fakeGh([]),
         now: () => NOW,
@@ -1844,6 +1847,7 @@ describe("gatherRepoSnapshot — staleness + normalization hardening", () => {
           workstreamsRoot: "_devx/workstreams",
           expectationsMin: 3,
           proseBudgetKb: 60,
+          readingGuideRoles: ["pm", "architect", "dev", "qa"],
         },
         exec: fakeGh([]),
         now: () => NOW,

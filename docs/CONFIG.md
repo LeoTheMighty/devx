@@ -411,6 +411,7 @@ engine:
   code_citation_hints: []               # paths the design stage grounds discussion in
   expectations_min: 3                   # Gate 1 floor: ≥N E-blocks in expectations.md
   prose_budget_kb: 60                   # S-1 canary threshold over shipped skill/template prose
+  reading_guide_roles: [pm, architect, dev, qa]   # Reading Guide columns on a design human render
   critique:                             # re-homed party-mode (plan-stage critique)
     lenses: [pm, architect, dev, qa]
     min_surfaces: 2                     # thoroughness-gated, as party-mode was
@@ -419,6 +420,40 @@ engine:
 Full engine contract: `v2/02-engine.md` §7. A leftover `bmad:` key from a
 pre-v2 config loads with a deprecation warning, not an error (migration shim
 in config-io); the section itself was retired at v2x101.
+
+**`reading_guide_roles`** names the columns of the **Reading Guide** — the
+mandatory annotated table of contents that opens every design human render
+(ported from `mycase/8am-harness` §31). A reviewer arrives with two questions
+before any technical one: what is the shape of this document, and which parts
+am I responsible for. The guide answers both on the first screen: one row per
+section carrying the question that section answers, and one column per role
+marked ● (read before signing off) · ○ (useful context) · blank (skip). A role
+scans its own column and has its reading list.
+
+It defaults to the **plan-stage critique lenses** rather than a parallel role
+vocabulary — the same `[pm, architect, dev, qa]` the `engine.critique` block
+already uses, so a repo has one set of reviewer names, not two.
+
+Two properties keep it a routing map rather than decoration:
+
+- **Columns are the scarce resource.** Add a role only when it would carry at
+  least one ● outside Overview; a column of blanks teaches a reader to ignore
+  the table.
+- **Derivation-only.** The key shapes the columns; it never gates the guide's
+  *presence*. No personalization key can suppress it either — a routing map
+  only works if reviewers can rely on it being there.
+
+Structural sync (every row names a real section; every `###` design mechanism
+has a row) is mechanical, and lives in `checkReadingGuide()`
+(`src/lib/engine/reading-guide.ts`): the Design stage self-reviews against it
+before its gate, per `/devx-plan` step 3b. The audience marks themselves are
+judgment and stay advisory. Renders predating the guide are grandfathered —
+nudged, never failed.
+
+**Not yet wired into the gate CLI.** `devx gate coverage` does not call the
+checker today; the Design stage does. Promoting it to a blocking gate signal
+is a deliberate follow-up, because it changes a verdict every existing
+workstream would be re-scored against.
 
 ---
 
@@ -586,6 +621,56 @@ and materializes it as `DEVX_LEARN_HOME` in the registration it writes. Until
 that step runs (or if you register the hook by hand), a custom `learn.home`
 moves the watcher and leaves the listener on the default — so when you
 relocate the queue, set the env var too.
+
+---
+
+## 16. Personalization (the repo layer of the preference bank)
+
+```yaml
+personalization:
+  role: engineer                     # engineer | pm | both
+  docs.layout: workstream            # workstream | project-level
+  autonomy.action_mode: propose-only # propose-only | auto-safe
+  review.above_threshold_shape: parallel
+  output.verbosity: full             # terse | full
+  safety.production_touch: never     # floor — an individual cannot loosen this
+```
+
+Full registry — every key, its default, its strictness direction, and which
+skill owns it — is `docs/PERSONALIZATION.md`. **This section constrains shape
+only; it never restates a default.** A second home for the same fact is a
+drift bug waiting to happen, which is why the lint reads the registry rather
+than this file.
+
+Four things distinguish this block from every other section above:
+
+- **It is one layer of five, not the setting itself.** Per key the order is
+  workstream → individual-this-repo → individual-global → *this block* →
+  registry default. The individual layers live in `~/.claude/devx/` and are
+  never committed.
+- **It is a floor, not a peer.** Where a value here is stricter than what an
+  individual profile resolved, this one wins outright. An individual can
+  tighten what the repo committed; never loosen it.
+- **Nothing here is a gate input.** A value that would skip, weaken,
+  auto-pass, or reorder a gate, refusal, or record is **void** at runtime —
+  ignored, and reported verbatim. A gate stays reproducible from committed
+  artifacts alone whatever a profile says.
+- **Keys are dotted strings, not nested maps.** `docs.layout` is one key, not
+  `docs: { layout: ... }` — the bank's key names are the registry's key names,
+  so a grep for a key finds every place it is set.
+
+**`docs.layout` and `engine.workstreams_root` compose.** The former chooses
+the *shape* of the artifact tree (folder-per-artifact under a slug, vs flat at
+the repo root); the latter names *where* a workstream tree is rooted, and
+stays a config value because two contributors resolving different roots would
+split the tree in half. A repo that wants `devx/active/<slug>` sets
+`engine.workstreams_root: devx/active` and leaves `docs.layout: workstream`.
+
+**Outlines stay human-only in both layouts.** `project-level` renames them to
+`<stage>-outline.md` at the repo root, and `isProtectedOutlinePath()`
+classifies those names too — a layout switch that moved an outline out from
+under the guard would silently drop the guarantee three enforcement layers
+exist to make.
 
 ---
 

@@ -48,6 +48,8 @@ the `devx` CLI gates. `devx init` installs them into `<repo>/.claude/commands/`
 | `/devx-test` | Attended exploratory QA (`docs/QA.md` Layer 2). Drives a real Chrome session against a local build, walks the journeys a user would walk, routes findings out. | `TEST.md`, `DEBUG.md` | running app, `DEV.md` |
 | `/devx-learn` | Self-improvement loop. Mines a session for lessons, lays them out as an evidence table, and routes each surviving finding to its destination — skills, `CLAUDE.md`, config, or `LEARN.md`. | `LEARN.md`, skills, `CLAUDE.md`, config | session transcript, git log |
 | `/devx-interview` | Walks unanswered `[ ]` questions in `INTERVIEW.md` one at a time, writes the `→ Answer:` line, and propagates the answer into each blocked spec. | `INTERVIEW.md`, blocked specs | `INTERVIEW.md` |
+| `/devx-walk` | The health queue's resolver — one blocker per invocation. Picks by a fixed rule, digs against code truth, proposes in plan mode, routes the resolution back to whoever wrote the entry. Where `/devx-interview` *asks*, this *investigates*. | backlog rows, `INTERVIEW.md`, `MANUAL.md`, spec status logs | blocked specs, git history, code |
+| `/devx-personalize` | The preference interview. Answers a bounded bank (`docs/PERSONALIZATION.md`) across four scopes and refuses anything that would loosen a gate. Every writing skill blocks until the core bank is answered. | `~/.claude/devx/`, `devx.config.yaml` | `docs/PERSONALIZATION.md` |
 
 Everything else is the `devx` CLI rather than a slash command — `devx init`,
 `devx next`, `devx loop` (unattended overnight runs), `devx graph`,

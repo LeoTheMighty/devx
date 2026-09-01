@@ -12,12 +12,17 @@ export interface EngineConfig {
   workstreamsRoot: string;
   expectationsMin: number;
   proseBudgetKb: number;
+  /** Column set for the design human render's Reading Guide (§31 port).
+   *  Defaults to the plan-stage critique lenses so the document is mapped in
+   *  a vocabulary the repo already uses, rather than a parallel one. */
+  readingGuideRoles: string[];
 }
 
 export const ENGINE_DEFAULTS: EngineConfig = {
   workstreamsRoot: "_devx/workstreams",
   expectationsMin: 3,
   proseBudgetKb: 60,
+  readingGuideRoles: ["pm", "architect", "dev", "qa"],
 };
 
 /**
@@ -52,6 +57,17 @@ export function engineConfigFrom(merged: unknown): EngineConfig {
     e.prose_budget_kb > 0
   ) {
     out.proseBudgetKb = e.prose_budget_kb;
+  }
+  if (Array.isArray(e.reading_guide_roles)) {
+    // Non-string / blank entries are dropped rather than rendered as empty
+    // columns; an all-blank list falls back to the default set, because a
+    // Reading Guide with no role columns is a table of contents that lost
+    // the half that makes it a routing map.
+    const roles = e.reading_guide_roles
+      .filter((r): r is string => typeof r === "string")
+      .map((r) => r.trim())
+      .filter((r) => r !== "");
+    if (roles.length > 0) out.readingGuideRoles = roles;
   }
   return out;
 }
