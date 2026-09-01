@@ -137,8 +137,11 @@ reading cannot creep back in a later revision.
 
 - **"Let the agent write my outlines."** — Refused. Outline files are
   human-only under three enforcement layers (the PreToolUse hook, `devx
-  outline check` at CI and merge, and `devx outline init|commit` refusing
-  inside agent sessions). Banked instead as `design.outline_coaching`, whose
+  outline check` at CI and merge, and `devx outline commit` refusing inside
+  agent sessions). An agent may run `devx outline init`, which creates the
+  EMPTY scaffold and cannot overwrite — bootstrapping the file is mechanical,
+  and every byte of content is still the human's. Banked instead as
+  `design.outline_coaching`, whose
   axis is **how hard the agent pushes before agreeing your outline is
   complete**. Both options keep the outline mandatory and human-owned; one is
   strictly more demanding.

@@ -38,7 +38,8 @@ import { extractAcChecklist, loadTemplate, renderPrBody } from "../pr-body.js";
 import { GhProbeError, hasWorkflowFiles, parseGhRunList } from "../devx/await-remote-ci.js";
 import { checkHold } from "../devx/hold-check.js";
 import { mergeGateFor, type GateSignals } from "../merge-gate.js";
-import { baseBranchFrom, classifyDiffNames } from "../engine/outline.js";
+import { baseBranchFrom } from "../engine/outline.js";
+import { scanOutlineDiff } from "../engine/outline-scaffold.js";
 import { type Exec } from "./git-tx.js";
 import { type GhRetryOpts, withGhRetry } from "../gh-retry.js";
 
@@ -316,7 +317,14 @@ export async function defaultTail(item: TailItem, ctx: TailCtx): Promise<TailOut
     { cwd: ctx.repoRoot },
   );
   if (od.exitCode === 0) {
-    outlineClean = classifyDiffNames(od.stdout.split("\n")).length === 0;
+    // Scaffold exemption included (same scan as `devx outline check`): a
+    // pristine `devx outline init` scaffold in the range is not a human
+    // artifact, so it must not hand the branch off for no reason.
+    outlineClean = scanOutlineDiff(od.stdout, {
+      repoRoot: ctx.repoRoot,
+      exec,
+      rev: item.branch,
+    }).clean;
   }
 
   const signals: GateSignals = {

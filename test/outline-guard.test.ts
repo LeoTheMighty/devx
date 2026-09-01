@@ -3,6 +3,8 @@
 // lives in test/outline-check-git.test.ts (SYNC_BLOCKING).
 
 import { afterEach, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   AGENT_ENV_MARKERS,
@@ -11,13 +13,18 @@ import {
   guardDecision,
   isAgentSessionEnv,
   isProtectedOutlinePath,
+  outlineKindOf,
   renderDenyJson,
 } from "../src/lib/engine/outline.js";
+import {
+  builtinSkeleton,
+  outlineTemplateRel,
+} from "../src/lib/engine/outline-scaffold.js";
 import {
   runOutlineGuard,
   runOutlineInit,
 } from "../src/commands/outline.js";
-import { captureIo, makeEngineRepo } from "./fixtures/engine-repo.js";
+import { REAL_REPO_ROOT, captureIo, makeEngineRepo } from "./fixtures/engine-repo.js";
 
 const HUMAN_ENV = {} as Record<string, string | undefined>;
 
@@ -321,14 +328,30 @@ describe("isAgentSessionEnv", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// runOutlineInit — bootstrap-only, never-overwrite, both layouts
+// ---------------------------------------------------------------------------
+
+const AGENT_ENV = { CLAUDECODE: "1" } as Record<string, string | undefined>;
+
+const PROJECT_LEVEL_CONFIG = [
+  "mode: YOLO",
+  "personalization:",
+  "  docs.layout: project-level",
+  "projects:",
+  "  - name: cli",
+  "    path: .",
+  "",
+].join("\n");
+
 describe("runOutlineInit", () => {
   const repos: { cleanup(): void }[] = [];
   afterEach(() => {
     while (repos.length > 0) repos.pop()!.cleanup();
   });
 
-  function repoWithWorkstream(): { root: string; configPath: string } {
-    const repo = makeEngineRepo();
+  function repoWithWorkstream(config?: string): ReturnType<typeof makeEngineRepo> {
+    const repo = makeEngineRepo(config === undefined ? {} : { config });
     repos.push(repo);
     repo.write(
       "plan/plan-abc123-2026-08-23T10:00-demo.md",
@@ -360,78 +383,223 @@ describe("runOutlineInit", () => {
     return repo;
   }
 
-  it("refuses inside an agent session", () => {
-    const repo = repoWithWorkstream();
+  function init(
+    repo: ReturnType<typeof makeEngineRepo>,
+    args: string[],
+    flags: Parameters<typeof runOutlineInit>[1] = {},
+    env: Record<string, string | undefined> = HUMAN_ENV,
+  ): { code: number; io: ReturnType<typeof captureIo> } {
     const io = captureIo();
-    const code = runOutlineInit(["abc123", "prd"], {}, {
+    const code = runOutlineInit(args, flags, {
       out: io.out,
       err: io.err,
       projectPath: repo.configPath,
-      env: { CLAUDECODE: "1" },
+      env,
     });
-    expect(code).toBe(1);
-    expect(io.stderr()).toContain("refusing to run inside an agent session");
-    expect(io.stderr()).toBe(agentSessionRefusal("init") + "\n");
-  });
+    return { code, io };
+  }
 
-  it("scaffolds <ws>/<stage>/outline.md for a human", () => {
+  it("scaffolds <ws>/<stage>/outline.md under the workstream layout", () => {
     const repo = repoWithWorkstream();
-    const io = captureIo();
-    const code = runOutlineInit(["abc123", "prd"], {}, {
-      out: io.out,
-      err: io.err,
-      projectPath: repo.configPath,
-      env: HUMAN_ENV,
-    });
+    const { code, io } = init(repo, ["abc123", "prd"]);
     expect(code).toBe(0);
-    expect(io.json()).toEqual({ created: "_devx/workstreams/demo/prd/outline.md" });
+    expect(io.json()).toEqual({
+      layout: "workstream",
+      created: ["_devx/workstreams/demo/prd/outline.md"],
+      skipped: [],
+    });
   });
 
-  it("never overwrites an existing outline", () => {
+  it("is agent-runnable — bootstrapping an EMPTY file is mechanical", () => {
     const repo = repoWithWorkstream();
-    const io1 = captureIo();
-    expect(
-      runOutlineInit(["abc123", "design"], {}, {
-        out: io1.out,
-        err: io1.err,
-        projectPath: repo.configPath,
-        env: HUMAN_ENV,
-      }),
-    ).toBe(0);
-    const io2 = captureIo();
-    const code = runOutlineInit(["abc123", "design"], {}, {
-      out: io2.out,
-      err: io2.err,
-      projectPath: repo.configPath,
-      env: HUMAN_ENV,
+    const { code, io } = init(repo, ["abc123", "prd"], {}, AGENT_ENV);
+    expect(code).toBe(0);
+    expect(repo.exists("_devx/workstreams/demo/prd/outline.md")).toBe(true);
+    // …and it says so out loud: the bullets are still the human's job.
+    expect(io.stderr()).toContain("Type the bullets yourself");
+  });
+
+  it("writes the shipped scaffold body — bullets only, no prose", () => {
+    const repo = repoWithWorkstream();
+    expect(init(repo, ["abc123", "design"]).code).toBe(0);
+    const body = repo.read("_devx/workstreams/demo/design/outline.md");
+    expect(body).toBe(repo.read("_devx/templates/engine/design/outline.md"));
+    expect(body).toContain("# design outline");
+    for (const line of body.split("\n")) {
+      // Everything outside the header comment and the title is a bullet.
+      if (line.trim() === "" || line.startsWith("#")) continue;
+      if (line.startsWith("<!--") || line.endsWith("-->")) continue;
+      if (!line.startsWith("*") && !line.startsWith(" ")) {
+        expect.unreachable(`non-bullet line in scaffold: ${line}`);
+      }
+    }
+  });
+
+  it("NEVER overwrites — not for a human, not for an agent", () => {
+    const repo = repoWithWorkstream();
+    expect(init(repo, ["abc123", "design"]).code).toBe(0);
+    const typed = "# design outline — demo\n\n* my own bullet\n";
+    repo.write("_devx/workstreams/demo/design/outline.md", typed);
+
+    for (const env of [HUMAN_ENV, AGENT_ENV]) {
+      const { code, io } = init(repo, ["abc123", "design"], {}, env);
+      // Idempotent, not an error: bootstrapping something already present is
+      // a no-op, and the human's bytes are untouched.
+      expect(code).toBe(0);
+      expect(io.json()).toEqual({
+        layout: "workstream",
+        created: [],
+        skipped: ["_devx/workstreams/demo/design/outline.md"],
+      });
+      expect(io.stderr()).toContain("never overwritten");
+      expect(repo.read("_devx/workstreams/demo/design/outline.md")).toBe(typed);
+    }
+  });
+
+  it("--all bootstraps every missing stage and skips the rest", () => {
+    const repo = repoWithWorkstream();
+    expect(init(repo, ["abc123", "prd"]).code).toBe(0);
+    const { code, io } = init(repo, ["abc123"], { all: true });
+    expect(code).toBe(0);
+    expect(io.json()).toEqual({
+      layout: "workstream",
+      created: [
+        "_devx/workstreams/demo/design/outline.md",
+        "_devx/workstreams/demo/plan/outline.md",
+        "_devx/workstreams/demo/evals/outline.md",
+      ],
+      skipped: ["_devx/workstreams/demo/prd/outline.md"],
     });
-    expect(code).toBe(1);
-    expect(io2.stderr()).toContain("never overwritten");
+  });
+
+  it("scaffolds <stage>-outline.md at the root under project-level", () => {
+    const repo = repoWithWorkstream(PROJECT_LEVEL_CONFIG);
+    const { code, io } = init(repo, ["prd"]);
+    expect(code).toBe(0);
+    expect(io.json()).toEqual({
+      layout: "project-level",
+      created: ["prd-outline.md"],
+      skipped: [],
+    });
+    expect(repo.read("prd-outline.md")).toBe(
+      repo.read("_devx/templates/engine/prd/outline.md"),
+    );
+  });
+
+  it("project-level --all covers all four root outlines", () => {
+    const repo = repoWithWorkstream(PROJECT_LEVEL_CONFIG);
+    const { code, io } = init(repo, [], { all: true });
+    expect(code).toBe(0);
+    expect(io.json()).toMatchObject({
+      layout: "project-level",
+      created: [
+        "prd-outline.md",
+        "design-outline.md",
+        "plan-outline.md",
+        "evals-outline.md",
+      ],
+    });
+  });
+
+  it("project-level refuses a hash argument, naming the right command", () => {
+    const repo = repoWithWorkstream(PROJECT_LEVEL_CONFIG);
+    const { code, io } = init(repo, ["abc123", "prd"]);
+    expect(code).toBe(2);
+    expect(io.stderr()).toContain("devx outline init prd");
+  });
+
+  it("--layout overrides the resolved layout in both directions", () => {
+    const ws = repoWithWorkstream();
+    expect(init(ws, ["prd"], { layout: "project-level" }).io.json()).toEqual({
+      layout: "project-level",
+      created: ["prd-outline.md"],
+      skipped: [],
+    });
+    const pl = repoWithWorkstream(PROJECT_LEVEL_CONFIG);
+    expect(init(pl, ["abc123", "prd"], { layout: "workstream" }).io.json()).toEqual({
+      layout: "workstream",
+      created: ["_devx/workstreams/demo/prd/outline.md"],
+      skipped: [],
+    });
+  });
+
+  it("rejects an unknown layout", () => {
+    const repo = repoWithWorkstream();
+    const { code, io } = init(repo, ["abc123", "prd"], { layout: "flat" });
+    expect(code).toBe(2);
+    expect(io.stderr()).toContain("unknown layout 'flat'");
   });
 
   it("rejects unknown stages", () => {
     const repo = repoWithWorkstream();
-    const io = captureIo();
-    const code = runOutlineInit(["abc123", "retro"], {}, {
-      out: io.out,
-      err: io.err,
-      projectPath: repo.configPath,
-      env: HUMAN_ENV,
-    });
+    const { code, io } = init(repo, ["abc123", "retro"]);
     expect(code).toBe(2);
     expect(io.stderr()).toContain("unknown stage");
   });
 
   it("scaffolds the repo-root OUTLINE.md with --project", () => {
     const repo = repoWithWorkstream();
-    const io = captureIo();
-    const code = runOutlineInit([], { project: true }, {
-      out: io.out,
-      err: io.err,
-      projectPath: repo.configPath,
-      env: HUMAN_ENV,
-    });
+    const { code, io } = init(repo, [], { project: true });
     expect(code).toBe(0);
-    expect(io.json()).toEqual({ created: "OUTLINE.md" });
+    expect(io.json()).toEqual({
+      layout: "workstream",
+      created: ["OUTLINE.md"],
+      skipped: [],
+    });
+  });
+
+  it("--project still refuses stray arguments", () => {
+    const repo = repoWithWorkstream();
+    const { code, io } = init(repo, ["abc123", "prd"], { project: true });
+    expect(code).toBe(2);
+    expect(io.stderr()).toContain("--project takes no hash/stage arguments");
+    expect(repo.exists("OUTLINE.md")).toBe(false);
+  });
+
+  it("--project and --all are not combinable", () => {
+    const repo = repoWithWorkstream();
+    const { code, io } = init(repo, [], { project: true, all: true });
+    expect(code).toBe(2);
+    expect(io.stderr()).toContain("run them separately");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scaffold bodies + kind classification
+// ---------------------------------------------------------------------------
+
+describe("outlineKindOf", () => {
+  it("reads the stage off both layouts' spellings", () => {
+    expect(outlineKindOf("_devx/workstreams/x/prd/outline.md")).toEqual({
+      kind: "stage",
+      stage: "prd",
+    });
+    expect(outlineKindOf("evals-outline.md")).toEqual({ kind: "stage", stage: "evals" });
+    expect(outlineKindOf("OUTLINE.md")).toEqual({ kind: "project" });
+  });
+
+  it("returns null when the scaffold origin is unknowable (fail closed)", () => {
+    // A bare token with no stage parent: protected, but nothing to compare
+    // against — partitionOutlinePaths must treat it as authored.
+    expect(outlineKindOf("outline.md")).toBeNull();
+    expect(outlineKindOf("_devx/workstreams/x/outline.md")).toBeNull();
+  });
+});
+
+describe("builtin scaffolds", () => {
+  it("mirror the shipped templates byte-for-byte", () => {
+    const kinds = [
+      ...(["prd", "design", "plan", "evals"] as const).map(
+        (stage) => ({ kind: "stage", stage }) as const,
+      ),
+      { kind: "project" } as const,
+    ];
+    for (const kind of kinds) {
+      const shipped = readFileSync(
+        join(REAL_REPO_ROOT, ...outlineTemplateRel(kind).split("/")),
+        "utf8",
+      );
+      expect(builtinSkeleton(kind), `${outlineTemplateRel(kind)} drifted`).toBe(shipped);
+    }
   });
 });

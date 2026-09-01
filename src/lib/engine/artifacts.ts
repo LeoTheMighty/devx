@@ -124,6 +124,41 @@ export const PROJECT_LEVEL_OUTLINE_BASENAMES: readonly string[] = STAGE_DIRS.map
 );
 
 // ---------------------------------------------------------------------------
+// Layout resolution.
+// ---------------------------------------------------------------------------
+
+/** The two artifact-tree shapes (docs/PERSONALIZATION.md §4.1). */
+export const DOCS_LAYOUTS = ["workstream", "project-level"] as const;
+export type DocsLayout = (typeof DOCS_LAYOUTS)[number];
+
+/** Shipped default — the folder-per-artifact tree. */
+export const DEFAULT_DOCS_LAYOUT: DocsLayout = "workstream";
+
+/** Resolve `docs.layout` from a merged config blob. Read defensively (the
+ *  same shape `baseBranchFrom` reads): the committed `personalization:` block
+ *  is the repo/team layer, and an unknown or malformed value resolves to the
+ *  shipped default rather than throwing — a layout is a *shape* preference,
+ *  never a gate input, so it must not be able to brick a command.
+ *
+ *  Individual profile layers (`~/.claude/devx/*.yml`) are not read here: they
+ *  are per-person and uncommitted, whereas every consumer of this function
+ *  writes or classifies files the whole repo shares. */
+export function docsLayoutFrom(merged: unknown): DocsLayout {
+  const personalization =
+    typeof merged === "object" && merged !== null
+      ? ((merged as Record<string, unknown>).personalization as
+          | Record<string, unknown>
+          | undefined)
+      : undefined;
+  const v = personalization?.["docs.layout"];
+  if (typeof v === "string") {
+    const t = v.trim();
+    if ((DOCS_LAYOUTS as readonly string[]).includes(t)) return t as DocsLayout;
+  }
+  return DEFAULT_DOCS_LAYOUT;
+}
+
+// ---------------------------------------------------------------------------
 // Absolute resolvers.
 // ---------------------------------------------------------------------------
 

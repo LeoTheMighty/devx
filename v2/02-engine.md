@@ -78,7 +78,8 @@ _devx/workstreams/<slug>/
 ├── prd/
 │   ├── agent.md            # Gate 1 input (authoritative, full verbosity)
 │   ├── human.md            # agent-maintained digest, mermaid-first; never a gate input
-│   ├── outline.md          # HUMAN-ONLY, optional (devx outline init); never a gate input
+│   ├── outline.md          # HUMAN-ONLY, optional. `devx outline init` creates the
+│   │                       #   empty scaffold (never overwrites); never a gate input
 │   └── outline-critique.md # the agent's critique of the outline; non-gating
 ├── design/                 # same quartet; agent.md = Gate 2 subject
 ├── plan/                   # same quartet; agent.md = Gate 3 subject; phase checklist = execution tracker
@@ -92,7 +93,24 @@ _devx/workstreams/<slug>/
 Outlines are the human-in-the-loop spine: typed by the human (typing is the
 point), never written by an agent — enforced by the PreToolUse hook (`devx
 outline guard`), the CI/merge-gate diff scan (`devx outline check` /
-`outlineClean`), and agent-session refusals on `devx outline init|commit`.
+`outlineClean`), and an agent-session refusal on `devx outline commit`.
+`devx outline init` is the single agent-runnable seam: it creates the EMPTY
+scaffold and refuses to overwrite, so it cannot touch a byte a human typed,
+and a file still byte-identical to that scaffold is exempt from the diff scan
+(all three L2 sites share one `scanOutlineDiff`). Under `docs.layout:
+project-level` the file is `<stage>-outline.md` at the repo root — same
+scaffold body, same protection, same commands.
+
+**The outline's form is fixed: bullets only.** One thought per bullet, ≤ 12
+words, nested two spaces for detail, names in `ticks`, code as excerpts and
+never blocks, no paragraphs or tables. The scaffold carries those rules in a
+header comment plus a per-stage skeleton (PRD: problem / who / done / non-
+goals / constraints / risks; Design: shape / seams / data / failure modes /
+rejected / non-goals; Plan: phases / verification / dependencies / risks;
+evals: expectations / observed how / fixtures / out of scope). Brevity is the
+feature — an outline that takes longer than a minute to read has stopped
+being a spine and started being a second design doc.
+
 When an outline exists it dictates human.md's structure; agent.md keeps the
 gate-required template sections. The repo root carries a project-wide
 `OUTLINE.md` (human-only, same rules) read as PRD seed context, paired with
