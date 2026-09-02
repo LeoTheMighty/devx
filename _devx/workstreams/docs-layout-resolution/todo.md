@@ -44,6 +44,13 @@
 - [x] Gate: evals
 - [ ] Stage: Execute
   - [ ] Phase 1: The artifact map and the single layout reader -> dlr101
+    - [x] T1.1 `ArtifactKind` / `stageSubject()` / `pathToArtifactKind()`
+    - [x] T1.2 `resolveDocsLayout()`; `docsLayoutFrom()` reduced to a wrapper
+    - [x] T1.3 `docsLayout` + `layoutSource` on `EngineConfig`, above both guards
+    - [x] T1.4 `docsLayoutUnset()` deleted; nag moved onto `layoutSource`
+    - [x] T1.5 duplicate `DocsLayout` type replaced by a re-export
+    - [x] T1.6 9 hand-built `engine` literals re-typed; `layoutWarnings()` rewritten
+    - [x] Unplanned: a THIRD reader (`init-write.ts` `renderInitConfig`) closed
   - [ ] Phase 2: Gate subject resolution -> dlr102
   - [ ] Phase 3: Workstream resolution and the flat-era guard -> dlr103
   - [ ] Phase 4: Consumer sweep and layout-aware scaffolding -> dlr104
