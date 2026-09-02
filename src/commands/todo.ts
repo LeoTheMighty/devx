@@ -24,7 +24,7 @@
 // Spec: dev/dev-hfi103-2026-07-24T10:41-todo-sync-renderers-status.md
 // Design: _devx/workstreams/harness-fold-in/design/agent.md §Interfaces
 
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { Command } from "commander";
 
 import { attachPhase } from "../lib/help.js";
@@ -42,6 +42,7 @@ import {
   realEngineFs,
   resolveWorkstream,
   titleFromSlug,
+  workstreamSlugFor,
 } from "../lib/engine/workstream.js";
 
 export interface RunTodoSyncOpts {
@@ -98,11 +99,14 @@ export function runTodoSync(
         );
         return 2;
       }
-      // filter(Boolean) guards a trailing-slash `workstream:` hand-edit;
-      // the function replacement keeps `$`-patterns in a weird dir name
-      // from expanding as replacement syntax.
+      // Through the shared helper (dlr103): under `project-level` the
+      // workstream dir is `.`, whose tail titles the scaffolded todo.md
+      // "." — the slug lives in the plan spec's filename there. The function
+      // replacement below keeps `$`-patterns in a weird dir name from
+      // expanding as replacement syntax.
       const slug =
-        ws.workstreamRel.split("/").filter(Boolean).pop() ?? ws.workstreamRel;
+        workstreamSlugFor(basename(ws.specAbs), ws.workstreamRel, engine) ??
+        ws.workstreamRel;
       const title = titleFromSlug(slug);
       content = fs
         .readFile(templateAbs)

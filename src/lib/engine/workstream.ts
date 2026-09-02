@@ -54,6 +54,7 @@ import {
   EXPECTATIONS_REL,
   PRD_REL,
   SCAFFOLD_SUBDIRS,
+  SUBJECT_STAGES,
   TODO_REL,
   artifactAbs,
 } from "./artifacts.js";
@@ -96,19 +97,104 @@ export const realEngineFs: EngineFs = {
 /** Kebab-case, ≤50 chars — the spec-filename slug convention (CLAUDE.md). */
 export const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+/** The workstream dir under `project-level`: the repo root itself. Spelled
+ *  `.` rather than `""` because `workstream:` is already a repo-relative PATH
+ *  in every existing spec, so `.` extends that type instead of overloading it
+ *  (design §Trade-offs) — and `join(repoRoot, ".")` needs no special case. */
+export const PROJECT_LEVEL_WORKSTREAM_REL = ".";
+
+const PLAN_FILENAME_RE =
+  /^plan-[a-z0-9]{3,12}-\d{4}-\d{2}-\d{2}T\d{2}:\d{2}-(.+)\.md$/i;
+
+/** Slug tail of a plan-spec FILENAME (shape:
+ *  `plan-<hash>-<YYYY-MM-DDTHH:MM>-<slug>.md`), or null when the name doesn't
+ *  match. Layout-INDEPENDENT on purpose: under `project-level` the slug still
+ *  exists — it names the plan spec's file and title — it just names no
+ *  directory (design §"The slug"), so it is the only identity a flat repo's
+ *  one workstream has. */
+export function planFilenameSlug(name: string): string | null {
+  return PLAN_FILENAME_RE.exec(name)?.[1] ?? null;
+}
+
 /**
- * Derive the repo-relative workstream dir from a plan-spec FILENAME
- * (shape: `plan-<hash>-<YYYY-MM-DDTHH:MM>-<slug>.md`), or null when the
- * name doesn't match. Single-sourced (hfi103) — resolveWorkstream, the
- * next gatherer, and `devx status` all fall back through this when the
+ * Derive the repo-relative workstream dir from a plan-spec FILENAME, or null
+ * when the name doesn't match. Single-sourced (hfi103) — resolveWorkstream,
+ * the next gatherer, and `devx status` all fall back through this when the
  * spec has no `workstream:` frontmatter.
+ *
+ * Takes the whole `EngineConfig` rather than a bare `workstreamsRoot`
+ * (dlr103) because the FILENAME DERIVATION IS THE PART THAT MUST NOT RUN
+ * under `project-level`: it turns `plan-b7e38f-…-scene-engine.md` into
+ * `_devx/workstreams/scene-engine`, a folder path in a repo that has no
+ * folders. A layout-blind helper that four call sites must remember to guard
+ * is the same class of bug as the hand-joined artifact paths this workstream
+ * exists to close, so the guard lives here, once.
+ *
+ * Under `project-level` the answer is `.` unconditionally — including for a
+ * name this cannot parse. The layout, not the filename, is what says where
+ * the doc set lives, so an unparseable hand-authored name is no reason to
+ * report "no workstream" in a repo that plainly has exactly one.
  */
 export function planFilenameWorkstreamRel(
   name: string,
-  workstreamsRoot: string,
+  engine: EngineConfig,
 ): string | null {
-  const m = /^plan-[a-z0-9]{3,12}-\d{4}-\d{2}-\d{2}T\d{2}:\d{2}-(.+)\.md$/i.exec(name);
-  return m ? `${workstreamsRoot}/${m[1]}` : null;
+  if (engine.docsLayout === "project-level") return PROJECT_LEVEL_WORKSTREAM_REL;
+  const slug = planFilenameSlug(name);
+  return slug === null ? null : `${engine.workstreamsRoot}/${slug}`;
+}
+
+/**
+ * Repo-relative workstream dir for a PLAN SPEC, from its `workstream:`
+ * frontmatter with the filename-slug fallback — and under `project-level`,
+ * the repo root regardless of either.
+ *
+ * This exists because re-signaturing `planFilenameWorkstreamRel()` alone does
+ * not actually close the hole it was meant to close. Two of its four call
+ * sites spell the fallback as `state.workstream ?? planFilenameWorkstreamRel(…)`,
+ * so a spec that HAS a pointer never reaches the layout-aware helper at all —
+ * and under `project-level` that pointer is exactly the stale
+ * `<workstreams_root>/<slug>` a half-finished migration leaves behind. Each
+ * site would then join a directory the layout says does not exist: `devx
+ * status` drops the workstream on its existence check, and `devx next` reads
+ * every artifact as missing and wedges on "PRD not yet authored" forever.
+ *
+ * So the `??` itself moves in here with the guard. Same reasoning as the
+ * signature change one level down (design §Trade-offs): a rule four call
+ * sites must remember to apply is the bug class this workstream exists to
+ * close, not an instance of it.
+ */
+export function planSpecWorkstreamRel(
+  name: string,
+  workstreamValue: string | null,
+  engine: EngineConfig,
+): string | null {
+  if (engine.docsLayout === "project-level") return PROJECT_LEVEL_WORKSTREAM_REL;
+  return workstreamValue ?? planFilenameWorkstreamRel(name, engine);
+}
+
+/**
+ * Display/identity slug for a workstream, given the plan spec's FILENAME and
+ * its resolved dir.
+ *
+ * Under `project-level` the dir is `.`, whose tail is `.` — nothing anyone
+ * typed, and a poor graph-node id or `--workstream` scope token. The slug
+ * still exists under that layout; it just names the plan spec's file and
+ * title rather than a directory (design §"The slug"), so that is where this
+ * reads it from. Single-sourced so `devx next`, `devx graph` and loop scoping
+ * spell one workstream's identity the same way.
+ */
+export function workstreamSlugFor(
+  name: string | null,
+  wsRel: string | null,
+  engine: EngineConfig,
+): string | null {
+  if (engine.docsLayout === "project-level") {
+    return name === null ? null : planFilenameSlug(name);
+  }
+  // filter(Boolean) guards a trailing-slash `workstream:` hand-edit — plain
+  // pop() returns "" there, which is falsy but not nullish.
+  return wsRel === null ? null : (wsRel.split("/").filter(Boolean).pop() ?? null);
 }
 
 /** Repo-relative engine-template dir. Exported for `devx todo sync`
@@ -320,8 +406,25 @@ export function createWorkstream(
   // write-if-missing would mint a FRESH template prd/agent.md next to the
   // real prd.md — the gate then reads the empty template and the real
   // content is invisible. Refuse with the doctor recipe instead.
-  if (fs.exists(wsAbs)) {
-    for (const stage of ["prd", "design", "plan"]) {
+  //
+  // LAYOUT-DISCRIMINATED (dlr103). Under `project-level` a `<stage>.md` at the
+  // doc-set base is not debris at all — it is the layout's AUTHORITATIVE
+  // artifact — so the same probe that is a correct refusal under `workstream`
+  // becomes a refusal of the very shape the config asked for. That misfire is
+  // latent today only because this function still resolves `wsAbs` to
+  // `<workstreams_root>/<slug>`; phase 4 moves the base to the repo root,
+  // at which point an undiscriminated guard would refuse every invocation.
+  // The reachable case NOW is an interrupted migration: config already flipped
+  // to `project-level`, folder tree still on disk.
+  //
+  // The stage list is DERIVED (SUBJECT_STAGES), not inline, so a new stage
+  // cannot arrive with an unguarded flat-era form. `SUBJECT_STAGES` and not
+  // `STAGE_DIRS`: it is exactly `STAGE_DIRS` minus `evals`, and `evals` was a
+  // DIRECTORY in the flat era too — an `evals.md` check would refuse a file
+  // that was never an artifact, printing a `git mv evals.md evals/agent.md`
+  // recipe for a path the engine has never read.
+  if (opts.engine.docsLayout !== "project-level" && fs.exists(wsAbs)) {
+    for (const stage of SUBJECT_STAGES) {
       if (fs.exists(join(wsAbs, `${stage}.md`))) {
         throw new WorkstreamRefusal(
           `workstream '${slug}' carries flat-era ${stage}.md (pre folder-per-artifact layout) — migrate first: ` +
@@ -464,25 +567,32 @@ export function resolveWorkstream(
   const content = fs.readFile(specAbs);
   const state = readEngineState(content);
 
-  let workstreamRel = state.workstream;
+  // Frontmatter pointer, then the filename-slug fallback — and under
+  // `project-level`, the repo root regardless of both. The gatherer and
+  // `devx status` resolve through this same helper, so the three cannot drift
+  // into disagreeing about where one hash's artifacts live.
+  const workstreamRel = planSpecWorkstreamRel(basename(specAbs), state.workstream, engine);
   if (workstreamRel === null) {
-    // Fallback: derive the slug from the filename tail (shared helper —
-    // the gatherer and `devx status` use the same derivation).
-    workstreamRel = planFilenameWorkstreamRel(
-      basename(specAbs),
-      engine.workstreamsRoot,
-    );
-  }
-  if (workstreamRel === null) {
+    // Unreachable under `project-level`, and correctly so: a filename that
+    // cannot be parsed is no reason to fail a lookup the layout has already
+    // answered.
     throw new WorkstreamError(
       `spec for '${hash}' has no \`workstream:\` frontmatter and its filename slug can't be derived — run \`devx workstream new <slug> --hash ${hash}\``,
     );
   }
-  const workstreamAbs = join(repoRoot, ...workstreamRel.split("/"));
-  if (!fs.exists(workstreamAbs)) {
-    throw new WorkstreamError(
-      `workstream dir '${workstreamRel}' not found — run \`devx workstream new ${workstreamRel.split("/").pop()} --hash ${hash}\``,
-    );
+  let workstreamAbs: string;
+  if (engine.docsLayout === "project-level") {
+    // The repo root always exists, so the probe below would be meaningless
+    // here — and worse than meaningless if a stale pointer were ever allowed
+    // to reach it, which is precisely why the helper above never returns one.
+    workstreamAbs = repoRoot;
+  } else {
+    workstreamAbs = join(repoRoot, ...workstreamRel.split("/"));
+    if (!fs.exists(workstreamAbs)) {
+      throw new WorkstreamError(
+        `workstream dir '${workstreamRel}' not found — run \`devx workstream new ${workstreamRel.split("/").pop()} --hash ${hash}\``,
+      );
+    }
   }
   return {
     hash,
@@ -615,7 +725,16 @@ export function resolveSpecWorkstream(
   cache?: PlanSpecIndexCache,
 ): SpecWorkstreamMembership {
   const st = readEngineState(specContent);
-  let wsRel: string | null = st.workstream;
+  // Under `project-level` every resolved membership IS the repo root: the
+  // pointer's spelling (`.`, absent, or a stale `<root>/<slug>`) records only
+  // THAT the spec belongs, never where. Projecting each arm's answer through
+  // this keeps the three arms as they are — the arm that answered is still
+  // reported honestly — while making the resolved path layout-correct.
+  const flat = engine.docsLayout === "project-level";
+  const asLayoutRel = (rel: string): string =>
+    flat ? PROJECT_LEVEL_WORKSTREAM_REL : rel;
+
+  let wsRel: string | null = st.workstream === null ? null : asLayoutRel(st.workstream);
   let via: MembershipVia = wsRel !== null ? "workstream-frontmatter" : "none";
   let planHash: string | null = null;
 
@@ -628,7 +747,15 @@ export function resolveSpecWorkstream(
       if (!v) continue;
       const wsMatch = wsRe.exec(v);
       if (wsMatch) {
-        wsRel = `${engine.workstreamsRoot}/${wsMatch[1]}`;
+        // Honest consequence, recorded rather than repaired: under
+        // `project-level` no path a flat repo produces can match this regex,
+        // so this arm is effectively DEAD there and membership degrades to
+        // the `workstream-frontmatter` and `plan-hash` arms. That is correct —
+        // under this layout there is exactly one workstream. It is kept
+        // functional (rather than skipped) only so a stale folder path
+        // surviving an interrupted migration still reads as a membership
+        // SIGNAL, projected to the root like every other spelling.
+        wsRel = asLayoutRel(`${engine.workstreamsRoot}/${wsMatch[1]}`);
         via = "path-in-from-or-plan";
         break;
       }
@@ -648,17 +775,49 @@ export function resolveSpecWorkstream(
 
   if (wsRel !== null) {
     // Find the plan spec claiming this workstream dir (same adoption walk
-    // as createWorkstream's no-hash path).
+    // as createWorkstream's no-hash path), in two passes.
+    //
+    // Pass 1 is the walk as it always was, with the layout projection applied
+    // to BOTH sides — under `project-level` a spec pointing at `.` and a plan
+    // spec still pointing at a stale `<root>/<slug>` are the same claim, and
+    // comparing raw strings would call it unclaimed. Under `workstream` the
+    // projection is the identity, so this is byte-for-byte today's behavior.
+    //
+    // Pass 2 runs only under `project-level`, for the plan spec that carries
+    // no pointer at all: there is exactly one doc set, so any engine-managed
+    // plan spec owns it. It is a SECOND pass and not the first test because
+    // an explicit pointer is evidence and `stage !== null` is only inference —
+    // in a repo whose `plan/` has accumulated several workstreams' specs over
+    // its life, taking the first engine spec found would hand back a
+    // long-since-done one. (Several specs all explicitly claiming the root is
+    // genuinely ambiguous and stays first-wins, exactly as two specs naming
+    // one directory do today; `layout-tree-mismatch` is the surface for it.)
     let planState: EngineState | null = null;
+    let planName: string | null = null;
     for (const entry of planSpecEntries(fs, repoRoot, cache)) {
-      if (entry.state.workstream === wsRel) {
+      const claimed =
+        entry.state.workstream !== null && asLayoutRel(entry.state.workstream) === wsRel;
+      if (claimed) {
         planState = entry.state;
+        planName = entry.name;
         break;
+      }
+    }
+    if (planState === null && flat) {
+      for (const entry of planSpecEntries(fs, repoRoot, cache)) {
+        if (entry.state.stage !== null) {
+          planState = entry.state;
+          planName = entry.name;
+          break;
+        }
       }
     }
     return {
       workstreamRel: wsRel,
-      slug: wsRel.split("/").filter(Boolean).pop() ?? null,
+      // Under `project-level` the slug lives in the CLAIMING plan spec's
+      // filename; with no claimant there is no name to read it from, and the
+      // helper answers null rather than being handed a sentinel.
+      slug: workstreamSlugFor(planName, wsRel, engine),
       planState,
       planHash,
       via,
@@ -673,12 +832,10 @@ export function resolveSpecWorkstream(
         const cand = readEngineState(fs.readFile(specAbs));
         // Legacy (pre-engine) plan specs have no stage — not engine members.
         if (cand.stage !== null) {
-          const rel =
-            cand.workstream ??
-            planFilenameWorkstreamRel(basename(specAbs), engine.workstreamsRoot);
+          const rel = planSpecWorkstreamRel(basename(specAbs), cand.workstream, engine);
           return {
             workstreamRel: rel,
-            slug: rel?.split("/").filter(Boolean).pop() ?? null,
+            slug: workstreamSlugFor(basename(specAbs), rel, engine),
             planState: cand,
             planHash,
             via: "plan-hash",

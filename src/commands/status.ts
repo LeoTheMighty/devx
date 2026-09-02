@@ -43,7 +43,8 @@ import { heartbeatIntervalMsFrom } from "../lib/loop/config.js";
 import { listLiveInstances } from "../lib/loop/instances.js";
 import {
   type EngineFs,
-  planFilenameWorkstreamRel,
+  planSpecWorkstreamRel,
+  workstreamSlugFor,
   realEngineFs,
 } from "../lib/engine/workstream.js";
 
@@ -111,10 +112,10 @@ export function runStatus(opts: RunStatusOpts = {}): number {
       if (hash === null) continue;
 
       // "whose workstream: resolves" — frontmatter pointer, filename-slug
-      // fallback, then a directory-existence check.
-      const wsRel =
-        state.workstream ??
-        planFilenameWorkstreamRel(name, engine.workstreamsRoot);
+      // fallback, then a directory-existence check. Through the shared
+      // resolver (dlr103) so a stale pointer under `project-level` cannot
+      // bypass the layout guard and drop the workstream on the probe below.
+      const wsRel = planSpecWorkstreamRel(name, state.workstream, engine);
       if (wsRel === null) continue;
       const wsAbs = join(repoRoot, ...wsRel.split("/"));
       if (!fs.exists(wsAbs)) continue;
@@ -148,7 +149,10 @@ export function runStatus(opts: RunStatusOpts = {}): number {
         // unreadable todo.md — the focus line is advisory; omit it
       }
 
-      const slug = wsRel.split("/").filter(Boolean).pop() ?? wsRel;
+      // Through the shared helper (dlr103): the tail of `.` is `.`, so under
+      // `project-level` a hand-rolled tail renders every workstream as
+      // ". (<hash>)". The slug lives in the plan spec's filename there.
+      const slug = workstreamSlugFor(name, wsRel, engine) ?? wsRel;
       const lines = [
         `${slug} (${hash})  stage: ${state.stage}${outcomePending ? " (outcome pending)" : ""}`,
         ...summary.split("\n").map((l) => `  ${l}`),

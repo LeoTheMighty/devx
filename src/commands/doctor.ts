@@ -30,6 +30,7 @@ import process from "node:process";
 import type { Command } from "commander";
 
 import { findProjectConfig, loadMerged } from "../lib/config-io.js";
+import { engineConfigFrom } from "../lib/engine/config.js";
 import { realExecAsync } from "../lib/exec.js";
 import { attachPhase } from "../lib/help.js";
 import { collectFindings } from "../lib/doctor/collect.js";
@@ -104,8 +105,9 @@ export async function runDoctor(
     return 2;
   }
   const repoRoot = opts.repoRoot ?? dirname(projectConfigPath);
+  let merged: unknown;
   try {
-    loadMerged({ projectPath: projectConfigPath });
+    merged = loadMerged({ projectPath: projectConfigPath });
   } catch (e) {
     err(
       `devx doctor: config load failed: ${e instanceof Error ? e.message : String(e)}\n`,
@@ -113,7 +115,15 @@ export async function runDoctor(
     return 2;
   }
 
-  const findings = await collectFindings(repoRoot, opts.detectOpts ?? {});
+  // The config was already being loaded here purely to fail early on an
+  // unreadable one; dlr103 keeps its RESULT, because the two layout detectors
+  // need `engine.workstreams_root` + `engine.docs_layout` and re-reading the
+  // config inside them would put a second layout reader in `src/`. `detectOpts`
+  // spreads AFTER, so a test seam can still override it.
+  const findings = await collectFindings(repoRoot, {
+    engine: engineConfigFrom(merged),
+    ...(opts.detectOpts ?? {}),
+  });
   const report: DoctorReport = { findings, fixed: [] };
 
   if (fix) {

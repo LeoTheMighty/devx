@@ -350,10 +350,18 @@ export function runOutlineInit(
   }
 
   // ── Resolve the workstream once (workstream layout, stage targets) ─────
+  //
+  // Resolved under `layout`, not under the config's own — `--layout` overrides
+  // the layout for this whole invocation, and since dlr103 the resolver reads
+  // it too. Threading the config value here instead would run one command
+  // under two layouts: a `--layout workstream` override on a `project-level`
+  // repo would spell the target `<ws>/prd/outline.md` while resolving the base
+  // to the repo root, and scaffold `prd/outline.md` at the root.
+  const resolveEngine = { ...engine, docsLayout: layout };
   let wsAbs: string | null = null;
   if (hash !== undefined) {
     try {
-      wsAbs = resolveWorkstream(repoRoot, hash, engine, io.fs).workstreamAbs;
+      wsAbs = resolveWorkstream(repoRoot, hash, resolveEngine, io.fs).workstreamAbs;
     } catch (e) {
       if (e instanceof WorkstreamRefusal) {
         io.err(`devx outline init: ${e.message}\n`);

@@ -48,8 +48,9 @@ import { isMeasureByDue } from "../engine/outcome.js";
 import { formatDate } from "../engine/verdict.js";
 import {
   findSpecForHashInFs,
-  planFilenameWorkstreamRel,
+  planSpecWorkstreamRel,
   resolveSpecWorkstream,
+  workstreamSlugFor,
 } from "../engine/workstream.js";
 import {
   normalizeSessionToken,
@@ -869,14 +870,13 @@ function gatherWorkstreamSignals(
     const hash = state.hash ?? hashFromFilename(name);
     if (hash === null) continue;
 
-    const wsRel =
-      state.workstream ?? planFilenameWorkstreamRel(name, engine.workstreamsRoot);
-    // filter(Boolean) guards a trailing-slash `workstream:` hand-edit —
-    // plain pop() returns "" there, which is falsy but not nullish.
-    const slug =
-      wsRel !== null
-        ? (wsRel.split("/").filter(Boolean).pop() ?? wsRel)
-        : hash;
+    // Both through the shared resolvers (dlr103): spelling the `??` fallback
+    // and the slug tail out here is what let a stale `workstream:` pointer
+    // bypass the layout guard entirely, and under `project-level` that sends
+    // every artifact probe below into a directory the layout says is gone —
+    // so every row reads "PRD not yet authored" and the dispatcher wedges.
+    const wsRel = planSpecWorkstreamRel(name, state.workstream, engine);
+    const slug = workstreamSlugFor(name, wsRel, engine) ?? hash;
 
     // Row 5.5: an armed outcome that came due. Gated on stage 'done' to
     // match what `devx outcome score` will actually accept — a pending

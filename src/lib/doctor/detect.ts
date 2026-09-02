@@ -18,6 +18,8 @@ import { join } from "node:path";
 
 import { type DevRow, type SpecStatus, parseDevMd } from "../backlog/parse.js";
 import { classifySpecLock } from "../devx/spec-lock.js";
+import { SUBJECT_STAGES } from "../engine/artifacts.js";
+import { ENGINE_DEFAULTS, type EngineConfig } from "../engine/config.js";
 import { SPEC_TYPE_DIRS, findSpecForHashAnyType } from "../engine/frontmatter.js";
 import { frontmatterParseError, readEngineState } from "../engine/frontmatter.js";
 import { ROW_MARKER } from "./fix.js";
@@ -69,6 +71,15 @@ export interface DetectOpts {
   pidAlive?: (pid: number) => boolean;
   /** Test seam — forwarded to classifySpecLock. */
   now?: () => Date;
+  /**
+   * Resolved `engine.*` knobs. The layout detectors below need two of them —
+   * `workstreamsRoot` (where the tree lives) and `docsLayout` (what shape it
+   * is meant to be) — and reading the config here instead would put a second
+   * layout reader in `src/`, which is the exact thing dlr101 collapsed to one.
+   * Optional, defaulting to `ENGINE_DEFAULTS`, so every existing caller and
+   * fake-fs test keeps today's behavior unchanged.
+   */
+  engine?: EngineConfig;
 }
 
 /** One row plus everything doctor needs to know about it, resolved once so
@@ -362,41 +373,178 @@ export function detectMirrorDrift(opts: DetectOpts): Finding[] {
  * and nobody noticed, or it is blocked on something the annotation does not
  * name.
  */
+/** Absolute path of the workstreams root, from the resolved config. */
+function workstreamsRootAbs(repoRoot: string, engine: EngineConfig): string {
+  return join(repoRoot, ...engine.workstreamsRoot.split("/"));
+}
+
+/** Immediate subdirectories of `abs`, sorted; `[]` when it is not a readable
+ *  directory. The shared half of both layout scans below. */
+function subdirs(fs: DoctorFs, abs: string): string[] {
+  if (!fs.exists(abs) || !fs.isDirectory(abs)) return [];
+  try {
+    return [...fs.readdir(abs)].sort().filter((n) => fs.isDirectory(join(abs, n)));
+  } catch {
+    return [];
+  }
+}
+
 /** Flat-era workstream artifacts: a repo upgraded across the
  *  folder-per-artifact layout change (2026-08) still carrying
  *  `<ws>/prd.md`-style files. Report-only — the repair is a content-safe
  *  `git mv` the operator should run themselves (it rewrites history-adjacent
- *  paths and any in-flight session's expectations). Scans the DEFAULT
- *  workstreams root only; a custom `engine.workstreams_root` repo self-
- *  serves via the same recipe. */
+ *  paths and any in-flight session's expectations).
+ *
+ *  Honors `engine.workstreams_root` (dlr103) rather than hardcoding
+ *  `_devx/workstreams`, so a repo that moved its tree gets the finding AND a
+ *  recipe naming its own paths instead of silence.
+ *
+ *  Early-returns under `project-level`, where a `<stage>.md` is the CURRENT
+ *  layout's authoritative artifact rather than debris. Note the discriminator
+ *  sits on the layout only, never on the scan: this walk reads
+ *  `<root>/<slug>/<stage>.md` and never a repo-root file, so unlike
+ *  `createWorkstream`'s guard it has no way to misfire on a flat repo's own
+ *  `prd.md` — a repo-root `prd.md` is not under `<root>/<slug>/`. */
 export function detectFlatWorkstreams(opts: DetectOpts): Finding[] {
   const fs = opts.fs ?? realDoctorFs;
-  const root = join(opts.repoRoot, "_devx", "workstreams");
-  if (!fs.exists(root) || !fs.isDirectory(root)) return [];
+  const engine = opts.engine ?? ENGINE_DEFAULTS;
+  if (engine.docsLayout === "project-level") return [];
+  const rootRel = engine.workstreamsRoot;
+  const root = workstreamsRootAbs(opts.repoRoot, engine);
   const findings: Finding[] = [];
-  let slugs: string[] = [];
-  try {
-    slugs = fs.readdir(root);
-  } catch {
-    return [];
-  }
-  for (const slug of slugs) {
+  for (const slug of subdirs(fs, root)) {
     const wsAbs = join(root, slug);
-    if (!fs.isDirectory(wsAbs)) continue;
-    for (const stage of ["prd", "design", "plan"]) {
+    // SUBJECT_STAGES, not STAGE_DIRS: `evals` was a directory in the flat era
+    // too, so an `evals.md` probe would print a `git mv` recipe for a path the
+    // engine has never read.
+    for (const stage of SUBJECT_STAGES) {
       const flat = join(wsAbs, `${stage}.md`);
       if (!fs.exists(flat)) continue;
       findings.push({
         class: "flat-era-workstream",
-        target: `_devx/workstreams/${slug}/${stage}.md`,
+        target: `${rootRel}/${slug}/${stage}.md`,
         detail:
           `flat-era artifact predates the folder-per-artifact layout — the engine now reads ` +
-          `_devx/workstreams/${slug}/${stage}/agent.md. Repair (content-safe): ` +
-          `mkdir -p _devx/workstreams/${slug}/${stage} && git mv _devx/workstreams/${slug}/${stage}.md ` +
-          `_devx/workstreams/${slug}/${stage}/agent.md`,
+          `${rootRel}/${slug}/${stage}/agent.md. Repair (content-safe): ` +
+          `mkdir -p ${rootRel}/${slug}/${stage} && git mv ${rootRel}/${slug}/${stage}.md ` +
+          `${rootRel}/${slug}/${stage}/agent.md`,
         fixable: false,
       });
     }
+  }
+  return findings;
+}
+
+/** Does `plan/` hold at least one ENGINE-managed spec (one carrying a
+ *  `stage:`)? Legacy pointer-less plan specs do not count — they predate the
+ *  engine and have no artifact tree of their own. Reads at most the plan
+ *  specs, and stops at the first hit. */
+function hasEngineWorkstream(fs: DoctorFs, repoRoot: string): boolean {
+  const planDir = join(repoRoot, "plan");
+  if (!fs.exists(planDir) || !fs.isDirectory(planDir)) return false;
+  let names: string[];
+  try {
+    names = fs.readdir(planDir);
+  } catch {
+    return false;
+  }
+  for (const name of names) {
+    if (!name.startsWith("plan-") || !name.endsWith(".md")) continue;
+    try {
+      if (readEngineState(fs.readFile(join(planDir, name))).stage !== null) return true;
+    } catch {
+      // unreadable plan spec — keep scanning
+    }
+  }
+  return false;
+}
+
+/**
+ * `engine.docs_layout` versus the shape actually on disk.
+ *
+ * The state this exists to surface is an INTERRUPTED `devx layout migrate`:
+ * the config flips in one commit and the files move in another, so a run that
+ * dies between them leaves a repo whose every resolver now looks in a place
+ * half its artifacts are not. Nothing else notices — each individual read just
+ * reports a missing file — which is why the mismatch gets its own finding
+ * rather than being inferred from the resulting noise.
+ *
+ * `fixable: false`, permanently. The repair moves authored documents, and the
+ * fix boundary this module's header draws puts anything touching real work on
+ * the report-only side.
+ */
+export function detectLayoutTreeMismatch(opts: DetectOpts): Finding[] {
+  const fs = opts.fs ?? realDoctorFs;
+  const engine = opts.engine ?? ENGINE_DEFAULTS;
+  const rootRel = engine.workstreamsRoot;
+  const findings: Finding[] = [];
+
+  if (engine.docsLayout === "project-level") {
+    // Config says the doc set lives at the repo root; a workstream FOLDER
+    // holding a stage artifact (in either era's spelling) says otherwise.
+    // Probing for the artifact rather than the bare directory matters: an
+    // empty `<root>/<slug>/` — or one holding only `decisions/` leftovers —
+    // is residue, not a doc set, and reporting it would train the operator
+    // to ignore this class.
+    const root = workstreamsRootAbs(opts.repoRoot, engine);
+    for (const slug of subdirs(fs, root)) {
+      const wsAbs = join(root, slug);
+      const carries = SUBJECT_STAGES.some(
+        (stage) =>
+          fs.exists(join(wsAbs, `${stage}.md`)) ||
+          fs.exists(join(wsAbs, stage, "agent.md")),
+      );
+      if (!carries) continue;
+      findings.push({
+        class: "layout-tree-mismatch",
+        target: `${rootRel}/${slug}`,
+        detail:
+          `engine.docs_layout is 'project-level' (artifacts at the repo root) but ` +
+          `${rootRel}/${slug}/ still holds a workstream-layout doc set — every resolver ` +
+          `now reads past it. Repair: \`devx layout migrate --to project-level\` ` +
+          `(report-only here: the move touches authored work)`,
+        fixable: false,
+      });
+    }
+    return findings;
+  }
+
+  // Config says folder-per-artifact; a repo-root `<stage>.md` says otherwise.
+  //
+  // Gated on the repo actually running the engine. `prd.md`, `design.md` and
+  // `plan.md` are ordinary filenames — a repo that keeps a hand-written
+  // `plan.md` at its root and has never scaffolded a workstream has no
+  // artifact tree to be mismatched against, and telling it to run `devx
+  // layout migrate` is exactly the twenty-rows-of-noise failure this module's
+  // header warns about. An interrupted migration always has plan specs, so
+  // the gate costs the real case nothing.
+  if (!hasEngineWorkstream(fs, opts.repoRoot)) return findings;
+  //
+  // Read the DIRECTORY LISTING and compare exactly, never `exists()`. Every
+  // devx repo root carries `PLAN.md`, and on a case-insensitive filesystem —
+  // macOS's default — `exists("<root>/plan.md")` is TRUE for it. An
+  // `exists()` probe would therefore report this finding on devx's own repo,
+  // on every `devx doctor` run, forever.
+  let entries: string[];
+  try {
+    entries = fs.readdir(opts.repoRoot);
+  } catch {
+    return findings;
+  }
+  const present = new Set(entries);
+  for (const stage of SUBJECT_STAGES) {
+    const name = `${stage}.md`;
+    if (!present.has(name)) continue;
+    findings.push({
+      class: "layout-tree-mismatch",
+      target: name,
+      detail:
+        `engine.docs_layout is 'workstream' (artifacts under ${rootRel}/<slug>/) but the repo ` +
+        `root holds ${name}, a project-level artifact — the engine will never read it. ` +
+        `Repair: \`devx layout migrate --to workstream\` ` +
+        `(report-only here: the move touches authored work)`,
+      fixable: false,
+    });
   }
   return findings;
 }

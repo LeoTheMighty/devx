@@ -13,6 +13,7 @@ import {
   detectDeadBlockers,
   detectDeadOwners,
   detectFlatWorkstreams,
+  detectLayoutTreeMismatch,
   detectMirrorDrift,
   detectStaleLocks,
   detectWorktrees,
@@ -22,10 +23,13 @@ import type { Finding } from "./types.js";
 /**
  * Run every detector.
  *
- * The four sync detectors always run; the worktree scan shells out to git
- * and is best-effort — a git failure there must not take the other four's
- * findings down with it, because doctor is advisory and a partial report
- * beats no report.
+ * The sync detectors always run; the worktree scan shells out to git and is
+ * best-effort — a git failure there must not take the others' findings down
+ * with it, because doctor is advisory and a partial report beats no report.
+ *
+ * `opts.engine` (an `EngineConfig`) reaches the two layout-aware detectors
+ * through the same `base` spread as every other seam; omitted, they fall back
+ * to `ENGINE_DEFAULTS` and behave exactly as they did before dlr103.
  */
 export async function collectFindings(
   repoRoot: string,
@@ -38,6 +42,7 @@ export async function collectFindings(
     ...detectDeadOwners(base),
     ...detectDeadBlockers(base),
     ...detectFlatWorkstreams(base),
+    ...detectLayoutTreeMismatch(base),
   ];
   let worktrees: Finding[] = [];
   try {
