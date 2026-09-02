@@ -3,13 +3,13 @@ hash: dlr104
 type: dev
 created: 2026-09-02T09:14:00-06:00
 title: "Consumer sweep and layout-aware scaffolding"
-status: ready
+status: in-progress
 from: plan/plan-a494be-2026-09-01T14:31-docs-layout-resolution.md
 plan: _devx/workstreams/docs-layout-resolution
 phase: 4
 blocked_by: [dlr102, dlr103]
 branch: feat/dev-dlr104
-owner: null
+owner: /devx-2026-09-02T1118-43725
 ---
 ## Goal
 
@@ -103,3 +103,4 @@ directory.
 
 - 2026-09-02T09:14 — emitted by /devx-plan (RED gate PASS; workstream
   docs-layout-resolution, plan phase 4).
+- 2026-09-02T11:18:53-06:00 — claimed by /devx in session /devx-2026-09-02T1118-43725
