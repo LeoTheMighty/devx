@@ -4,7 +4,7 @@
 
 # Story graph
 
-228 specs across 25 groups — 12 blocked · 155 done · 7 in-progress · 54 ready; 446 edges.
+230 specs across 25 groups — 12 blocked · 156 done · 6 in-progress · 56 ready; 448 edges.
 
 ## Legend
 
@@ -187,7 +187,9 @@ flowchart TD
     a01000["a01000 Phase 0 — Foundation: /devx-init + config…"]
     a02000["a02000 Phase 6 — Focus group: persistent persona…"]
     a03000["a03000 Cross-cutting — realtime stream + Live Ac…"]
+    a57f22["a57f22 Skill bodies name the folder shape, not t…"]
     a7c3f9["a7c3f9 Backlog-lock timeouts count toward the sy…"]
+    ac0751["ac0751 QA walkthrough — docs-layout doc truth (d…"]
     b01000["b01000 Phase 1 — Single-agent core loop: /devx-p…"]
     b02000["b02000 Phase 7 — Exploratory QA: browser-use sub…"]
     b365ac["b365ac yaml in devDependencies but imported at r…"]
@@ -357,6 +359,8 @@ flowchart TD
   dlr106 -.-> 7fd3a7
   dlr106 --> dlr105
   dlr106 --- |par| dlr107
+  dlr107 -.-> a57f22
+  dlr107 -.-> ac0751
   dlr107 --> dlr105
   dlrret --> dlr101
   dlrret --> dlr102
@@ -480,7 +484,7 @@ flowchart TD
   class dlr104 done
   class dlr105 done
   class dlr106 done
-  class dlr107 wip
+  class dlr107 done
   class dlrret ready
   class bd5b5e wip
   class grp_harness_fold_in collapsed
@@ -588,7 +592,9 @@ flowchart TD
   class a01000 done
   class a02000 blocked
   class a03000 blocked
+  class a57f22 ready
   class a7c3f9 done
+  class ac0751 ready
   class b01000 done
   class b02000 blocked
   class b365ac done

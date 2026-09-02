@@ -93,7 +93,14 @@
     - [x] Narrowed the reverse lookup to an EXACT spelling (`--touched PLAN.md` was cascading)
     - [x] Inherited red fixed: dlr104's missing `phase 4:` line; escape route → debug-5284ae
   - [x] Phase 6: `devx layout migrate` → dlr106
-  - [ ] Phase 7: Doc truth → dlr107
+  - [x] Phase 7: Doc truth → dlr107
+    - [ ] T7.1 companion test `test/engine-layout-docs-truth.test.ts` (E-8 exists)
+    - [ ] T7.1a `ARTIFACT_KINDS` runtime export — E-8's preferred shape; the
+      type alias erases to 5 tagged matches, so 13-row set-equality needs it
+    - [ ] T7.2 §15 table → 13 `ArtifactKind` rows + migrate invocation +
+      `RETRO-<date>.md` recorded as layout-independent
+    - [ ] T7.3 rewrite `docs_layout` schema description (no version bump)
+    - [ ] T7.4 follow-up spec for the 9 skill-body path references
   - [ ] Retro story -> dlrret
 - [ ] Stage: Retro
 - [ ] Stage: Outcome
