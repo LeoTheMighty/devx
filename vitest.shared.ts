@@ -147,6 +147,8 @@ export const SYNC_BLOCKING_TESTS = [
   "test/devx-claim.test.ts",
   "test/devx-finalize-real-git.test.ts",
   "test/eject-noop.test.ts",
+  "test/engine-layout-migrate-refusals.test.ts",
+  "test/engine-layout-migrate.test.ts",
   "test/engine-layout-no-hand-joins.test.ts",
   "test/engine-layout-scaffold.test.ts",
   "test/engine-workstream.test.ts",
