@@ -19,3 +19,4 @@ Conventions per CLAUDE.md: `[ ]` ready · `[/]` in-progress · `[-]` blocked · 
 - [ ] `test/test-62dd91-2026-09-02T12:05-dlr104-qa-walkthrough.md` — QA walkthrough for Consumer sweep and layout-aware scaffolding; 1 human check(s) outstanding. Status: ready. From: dlr104.
 - [ ] `test/test-ef5059-2026-09-02T13:16-dlr105-qa-walkthrough.md` — QA walkthrough for Identity re-key and privatization (dlr105); 2 human check(s) outstanding. Status: ready. From: dlr105.
 - [ ] `test/test-7fd3a7-2026-09-02T14:45-dlr106-qa-walkthrough.md` — QA walkthrough for `devx layout migrate` (dlr106); 3 machine checks run + evidence pasted, 3 human checks outstanding (dry-run honesty on a real repo, refusal readability, the forward/back rollback). Status: ready. From: dlr106.
+- [ ] `test/test-ac0751-2026-09-02T15:45-dlr107-qa-walkthrough.md` — QA walkthrough for Docs layout resolution phase 7 (doc truth); 2 human check(s) outstanding. Status: ready. From: dlr107.

@@ -25,7 +25,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
-import ts from "typescript";
+import { codeOnly } from "./helpers/code-only.js";
 
 const REPO_ROOT = join(__dirname, "..");
 const SRC_ROOT = join(REPO_ROOT, "src");
@@ -58,42 +58,6 @@ function commentsOnlyStripped(src: string): string {
  *  compose a path on their own, which is the thing being forbidden. */
 const EXPORTED_CALLABLE_RE =
   /^export\s+(?:function\s+([A-Za-z0-9_]+)|const\s+([A-Za-z0-9_]+)\s*(?::[^=]*)?=\s*\()/gm;
-
-/** Blank every string/template/regex body and every comment, keeping offsets,
- *  so the scan sees code and not the prose that names the same things.
- *  Parsed with TypeScript's own parser: two hand-rolled versions of this in
- *  earlier evals silently mangled devx's own source, and a scanner that
- *  quietly blanks a file reports zero findings and a false GREEN. */
-function codeOnly(src: string): string {
-  const sf = ts.createSourceFile("scan.ts", src, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
-  const buf = src.split("");
-  const blank = (from: number, to: number): void => {
-    for (let i = from; i < to && i < buf.length; i++) if (buf[i] !== "\n") buf[i] = " ";
-  };
-  const walk = (n: ts.Node): void => {
-    switch (n.kind) {
-      case ts.SyntaxKind.StringLiteral:
-      case ts.SyntaxKind.NoSubstitutionTemplateLiteral:
-      case ts.SyntaxKind.RegularExpressionLiteral:
-        blank(n.getStart(sf) + 1, n.end - 1);
-        return;
-      case ts.SyntaxKind.TemplateHead:
-      case ts.SyntaxKind.TemplateMiddle:
-        blank(n.getStart(sf) + 1, n.end - 2);
-        return;
-      case ts.SyntaxKind.TemplateTail:
-        blank(n.getStart(sf) + 1, n.end - 1);
-        return;
-      default:
-        ts.forEachChild(n, walk);
-    }
-  };
-  ts.forEachChild(sf, walk);
-  return buf
-    .join("")
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
-    .replace(/\/\/[^\n]*/g, (m) => " ".repeat(m.length));
-}
 
 /** Every .ts under a root. A symlinked directory reports as a symlink rather
  *  than a directory, so it is stat'd explicitly — a scan that silently skips
