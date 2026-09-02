@@ -101,3 +101,35 @@ Parallel-safe with phase 7 in file terms.
 - 2026-09-02T09:14 — emitted by /devx-plan (RED gate PASS; workstream
   docs-layout-resolution, plan phase 6).
 - 2026-09-02T13:51:44-06:00 — claimed by /devx in session /devx-2026-09-02T1351-62720
+- 2026-09-02T13:55 — phase 2: spec ACs direct (v2 native); 11 ACs;
+  workstream=docs-layout-resolution; red-artifacts=evals/E-6_migrate.ts,
+  evals/E-7_migrate-refusals.ts (both re-run RED now — CLI spawns, fails on
+  `unknown command 'layout'`, so the RED is the missing feature, not infra).
+- 2026-09-02T14:40 — phase 3: implemented `src/lib/layout/migrate.ts` (pure
+  planner + executor), `src/commands/layout.ts`, CLI registration, two test
+  files registered in SYNC_BLOCKING_TESTS. E-6 + E-7 GREEN.
+- 2026-09-02T14:40 — phase 4: 3-agent parallel adversarial review (Blind
+  Hunter + Edge Case Hunter + Acceptance Auditor) on a ~1,300-line surface,
+  above the substantial-surface threshold; 24 unique findings (5 HIGH, 11 MED,
+  8 LOW); ALL fixed in-place except one filed out of scope (see below). Most
+  load-bearing: the migration enumerated the ARTIFACT MAP rather than the DOC
+  SET, so `RETRO-<date>.md` / `research/` — 6 such files across 6 of devx's own
+  workstreams — were silently stranded while the run reported success, which
+  also left the source dir alive and made the R-5 rollback refuse forever.
+  Close seconds: empty scaffold dirs escaped the prune (every mid-flight
+  workstream's shape, ClassyLights included, so MV-a494be.1 would have lost its
+  rollback); an exact-name destination clash on any non-evidence artifact
+  half-moved the tree; one live + N done workstreams silently ALIASED every
+  done doc set onto the live one. Also fixed: `--dry-run` diverging from the
+  real run on `untracked-sources`; an unbounded prune that deleted a user's
+  `docs/`; `statSync` following symlinks; a case-collision refusal that
+  asserted the platform instead of asking the filesystem (blocked Linux
+  permanently); a monorepo `repoRoot` mismatch that put an outer repo inside
+  `git reset --hard`'s blast radius; and 4 test assertions that could not fail
+  — including the one billed as the runtime witness of planner purity. Refusal
+  codes went 3 → 11; record:
+  `decisions/2026-09-02-migration-destination-collision.md` §Postscript.
+  Filed OUT of scope: debug-00b4d3 (a migration commit is blocked by `devx
+  outline check`) — the fix edits a three-layer human-only guard owned by
+  another subsystem. Re-review clean.
+

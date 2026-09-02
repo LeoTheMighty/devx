@@ -68,6 +68,8 @@ const expectedOrder = [
   "devx-helper",
   "gate",
   "graph",
+  // dlr106: phase 1, so it sorts alphabetically between graph and manage.
+  "layout",
   "manage",
   "merge-gate",
   "next",
@@ -200,6 +202,10 @@ describe("cli303 — devx --help command listing", () => {
                                      of writing; --format json emits the GraphModel;
                                      --check fails on drift; --epic/--workstream
                                      scope what is printed.
+        layout                       Artifact-tree layout operations
+                                     (engine.docs_layout). \`migrate --to <layout>\`
+                                     moves the doc set between the workstream and
+                                     project-level shapes with \`git mv\`.
         learn-helper                 Helpers invoked by the /devx-learn skill body.
                                      Subcommand-driven; mirrors \`devx plan-helper\`'s
                                      passthrough pattern.

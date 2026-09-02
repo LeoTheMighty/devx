@@ -267,7 +267,7 @@ artifact's. Each eval asserts its own invariant **and** that its companion
 - [x] Phase 3: Workstream resolution and the flat-era guard
 - [x] Phase 4: Consumer sweep and layout-aware scaffolding
 - [x] Phase 5: Identity re-key and privatization
-- [ ] Phase 6: `devx layout migrate`
+- [x] Phase 6: `devx layout migrate`
 - [ ] Phase 7: Doc truth
 
 **Departure from the coarse appetite, stated rather than slipped in.** The
@@ -840,7 +840,12 @@ shape, not of care.
 **Files**:
 - `src/lib/layout/migrate.ts` — new. `planLayoutMigration(fs, repoRoot,
   engine, target) → MovePlan` (pure), plus the executor and the `Move` /
-  `MovePlan` / `Refusal` types.
+  `MovePlan` / `Refusal` types. **As built**: the planner reads through a local
+  `MigrateFs` (the `EngineFs` read half plus `isDirectory`) rather than
+  `EngineFs` itself — the directory artifacts are enumerated FILE BY FILE, so
+  the walk needs to tell a file from a directory, and a seam with no write
+  method is what makes the purity claim structural. The write half is a
+  separate `MigrateWriteFs`.
 - `src/commands/layout.ts` — new. Subcommand-bearing command on the `outline`
   / `workstream` house pattern; `register()` runs no logic, `.action()` calls
   a `runX()` returning a number, `attachPhase(sub, N)` last.
@@ -864,8 +869,32 @@ shape, not of care.
 - Only the plan spec's `workstream:` field is rewritten. `stage:`,
   `gate_status:` and `gate_verdicts:` live in the spec, not the tree, so
   passed gates survive **by construction** rather than by careful copying.
-- Three refusals, computed as a pure predicate over repo state *before* any
-  move: ≥2 live workstreams (`stage !== "done" && stage !== "retired"` over a
+- **As built: ELEVEN refusal codes, not three.** The extra eight are not scope
+  creep: each is a state the three named refusals let through while a `git mv`
+  was already underway, and every one was found by RUNNING the executor rather
+  than by reading the map. Full list + rationale:
+  `decisions/2026-09-02-migration-destination-collision.md` §Postscript. The
+  two that change the phase's shape:
+  `destination-clash` (an exact-name destination collision on any non-evidence
+  artifact — `docSetPresentAt` knows only five basenames, so every `*-human.md`,
+  `*-outline.md`, `RESULTS.md` and every file under `decisions/` fell through
+  both checks and died mid-move; it also covers the `plan.md`/`PLAN.md` case
+  `debug-135dc9` assigned to this phase, and asks the FILESYSTEM about case
+  rather than asserting a platform), and `multiple-doc-sets` (one live
+  workstream beside N *done* ones — the `>=2 live` rule passes, but under
+  `project-level` every spec resolves to the repo root, so each done workstream
+  would read the migrated one's artifacts as its own: silent aliasing, worse
+  than the orphaning the original refusal prevents).
+- **As built: the migration enumerates the DOC SET, not the artifact map.**
+  Planning from the map alone moved the artifacts, reported success, and
+  silently left behind everything the map cannot name — `RETRO-<date>.md`,
+  `research/`, hand-written notes; six such files/dirs across six workstreams
+  in devx's own repo today. An unclaimed file is now the
+  `unmapped-doc-set-files` refusal. Under `project-level` the "doc set" is the
+  repo root, which is a boundary around nothing, so only the map can speak
+  there — the asymmetry is stated in the code.
+- The three the plan named, computed as a pure predicate over repo state
+  *before* any move: ≥2 live workstreams (`stage !== "done" && stage !== "retired"` over a
   `plan/` walk — the plan spec's `stage:`, never a directory listing); a doc
   set already at the destination (the local `lay101`-signature predicate); a
   dirty working tree (porcelain parse with `-uall` and
@@ -884,8 +913,24 @@ shape, not of care.
   would break the tree in the one place the human cares most about.
 - The config step is `setLeaf(["engine","docs_layout"], target, "project",
   { projectPath })` — an existing comment-preserving scalar writer.
+- **As built: the executor prunes the emptied source doc set**, walked from
+  that directory and bounded to it. `git mv` leaves emptied directories behind,
+  and `docSetPresentAt` reads a workstream directory's mere EXISTENCE as a doc
+  set — so a leftover shell makes the reverse migration refuse
+  `destination-occupied` forever, and that reverse migration is the only
+  rollback R-5 has after the fact. Load-bearing, not tidiness. Two subtleties
+  the first attempt got wrong: pruning the ancestors of MOVED FILES cannot see
+  an EMPTY directory (the scaffold creates `decisions/`/`checkpoints/`/`evals/`
+  empty, which is every mid-flight workstream's shape — ClassyLights included),
+  and an ancestor chain has no upper bound (with
+  `workstreams_root: docs/planning/ws` it deleted the user's `docs/`). The
+  abort path also removes the destination directories it created, or a failure
+  on the FIRST move leaves a shell that wedges every retry.
 - Parallel-safe with Phase 7.
-- **This phase is not revert-safe for a repo that ran it** (R-5).
+- **This phase is not revert-safe for a repo that ran it** (R-5). One
+  correction to the R-5 note as written: recovery DURING the run is
+  `git reset --hard HEAD`, not `git checkout -- .` — `git mv` STAGES its
+  renames, so the checkout form leaves them in the index.
 
 **Verification plan**:
 - Type: tests-first
@@ -912,12 +957,12 @@ shape, not of care.
     `decisions/`.
 
 **Tasks**:
-- [ ] T6.1 Author `evals/E-6_migrate.ts` + `evals/E-7_migrate-refusals.ts` and companion tests RED; register them in `SYNC_BLOCKING_TESTS` — files: `_devx/workstreams/docs-layout-resolution/evals/`, `test/engine-layout-migrate.test.ts`, `test/engine-layout-migrate-refusals.test.ts`, `vitest.shared.ts`
-- [ ] T6.2 `planLayoutMigration()` — pure `MovePlan` over the artifact map — files: `src/lib/layout/migrate.ts`
-- [ ] T6.3 The three refusal predicates (local `lay101`-signature doc-set predicate) — files: `src/lib/layout/migrate.ts`
-- [ ] T6.4 Executor: `git mv` → spec `workstream:` rewrite → `setLeaf()` config write — files: `src/lib/layout/migrate.ts`
-- [ ] T6.5 `devx layout migrate --to <layout> [--dry-run]` + CLI registration — files: `src/commands/layout.ts`, `src/cli.ts`
-- [ ] T6.6 File `MANUAL.md` MV-a494be.1 (the ClassyLights run, G-3's evidence) — files: `MANUAL.md`
+- [x] T6.1 Author `evals/E-6_migrate.ts` + `evals/E-7_migrate-refusals.ts` and companion tests RED; register them in `SYNC_BLOCKING_TESTS` — files: `_devx/workstreams/docs-layout-resolution/evals/`, `test/engine-layout-migrate.test.ts`, `test/engine-layout-migrate-refusals.test.ts`, `vitest.shared.ts`
+- [x] T6.2 `planLayoutMigration()` — pure `MovePlan` over the artifact map — files: `src/lib/layout/migrate.ts`
+- [x] T6.3 The three refusal predicates (local `lay101`-signature doc-set predicate) — files: `src/lib/layout/migrate.ts`
+- [x] T6.4 Executor: `git mv` → spec `workstream:` rewrite → `setLeaf()` config write — files: `src/lib/layout/migrate.ts`
+- [x] T6.5 `devx layout migrate --to <layout> [--dry-run]` + CLI registration — files: `src/commands/layout.ts`, `src/cli.ts`
+- [x] T6.6 File `MANUAL.md` MV-a494be.1 (the ClassyLights run, G-3's evidence) — files: `MANUAL.md`
 
 ### 7. Phase: Doc truth
 

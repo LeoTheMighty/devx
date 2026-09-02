@@ -244,3 +244,49 @@ CLI serves a downstream-shaped repo with zero devx-repo state reads
     branch → `devx graph backfill` (attended review) → `devx graph` →
     commit GRAPH.md in the same PR → merge.
   - Blocks: G-2 scoring (due 2026-08-23).
+
+- [ ] **MV-a494be.1 — ClassyLights `b7e38f`: run `devx layout migrate --to project-level` for real.**
+  - Why: this is G-3's evidence, and the fixture cannot be it. `test/engine-layout-migrate.test.ts`
+    and E-6 prove the MECHANISM on a reproduction of `b7e38f`; only the real
+    repo proves the migration on a tree devx does not own. The phase is not
+    done until this run's verdict is recorded.
+  - **Not revert-safe (R-5).** Reverting the devx PR does not un-migrate
+    ClassyLights. Recovery DURING the run is `git reset --hard HEAD` (the
+    clean-tree precondition buys it; `git mv` STAGES its renames, so
+    `git checkout -- .` alone is not enough). Afterwards, rollback is
+    `devx layout migrate --to workstream` — a second migration, which the
+    round-trip test pins as lossless.
+  - How, in order:
+    1. Refresh the global CLI from this checkout (`npm run install:global`) —
+       `layout` is new, and ClassyLights runs the installed `devx`.
+    2. In ClassyLights: commit or stash until `git status` is clean. The
+       migration refuses on a dirty tree, on purpose.
+    3. `devx layout migrate --to project-level --dry-run` and READ the moves.
+       Every artifact should land at its docs/CONFIG.md §15 counterpart.
+    4. `devx layout migrate --to project-level`.
+    5. Confirm `git diff` shows the plan spec's `workstream:` changed and
+       `gate_status`/`gate_verdicts` EMPTY — Gates 1 and 2 cost a stage
+       round-trip each to re-earn.
+    6. `devx gate coverage b7e38f` — it must run to a verdict on the migrated
+       tree.
+    7. Record the verdict in
+       `_devx/workstreams/docs-layout-resolution/decisions/<date>-classylights-migration.md`.
+  - **Expect a possible refusal at step 3/4, and treat it as a result rather
+    than a failed run.** Each one exits 1 having moved 0 files, names what it
+    found, and tells you what to do; record whichever fires as the verdict.
+    The three you are most likely to see on a real repo:
+    - `[destination-clash]` — ClassyLights has authored `plan/agent.md`, whose
+      flat name `plan.md` is the SAME PATH as the repo's `PLAN.md` backlog on
+      macOS (debug-135dc9). Route the fix through debug-135dc9.
+    - `[unmapped-doc-set-files]` — the workstream directory holds something the
+      artifact map cannot name (`RETRO-<date>.md`, `research/`, notes). Move
+      them into `decisions/`, which migrates whole, and re-run.
+    - `[multiple-doc-sets]` — another workstream directory exists on disk. The
+      flat layout holds one doc set, and the others would end up resolving to
+      the repo root and reading this workstream's artifacts as their own.
+  - **After a successful run, the commit needs a workaround** (debug-00b4d3):
+    the migration moves the human-only outline files, and `devx outline check`
+    fails any diff carrying one. Commit the outline renames separately on the
+    base branch with `devx outline commit`, or land the migration directly on
+    the base branch. Migration is attended and human-run, so either is fine —
+    the fix is filed, not shipped.
