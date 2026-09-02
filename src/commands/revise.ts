@@ -20,14 +20,18 @@ import type { Command } from "commander";
 import { attachPhase } from "../lib/help.js";
 import { loadEngineContext } from "../lib/engine/context.js";
 import { applyEnginePatch } from "../lib/engine/frontmatter.js";
+import { DOCS_LAYOUTS, artifactRel, stageSubject } from "../lib/engine/artifacts.js";
 import {
+  CASCADE_TABLE,
   KNOWN_ARTIFACTS,
+  STAGE_SHORTHAND_NAMES,
   cascadeFor,
   computeRevise,
 } from "../lib/engine/revise.js";
 
-/** Stage shorthands cascadeFor accepts (`--touched prd`). */
-const STAGE_NAMES = new Set(["prd", "design", "plan"]);
+/** Stage shorthands cascadeFor accepts (`--touched prd`) — derived from the
+ *  table it belongs to, never re-typed here. */
+const STAGE_NAMES = new Set(STAGE_SHORTHAND_NAMES);
 import {
   type EngineFs,
   WorkstreamError,
@@ -81,23 +85,41 @@ export function runRevise(
 
   const entry = cascadeFor(touched);
   if (!entry) {
+    // Rendered against THIS repo's layout, not the table's display default:
+    // a flat repo told to type `prd/agent.md` is being told to type a path it
+    // does not have. `ws` is resolved by here, so the layout is in hand.
+    const covered = CASCADE_TABLE.map((e) => artifactRel(ws.layout, e.artifact));
     err(
-      `devx revise: unknown artifact '${touched}' — the cascade table covers: ${KNOWN_ARTIFACTS.join(", ")}. Refusing (a typo here must not reset gate flags).\n`,
+      `devx revise: unknown artifact '${touched}' — the cascade table covers: ${covered.join(", ")}. Refusing (a typo here must not reset gate flags).\n`,
     );
     return 1;
   }
 
-  // A path beyond the workstream-relative key must point INTO this
-  // workstream. `--touched prd/agent.md` / `--touched prd` / a bare root
-  // basename is trusted; `--touched _devx/workstreams/other/prd/agent.md`
-  // against this hash is a cross-workstream mistake and refused.
-  const isRelKey = touched === entry.artifact || STAGE_NAMES.has(touched);
+  // The identity resolved above says WHICH artifact; this resolves WHERE it
+  // lives in this repo. Both halves are needed and neither substitutes for
+  // the other: `cascadeFor` is layout-blind on purpose (a flat-era
+  // `--touched design.md` must still resolve), while the containment check
+  // below is a question about this repo's tree and therefore layout-bound.
+  const subject = stageSubject(ws.layout, ws, entry.artifact);
+
+  // A path beyond the doc-set-relative key must point INTO this workstream.
+  // `--touched prd/agent.md` / `--touched prd` / a bare root basename is
+  // trusted; `--touched _devx/workstreams/other/prd/agent.md` against this
+  // hash is a cross-workstream mistake and refused.
+  // EITHER layout's doc-set-relative spelling counts as a bare key, matching
+  // `cascadeFor`'s own layout-blindness (R-4). Accepting only THIS repo's
+  // spelling would resolve `--touched prd/agent.md` in a flat repo and then
+  // refuse it here as cross-workstream — a refusal on the exact input the
+  // reverse lookup exists to keep working.
+  const isRelKey =
+    DOCS_LAYOUTS.some((l) => artifactRel(l, entry.artifact) === touched) ||
+    STAGE_NAMES.has(touched);
   if (!isRelKey && (touched.includes("/") || touched.includes(sep))) {
-    const expectedAbs = resolvePath(ws.workstreamAbs, entry.artifact);
+    const expectedAbs = resolvePath(subject.abs);
     const touchedAbs = resolvePath(ctx.ctx.repoRoot, touched);
     if (touchedAbs !== expectedAbs) {
       err(
-        `devx revise: '${touched}' is not an artifact of workstream '${ws.workstreamRel}' (expected ${ws.workstreamRel}/${entry.artifact} or the bare basename)\n`,
+        `devx revise: '${touched}' is not an artifact of workstream '${ws.workstreamRel}' (expected ${subject.rel} or the bare basename)\n`,
       );
       return 1;
     }
@@ -130,7 +152,7 @@ export function runRevise(
   out(
     `${JSON.stringify({
       hash: ws.hash,
-      touched: entry.artifact,
+      touched: artifactRel(ws.layout, entry.artifact),
       resets: computation.resets,
       flags_cleared: computation.flagsCleared,
       stage: computation.stage,

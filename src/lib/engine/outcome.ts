@@ -45,7 +45,6 @@ import {
   stageIndex,
 } from "./frontmatter.js";
 import { parseExpectations } from "./expectations.js";
-import { EXPECTATIONS_REL, PRD_REL } from "./artifacts.js";
 import { extractDefinedIds } from "./gate-prd.js";
 import { replayPath } from "./revise.js";
 import { formatDate } from "./verdict.js";
@@ -307,20 +306,20 @@ export function computeGoalRows(
 ): GoalScoreComputation {
   if (goals.length === 0) {
     throw new OutcomeRefusal(
-      `${PRD_REL} defines no G- goals — nothing to score (outcome scoring is keyed to the PRD's numeric goals)`,
+      "the PRD defines no G- goals — nothing to score (outcome scoring is keyed to the PRD's numeric goals)",
     );
   }
   const defined = new Set(goals.map((g) => g.id));
   const missing = goals.filter((g) => !input.actuals.has(g.id)).map((g) => g.id);
   if (missing.length > 0) {
     throw new OutcomeRefusal(
-      `every ${PRD_REL} goal needs a --goal flag; missing: ${missing.join(", ")}`,
+      `every PRD goal needs a --goal flag; missing: ${missing.join(", ")}`,
     );
   }
   for (const id of input.actuals.keys()) {
     if (!defined.has(id)) {
       throw new OutcomeRefusal(
-        `--goal names '${id}' but ${PRD_REL} defines no such goal (defined: ${[...defined].join(", ")})`,
+        `--goal names '${id}' but the PRD defines no such goal (defined: ${[...defined].join(", ")})`,
       );
     }
   }
@@ -328,7 +327,7 @@ export function computeGoalRows(
     for (const id of map.keys()) {
       if (!defined.has(id)) {
         throw new OutcomeRefusal(
-          `flag names '${id}' but ${PRD_REL} defines no such goal`,
+          `flag names '${id}' but the PRD defines no such goal`,
         );
       }
     }
@@ -428,7 +427,7 @@ export function computeTune(
   const unknown = normalized.filter((id) => !known.has(id));
   if (unknown.length > 0) {
     throw new OutcomeRefusal(
-      `--reopen names ${unknown.join(", ")} but ${EXPECTATIONS_REL} defines only: ${blocks.map((b) => b.id).join(", ") || "(none)"}`,
+      `--reopen names ${unknown.join(", ")} but expectations.md defines only: ${blocks.map((b) => b.id).join(", ") || "(none)"}`,
     );
   }
   // Reopen surface: the missed expectations' runnable artifacts, lowest

@@ -16,7 +16,6 @@
 import type { Command } from "commander";
 
 import { attachPhase } from "../lib/help.js";
-import { EXPECTATIONS_REL, PRD_REL } from "../lib/engine/artifacts.js";
 import { loadEngineContext } from "../lib/engine/context.js";
 import {
   type EngineFs,
@@ -107,7 +106,7 @@ export function register(program: Command): void {
   sub
     .command("new")
     .description(
-      `Scaffold a workstream: ${PRD_REL} + ${EXPECTATIONS_REL} from templates, empty decisions/checkpoints/evals, plan-spec engine frontmatter. Idempotent.`,
+      "Scaffold a workstream: the PRD + expectations from templates, empty decisions/checkpoints/evals, plan-spec engine frontmatter. Idempotent. Artifact names follow `engine.docs_layout`.",
     )
     .argument(
       "[slug]",

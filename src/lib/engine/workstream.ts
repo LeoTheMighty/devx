@@ -54,11 +54,9 @@ import {
   type ArtifactKind,
   type DocsLayout,
   type ResolvedBase,
-  EXPECTATIONS_REL,
-  PRD_REL,
   SCAFFOLD_SUBDIR_KINDS,
   SUBJECT_STAGES,
-  TODO_REL,
+  artifactRel,
   stageSubject,
 } from "./artifacts.js";
 import { writeAtomic } from "../supervisor-internal.js";
@@ -307,20 +305,27 @@ export function generateHash(
 
 /** The three artifacts the scaffold instantiates from shipped templates.
  *
- *  `kind` resolves the DESTINATION through the layout; `source` is the
- *  template's own path under `_devx/templates/engine/`, which is
- *  workstream-shaped on disk in BOTH layouts and must therefore stay a
- *  literal. Routing the source through `stageSubject()` under `project-level`
- *  would look for `_devx/templates/engine/prd.md` and throw `engine template
- *  missing` on the very use case the layout exists for. */
+ *  One `kind` per row, and both paths are derived from it: the DESTINATION
+ *  through this repo's layout, the SOURCE through `workstream` always. The
+ *  template tree ships workstream-shaped inside the npm package under BOTH
+ *  layouts, so resolving the source through `project-level` would look for
+ *  `_devx/templates/engine/prd.md`, find nothing, and throw `engine template
+ *  missing` on the very use case that layout exists for (E-3's MUST_NOT_FLAG
+ *  entry says the same thing from the other side).
+ *
+ *  `templateSourceRel()` rather than a literal: the pinned layout is the
+ *  claim being made, and pinning it in an argument keeps one definition of
+ *  what `prd/agent.md` spells. */
+const templateSourceRel = (kind: ArtifactKind): string =>
+  artifactRel("workstream", kind);
+
 const SCAFFOLDED_ARTIFACTS: ReadonlyArray<{
   kind: ArtifactKind;
-  source: string;
   key: "prd" | "expectations" | "todo";
 }> = [
-  { kind: { kind: "agent", stage: "prd" }, source: PRD_REL, key: "prd" },
-  { kind: { kind: "expectations" }, source: EXPECTATIONS_REL, key: "expectations" },
-  { kind: { kind: "todo" }, source: TODO_REL, key: "todo" },
+  { kind: { kind: "agent", stage: "prd" }, key: "prd" },
+  { kind: { kind: "expectations" }, key: "expectations" },
+  { kind: { kind: "todo" }, key: "todo" },
 ];
 
 /** Artifacts whose presence proves a doc set already lives at a base. The
@@ -709,10 +714,11 @@ export function createWorkstream(
     // MUST_NOT_FLAG entry says the same thing from the other side).
     const dest = stageSubject(base.layout, base, t.kind).abs;
     if (fs.exists(dest)) continue;
-    const templateAbs = join(repoRoot, TEMPLATES_DIR, ...t.source.split("/"));
+    const source = templateSourceRel(t.kind);
+    const templateAbs = join(repoRoot, TEMPLATES_DIR, ...source.split("/"));
     if (!fs.exists(templateAbs)) {
       throw new WorkstreamError(
-        `engine template missing at ${TEMPLATES_DIR}/${t.source} — run \`devx init\` (v2 scaffold) first`,
+        `engine template missing at ${TEMPLATES_DIR}/${source} — run \`devx init\` (v2 scaffold) first`,
       );
     }
     const body = fs

@@ -121,3 +121,14 @@ directory.
   new`'s slug made optional behind a refusal that names
   `engine.docs_layout: workstream`.
 - 2026-09-02T12:10:05-06:00 — merged via PR #154 (squash → 366a8f1)
+- 2026-09-02T13:12 — phase 4: 3-agent parallel adversarial review (Blind
+  Hunter + Edge Case Hunter + Acceptance Auditor) per
+  `review.above_threshold_shape: parallel`; 710 changed lines over 16 files,
+  above the substantial-surface threshold; 26 findings, ALL fixed in-place —
+  the Acceptance Auditor's catch that AC 9's consumer half was pinned nowhere
+  led to six new tests, and writing them exposed a missed probe in
+  `commands/next.ts`; re-review clean. RECONSTRUCTED at dlr105 from PR #154's
+  body, which records this review verbatim: the review ran, only this line
+  was omitted, and `test/devx-status-log-discipline.test.ts` failed on `main`
+  from the merge until now. The escape route that let it merge unnoticed is
+  filed as `debug/debug-5284ae`.

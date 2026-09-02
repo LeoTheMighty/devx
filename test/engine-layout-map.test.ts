@@ -34,14 +34,16 @@ import {
   DOCS_LAYOUTS,
   STAGE_DIRS,
   SUBJECT_STAGES,
-  buildArtifactKindIndex,
   docsLayoutFrom,
-  pathToArtifactKind,
   resolveDocsLayout,
   stageSubject,
   type ArtifactKind,
   type DocsLayout,
 } from "../src/lib/engine/artifacts.js";
+import {
+  buildArtifactKindIndex,
+  pathToArtifactKind,
+} from "../src/lib/engine/artifact-index.js";
 import { ENGINE_DEFAULTS, engineConfigFrom } from "../src/lib/engine/config.js";
 
 const REPO = join(sep, "tmp", "repo");
@@ -503,14 +505,18 @@ function commentsOnlyStripped(src: string): string {
  *  `file#function` with the reason — never by being invisible to the regex.
  *
  *  G-2 counts layout RESOLVERS: functions that answer "what shape is this
- *  repo's artifact tree?" from a merged config blob. `renderInitConfig` asks
- *  no such question — it renders the answer `devx init`'s own interview
- *  already produced into a brand-new config file, from an in-process
- *  `InitConfig`, never from a merged blob. Listing it here is a claim a
- *  reviewer can check; a regex that happens not to match it is not. */
-const SANCTIONED_NON_RESOLVERS = new Map<string, string>([
-  ["src/lib/init-write.ts#renderInitConfig", "write path — renders init's own answer"],
-]);
+ *  repo's artifact tree?" from a merged config blob. Listing a site here is a
+ *  claim a reviewer can check; a regex that happens not to match it is not.
+ *
+ *  **Currently empty, and that is the finished state.** Its one entry was
+ *  `renderInitConfig`, a write path rendering `devx init`'s own interview
+ *  answer into a new config file. dlr105 routed it through
+ *  `resolveDocsLayout()` — which asks exactly that question over exactly that
+ *  blob — so the exception dissolved rather than being maintained. The
+ *  mechanism stays because the next mis-sorted site should land here in the
+ *  open rather than be spelled around the scan; the second test below keeps
+ *  a stale entry from silently re-opening the invariant. */
+const SANCTIONED_NON_RESOLVERS = new Map<string, string>([]);
 
 /** Every .ts/.tsx under a root. `withFileTypes` reports a symlinked directory
  *  as a symlink rather than a directory, so it is stat'd explicitly — a scan
