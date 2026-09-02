@@ -76,7 +76,22 @@
     - [x] T3.6 `layout-tree-mismatch` finding (`fixable: false`)
     - [x] AC 6: devx's own `doctor`/`status`/`next` diffed byte-identical vs main
   - [x] Phase 4: Consumer sweep and layout-aware scaffolding → dlr104
-  - [ ] Phase 5: Identity re-key and privatization → dlr105
+  - [x] Phase 5: Identity re-key and privatization → dlr105
+    - [x] Confirm E-2's RED is honest (2 readers + 16 orphans + missing companion test)
+    - [x] T5.2 `CASCADE_TABLE` re-keyed on `ArtifactKind`; `display` projection added
+    - [x] T5.2 `STAGE_SHORTHAND` onto identities; flat-era names dropped (index owns them)
+    - [x] T5.3 the three `entry.artifact` consumers through `stageSubject`/`artifactRel`
+    - [x] T5.4 `TODO_FILENAME` re-export deleted; template source via `artifactRel("workstream", …)`
+    - [x] T5.5 remaining `*_REL` refs migrated (`workstream`, `outcome`, `plan-helper`, 2 test files)
+    - [x] T5.6 six `*_REL` + `artifactAbs` privatized; six orphaned `*Abs` deleted
+    - [x] Unplanned: `buildArtifactKindIndex` + reverse map extracted to `artifact-index.ts`
+          — E-2's orphan floor cannot hold for an export whose only caller is a test
+    - [x] Unplanned: `init-write`'s `renderInitConfig` routed through `resolveDocsLayout`;
+          the G-2 allowlist is now empty rather than maintained
+    - [x] T5.1 `test/engine-layout-single-reader.test.ts` (6 tests, both invariants)
+    - [x] Phase 4: sequential multi-lens review — 7 findings, all fixed in-place
+    - [x] Narrowed the reverse lookup to an EXACT spelling (`--touched PLAN.md` was cascading)
+    - [x] Inherited red fixed: dlr104's missing `phase 4:` line; escape route → debug-5284ae
   - [ ] Phase 6: `devx layout migrate` → dlr106
   - [ ] Phase 7: Doc truth → dlr107
   - [ ] Retro story -> dlrret

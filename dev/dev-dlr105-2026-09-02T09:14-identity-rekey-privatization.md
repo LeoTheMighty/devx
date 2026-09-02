@@ -3,7 +3,7 @@ hash: dlr105
 type: dev
 created: 2026-09-02T09:14:00-06:00
 title: "Identity re-key and privatization"
-status: in-progress
+status: done
 from: plan/plan-a494be-2026-09-01T14:31-docs-layout-resolution.md
 plan: _devx/workstreams/docs-layout-resolution
 phase: 5
@@ -147,3 +147,4 @@ Revert-safe (revert the PR).
   `phase 4:` line — reconstructed from PR #154's body, which records that
   review verbatim. The escape route that let it merge unnoticed is filed as
   `debug/debug-5284ae` + a DEBUG.md row.
+- 2026-09-02T13:23:14-06:00 — merged via PR #155 (squash → 6747362)

@@ -4,7 +4,7 @@
 
 # Story graph
 
-224 specs across 25 groups — 12 blocked · 153 done · 7 in-progress · 52 ready; 442 edges.
+226 specs across 25 groups — 12 blocked · 154 done · 6 in-progress · 54 ready; 444 edges.
 
 ## Legend
 
@@ -164,6 +164,7 @@ flowchart TD
     4bd69f["4bd69f QA walkthrough — gate subject resolution…"]
     4d1a9c["4d1a9c claim commits on whatever branch the main…"]
     4d9c1a["4d9c1a QA walkthrough — sgr104 regen hooks (clai…"]
+    5284ae["5284ae Phase-4 discipline check escapes the feat…"]
     5c8b21["5c8b21 loop-concurrency G-1 test sits ~1.3x unde…"]
     5e1a77["5e1a77 16 tests run past their own timeout and s…"]
     62dd91["62dd91 QA walkthrough — consumer sweep and layou…"]
@@ -207,6 +208,7 @@ flowchart TD
     eac611["eac611 Integration: manage tick writes state in…"]
     ebf8c4["ebf8c4 QA walkthrough — learn.auto_allow unatten…"]
     ecdcda["ecdcda manage-spawn / manage-spawn-integration t…"]
+    ef5059["ef5059 QA walkthrough — identity re-key and priv…"]
     f01000["f01000 Phase 5 — Test, debug, retro, learn"]
     f02000["f02000 Cross-cutting — thoroughness axis wiring"]
     f1d6b2["f1d6b2 Vision-gap Track 4 — Fleet layer: thin mu…"]
@@ -346,7 +348,9 @@ flowchart TD
   dlr104 -.-> 62dd91
   dlr104 --> dlr102
   dlr104 --> dlr103
+  dlr105 -.-> 5284ae
   dlr105 --> dlr104
+  dlr105 -.-> ef5059
   dlr106 --> dlr105
   dlr106 --- |par| dlr107
   dlr107 --> dlr105
@@ -470,7 +474,7 @@ flowchart TD
   class dlr102 done
   class dlr103 done
   class dlr104 done
-  class dlr105 wip
+  class dlr105 done
   class dlr106 ready
   class dlr107 ready
   class dlrret ready
@@ -557,6 +561,7 @@ flowchart TD
   class 4bd69f ready
   class 4d1a9c done
   class 4d9c1a ready
+  class 5284ae ready
   class 5c8b21 done
   class 5e1a77 done
   class 62dd91 ready
@@ -600,6 +605,7 @@ flowchart TD
   class eac611 done
   class ebf8c4 ready
   class ecdcda done
+  class ef5059 ready
   class f01000 blocked
   class f02000 blocked
   class f1d6b2 blocked
