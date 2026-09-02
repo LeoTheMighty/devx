@@ -264,7 +264,7 @@ artifact's. Each eval asserts its own invariant **and** that its companion
 
 - [x] Phase 1: The artifact map and the single layout reader
 - [x] Phase 2: Gate subject resolution
-- [ ] Phase 3: Workstream resolution and the flat-era guard
+- [x] Phase 3: Workstream resolution and the flat-era guard
 - [ ] Phase 4: Consumer sweep and layout-aware scaffolding
 - [ ] Phase 5: Identity re-key and privatization
 - [ ] Phase 6: `devx layout migrate`

@@ -4,7 +4,7 @@
 
 # Story graph
 
-221 specs across 25 groups — 12 blocked · 152 done · 6 in-progress · 51 ready; 439 edges.
+222 specs across 25 groups — 12 blocked · 152 done · 6 in-progress · 52 ready; 440 edges.
 
 ## Legend
 
@@ -208,6 +208,7 @@ flowchart TD
     f01000["f01000 Phase 5 — Test, debug, retro, learn"]
     f02000["f02000 Cross-cutting — thoroughness axis wiring"]
     f1d6b2["f1d6b2 Vision-gap Track 4 — Fleet layer: thin mu…"]
+    f4149e["f4149e An ASCII `-` in a todo.md phase pointer s…"]
     lay101["lay101 Enforce project-level's one-doc-set rule…"]
     lpf101["lpf101 Loop preflight main-health check"]
     roc101["roc101 /devx Phase 1 resume-detection — verify c…"]
@@ -338,6 +339,7 @@ flowchart TD
   dlr103 -.-> 2d6fc1
   dlr103 -.-> 7b39ad
   dlr103 --> dlr101
+  dlr103 -.-> f4149e
   dlr104 --> dlr102
   dlr104 --> dlr103
   dlr105 --> dlr104
@@ -595,6 +597,7 @@ flowchart TD
   class f01000 blocked
   class f02000 blocked
   class f1d6b2 blocked
+  class f4149e ready
   class lay101 ready
   class lpf101 done
   class roc101 done

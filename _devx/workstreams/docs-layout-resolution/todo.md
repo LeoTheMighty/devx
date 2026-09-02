@@ -43,7 +43,7 @@
   - [x] Write `evals/RED-report.md` + `evals/human.md`
 - [x] Gate: evals
 - [ ] Stage: Execute
-  - [ ] Phase 1: The artifact map and the single layout reader -> dlr101
+  - [x] Phase 1: The artifact map and the single layout reader → dlr101
     - [x] T1.1 `ArtifactKind` / `stageSubject()` / `pathToArtifactKind()`
     - [x] T1.2 `resolveDocsLayout()`; `docsLayoutFrom()` reduced to a wrapper
     - [x] T1.3 `docsLayout` + `layoutSource` on `EngineConfig`, above both guards
@@ -51,7 +51,7 @@
     - [x] T1.5 duplicate `DocsLayout` type replaced by a re-export
     - [x] T1.6 9 hand-built `engine` literals re-typed; `layoutWarnings()` rewritten
     - [x] Unplanned: a THIRD reader (`init-write.ts` `renderInitConfig`) closed
-  - [x] Phase 2: Gate subject resolution -> dlr102
+  - [x] Phase 2: Gate subject resolution → dlr102
     - [x] Confirm E-1's RED is honest (names the missing feature, not infra)
     - [x] T2.2 12 `commands/gate.ts` `*Abs()` reads through `stageSubject()`
     - [x] T2.2 the two lying refusal strings (gate prd input-missing, gate evals expectations)
@@ -64,7 +64,7 @@
     - [x] Phase 4: 3-agent parallel review — 12 findings, all fixed in-place
     - [x] Closed the leg-(c) blind spot (`path.join` eats `./`) with a spelling assertion
     - [x] Re-anchored the doc-set base off `todo.md` after the firewall test flagged it
-  - [ ] Phase 3: Workstream resolution and the flat-era guard -> dlr103
+  - [x] Phase 3: Workstream resolution and the flat-era guard → dlr103
     - [x] Confirm E-4's RED is honest (names the missing feature, not infra)
     - [x] T3.1 `test/engine-layout-resolve-workstream.test.ts` RED
     - [x] T3.2 `resolveWorkstream()` + `resolveSpecWorkstream()` branch on layout
@@ -75,10 +75,10 @@
     - [x] T3.5 `detectFlatWorkstreams` honors `workstreams_root`; early-return
     - [x] T3.6 `layout-tree-mismatch` finding (`fixable: false`)
     - [x] AC 6: devx's own `doctor`/`status`/`next` diffed byte-identical vs main
-  - [ ] Phase 4: Consumer sweep and layout-aware scaffolding -> dlr104
-  - [ ] Phase 5: Identity re-key and privatization -> dlr105
-  - [ ] Phase 6: `devx layout migrate` -> dlr106
-  - [ ] Phase 7: Doc truth -> dlr107
+  - [ ] Phase 4: Consumer sweep and layout-aware scaffolding → dlr104
+  - [ ] Phase 5: Identity re-key and privatization → dlr105
+  - [ ] Phase 6: `devx layout migrate` → dlr106
+  - [ ] Phase 7: Doc truth → dlr107
   - [ ] Retro story -> dlrret
 - [ ] Stage: Retro
 - [ ] Stage: Outcome
