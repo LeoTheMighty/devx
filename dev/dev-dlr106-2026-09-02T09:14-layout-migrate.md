@@ -3,7 +3,7 @@ hash: dlr106
 type: dev
 created: 2026-09-02T09:14:00-06:00
 title: "devx layout migrate"
-status: in-progress
+status: done
 from: plan/plan-a494be-2026-09-01T14:31-docs-layout-resolution.md
 plan: _devx/workstreams/docs-layout-resolution
 phase: 6
@@ -132,4 +132,4 @@ Parallel-safe with phase 7 in file terms.
   Filed OUT of scope: debug-00b4d3 (a migration commit is blocked by `devx
   outline check`) — the fix edits a three-layer human-only guard owned by
   another subsystem. Re-review clean.
-
+- 2026-09-02T14:46:29-06:00 — merged via PR #156 (squash → 35a6ae0)

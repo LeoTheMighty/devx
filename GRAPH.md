@@ -4,7 +4,7 @@
 
 # Story graph
 
-226 specs across 25 groups — 12 blocked · 154 done · 7 in-progress · 53 ready; 444 edges.
+228 specs across 25 groups — 12 blocked · 155 done · 6 in-progress · 55 ready; 446 edges.
 
 ## Legend
 
@@ -152,6 +152,7 @@ flowchart TD
     d40ret["d40ret Retrospective + LEARN.md updates for epic…"]
   end
   subgraph sg_standalone["standalone — no workstream or epic"]
+    00b4d3["00b4d3 A layout-migration commit is blocked by d…"]
     135dc9["135dc9 project-level artifact names collide with…"]
     28b267["28b267 learn.auto_allow — the retro watcher stop…"]
     2d6fc1["2d6fc1 A peer session's story commit captured an…"]
@@ -176,6 +177,7 @@ flowchart TD
     7b3e2a["7b3e2a merge-gate reads YAML `branch: null` as t…"]
     7c1e93["7c1e93 loop-concurrency G-1 harness times out un…"]
     7e2b56["7e2b56 emit-retro-story writes its artifacts to…"]
+    7fd3a7["7fd3a7 QA walkthrough — devx layout migrate (dlr…"]
     8a9586["8a9586 Loop merge tail leaves GRAPH.md stale — F…"]
     8b9165["8b9165 QA walkthrough — sgr105 mark-done helper…"]
     97f6d8["97f6d8 QA walkthrough — devx graph renderer + CL…"]
@@ -351,6 +353,8 @@ flowchart TD
   dlr105 -.-> 5284ae
   dlr105 --> dlr104
   dlr105 -.-> ef5059
+  dlr106 -.-> 00b4d3
+  dlr106 -.-> 7fd3a7
   dlr106 --> dlr105
   dlr106 --- |par| dlr107
   dlr107 --> dlr105
@@ -475,7 +479,7 @@ flowchart TD
   class dlr103 done
   class dlr104 done
   class dlr105 done
-  class dlr106 wip
+  class dlr106 done
   class dlr107 ready
   class dlrret ready
   class bd5b5e wip
@@ -549,6 +553,7 @@ flowchart TD
   class d40006 ready
   class d40007 ready
   class d40ret ready
+  class 00b4d3 ready
   class 135dc9 ready
   class 28b267 done
   class 2d6fc1 ready
@@ -573,6 +578,7 @@ flowchart TD
   class 7b3e2a done
   class 7c1e93 done
   class 7e2b56 done
+  class 7fd3a7 ready
   class 8a9586 done
   class 8b9165 ready
   class 97f6d8 ready

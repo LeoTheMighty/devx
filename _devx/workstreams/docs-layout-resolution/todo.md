@@ -92,7 +92,7 @@
     - [x] Phase 4: sequential multi-lens review — 7 findings, all fixed in-place
     - [x] Narrowed the reverse lookup to an EXACT spelling (`--touched PLAN.md` was cascading)
     - [x] Inherited red fixed: dlr104's missing `phase 4:` line; escape route → debug-5284ae
-  - [ ] Phase 6: `devx layout migrate` → dlr106
+  - [x] Phase 6: `devx layout migrate` → dlr106
   - [ ] Phase 7: Doc truth → dlr107
   - [ ] Retro story -> dlrret
 - [ ] Stage: Retro
