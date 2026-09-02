@@ -3,13 +3,13 @@ hash: dlr103
 type: dev
 created: 2026-09-02T09:14:00-06:00
 title: "Workstream resolution and the flat-era guard"
-status: ready
+status: in-progress
 from: plan/plan-a494be-2026-09-01T14:31-docs-layout-resolution.md
 plan: _devx/workstreams/docs-layout-resolution
 phase: 3
 blocked_by: [dlr101]
 branch: feat/dev-dlr103
-owner: null
+owner: /devx-2026-09-02T1023-57395
 ---
 ## Goal
 
@@ -77,3 +77,4 @@ Parallel-safe with phase 2.
 
 - 2026-09-02T09:14 — emitted by /devx-plan (RED gate PASS; workstream
   docs-layout-resolution, plan phase 3).
+- 2026-09-02T10:23:14-06:00 — claimed by /devx in session /devx-2026-09-02T1023-57395
