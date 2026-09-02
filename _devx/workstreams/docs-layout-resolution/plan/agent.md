@@ -263,7 +263,7 @@ artifact's. Each eval asserts its own invariant **and** that its companion
 ## Phase checklist
 
 - [x] Phase 1: The artifact map and the single layout reader
-- [ ] Phase 2: Gate subject resolution
+- [x] Phase 2: Gate subject resolution
 - [ ] Phase 3: Workstream resolution and the flat-era guard
 - [ ] Phase 4: Consumer sweep and layout-aware scaffolding
 - [ ] Phase 5: Identity re-key and privatization
@@ -437,12 +437,22 @@ contract the whole workstream exists to honor.
   - Every `location:` and `message:` string emitted under `project-level`
     names a path that exists on the fixture disk.
   - devx's own gates return output identical to `main`.
+    **As-built — departed, deliberately.** Verdicts, exit codes, thresholds,
+    `gate_status` flips and stage advances are byte-identical (diffed by
+    running both builds over two identical scratch copies of this very
+    workstream). The `location:`/`message:` strings and the verify report's
+    Subject line are NOT: they moved from doc-set-relative to repo-relative.
+    `main` was already internally inconsistent — `commands/gate.ts` printed
+    repo-relative while `gate-prd.ts` printed doc-set-relative — so no option
+    preserved both spellings, and this one satisfies the criterion directly
+    above it. Scope is this phase's output strings only; nothing downstream
+    re-reads them.
 
 **Tasks**:
-- [ ] T2.1 Author `evals/E-1_gate-subjects.ts` + `test/engine-layout-gate-subjects.test.ts` RED, with both fixtures — files: `_devx/workstreams/docs-layout-resolution/evals/E-1_gate-subjects.ts`, `test/engine-layout-gate-subjects.test.ts`
-- [ ] T2.2 Resolve the 12 `commands/gate.ts` `*Abs()` subject reads through `stageSubject()`; fix the two lying refusal strings — files: `src/commands/gate.ts`
-- [ ] T2.3 Thread the resolved subject into `gate-prd.ts`'s 19 `location:` fields and 6 `message:` strings — files: `src/lib/engine/gate-prd.ts`
-- [ ] T2.4 Move `gate-coverage.ts` refusal/subject strings onto `subject.rel` — files: `src/lib/engine/gate-coverage.ts`
+- [x] T2.1 Author `test/engine-layout-gate-subjects.test.ts` — files: `test/engine-layout-gate-subjects.test.ts`. **As-built:** `evals/E-1_gate-subjects.ts` and its fixtures were authored at the RED stage and are locked, so this task was the suite half only; E-1 was re-run first and confirmed RED for the stated reason.
+- [x] T2.2 Resolve the 12 `commands/gate.ts` `*Abs()` subject reads through `stageSubject()`; fix the two lying refusal strings — files: `src/commands/gate.ts`. **As-built:** 5 refusal strings de-lied, not 2 — the same `${workstreamRel}/${REL}` shape also sat on `gate-input-missing` and the two report-path builders. `subjectsFor()` additionally exposes a normalized `docSetRel`/`docSetAbs`/`docSetLabel` (anchored on the expectations subject), because `runGateEvals` and `donePhasesFor` were still taking the RAW base — a verdict-affecting split once subjects normalize and that comparison does not.
+- [x] T2.3 Thread the resolved subject into `gate-prd.ts`'s 19 `location:` fields and 6 `message:` strings — files: `src/lib/engine/gate-prd.ts`. **As-built:** counts confirmed exactly 19 + 6. `prdRel`/`expectationsRel` are REQUIRED inputs, not defaulted — a default would be the folder spelling, wrong under `project-level` and wrong silently.
+- [x] T2.4 Move `gate-coverage.ts` refusal/subject strings onto `subject.rel` — files: `src/lib/engine/gate-coverage.ts`. **As-built:** also `src/lib/engine/gate-evals.ts` (unplanned, in-scope per "2 owns `gate*`") — `donePhasesFor` normalizes both sides of its shipped-phase comparison, and the two committed records take a display label so neither titles itself `# … — . —` under `project-level`.
 
 ### 3. Phase: Workstream resolution and the flat-era guard
 

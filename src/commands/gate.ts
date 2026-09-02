@@ -20,7 +20,7 @@
 // Spec: dev/dev-v2e101-2026-07-05T13:01-engine-cli-primitives.md
 // Design: v2/02-engine.md §4.2, §4.4, §4.6
 
-import { join } from "node:path";
+import { dirname, join, posix } from "node:path";
 import type { Command } from "commander";
 
 import { attachPhase } from "../lib/help.js";
@@ -88,8 +88,78 @@ function ioFrom(opts: RunGateOpts): GateIo {
   };
 }
 
+/**
+ * Every artifact a gate names, resolved ONCE through `engine.docs_layout`.
+ *
+ * The layout is never a gate INPUT: only subject resolution branches on it.
+ * Each gate below reads `.abs` and prints `.rel`, and none of them — nor any
+ * of the pure evaluators they call — is handed the layout itself. That is
+ * what makes the verdicts layout-independent for identical content, which is
+ * the whole contract of docs/CONFIG.md §15 rule 5 (E-1).
+ */
+interface GateSubjects {
+  /** The doc set itself, normalized: `.` at the repo root under
+   *  `project-level`, `_devx/workstreams/<slug>` under `workstream`.
+   *  Derived through `stageSubject` rather than off `ws.workstreamRel`, so
+   *  it passes through the SAME normalizer every artifact path does — a
+   *  `workstream: ./` pointer must not resolve subjects one way and be
+   *  string-compared another (review EC-2). */
+  docSetRel: string;
+  docSetAbs: string;
+  /** How a committed record NAMES its workstream in a heading. `.` is a
+   *  true path but a useless title, and these reports are read weeks later
+   *  (review BH-1 / AA / EC-3). Unchanged under `workstream`. */
+  docSetLabel: string;
+  prd: artifacts.StageSubject;
+  design: artifacts.StageSubject;
+  plan: artifacts.StageSubject;
+  expectations: artifacts.StageSubject;
+  evalsDir: artifacts.StageSubject;
+  decisionsDir: artifacts.StageSubject;
+  redReport: artifacts.StageSubject;
+}
+
+function subjectsFor(
+  repoRoot: string,
+  ws: ResolvedWorkstream,
+  layout: artifacts.DocsLayout,
+): GateSubjects {
+  // `workstreamRel` is `.` under project-level; `stageSubject` normalizes it
+  // away, so `rel` is a plain repo-root path rather than `./prd.md`.
+  const base = { repoRoot, workstreamRel: ws.workstreamRel };
+  const at = (kind: artifacts.ArtifactKind): artifacts.StageSubject =>
+    artifacts.stageSubject(layout, base, kind);
+  // The expectations artifact sits at the doc-set root in BOTH layouts, so
+  // its parent IS the normalized base — read back out of the resolver
+  // instead of re-deriving it, which is how two spellings of one directory
+  // get started. It is deliberately the anchor: a Gate-1 subject these
+  // gates already resolve, rather than some other artifact whose location
+  // the gates would then have to know about.
+  const expectations = at({ kind: "expectations" });
+  const docSetRel = posix.dirname(expectations.rel);
+  return {
+    docSetRel,
+    docSetAbs: dirname(expectations.abs),
+    docSetLabel: docSetRel === "." ? "<repo root>" : docSetRel,
+    prd: at({ kind: "agent", stage: "prd" }),
+    design: at({ kind: "agent", stage: "design" }),
+    plan: at({ kind: "agent", stage: "plan" }),
+    expectations,
+    evalsDir: at({ kind: "evals-dir" }),
+    decisionsDir: at({ kind: "decisions-dir" }),
+    redReport: at({ kind: "red-report" }),
+  };
+}
+
 type Resolution =
-  | { ok: true; ws: ResolvedWorkstream; repoRoot: string; merged: unknown; expectationsMin: number }
+  | {
+      ok: true;
+      ws: ResolvedWorkstream;
+      repoRoot: string;
+      merged: unknown;
+      expectationsMin: number;
+      subjects: GateSubjects;
+    }
   | { ok: false; code: number };
 
 function resolveOrFail(
@@ -127,6 +197,7 @@ function resolveOrFail(
       repoRoot: ctx.ctx.repoRoot,
       merged: ctx.ctx.merged,
       expectationsMin: ctx.ctx.engine.expectationsMin,
+      subjects: subjectsFor(ctx.ctx.repoRoot, ws, ctx.ctx.engine.docsLayout),
     };
   } catch (e) {
     if (e instanceof WorkstreamError) {
@@ -196,29 +267,33 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
   }
   const r = resolveOrFail(args[0], "devx gate prd", opts, io);
   if (!r.ok) return r.code;
-  const { ws } = r;
+  const { ws, subjects } = r;
 
   // Missing Gate-1 inputs are a refusal with a precise gap (exit 1), not an
   // error: the artifact simply hasn't been authored yet (/devx prd is next).
-  const prdAbs = artifacts.prdAbs(ws.workstreamAbs);
-  const expAbs = artifacts.expectationsAbs(ws.workstreamAbs);
   const missing: string[] = [];
-  if (!io.fs.exists(prdAbs)) missing.push(artifacts.PRD_REL);
-  if (!io.fs.exists(expAbs)) missing.push(artifacts.EXPECTATIONS_REL);
+  if (!io.fs.exists(subjects.prd.abs)) missing.push(subjects.prd.rel);
+  if (!io.fs.exists(subjects.expectations.abs)) {
+    missing.push(subjects.expectations.rel);
+  }
   if (missing.length > 0) {
+    // `rel` is already repo-relative — re-prefixing `workstreamRel` here is
+    // what made this refusal lie under project-level (`./prd/agent.md`).
     const gaps = missing.map((m) => ({
       check: "gate-input-missing",
-      message: `${ws.workstreamRel}/${m} does not exist — run \`/devx prd ${ws.hash}\` first`,
+      message: `${m} does not exist — run \`/devx prd ${ws.hash}\` first`,
     }));
     io.out(`${JSON.stringify({ gate: "FAIL", hash: ws.hash, gaps })}\n`);
     return 1;
   }
 
   const result = evaluateGatePrd({
-    prd: io.fs.readFile(prdAbs),
-    expectations: io.fs.readFile(expAbs),
+    prd: io.fs.readFile(subjects.prd.abs),
+    expectations: io.fs.readFile(subjects.expectations.abs),
     blockedBy: ws.state.blockedBy,
     expectationsMin: r.expectationsMin,
+    prdRel: subjects.prd.rel,
+    expectationsRel: subjects.expectations.rel,
   });
 
   if (result.verdict === "FAIL") {
@@ -273,14 +348,14 @@ export function runGateCoverage(
   }
   const r = resolveOrFail(args[0], "devx gate coverage", opts, io);
   if (!r.ok) return r.code;
-  const { ws } = r;
+  const { ws, subjects } = r;
 
-  const designAbs = artifacts.designAbs(ws.workstreamAbs);
-  const planAbs = artifacts.planAbs(ws.workstreamAbs);
   const detected = detectCoverageMode({
     state: ws.state,
-    designExists: io.fs.exists(designAbs),
-    planExists: io.fs.exists(planAbs),
+    designExists: io.fs.exists(subjects.design.abs),
+    planExists: io.fs.exists(subjects.plan.abs),
+    designRel: subjects.design.rel,
+    planRel: subjects.plan.rel,
   });
   if (detected.mode === null) {
     io.out(
@@ -311,16 +386,16 @@ export function runGateCoverage(
     return 2;
   }
 
-  const prdAbs = artifacts.prdAbs(ws.workstreamAbs);
-  const expAbs = artifacts.expectationsAbs(ws.workstreamAbs);
   const files = {
-    prd: io.fs.exists(prdAbs) ? io.fs.readFile(prdAbs) : "",
-    expectations: io.fs.exists(expAbs) ? io.fs.readFile(expAbs) : "",
+    prd: io.fs.exists(subjects.prd.abs) ? io.fs.readFile(subjects.prd.abs) : "",
+    expectations: io.fs.exists(subjects.expectations.abs)
+      ? io.fs.readFile(subjects.expectations.abs)
+      : "",
   };
   const sourceIds = extractSourceIds(mode, files);
   if (sourceIds.length === 0) {
     io.err(
-      `devx gate coverage: no source IDs found in ${mode === "design" ? artifacts.PRD_REL : artifacts.EXPECTATIONS_REL} — nothing to verify\n`,
+      `devx gate coverage: no source IDs found in ${mode === "design" ? subjects.prd.rel : subjects.expectations.rel} — nothing to verify\n`,
     );
     return 2;
   }
@@ -352,15 +427,22 @@ export function runGateCoverage(
   const report = renderVerifyReport({
     mode,
     hash: ws.hash,
-    workstreamRel: ws.workstreamRel,
+    workstreamRel: subjects.docSetLabel,
     date,
     computation,
     extras: parsed.table.extras,
+    subjects: {
+      prdRel: subjects.prd.rel,
+      designRel: subjects.design.rel,
+      planRel: subjects.plan.rel,
+      expectationsRel: subjects.expectations.rel,
+    },
   });
-  const reportRel = `${ws.workstreamRel}/${artifacts.DECISIONS_DIR_REL}/${date}-${mode}-verify.md`;
-  const reportAbs = join(artifacts.decisionsDirAbs(ws.workstreamAbs), `${date}-${mode}-verify.md`);
+  const reportName = `${date}-${mode}-verify.md`;
+  const reportRel = `${subjects.decisionsDir.rel}/${reportName}`;
+  const reportAbs = join(subjects.decisionsDir.abs, reportName);
   try {
-    io.fs.mkdirRecursive(artifacts.decisionsDirAbs(ws.workstreamAbs));
+    io.fs.mkdirRecursive(subjects.decisionsDir.abs);
     io.fs.writeFile(reportAbs, report);
   } catch (e) {
     io.err(
@@ -467,7 +549,7 @@ export function runGateEvalsCli(
   }
   const r = resolveOrFail(args[0], "devx gate evals", opts, io);
   if (!r.ok) return r.code;
-  const { ws } = r;
+  const { ws, subjects } = r;
 
   // Predecessor gates must have passed (tenet 2).
   if (!ws.state.gateStatus.plan_verified) {
@@ -486,15 +568,13 @@ export function runGateEvalsCli(
     return 1;
   }
 
-  const expAbs = artifacts.expectationsAbs(ws.workstreamAbs);
-  if (!io.fs.exists(expAbs)) {
+  if (!io.fs.exists(subjects.expectations.abs)) {
     io.err(
-      `devx gate evals: ${ws.workstreamRel}/${artifacts.EXPECTATIONS_REL} not found — workstream state is inconsistent (plan_verified is true without Gate-1 inputs)\n`,
+      `devx gate evals: ${subjects.expectations.rel} not found — workstream state is inconsistent (plan_verified is true without Gate-1 inputs)\n`,
     );
     return 2;
   }
-  const planAbs = artifacts.planAbs(ws.workstreamAbs);
-  const expectations = io.fs.readFile(expAbs);
+  const expectations = io.fs.readFile(subjects.expectations.abs);
 
   // A typo'd --waive must not silently waive nothing and then demand RED
   // from the eval the operator meant — refuse before evaluating anything.
@@ -505,7 +585,7 @@ export function runGateEvalsCli(
     const unknown = waive.filter((id) => !known.has(id));
     if (unknown.length > 0) {
       io.err(
-        `devx gate evals: cannot waive ${unknown.join(", ")} — no such expectation in ${ws.workstreamRel}/${artifacts.EXPECTATIONS_REL}\n`,
+        `devx gate evals: cannot waive ${unknown.join(", ")} — no such expectation in ${subjects.expectations.rel}\n`,
       );
       return 2;
     }
@@ -513,13 +593,15 @@ export function runGateEvalsCli(
 
   const result = runGateEvals({
     repoRoot: r.repoRoot,
-    workstreamAbs: ws.workstreamAbs,
+    workstreamAbs: subjects.docSetAbs,
     expectations,
-    plan: io.fs.exists(planAbs) ? io.fs.readFile(planAbs) : null,
+    plan: io.fs.exists(subjects.plan.abs)
+      ? io.fs.readFile(subjects.plan.abs)
+      : null,
     runners: projectRunnersFrom(r.merged),
     exec: opts.exec ?? realShellExec,
     exists: (p) => io.fs.exists(p),
-    donePhases: donePhasesFor(io.fs, r.repoRoot, ws.workstreamRel),
+    donePhases: donePhasesFor(io.fs, r.repoRoot, subjects.docSetRel),
     waived: new Set(waive),
     dryRun: flags.dryRun === true,
   });
@@ -545,13 +627,13 @@ export function runGateEvalsCli(
 
   // Write the RED report — the record of the observed runs, PASS or FAIL.
   const date = formatDate(io.now());
-  const reportRel = `${ws.workstreamRel}/${artifacts.RED_REPORT_REL}`;
+  const reportRel = subjects.redReport.rel;
   try {
-    io.fs.mkdirRecursive(artifacts.evalsDirAbs(ws.workstreamAbs));
+    io.fs.mkdirRecursive(subjects.evalsDir.abs);
     io.fs.writeFile(
-      artifacts.redReportAbs(ws.workstreamAbs),
+      subjects.redReport.abs,
       renderRedReport({
-        workstreamRel: ws.workstreamRel,
+        workstreamRel: subjects.docSetLabel,
         date,
         result,
         waiver:
@@ -621,7 +703,11 @@ export function register(program: Command): void {
   sub
     .command("prd")
     .description(
-      `Gate 1: placeholder/E-block/EARS/threshold/ID-resolution checks on ${artifacts.PRD_REL} + ${artifacts.EXPECTATIONS_REL}; pass flips prd_validated + stage: design.`,
+      // Registered before any config is read, so no layout is resolvable
+      // here — name the ARTIFACTS rather than one layout's spelling of
+      // them, which under `project-level` would name files that don't
+      // exist (review BH-3 / AA / EC-LOW2).
+      "Gate 1: placeholder/E-block/EARS/threshold/ID-resolution checks on the PRD + expectations artifacts; pass flips prd_validated + stage: design.",
     )
     .argument("<hash>", "workstream (plan spec) hash")
     .action((hash: string) => {
@@ -644,7 +730,7 @@ export function register(program: Command): void {
   sub
     .command("evals")
     .description(
-      `Gate 4 (RED): run every expectation's Verified-by target via projects: runners; P0s must be observed failing; writes ${artifacts.RED_REPORT_REL}.`,
+      "Gate 4 (RED): run every expectation's Verified-by target via projects: runners; P0s must be observed failing; writes the RED report into the workstream's evals dir.",
     )
     .argument("<hash>", "workstream (plan spec) hash")
     .option("--dry-run", "resolve artifacts + commands, run nothing, write nothing")
