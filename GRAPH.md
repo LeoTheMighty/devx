@@ -4,7 +4,7 @@
 
 # Story graph
 
-216 specs across 25 groups — 12 blocked · 149 done · 6 in-progress · 49 ready; 434 edges.
+217 specs across 25 groups — 12 blocked · 149 done · 6 in-progress · 50 ready; 435 edges.
 
 ## Legend
 
@@ -25,6 +25,7 @@ flowchart TD
     e5a9c0["e5a9c0 Vision-gap Track 3 — Interim blocker push…"]
   end
   subgraph sg_docs_layout_resolution["docs-layout-resolution (workstream)"]
+    75563d["75563d RED eval sha lock is unwired — Gate 4 nev…"]
     a494be["a494be Docs Layout Resolution"]
     dlr101["dlr101 The artifact map and the single layout re…"]
     dlr102["dlr102 Gate subject resolution"]
@@ -252,6 +253,7 @@ flowchart TD
   a10ret --> a10003
   a10ret --> a10004
   a10ret --> a10005
+  a494be -.-> 75563d
   a494be -.-> dlr101
   a494be -.-> dlr102
   a494be -.-> dlr103
@@ -448,6 +450,7 @@ flowchart TD
   classDef unknownStatus fill:#fff,stroke:#777,color:#222
   classDef collapsed fill:#eee,stroke:#777,color:#222
   class e5a9c0 ready
+  class 75563d ready
   class a494be wip
   class dlr101 ready
   class dlr102 ready
