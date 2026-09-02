@@ -3,7 +3,7 @@ hash: dlr104
 type: dev
 created: 2026-09-02T09:14:00-06:00
 title: "Consumer sweep and layout-aware scaffolding"
-status: in-progress
+status: done
 from: plan/plan-a494be-2026-09-01T14:31-docs-layout-resolution.md
 plan: _devx/workstreams/docs-layout-resolution
 phase: 4
@@ -120,3 +120,4 @@ directory.
   strings and gate-summary pointers made layout-aware, and `devx workstream
   new`'s slug made optional behind a refusal that names
   `engine.docs_layout: workstream`.
+- 2026-09-02T12:10:05-06:00 — merged via PR #154 (squash → 366a8f1)

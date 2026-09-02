@@ -75,7 +75,7 @@
     - [x] T3.5 `detectFlatWorkstreams` honors `workstreams_root`; early-return
     - [x] T3.6 `layout-tree-mismatch` finding (`fixable: false`)
     - [x] AC 6: devx's own `doctor`/`status`/`next` diffed byte-identical vs main
-  - [ ] Phase 4: Consumer sweep and layout-aware scaffolding → dlr104
+  - [x] Phase 4: Consumer sweep and layout-aware scaffolding → dlr104
   - [ ] Phase 5: Identity re-key and privatization → dlr105
   - [ ] Phase 6: `devx layout migrate` → dlr106
   - [ ] Phase 7: Doc truth → dlr107

@@ -4,7 +4,7 @@
 
 # Story graph
 
-222 specs across 25 groups — 12 blocked · 152 done · 7 in-progress · 51 ready; 440 edges.
+224 specs across 25 groups — 12 blocked · 153 done · 6 in-progress · 53 ready; 442 edges.
 
 ## Legend
 
@@ -152,6 +152,7 @@ flowchart TD
     d40ret["d40ret Retrospective + LEARN.md updates for epic…"]
   end
   subgraph sg_standalone["standalone — no workstream or epic"]
+    135dc9["135dc9 project-level artifact names collide with…"]
     28b267["28b267 learn.auto_allow — the retro watcher stop…"]
     2d6fc1["2d6fc1 A peer session's story commit captured an…"]
     2e1174["2e1174 Tests in the ASYNC blocking pass sit with…"]
@@ -165,6 +166,7 @@ flowchart TD
     4d9c1a["4d9c1a QA walkthrough — sgr104 regen hooks (clai…"]
     5c8b21["5c8b21 loop-concurrency G-1 test sits ~1.3x unde…"]
     5e1a77["5e1a77 16 tests run past their own timeout and s…"]
+    62dd91["62dd91 QA walkthrough — consumer sweep and layou…"]
     67a7e8["67a7e8 QA walkthrough — claim branch-posture gua…"]
     6a913f["6a913f hash→spec resolution hardcodes dev/ acros…"]
     74632d["74632d loop-driver fixture teardown races on mac…"]
@@ -340,6 +342,8 @@ flowchart TD
   dlr103 -.-> 7b39ad
   dlr103 --> dlr101
   dlr103 -.-> f4149e
+  dlr104 -.-> 135dc9
+  dlr104 -.-> 62dd91
   dlr104 --> dlr102
   dlr104 --> dlr103
   dlr105 --> dlr104
@@ -465,7 +469,7 @@ flowchart TD
   class dlr101 done
   class dlr102 done
   class dlr103 done
-  class dlr104 wip
+  class dlr104 done
   class dlr105 ready
   class dlr106 ready
   class dlr107 ready
@@ -541,6 +545,7 @@ flowchart TD
   class d40006 ready
   class d40007 ready
   class d40ret ready
+  class 135dc9 ready
   class 28b267 done
   class 2d6fc1 ready
   class 2e1174 ready
@@ -554,6 +559,7 @@ flowchart TD
   class 4d9c1a ready
   class 5c8b21 done
   class 5e1a77 done
+  class 62dd91 ready
   class 67a7e8 ready
   class 6a913f done
   class 74632d done
