@@ -4,7 +4,7 @@
 
 # Story graph
 
-228 specs across 25 groups — 12 blocked · 155 done · 6 in-progress · 55 ready; 446 edges.
+228 specs across 25 groups — 12 blocked · 155 done · 7 in-progress · 54 ready; 446 edges.
 
 ## Legend
 
@@ -480,7 +480,7 @@ flowchart TD
   class dlr104 done
   class dlr105 done
   class dlr106 done
-  class dlr107 ready
+  class dlr107 wip
   class dlrret ready
   class bd5b5e wip
   class grp_harness_fold_in collapsed
