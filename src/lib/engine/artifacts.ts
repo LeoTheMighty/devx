@@ -248,6 +248,40 @@ export type ArtifactKind =
   | { kind: "evals-dir" | "decisions-dir" | "checkpoints-dir" }
   | { kind: "red-report" };
 
+/** The §15 ROW INDEX — one entry per documented row, in table order.
+ *
+ *  It exists because a TYPE erases: `docs/CONFIG.md` §15 claims one row per
+ *  artifact kind, and a doc check has nothing to set-compare against unless
+ *  the enumeration survives to runtime. `ALL_ARTIFACT_KINDS` is the wrong
+ *  granularity for that job — it is the full 22-identity product, because the
+ *  reverse map has to key `human · design` apart from `human · prd`. §15 is
+ *  read by a human choosing a layout, and the three stage-parametrized
+ *  companions have one stage-generic spelling each (`<stage>/human.md` →
+ *  `<stage>-human.md`), so four identities are one row. `agent` keeps its
+ *  stage: `prd.md`, `design.md` and `plan.md` are three different names.
+ *
+ *  Written out rather than derived, because the eval that consumes it
+ *  (`evals/E-8_docs-truth.ts`) reads this file as TEXT — a `.map()` leaves it
+ *  nothing to read. `test/engine-layout-docs-truth.test.ts` re-derives the
+ *  same set from `ALL_ARTIFACT_KINDS` and fails if the two disagree, so the
+ *  literal cannot rot: a new `ArtifactKind` variant fails that test until it
+ *  is listed here, and fails the row check until §15 documents it. */
+export const ARTIFACT_KINDS = [
+  "agent:prd",
+  "agent:design",
+  "agent:plan",
+  "human",
+  "outline",
+  "outline-critique",
+  "expectations",
+  "todo",
+  "results",
+  "evals-dir",
+  "decisions-dir",
+  "checkpoints-dir",
+  "red-report",
+] as const;
+
 export interface StageSubject {
   /** Repo-relative display form — what refusal messages print. */
   rel: string;

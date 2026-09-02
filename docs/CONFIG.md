@@ -430,20 +430,46 @@ work, many in flight at once, rooted at `engine.workstreams_root`.
 `project-level` is the flat shape for a repo where only one thing is ever
 being designed at a time — the docs sit at the repo root and there is no slug.
 
+One row per `ArtifactKind` — the identity the resolver decides a path for.
+The kind leads each row because the table is keyed on it, not on prose:
+
 | Artifact | `workstream` | `project-level` |
 | --- | --- | --- |
-| PRD (Gate 1 subject) | `<root>/<slug>/prd/agent.md` | `prd.md` |
-| PRD human digest | `<root>/<slug>/prd/human.md` | `prd-human.md` |
-| PRD outline (human-only) | `<root>/<slug>/prd/outline.md` | `prd-outline.md` |
-| PRD outline critique | `<root>/<slug>/prd/outline-critique.md` | `prd-outline-critique.md` |
-| Design (Gate 2 subject) | `<root>/<slug>/design/agent.md` | `design.md` |
-| Design outline / critique | `<root>/<slug>/design/…` | `design-outline.md` / `design-outline-critique.md` |
-| Plan (Gate 3 subject) | `<root>/<slug>/plan/agent.md` | `plan.md` |
-| Plan outline / critique | `<root>/<slug>/plan/…` | `plan-outline.md` / `plan-outline-critique.md` |
-| Expectations | `<root>/<slug>/expectations.md` | `expectations.md` |
-| RED artifacts | `<root>/<slug>/evals/` | `evals/` |
-| Working memory | `<root>/<slug>/todo.md` | `todo.md` |
-| Decision records | `<root>/<slug>/decisions/` | `decisions/` |
+| `agent:prd` — the PRD, Gate 1 subject | `<root>/<slug>/prd/agent.md` | `prd.md` |
+| `agent:design` — the design, Gate 2 subject | `<root>/<slug>/design/agent.md` | `design.md` |
+| `agent:plan` — the plan, Gate 3 subject | `<root>/<slug>/plan/agent.md` | `plan.md` |
+| `human` — agent-maintained digest; never a gate input | `<root>/<slug>/<stage>/human.md` | `<stage>-human.md` |
+| `outline` — HUMAN-ONLY, optional | `<root>/<slug>/<stage>/outline.md` | `<stage>-outline.md` |
+| `outline-critique` — the agent's read of that outline | `<root>/<slug>/<stage>/outline-critique.md` | `<stage>-outline-critique.md` |
+| `expectations` — EARS expectations; Gate 4's driver | `<root>/<slug>/expectations.md` | `expectations.md` |
+| `todo` — derived working memory (`devx todo sync`) | `<root>/<slug>/todo.md` | `todo.md` |
+| `results` — outcome scoring (`devx outcome score`) | `<root>/<slug>/RESULTS.md` | `RESULTS.md` |
+| `evals-dir` — RED artifacts (`E-*`) | `<root>/<slug>/evals/` | `evals/` |
+| `decisions-dir` — dated verify / critique / revision records | `<root>/<slug>/decisions/` | `decisions/` |
+| `checkpoints-dir` — per-phase verification reports | `<root>/<slug>/checkpoints/` | `checkpoints/` |
+| `red-report` — Gate 4's persisted report | `<root>/<slug>/evals/RED-report.md` | `evals/RED-report.md` |
+
+`<root>` is `engine.workstreams_root` and `<slug>` the workstream's directory
+name; neither exists under `project-level`, where the doc set **is** the repo
+root. `<stage>` is one of `prd` · `design` · `plan` · `evals` — the three
+companion rows are stage-generic, which is how 22 representable identities
+render as 13 rows, while the three subjects keep their stage because
+`prd.md`, `design.md` and `plan.md` are three different names.
+
+The table is machine-checked, not prose-reviewed: `ARTIFACT_KINDS` in
+`src/lib/engine/artifacts.ts` is its row index, and
+`test/engine-layout-docs-truth.test.ts` fails when a kind has no row, when a
+row names a kind the resolver does not handle, or when a cell spells a path
+the resolver does not produce. Wording after the em-dash is free; the paths
+are not.
+
+**Deliberately absent.** `RETRO-<date>.md`, `research/`, and the hand-written
+notes a workstream accumulates have no `ArtifactKind` — no code resolves their
+paths, so there is nothing for a layout to decide and they keep one spelling
+in both shapes. They are still part of the **doc set**, which is what `devx
+layout migrate` moves; enumerating the artifact map instead is precisely how
+an earlier draft of that command stranded six such files, across six of this
+repo's own workstreams, while reporting success.
 
 Five rules make the choice safe rather than merely cosmetic:
 
@@ -482,6 +508,21 @@ Five rules make the choice safe rather than merely cosmetic:
    layout, so the same `devx gate prd` runs against `prd/agent.md` or
    `prd.md` and returns the same verdict for the same content. Layout is not
    a gate input.
+
+**What switching costs.** Rule 4 tells you when to switch; this is the
+command. `devx layout migrate --to <workstream|project-level> [--dry-run]`
+moves the doc set with `git mv` (one file's history per artifact, not a
+delete-and-add), re-points the plan spec's `workstream:`, and writes the new
+`engine.docs_layout` last. It refuses — exit 1, **zero** files moved — on any
+of eleven states where moving would lose information (`two-live-workstreams`,
+`no-workstream`, `multiple-doc-sets`, `destination-occupied`,
+`destination-clash`, `unmapped-doc-set-files`, `destination-outside-repo`,
+`dirty-tree`, `untracked-sources`, `nested-repo-root`, `not-a-git-repo`), and
+there is no `--force`: each one names a state, not a preference. Run
+`--dry-run` first — it evaluates the same refusal set, so a dry run that
+succeeds where the real run would refuse cannot happen. A repo that has run
+the migration is **not** revert-safe by `git revert`; going back is another
+`migrate --to`.
 
 **`docs_layout` and `workstreams_root` compose.** The former chooses the
 *shape* of the tree; the latter names *where* a workstream tree is rooted. A

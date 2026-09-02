@@ -26,7 +26,6 @@
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, posix, relative, sep } from "node:path";
-import ts from "typescript";
 
 import {
   ALL_ARTIFACT_KINDS,
@@ -45,6 +44,7 @@ import {
   pathToArtifactKind,
 } from "../src/lib/engine/artifact-index.js";
 import { ENGINE_DEFAULTS, engineConfigFrom } from "../src/lib/engine/config.js";
+import { codeOnly } from "./helpers/code-only.js";
 
 const REPO = join(sep, "tmp", "repo");
 const WS_REL = "_devx/workstreams/scene-engine";
@@ -531,39 +531,6 @@ function tsFiles(dir: string): string[] {
     else if (/\.tsx?$/.test(e.name) && !e.name.endsWith(".d.ts")) out.push(p);
   }
   return out.sort();
-}
-
-/** Blank every string/template/regex body and every comment, keeping offsets,
- *  so the scan sees code and not the prose that names the key. */
-function codeOnly(src: string): string {
-  const sf = ts.createSourceFile("scan.ts", src, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
-  const buf = src.split("");
-  const blank = (from: number, to: number): void => {
-    for (let i = from; i < to && i < buf.length; i++) if (buf[i] !== "\n") buf[i] = " ";
-  };
-  const walk = (n: ts.Node): void => {
-    switch (n.kind) {
-      case ts.SyntaxKind.StringLiteral:
-      case ts.SyntaxKind.NoSubstitutionTemplateLiteral:
-      case ts.SyntaxKind.RegularExpressionLiteral:
-        blank(n.getStart(sf) + 1, n.end - 1);
-        return;
-      case ts.SyntaxKind.TemplateHead:
-      case ts.SyntaxKind.TemplateMiddle:
-        blank(n.getStart(sf) + 1, n.end - 2);
-        return;
-      case ts.SyntaxKind.TemplateTail:
-        blank(n.getStart(sf) + 1, n.end - 1);
-        return;
-      default:
-        ts.forEachChild(n, walk);
-    }
-  };
-  ts.forEachChild(sf, walk);
-  return buf
-    .join("")
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
-    .replace(/\/\/[^\n]*/g, (m) => " ".repeat(m.length));
 }
 
 /** Nearest preceding column-0 declaration — the function G-2 counts. A nested

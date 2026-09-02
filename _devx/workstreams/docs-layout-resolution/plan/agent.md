@@ -268,7 +268,7 @@ artifact's. Each eval asserts its own invariant **and** that its companion
 - [x] Phase 4: Consumer sweep and layout-aware scaffolding
 - [x] Phase 5: Identity re-key and privatization
 - [x] Phase 6: `devx layout migrate`
-- [ ] Phase 7: Doc truth
+- [x] Phase 7: Doc truth
 
 **Departure from the coarse appetite, stated rather than slipped in.** The
 owner chose a 6-phase shape. The critique's architect lens found the original
@@ -982,8 +982,24 @@ than prose-reviewed.
   autocomplete. Enum stays `["workstream","project-level"]`; **no schema
   version bump**, the value space is unchanged.
 - `dev/dev-<new-hash>-*.md` + `DEV.md` — the follow-up spec for the
-  skill-body authoring surfaces (T7.4).
+  skill-body authoring surfaces (T7.4). AS-BUILT: `dev-a57f22`. Its sizing
+  rationale departs from T7.4's: the S-1 canary surface measures 55,338 of
+  61,440 bytes — **6,102 bytes of headroom**, not the "single-digit" figure
+  the phase assumed, which conflated the CI-gated canary with the Q#9
+  full-run surface. The follow-up is still its own item (two load-bearing
+  prose files plus a real piece of scan design); it is not budget-blocked.
 - `evals/E-8_docs-truth.ts`, `test/engine-layout-docs-truth.test.ts` — new.
+- AS-BUILT, not planned: `src/lib/engine/artifacts.ts` gains
+  `ARTIFACT_KINDS`, a 13-entry runtime row index. E-8 reads the module as
+  TEXT and its type-alias fallback resolves the union to five tagged
+  discriminants, so the 13-row set-equality is unassertable without a runtime
+  export — which E-8's own docstring names as the preferred shape. Additive;
+  no production caller, and the zero-orphan rule covers callables only.
+- AS-BUILT, not planned: `test/helpers/code-only.ts`, extracted from two
+  byte-identical copies in `engine-layout-single-reader.test.ts` (Phase 5) and
+  `engine-layout-map.test.ts` (Phase 1). This phase needed a third consumer
+  for the layout-blind claim scan; a third hand-kept copy of a parser wrapper
+  is how one of them drifts into a false GREEN.
 
 **Context**:
 - **The table is restructured, not merely extended, and the PRD understates
@@ -1018,8 +1034,13 @@ than prose-reviewed.
     to `ArtifactKind` without a §15 row fails the test. **This is the
     RED-bearing assertion.**
   - **0 false claims** — no statement in §15 rule 5 or the schema description
-    about a surface that resolves layout-blind.
-  - Both documents' layout enum matches `DOCS_LAYOUTS`.
+    about a surface that resolves layout-blind. AS-BUILT: this check now runs
+    in `npm test` as well as in E-8. The plan assumed the eval was sufficient;
+    `devx.config.yaml` declares workstream evals "never part of `npm test`",
+    so once the RED gate is behind us the eval gates nothing.
+  - Both documents' layout enum matches `DOCS_LAYOUTS`. AS-BUILT: for
+    CONFIG.md that is §15's yaml-sample comment (`# workstream |
+    project-level`), which is the enum a reader actually meets there.
   - `devx graph --check` is green. (The S-1 prose-budget canary measures
     `_devx/templates/engine/**` plus `.claude/commands/devx-plan.md` — neither
     of which this phase edits — so citing it here would be a criterion a
