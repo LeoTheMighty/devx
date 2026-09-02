@@ -21,6 +21,7 @@ import { runGatePrd } from "../src/commands/gate.js";
 import { runStatus } from "../src/commands/status.js";
 import { readEngineState } from "../src/lib/engine/frontmatter.js";
 import { resolveWorkstream } from "../src/lib/engine/workstream.js";
+import { ENGINE_DEFAULTS } from "../src/lib/engine/config.js";
 import {
   type EngineRepo,
   captureIo,
@@ -30,12 +31,7 @@ import {
 } from "./fixtures/engine-repo.js";
 
 const NOW = new Date("2026-08-20T12:00:00Z");
-const ENGINE = {
-  workstreamsRoot: "_devx/workstreams",
-  expectationsMin: 3,
-  proseBudgetKb: 60,
-  readingGuideRoles: ["pm", "architect", "dev", "qa"],
-};
+const ENGINE = { ...ENGINE_DEFAULTS };
 
 /** The colon shape (dev-mgr102/mgr103, debug-7b3e2a): a bare `: ` inside an
  *  unquoted plain scalar. Everything BELOW the bad title is swallowed. */

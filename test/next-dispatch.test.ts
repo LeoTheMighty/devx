@@ -28,6 +28,8 @@ import {
   rollupToCi,
 } from "../src/lib/next/gather.js";
 import { runNext } from "../src/commands/next.js";
+import { ENGINE_DEFAULTS, engineConfigFrom } from "../src/lib/engine/config.js";
+import type { LayoutSource } from "../src/lib/engine/artifacts.js";
 import type { Exec } from "../src/lib/exec.js";
 import { captureIo, makeEngineRepo } from "./fixtures/engine-repo.js";
 
@@ -770,12 +772,7 @@ function gather(
   return gatherRepoSnapshot({
     repoRoot: repo.root,
     merged: { engine: { docs_layout: "workstream" } },
-    engine: {
-      workstreamsRoot: "_devx/workstreams",
-      expectationsMin: 3,
-      proseBudgetKb: 60,
-      readingGuideRoles: ["pm", "architect", "dev", "qa"],
-    },
+    engine: { ...ENGINE_DEFAULTS, layoutSource: "engine" },
     exec: opts.exec ?? fakeGh([]),
     now: () => NOW,
     sessionToken: opts.sessionToken,
@@ -784,19 +781,20 @@ function gather(
 }
 
 describe("gatherRepoSnapshot — unset docs layout (advisory)", () => {
-  /** Warnings mentioning the layout, for a given merged-config blob. */
-  function layoutWarnings(merged: unknown): string[] {
+  /** Warnings mentioning the layout, for a given resolved layout SOURCE.
+   *
+   *  The nag reads `engine.layoutSource`, not the raw config: the two layout
+   *  keys have exactly one reader (`resolveDocsLayout`, G-2), and gather asks
+   *  that resolution where the layout came from rather than re-deriving it.
+   *  So this varies the resolved source, and the resolution itself is pinned
+   *  in test/engine-layout-map.test.ts. */
+  function layoutWarnings(layoutSource: LayoutSource): string[] {
     const repo = makeEngineRepo();
     try {
       const snapshot = gatherRepoSnapshot({
         repoRoot: repo.root,
-        merged,
-        engine: {
-          workstreamsRoot: "_devx/workstreams",
-          expectationsMin: 3,
-          proseBudgetKb: 60,
-          readingGuideRoles: ["pm", "architect", "dev", "qa"],
-        },
+        merged: {},
+        engine: { ...ENGINE_DEFAULTS, layoutSource },
         exec: fakeGh([]),
         now: () => NOW,
         skipGh: true,
@@ -808,22 +806,52 @@ describe("gatherRepoSnapshot — unset docs layout (advisory)", () => {
   }
 
   it("nudges once when no layout has ever been chosen", () => {
-    const w = layoutWarnings({});
+    const w = layoutWarnings("default");
     expect(w).toHaveLength(1);
     expect(w[0]).toContain("docs/CONFIG.md");
   });
 
   it("stays silent once engine.docs_layout is set", () => {
-    expect(layoutWarnings({ engine: { docs_layout: "workstream" } })).toEqual([]);
-    expect(layoutWarnings({ engine: { docs_layout: "project-level" } })).toEqual([]);
+    expect(layoutWarnings("engine")).toEqual([]);
   });
 
   it("stays silent for a repo that answered the LEGACY bank key", () => {
-    // It has chosen a layout, and docsLayoutFrom() still honors it. Nagging
+    // It has chosen a layout, and resolveDocsLayout() still honors it. Nagging
     // there would be noise, and noise is how a true nudge gets ignored.
-    expect(
-      layoutWarnings({ personalization: { "docs.layout": "project-level" } }),
-    ).toEqual([]);
+    expect(layoutWarnings("legacy")).toEqual([]);
+  });
+
+  // Varying `layoutSource` alone leaves the seam untested: nothing would catch
+  // `engineConfigFrom` mapping a legacy answer to the wrong source. Build the
+  // engine config the way `context.ts:47` does — from the same merged blob —
+  // so the whole chain (raw config → resolution → nag) is pinned end to end.
+  it("resolves the source from the real config, not just a hand-set field", () => {
+    const chain = (merged: unknown): string[] => {
+      const repo = makeEngineRepo();
+      try {
+        return gatherRepoSnapshot({
+          repoRoot: repo.root,
+          merged,
+          engine: engineConfigFrom(merged),
+          exec: fakeGh([]),
+          now: () => NOW,
+          skipGh: true,
+        }).warnings.filter((w) => w.includes("docs_layout"));
+      } finally {
+        repo.cleanup();
+      }
+    };
+
+    expect(chain({ engine: { docs_layout: "workstream" } })).toEqual([]);
+    expect(chain({ engine: { docs_layout: "project-level" } })).toEqual([]);
+    expect(chain({ personalization: { "docs.layout": "project-level" } })).toEqual([]);
+    expect(chain({})).toHaveLength(1);
+    // A set-but-INVALID value nags too, and the message must not call it
+    // unset — `loadMerged` runs no schema validation, so this really reaches
+    // here. This is the one behavior delta dlr101 makes to a live caller.
+    const bad = chain({ engine: { docs_layout: "workstrem" } });
+    expect(bad).toHaveLength(1);
+    expect(bad[0]).toContain("unset or not one of");
   });
 
   it("is a warning, never a blocker — the snapshot still resolves", () => {
@@ -832,12 +860,7 @@ describe("gatherRepoSnapshot — unset docs layout (advisory)", () => {
       const snapshot = gatherRepoSnapshot({
         repoRoot: repo.root,
         merged: {},
-        engine: {
-          workstreamsRoot: "_devx/workstreams",
-          expectationsMin: 3,
-          proseBudgetKb: 60,
-          readingGuideRoles: ["pm", "architect", "dev", "qa"],
-        },
+        engine: { ...ENGINE_DEFAULTS },
         exec: fakeGh([]),
         now: () => NOW,
         skipGh: true,
@@ -1878,12 +1901,7 @@ describe("gatherRepoSnapshot — staleness + normalization hardening", () => {
       const s = gatherRepoSnapshot({
         repoRoot: repo.root,
         merged: { engine: { docs_layout: "workstream" } },
-        engine: {
-          workstreamsRoot: "_devx/workstreams",
-          expectationsMin: 3,
-          proseBudgetKb: 60,
-          readingGuideRoles: ["pm", "architect", "dev", "qa"],
-        },
+        engine: { ...ENGINE_DEFAULTS, layoutSource: "engine" },
         exec: fakeGh([]),
         now: () => NOW,
         fs: {
@@ -1910,12 +1928,7 @@ describe("gatherRepoSnapshot — staleness + normalization hardening", () => {
       const s = gatherRepoSnapshot({
         repoRoot: repo.root,
         merged: { engine: { docs_layout: "workstream" } },
-        engine: {
-          workstreamsRoot: "_devx/workstreams",
-          expectationsMin: 3,
-          proseBudgetKb: 60,
-          readingGuideRoles: ["pm", "architect", "dev", "qa"],
-        },
+        engine: { ...ENGINE_DEFAULTS, layoutSource: "engine" },
         exec: fakeGh([]),
         now: () => NOW,
         fs: {

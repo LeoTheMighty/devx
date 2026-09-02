@@ -34,6 +34,7 @@ import { runSplit } from "../src/commands/split.js";
 import { parseDevMd } from "../src/lib/backlog/parse.js";
 import { generateHash } from "../src/lib/engine/workstream.js";
 import { insertDevMdRow } from "../src/lib/plan/emit-retro-story.js";
+import { ENGINE_DEFAULTS } from "../src/lib/engine/config.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures — in-memory fake repo (same posture as devx-claim.test.ts's
@@ -771,12 +772,7 @@ function gatherSplitFixture(files: Map<string, string>) {
   return gatherRepoSnapshot({
     repoRoot: REPO,
     merged: {},
-    engine: {
-      workstreamsRoot: "_devx/workstreams",
-      expectationsMin: 3,
-      proseBudgetKb: 60,
-      readingGuideRoles: ["pm", "architect", "dev", "qa"],
-    },
+    engine: { ...ENGINE_DEFAULTS },
     fs: makeNextFs(files),
     now: () => FIXED_NOW,
     sessionToken: "sess-1",

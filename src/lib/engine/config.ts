@@ -8,6 +8,13 @@
 //
 // Spec: dev/dev-v2e101-2026-07-05T13:01-engine-cli-primitives.md
 
+import {
+  DEFAULT_DOCS_LAYOUT,
+  resolveDocsLayout,
+  type DocsLayout,
+  type LayoutSource,
+} from "./artifacts.js";
+
 export interface EngineConfig {
   workstreamsRoot: string;
   expectationsMin: number;
@@ -16,14 +23,30 @@ export interface EngineConfig {
    *  Defaults to the plan-stage critique lenses so the document is mapped in
    *  a vocabulary the repo already uses, rather than a parallel one. */
   readingGuideRoles: string[];
+  /** The artifact tree's SHAPE (docs/CONFIG.md §15). Carried here because
+   *  every `resolveWorkstream` / `resolveSpecWorkstream` call site already
+   *  threads this object whole — so the layout arrives without a new
+   *  parameter anywhere, and cannot be forgotten at a call site. */
+  docsLayout: DocsLayout;
+  /** Where `docsLayout` came from. `default` means nobody ever chose one,
+   *  which is what `devx next`'s advisory nag asks about — so the question is
+   *  answered from this ONE resolution rather than by re-reading the config. */
+  layoutSource: LayoutSource;
 }
 
-export const ENGINE_DEFAULTS: EngineConfig = {
+/** Frozen, and its one array with it. `{ ...ENGINE_DEFAULTS }` is a SHALLOW
+ *  copy, so every config derived from it — and every test fixture spreading it
+ *  — shares this exact `readingGuideRoles` instance. Nothing mutates it in
+ *  place today; freezing is what keeps that true, because a single `push()`
+ *  would otherwise leak into every later caller in the process. */
+export const ENGINE_DEFAULTS: EngineConfig = Object.freeze({
   workstreamsRoot: "_devx/workstreams",
   expectationsMin: 3,
   proseBudgetKb: 60,
-  readingGuideRoles: ["pm", "architect", "dev", "qa"],
-};
+  readingGuideRoles: Object.freeze(["pm", "architect", "dev", "qa"]) as string[],
+  docsLayout: DEFAULT_DOCS_LAYOUT,
+  layoutSource: "default",
+});
 
 /**
  * Narrow a merged-config blob (from config-io loadMerged, or any object)
@@ -32,7 +55,22 @@ export const ENGINE_DEFAULTS: EngineConfig = {
  * the engine must never crash on a half-typed config edit.
  */
 export function engineConfigFrom(merged: unknown): EngineConfig {
-  const out: EngineConfig = { ...ENGINE_DEFAULTS };
+  // The spread is shallow, so the array is copied explicitly — otherwise every
+  // returned config aliases the frozen default and a caller assigning into it
+  // would throw rather than get its own list.
+  const out: EngineConfig = {
+    ...ENGINE_DEFAULTS,
+    readingGuideRoles: [...ENGINE_DEFAULTS.readingGuideRoles],
+  };
+  // ABOVE both guards, and the ordering is load-bearing. `resolveDocsLayout()`
+  // reads TWO sections — `engine.docs_layout` and the legacy
+  // `personalization["docs.layout"]` — so a repo that answered only the legacy
+  // key has no `engine:` block at all, and the second guard below would drop
+  // its layout on the floor. The resolver is defensive on both reads, which is
+  // what makes calling it up here safe.
+  const layout = resolveDocsLayout(merged);
+  out.docsLayout = layout.layout;
+  out.layoutSource = layout.source;
   if (!merged || typeof merged !== "object" || Array.isArray(merged)) {
     return out;
   }
