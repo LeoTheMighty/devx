@@ -33,12 +33,20 @@ function evaluate(overrides: {
   expectations?: string;
   blockedBy?: string[];
   expectationsMin?: number;
+  prdRel?: string;
+  expectationsRel?: string;
 }) {
   return evaluateGatePrd({
     prd: overrides.prd ?? validPrd(),
     expectations: overrides.expectations ?? validExpectations(),
     blockedBy: overrides.blockedBy ?? [],
     expectationsMin: overrides.expectationsMin ?? 3,
+    // Resolved by the CLI through the layout (dlr102). These defaults are a
+    // TEST fixture's choice of one spelling, not the gate's — the gate has
+    // no default and cannot see the layout.
+    prdRel: overrides.prdRel ?? "_devx/workstreams/demo/prd/agent.md",
+    expectationsRel:
+      overrides.expectationsRel ?? "_devx/workstreams/demo/expectations.md",
   });
 }
 
@@ -96,7 +104,12 @@ describe("evaluateGatePrd — seeded defects", () => {
     expect(result.verdict).toBe("FAIL");
     const gap = result.gaps.find((g) => g.check === "goal-uncovered");
     expect(gap!.message).toContain("G-3");
-    expect(gap!.location).toMatch(/^prd\/agent\.md:\d+$/);
+    // The location is whatever subject the CALLER resolved (dlr102), not a
+    // spelling this gate knows: the helper passes the folder-layout path, so
+    // that is what must come back — line number and all.
+    expect(gap!.location).toMatch(
+      /^_devx\/workstreams\/demo\/prd\/agent\.md:\d+$/,
+    );
   });
 
   it("uncovered UC-/CAP-/FR- IDs do NOT fail the gate (only G- is bidirectional)", () => {

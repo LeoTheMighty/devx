@@ -30,7 +30,7 @@
 // Design: v2/02-engine.md §4.6
 
 import { spawnSync } from "node:child_process";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { isAbsolute, join, posix, relative, sep } from "node:path";
 
 import {
   type EBlock,
@@ -199,6 +199,20 @@ export function donePhasesFor(
   workstreamRel: string,
 ): Set<number> {
   const done = new Set<number>();
+  // Both sides normalized before comparison. This match decides whether a
+  // shipped phase's P0 is DEFERRED instead of required-RED, so it changes
+  // the verdict — and a raw `===` made `.` / `./` / a trailing slash three
+  // different workstreams while every subject path resolved identically
+  // (review EC-2). `posix.normalize` plus the `./` and trailing-slash trims
+  // mirror `normalizeArtifactPath` in artifacts.ts.
+  const norm = (p: string): string => {
+    const t = posix
+      .normalize(p.trim().replace(/\\/g, "/"))
+      .replace(/^\.\/+/, "")
+      .replace(/(.)\/+$/, "$1");
+    return t === "" ? "." : t;
+  };
+  const wanted = norm(workstreamRel);
   const dir = join(repoRoot, "dev");
   if (!fs.exists(dir)) return done;
   let names: string[];
@@ -212,7 +226,8 @@ export function donePhasesFor(
     try {
       const state = readEngineState(fs.readFile(join(dir, name)));
       if (
-        state.plan === workstreamRel &&
+        state.plan !== null &&
+        norm(state.plan) === wanted &&
         state.phase !== null &&
         state.status?.toLowerCase() === "done"
       ) {

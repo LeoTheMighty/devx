@@ -52,12 +52,20 @@ function stateWith(flags: Partial<Record<string, boolean>>) {
   };
 }
 
+// The repo-relative spellings the CLI would have resolved through the
+// layout (dlr102). Named constants so a refusal assertion reads as "the
+// message names the subject it was handed", not "it names a literal".
+const DESIGN_REL = "_devx/workstreams/demo/design/agent.md";
+const PLAN_REL = "_devx/workstreams/demo/plan/agent.md";
+
 describe("detectCoverageMode", () => {
   it("refuses before Gate 1 has passed", () => {
     const r = detectCoverageMode({
       state: stateWith({ prd_validated: false }),
       designExists: true,
       planExists: true,
+      designRel: DESIGN_REL,
+      planRel: PLAN_REL,
     });
     expect(r.mode).toBeNull();
     expect((r as { refusal: string }).refusal).toContain("Gate 1");
@@ -68,6 +76,8 @@ describe("detectCoverageMode", () => {
       state: stateWith({}),
       designExists: true,
       planExists: false,
+      designRel: DESIGN_REL,
+      planRel: PLAN_REL,
     });
     expect(r.mode).toBe("design");
   });
@@ -77,6 +87,8 @@ describe("detectCoverageMode", () => {
       state: stateWith({}),
       designExists: true,
       planExists: true,
+      designRel: DESIGN_REL,
+      planRel: PLAN_REL,
     });
     expect(r.mode).toBe("design");
   });
@@ -86,6 +98,8 @@ describe("detectCoverageMode", () => {
       state: stateWith({ design_verified: true }),
       designExists: true,
       planExists: true,
+      designRel: DESIGN_REL,
+      planRel: PLAN_REL,
     });
     expect(r.mode).toBe("plan");
   });
@@ -95,12 +109,16 @@ describe("detectCoverageMode", () => {
       state: stateWith({}),
       designExists: false,
       planExists: false,
+      designRel: DESIGN_REL,
+      planRel: PLAN_REL,
     });
     expect((noDesign as { refusal: string }).refusal).toContain("/devx design");
     const noPlan = detectCoverageMode({
       state: stateWith({ design_verified: true }),
       designExists: true,
       planExists: false,
+      designRel: DESIGN_REL,
+      planRel: PLAN_REL,
     });
     expect((noPlan as { refusal: string }).refusal).toContain("/devx plan");
   });
@@ -110,6 +128,8 @@ describe("detectCoverageMode", () => {
       state: stateWith({ design_verified: true, plan_verified: true }),
       designExists: true,
       planExists: true,
+      designRel: DESIGN_REL,
+      planRel: PLAN_REL,
     });
     expect((r as { refusal: string }).refusal).toContain("no open coverage gate");
   });

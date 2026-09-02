@@ -36,7 +36,6 @@
 // Design: v2/02-engine.md §4.4; D-9 (verdict vocabulary)
 
 import { type EngineState } from "./frontmatter.js";
-import { DESIGN_REL, EXPECTATIONS_REL, PLAN_REL, PRD_REL } from "./artifacts.js";
 import {
   normalizePriority,
   parseExpectations,
@@ -77,6 +76,12 @@ export interface ModeDetectInputs {
   state: EngineState;
   designExists: boolean;
   planExists: boolean;
+  /** Repo-relative display path of the design subject, resolved through the
+   *  layout by the caller. The refusals below tell an author which file to
+   *  go write, so they must name the file THIS repo would have. */
+  designRel: string;
+  /** Repo-relative display path of the plan subject. Same contract. */
+  planRel: string;
 }
 
 export type ModeDetectResult =
@@ -101,7 +106,7 @@ export function detectCoverageMode(i: ModeDetectInputs): ModeDetectResult {
     return {
       mode: null,
       refusal:
-        `design gate is open but ${DESIGN_REL} does not exist — run \`/devx design\` first`,
+        `design gate is open but ${i.designRel} does not exist — run \`/devx design\` first`,
     };
   }
   if (i.planExists && !gs.plan_verified) return { mode: "plan" };
@@ -109,7 +114,7 @@ export function detectCoverageMode(i: ModeDetectInputs): ModeDetectResult {
     return {
       mode: null,
       refusal:
-        `plan gate is open but ${PLAN_REL} does not exist — run \`/devx plan\` first`,
+        `plan gate is open but ${i.planRel} does not exist — run \`/devx plan\` first`,
     };
   }
   return {
@@ -344,11 +349,23 @@ export function renderVerifyReport(args: {
   date: string;
   computation: CoverageComputation;
   extras: CoverageExtra[];
+  /** The four artifact paths this report NAMES, each resolved through the
+   *  layout by the caller. The report is a committed record a human reads
+   *  weeks later; a Subject line citing a file the repo does not have is
+   *  the same defect as a gap pointing at one. */
+  subjects: {
+    prdRel: string;
+    designRel: string;
+    planRel: string;
+    expectationsRel: string;
+  };
 }): string {
-  const { mode, computation: c } = args;
+  const { mode, computation: c, subjects } = args;
   const source =
-    mode === "design" ? PRD_REL : `${DESIGN_REL} + ${EXPECTATIONS_REL}`;
-  const subject = mode === "design" ? DESIGN_REL : PLAN_REL;
+    mode === "design"
+      ? subjects.prdRel
+      : `${subjects.designRel} + ${subjects.expectationsRel}`;
+  const subject = mode === "design" ? subjects.designRel : subjects.planRel;
   const statusReason =
     c.verdict === "PASS"
       ? `All ${c.keyedRows.length} source IDs fully covered in ${mode} mode.`
