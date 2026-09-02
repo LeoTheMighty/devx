@@ -30,11 +30,7 @@ import type { Command } from "commander";
 import { attachPhase } from "../lib/help.js";
 import { loadEngineContext } from "../lib/engine/context.js";
 import { parseTodo, trueDerivedLines } from "../lib/engine/todo.js";
-import {
-  TODO_FILENAME,
-  loadTodoDoc,
-  todoGroundTruth,
-} from "../lib/engine/todo-truth.js";
+import { loadTodoDoc, todoGroundTruth } from "../lib/engine/todo-truth.js";
 import {
   type EngineFs,
   TEMPLATES_DIR,
@@ -96,10 +92,19 @@ export function runTodoSync(
     if (loaded !== null) {
       content = loaded.content;
     } else {
-      const templateAbs = join(repoRoot, TEMPLATES_DIR, TODO_FILENAME);
+      // The template TREE is workstream-shaped on disk under BOTH layouts —
+      // it ships that way in the npm package — so the source name is pinned
+      // to the `workstream` spelling, resolved rather than re-spelled as a
+      // literal. `todo` happens to be layout-IDENTICAL, so pinning changes
+      // nothing here today; it is the same rule `createWorkstream` follows
+      // for all three templates, where `prd` genuinely does move, and stating
+      // it once per site is what keeps a future kind from being read out of
+      // the wrong tree.
+      const templateRel = artifacts.artifactRel("workstream", { kind: "todo" });
+      const templateAbs = join(repoRoot, TEMPLATES_DIR, templateRel);
       if (!fs.exists(templateAbs)) {
         err(
-          `devx todo sync: engine template missing at ${TEMPLATES_DIR}/${TODO_FILENAME} — run \`devx init\` (v2 scaffold) first\n`,
+          `devx todo sync: engine template missing at ${TEMPLATES_DIR}/${templateRel} — run \`devx init\` (v2 scaffold) first\n`,
         );
         return 2;
       }

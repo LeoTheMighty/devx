@@ -265,8 +265,8 @@ artifact's. Each eval asserts its own invariant **and** that its companion
 - [x] Phase 1: The artifact map and the single layout reader
 - [x] Phase 2: Gate subject resolution
 - [x] Phase 3: Workstream resolution and the flat-era guard
-- [ ] Phase 4: Consumer sweep and layout-aware scaffolding
-- [ ] Phase 5: Identity re-key and privatization
+- [x] Phase 4: Consumer sweep and layout-aware scaffolding
+- [x] Phase 5: Identity re-key and privatization
 - [ ] Phase 6: `devx layout migrate`
 - [ ] Phase 7: Doc truth
 
@@ -734,10 +734,34 @@ why it is cut from the sweep.
   files that import the constants (and `artifactAbs`) by name.
 - `src/lib/engine/artifacts.ts` — privatize the six stage-shaped `*_REL`
   constants **and `artifactAbs`**; delete the resolvers that remain orphaned
-  after Phase 4 gave the map its callers.
+  after Phase 4 gave the map its callers. **As-built:** six of the ten `*Abs`
+  helpers were the orphans (`prdAbs`, `designAbs`, `expectationsAbs`,
+  `redReportAbs`, `checkpointsDirAbs`, `resultsAbs`) and are deleted;
+  `normalizeArtifactPath` is now exported and `identityOf` is exported as
+  `artifactKindIdentity`, both because the extracted index below needs them.
+- `src/lib/engine/artifact-index.ts` — **as-built, new, not planned.** The
+  reverse index (`buildArtifactKindIndex` + `REVERSE_MAP` +
+  `pathToArtifactKind`) moved out of `artifacts.ts`. E-2's zero-orphan floor
+  counts exported callables with no production caller, and dlr101 exported the
+  builder solely so its collision guard has a negative control — a genuine
+  exception the eval has no way to express. Leaving it would have meant
+  deleting a working control to satisfy a scan; a re-export would have meant
+  spelling around one. Extracting it gives the builder a real caller and keeps
+  the control, and the dependency runs one way (this file reads `artifacts.ts`,
+  never the reverse) so the load-time collision throw cannot depend on import
+  order.
+- `src/lib/init-write.ts` — **as-built, not in the original list.**
+  `renderInitConfig` is the third layout-key reader recorded in E-2's AC note;
+  it is routed through `resolveDocsLayout()` here, which is what takes the
+  count to 1 and lets `test/engine-layout-map.test.ts`'s
+  `SANCTIONED_NON_RESOLVERS` allowlist go empty instead of being maintained.
+- `src/lib/engine/outcome.ts` — **as-built, not in the original list.** Five
+  `PRD_REL`/`EXPECTATIONS_REL` message sites; the constants going private is a
+  compile break, not a choice.
 - `evals/E-2_single-reader.ts` + `test/engine-layout-single-reader.test.ts` —
-  new. (E-3's scan was authored in Phase 4, ahead of the closures it
-  controls; this phase only keeps it green.)
+  the eval was authored at the RED gate; the companion test is new here.
+  (E-3's scan was authored in Phase 4, ahead of the closures it controls; this
+  phase only keeps it green.)
 
 **Context**:
 - **`STAGE_SHORTHAND`'s obvious fix is wrong**, which is why the shorthand
@@ -791,14 +815,20 @@ why it is cut from the sweep.
     `project-level`.
   - `devx revise`'s JSON `touched:` output and refusal text carry readable
     paths, not `[object Object]`.
+  - **As-built addition, from the review:** the reverse lookup is narrowed
+    back to an EXACT spelling. `pathToArtifactKind` lowercases its keys — by
+    design, for this surface — which made `--touched PLAN.md` resolve to the
+    plan artifact and clear `plan_verified` + `evals_red`. devx's own backlog
+    is `PLAN.md` and sits beside the doc set's `plan.md` under
+    `project-level`, so this is the most confusable name in any devx repo.
 
 **Tasks**:
-- [ ] T5.1 Author `evals/E-2_single-reader.ts` + companion test RED — files: `_devx/workstreams/docs-layout-resolution/evals/E-2_single-reader.ts`, `test/engine-layout-single-reader.test.ts`
-- [ ] T5.2 Re-key `CASCADE_TABLE` on `ArtifactKind`; add `display`; move `cascadeFor()` and `STAGE_SHORTHAND` onto identities — files: `src/lib/engine/revise.ts`
-- [ ] T5.3 Update `commands/revise.ts`'s three `entry.artifact` consumers — files: `src/commands/revise.ts`
-- [ ] T5.4 Resolve the `TODO_FILENAME` re-export chain — files: `src/lib/engine/todo-truth.ts`, `src/lib/devx/mark-done.ts`, `src/commands/todo.ts`
-- [ ] T5.5 Migrate the remaining `*_REL` references — files: `src/commands/plan-helper.ts`, `src/commands/workstream.ts`, `test/engine-artifacts.test.ts`, `test/workstream-migration-integrity.test.ts`, `test/next-todo-drift.test.ts`, `test/todo-sync.test.ts`
-- [ ] T5.6 Privatize the six `*_REL` constants and `artifactAbs`; delete the now-orphaned resolvers — files: `src/lib/engine/artifacts.ts`
+- [x] T5.1 Author `evals/E-2_single-reader.ts` + companion test RED — files: `_devx/workstreams/docs-layout-resolution/evals/E-2_single-reader.ts`, `test/engine-layout-single-reader.test.ts` (as-built: the eval already existed from the RED gate and is sha-locked; only the companion test was authored here)
+- [x] T5.2 Re-key `CASCADE_TABLE` on `ArtifactKind`; add `display`; move `cascadeFor()` and `STAGE_SHORTHAND` onto identities — files: `src/lib/engine/revise.ts`
+- [x] T5.3 Update `commands/revise.ts`'s three `entry.artifact` consumers — files: `src/commands/revise.ts`
+- [x] T5.4 Resolve the `TODO_FILENAME` re-export chain — files: `src/lib/engine/todo-truth.ts`, `src/commands/todo.ts` (as-built: `mark-done.ts` had already moved off it in Phase 4)
+- [x] T5.5 Migrate the remaining `*_REL` references — files: `src/commands/plan-helper.ts`, `src/commands/workstream.ts`, `src/lib/engine/outcome.ts`, `src/lib/engine/workstream.ts`, `test/engine-artifacts.test.ts`, `test/workstream-migration-integrity.test.ts` (as-built: `next-todo-drift.test.ts` and `todo-sync.test.ts` declare their own local `TODO_REL` and imported nothing — no change needed)
+- [x] T5.6 Privatize the six `*_REL` constants and `artifactAbs`; delete the now-orphaned resolvers — files: `src/lib/engine/artifacts.ts`, `src/lib/engine/artifact-index.ts` (new), `src/lib/init-write.ts`
 
 ### 6. Phase: `devx layout migrate`
 

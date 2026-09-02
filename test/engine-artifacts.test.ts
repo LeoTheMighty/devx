@@ -7,33 +7,20 @@ import { describe, expect, it } from "vitest";
 import { join } from "node:path";
 
 import {
+  type ArtifactKind,
   type ResolvedBase,
-  CHECKPOINTS_DIR_REL,
   DECISIONS_DIR_REL,
-  DESIGN_REL,
   EVALS_DIR_REL,
-  EXPECTATIONS_REL,
-  PLAN_REL,
-  PRD_REL,
-  RED_REPORT_REL,
-  RESULTS_REL,
   SCAFFOLD_SUBDIRS,
   SCAFFOLD_SUBDIR_KINDS,
-  TODO_REL,
-  artifactAbs,
   artifactRel,
-  checkpointsDirAbs,
   decisionsDirAbs,
-  designAbs,
   evalsDirAbs,
-  expectationsAbs,
   DEFAULT_DOCS_LAYOUT,
   docsLayoutFrom,
   isAuthoredEvalEntry,
   planAbs,
-  prdAbs,
-  redReportAbs,
-  resultsAbs,
+  stageSubject,
   todoAbs,
 } from "../src/lib/engine/artifacts.js";
 import { PROJECT_LEVEL_WORKSTREAM_REL } from "../src/lib/engine/workstream.js";
@@ -56,42 +43,69 @@ const flatBase: ResolvedBase = {
   layout: "project-level",
 };
 
+/** Every kind the §15 table names, so the two layout sweeps below cannot
+ *  quietly stop covering one. `artifactRel` is the display half; the
+ *  assertions state the SPELLING rather than re-deriving it, which is the
+ *  only way a resolver test can fail when the resolver is wrong. */
+const EVERY_KIND: ReadonlyArray<[ArtifactKind, string, string]> = [
+  [{ kind: "agent", stage: "prd" }, "prd/agent.md", "prd.md"],
+  [{ kind: "agent", stage: "design" }, "design/agent.md", "design.md"],
+  [{ kind: "agent", stage: "plan" }, "plan/agent.md", "plan.md"],
+  [{ kind: "expectations" }, "expectations.md", "expectations.md"],
+  [{ kind: "todo" }, "todo.md", "todo.md"],
+  [{ kind: "results" }, "RESULTS.md", "RESULTS.md"],
+  [{ kind: "evals-dir" }, "evals", "evals"],
+  [{ kind: "decisions-dir" }, "decisions", "decisions"],
+  [{ kind: "checkpoints-dir" }, "checkpoints", "checkpoints"],
+  [{ kind: "red-report" }, "evals/RED-report.md", "evals/RED-report.md"],
+];
+
 describe("artifact path resolvers", () => {
-  it("joins workstream-relative paths onto the workstream dir", () => {
-    expect(prdAbs(wsBase)).toBe(artifactAbs(WS, PRD_REL));
-    expect(designAbs(wsBase)).toBe(artifactAbs(WS, DESIGN_REL));
-    expect(planAbs(wsBase)).toBe(artifactAbs(WS, PLAN_REL));
-    expect(expectationsAbs(wsBase)).toBe(artifactAbs(WS, EXPECTATIONS_REL));
-    expect(todoAbs(wsBase)).toBe(artifactAbs(WS, TODO_REL));
-    expect(evalsDirAbs(wsBase)).toBe(artifactAbs(WS, EVALS_DIR_REL));
+  it("resolves every kind under the workstream layout", () => {
+    for (const [kind, wsRel] of EVERY_KIND) {
+      const subject = stageSubject("workstream", wsBase, kind);
+      expect(artifactRel("workstream", kind), JSON.stringify(kind)).toBe(wsRel);
+      // Split on `/` so a multi-segment rel joins with the platform
+      // separator — a Windows join of `evals/RED-report.md` is two segments.
+      expect(subject.abs, JSON.stringify(kind)).toBe(join(WS, ...wsRel.split("/")));
+    }
   });
 
-  it("resolves the same ten helpers to the repo root under project-level", () => {
+  it("resolves every kind to the repo root under project-level", () => {
     // dlr104: the helpers used to take a bare `wsAbs` and were therefore
     // layout-BLIND — under this layout every one of them pointed into a
     // `_devx/workstreams/<slug>` directory the repo does not have, which is
     // why `devx next` read every artifact as missing and wedged on row 4.
-    expect(prdAbs(flatBase)).toBe(join(REPO, "prd.md"));
-    expect(designAbs(flatBase)).toBe(join(REPO, "design.md"));
-    expect(planAbs(flatBase)).toBe(join(REPO, "plan.md"));
-    // Layout-identical rows still land at the base, wherever the base is.
-    expect(expectationsAbs(flatBase)).toBe(join(REPO, EXPECTATIONS_REL));
-    expect(todoAbs(flatBase)).toBe(join(REPO, TODO_REL));
-    expect(evalsDirAbs(flatBase)).toBe(join(REPO, EVALS_DIR_REL));
-    expect(resultsAbs(flatBase)).toBe(join(REPO, RESULTS_REL));
-    expect(decisionsDirAbs(flatBase)).toBe(join(REPO, DECISIONS_DIR_REL));
-    expect(checkpointsDirAbs(flatBase)).toBe(join(REPO, CHECKPOINTS_DIR_REL));
-    expect(redReportAbs(flatBase)).toBe(
-      join(REPO, ...RED_REPORT_REL.split("/")),
-    );
+    for (const [kind, , flatRel] of EVERY_KIND) {
+      expect(artifactRel("project-level", kind), JSON.stringify(kind)).toBe(flatRel);
+      expect(stageSubject("project-level", flatBase, kind).abs, JSON.stringify(kind)).toBe(
+        join(REPO, ...flatRel.split("/")),
+      );
+    }
   });
 
-  it("splits multi-segment rel paths on / so Windows joins stay correct", () => {
-    expect(redReportAbs(wsBase)).toBe(join(WS, ...RED_REPORT_REL.split("/")));
+  it("the four surviving *Abs helpers agree with the map", () => {
+    // dlr105 deleted the six that never acquired a caller (E-2: an exported
+    // resolver nobody calls is a bypass waiting for its first one). These
+    // four are sugar over `stageSubject(...).abs` and must stay that.
+    for (const base of [wsBase, flatBase]) {
+      expect(planAbs(base)).toBe(stageSubject(base.layout, base, { kind: "agent", stage: "plan" }).abs);
+      expect(todoAbs(base)).toBe(stageSubject(base.layout, base, { kind: "todo" }).abs);
+      expect(evalsDirAbs(base)).toBe(stageSubject(base.layout, base, { kind: "evals-dir" }).abs);
+      expect(decisionsDirAbs(base)).toBe(
+        stageSubject(base.layout, base, { kind: "decisions-dir" }).abs,
+      );
+    }
   });
 
   it("keeps the RED report inside the evals dir", () => {
-    expect(RED_REPORT_REL.startsWith(`${EVALS_DIR_REL}/`)).toBe(true);
+    for (const layout of ["workstream", "project-level"] as const) {
+      expect(
+        artifactRel(layout, { kind: "red-report" }).startsWith(
+          `${artifactRel(layout, { kind: "evals-dir" })}/`,
+        ),
+      ).toBe(true);
+    }
   });
 
   it("scaffold subdirs include decisions/checkpoints/evals", () => {
@@ -108,18 +122,12 @@ describe("artifact path resolvers", () => {
     ).toEqual([...SCAFFOLD_SUBDIRS].sort());
   });
 
-  it("artifactRel gives the doc-set-relative NAME each layout uses", () => {
-    // The display half: `engine/next.ts`'s row reasons print these, and they
-    // have a layout but no base.
-    expect(artifactRel("workstream", { kind: "agent", stage: "prd" })).toBe(PRD_REL);
-    expect(artifactRel("project-level", { kind: "agent", stage: "prd" })).toBe("prd.md");
-    // Layout-identical rows read the same in both, and that is the point:
-    // only the rows that MOVE branch.
-    for (const layout of ["workstream", "project-level"] as const) {
-      expect(artifactRel(layout, { kind: "expectations" })).toBe(EXPECTATIONS_REL);
-      expect(artifactRel(layout, { kind: "todo" })).toBe(TODO_REL);
-      expect(artifactRel(layout, { kind: "red-report" })).toBe(RED_REPORT_REL);
-    }
+  it("only the rows that MOVE differ between layouts", () => {
+    // The corollary of the two sweeps above, stated as its own claim: a
+    // layout-identical row that started branching would be a silent
+    // relocation of a file nothing agreed to move.
+    const moves = EVERY_KIND.filter(([, ws, flat]) => ws !== flat).map(([, ws]) => ws);
+    expect(moves.sort()).toEqual(["design/agent.md", "plan/agent.md", "prd/agent.md"]);
   });
 });
 

@@ -58,7 +58,7 @@ import type { Command } from "commander";
 import { findProjectConfig, loadMerged } from "../lib/config-io.js";
 import { engineConfigFrom } from "../lib/engine/config.js";
 import { attachPhase } from "../lib/help.js";
-import { PLAN_REL } from "../lib/engine/artifacts.js";
+import { artifactRel, docsLayoutFrom } from "../lib/engine/artifacts.js";
 import {
   type DeriveBranchConfig,
   deriveBranch,
@@ -460,8 +460,17 @@ export function runValidateEmit(
   if (!result.epicFound) {
     // v2d101 resolution order: _devx/workstreams/<slug>/plan/agent.md first,
     // then the frozen _bmad-output/planning-artifacts/epic-<slug>.md.
+    //
+    // Named through the layout rather than from a `PLAN_REL` constant
+    // (private since dlr105): this line tells the operator which file to go
+    // author, so in a flat repo it has to say `plan.md`. `validateEmit` above
+    // resolves the same layout from the same config.
+    const planName = artifactRel(docsLayoutFrom(merged), {
+      kind: "agent",
+      stage: "plan",
+    });
     err(
-      `devx plan-helper validate-emit: no ${PLAN_REL} or epic file found for '${slug}' (tried: ${result.triedPaths.join(", ")})\n`,
+      `devx plan-helper validate-emit: no ${planName} or epic file found for '${slug}' (tried: ${result.triedPaths.join(", ")})\n`,
     );
     return 2;
   }

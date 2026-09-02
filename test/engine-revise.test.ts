@@ -12,6 +12,7 @@ import {
 } from "../src/lib/engine/frontmatter.js";
 import {
   CASCADE_TABLE,
+  KNOWN_ARTIFACTS,
   cascadeFor,
   computeRevise,
   replayPath,
@@ -28,28 +29,49 @@ import {
 
 describe("cascade table (§4.9, pinned)", () => {
   it("matches the design doc row-for-row", () => {
+    // Keyed on identities since dlr105, so the row shape is asserted through
+    // `display` + `artifact` rather than a bare path — the re-key is exactly
+    // the kind of change that should have to restate this table.
     expect(CASCADE_TABLE).toEqual([
       {
-        artifact: "prd/agent.md",
+        artifact: { kind: "agent", stage: "prd" },
+        display: "prd/agent.md",
         resets: ["prd_validated", "design_verified", "plan_verified", "evals_red"],
         stage: "prd",
       },
       {
-        artifact: "expectations.md",
+        artifact: { kind: "expectations" },
+        display: "expectations.md",
         resets: ["prd_validated", "design_verified", "plan_verified", "evals_red"],
         stage: "prd",
       },
       {
-        artifact: "design/agent.md",
+        artifact: { kind: "agent", stage: "design" },
+        display: "design/agent.md",
         resets: ["design_verified", "plan_verified", "evals_red"],
         stage: "design",
       },
       {
-        artifact: "plan/agent.md",
+        artifact: { kind: "agent", stage: "plan" },
+        display: "plan/agent.md",
         resets: ["plan_verified", "evals_red"],
         stage: "plan",
       },
     ]);
+  });
+
+  it("KNOWN_ARTIFACTS renders paths, not [object Object]", () => {
+    // `KNOWN_ARTIFACTS` is joined into the CLI's help string and its
+    // unknown-artifact refusal. Re-keying the table on an object without a
+    // display projection renders both as `[object Object], [object Object]…`,
+    // and nothing else in the suite would have noticed.
+    expect(KNOWN_ARTIFACTS).toEqual([
+      "prd/agent.md",
+      "expectations.md",
+      "design/agent.md",
+      "plan/agent.md",
+    ]);
+    expect(KNOWN_ARTIFACTS.join(" | ")).not.toContain("object Object");
   });
 
   it("cascadeFor matches on basename, full paths included", () => {
@@ -57,6 +79,86 @@ describe("cascade table (§4.9, pinned)", () => {
     expect(cascadeFor("_devx/workstreams/demo/design/agent.md")!.stage).toBe("design");
     expect(cascadeFor("notes.md")).toBeNull();
     expect(cascadeFor("prd/agent.md.bak")).toBeNull();
+  });
+
+  it("resolves BOTH layouts' spellings to the same row (R-4)", () => {
+    // The whole point of the identity re-key: `cascadeFor` takes no layout,
+    // so a flat-era `--touched design.md` typed against a folder-layout repo
+    // and the same string typed against a flat one land on one row. Refusing
+    // either would silently leave stale gate flags over a rewritten artifact.
+    for (const [ws, flat, stage] of [
+      ["prd/agent.md", "prd.md", "prd"],
+      ["design/agent.md", "design.md", "design"],
+      ["plan/agent.md", "plan.md", "plan"],
+    ] as const) {
+      expect(cascadeFor(flat)!.stage, flat).toBe(stage);
+      expect(cascadeFor(flat)).toBe(cascadeFor(ws));
+      // …and inside a workstream path, which is how a `--touched` copied out
+      // of a diff arrives.
+      expect(cascadeFor(`_devx/workstreams/demo/${ws}`)).toBe(cascadeFor(ws));
+    }
+  });
+
+  it("the bare-stage shorthand still resolves, and only for the three stages", () => {
+    expect(cascadeFor("prd")!.stage).toBe("prd");
+    expect(cascadeFor("design")!.stage).toBe("design");
+    expect(cascadeFor("plan")!.stage).toBe("plan");
+    // evals has no cascade row — RED artifacts re-run, they don't roll a
+    // stage back — and the shorthand must not invent one.
+    expect(cascadeFor("evals")).toBeNull();
+  });
+
+  it("refuses an ambiguous or near-miss name rather than guessing", () => {
+    // A bare companion basename belongs to no single stage. Refusing is
+    // recoverable; resolving to the wrong row leaves stale gate flags
+    // standing over a rewritten artifact, which nothing downstream detects.
+    for (const ambiguous of ["agent.md", "human.md", "outline-critique.md"]) {
+      expect(cascadeFor(ambiguous), ambiguous).toBeNull();
+    }
+    // Fully-spelled companions resolve to real identities and STILL do not
+    // cascade — refreshing a digest or a critique is not a revision.
+    for (const companion of [
+      "prd/human.md",
+      "prd-human.md",
+      "design/outline-critique.md",
+      "design-outline-critique.md",
+    ]) {
+      expect(cascadeFor(companion), companion).toBeNull();
+    }
+    // Case is NOT folded, and `PLAN.md` is the reason: devx's own backlog
+    // sits beside the doc set's `plan.md` under `project-level`, so folding
+    // case would cascade the plan gates for a backlog edit.
+    for (const nearMiss of ["PLAN.md", "PRD", "Design.md", "prd/AGENT.md"]) {
+      expect(cascadeFor(nearMiss), nearMiss).toBeNull();
+    }
+    // The shorthand lookup is keyed by raw user input. On an object literal
+    // these reach Object.prototype and hand back a function where an
+    // ArtifactKind is expected.
+    for (const proto of ["constructor", "toString", "valueOf", "__proto__"]) {
+      expect(cascadeFor(proto), proto).toBeNull();
+    }
+  });
+
+  it("survives odd but legal --touched shapes", () => {
+    // `./prd.md` and `x/../prd.md` normalize to a real artifact; a resolver
+    // that only tried the two-segment tail would miss both.
+    expect(cascadeFor("./prd.md")!.stage).toBe("prd");
+    expect(cascadeFor("./prd/agent.md")!.stage).toBe("prd");
+    expect(cascadeFor("prd\\agent.md")!.stage).toBe("prd"); // Windows separator
+    expect(cascadeFor("design/agent.md/")!.stage).toBe("design"); // trailing slash
+    expect(cascadeFor("")).toBeNull();
+    expect(cascadeFor("/")).toBeNull();
+  });
+
+  it("root artifacts that are not cascade rows stay refused", () => {
+    // `todo.md` and `RESULTS.md` are real identities the reverse index owns.
+    // Resolving an identity is not the same as having a cascade row, and a
+    // `find` that fell back to "closest row" would clear gate flags for a
+    // derived working-memory file.
+    for (const rel of ["todo.md", "RESULTS.md", "evals/RED-report.md"]) {
+      expect(cascadeFor(rel), rel).toBeNull();
+    }
+    expect(cascadeFor("expectations.md")!.stage).toBe("prd");
   });
 });
 
@@ -309,6 +411,43 @@ describe("devx revise — CLI driver", () => {
     expect(code).toBe(1);
     expect(io.stderr()).toContain("not an artifact of workstream");
     expect(repo.read(SPEC_REL)).toBe(before);
+  });
+
+  it("all three entry.artifact consumers print paths, not [object Object]", () => {
+    // dlr105 AC 3. `entry.artifact` became an `ArtifactKind` — an object —
+    // and it feeds three user-visible surfaces. Interpolating one renders
+    // `[object Object]`, which is not a crash and not a test failure
+    // anywhere else: the command still exits 0 and still writes the right
+    // frontmatter. Only these assertions would notice.
+    seed();
+
+    // 1. the JSON `touched:` output
+    const { code, io } = revise("prd");
+    expect(code).toBe(0);
+    const j = io.json() as Record<string, unknown>;
+    expect(j.touched).toBe("prd/agent.md");
+
+    // 2. the unknown-artifact refusal's covered list
+    const unknown = revise("notes.md");
+    expect(unknown.io.stderr()).not.toContain("object Object");
+    expect(unknown.io.stderr()).toContain("prd/agent.md");
+
+    // 3. the cross-workstream refusal's expected-path hint
+    const foreign = revise("_devx/workstreams/other-stream/design/agent.md");
+    expect(foreign.io.stderr()).not.toContain("object Object");
+    expect(foreign.io.stderr()).toContain(`expected ${WS}/design/agent.md`);
+  });
+
+  it("accepts the flat-era spelling in a folder-layout repo (R-4)", () => {
+    // A `--touched design.md` typed from a pre-migration decisions/ report
+    // has to keep working, and it has to keep working END TO END: resolving
+    // in `cascadeFor` and then being refused by the CLI's containment check
+    // would be the same regression one layer down.
+    seed();
+    const { code, io } = revise("design.md");
+    expect(code).toBe(0);
+    expect((io.json() as Record<string, unknown>).stage).toBe("design");
+    expect(readEngineState(repo.read(SPEC_REL)).gateStatus.design_verified).toBe(false);
   });
 
   it("missing --touched → exit 2 usage error", () => {

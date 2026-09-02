@@ -32,76 +32,163 @@ import {
   type Stage,
   stageIndex,
 } from "./frontmatter.js";
-import { DESIGN_REL, EXPECTATIONS_REL, PLAN_REL, PRD_REL } from "./artifacts.js";
+import {
+  type ArtifactKind,
+  DOCS_LAYOUTS,
+  artifactKindIdentity,
+  artifactRel,
+} from "./artifacts.js";
+import { pathToArtifactKind } from "./artifact-index.js";
 
 export interface CascadeEntry {
-  /** Artifact basename this row matches. */
-  artifact: string;
+  /** Layout-INDEPENDENT identity of the artifact this row matches.
+   *
+   *  Keyed on the identity rather than on a path because the two layouts
+   *  spell the same artifact differently (`prd/agent.md` vs `prd.md`), and a
+   *  table keyed on one spelling matches nothing under the other —
+   *  `cascadeFor()` returns null and `devx revise` refuses every invocation
+   *  in a flat repo. */
+  artifact: ArtifactKind;
+  /** Readable path for user-facing text — the CLI's help string and the
+   *  unknown-artifact refusal, both rendered with no repo (and therefore no
+   *  layout) in hand. `artifact` is an object, so interpolating it renders
+   *  `[object Object]`; the display spelling is carried rather than derived
+   *  at the call site.
+   *
+   *  It is the `workstream` spelling because that is the shipped default and
+   *  what the pre-dlr105 help text said. Sites that DO hold a resolved layout
+   *  (`runRevise`) render `artifactRel(ws.layout, e.artifact)` instead and get
+   *  the flat spelling where it applies. */
+  display: string;
   resets: GateFlag[];
   stage: Stage;
 }
 
+const row = (
+  artifact: ArtifactKind,
+  resets: GateFlag[],
+  stage: Stage,
+): CascadeEntry => ({
+  artifact,
+  display: artifactRel("workstream", artifact),
+  resets,
+  stage,
+});
+
 export const CASCADE_TABLE: CascadeEntry[] = [
-  {
-    artifact: PRD_REL,
-    resets: ["prd_validated", "design_verified", "plan_verified", "evals_red"],
-    stage: "prd",
-  },
-  {
-    artifact: EXPECTATIONS_REL,
-    resets: ["prd_validated", "design_verified", "plan_verified", "evals_red"],
-    stage: "prd",
-  },
-  {
-    artifact: DESIGN_REL,
-    resets: ["design_verified", "plan_verified", "evals_red"],
-    stage: "design",
-  },
-  {
-    artifact: PLAN_REL,
-    resets: ["plan_verified", "evals_red"],
-    stage: "plan",
-  },
+  row(
+    { kind: "agent", stage: "prd" },
+    ["prd_validated", "design_verified", "plan_verified", "evals_red"],
+    "prd",
+  ),
+  row(
+    { kind: "expectations" },
+    ["prd_validated", "design_verified", "plan_verified", "evals_red"],
+    "prd",
+  ),
+  row(
+    { kind: "agent", stage: "design" },
+    ["design_verified", "plan_verified", "evals_red"],
+    "design",
+  ),
+  row({ kind: "agent", stage: "plan" }, ["plan_verified", "evals_red"], "plan"),
 ];
 
-export const KNOWN_ARTIFACTS = CASCADE_TABLE.map((e) => e.artifact);
+export const KNOWN_ARTIFACTS = CASCADE_TABLE.map((e) => e.display);
 
 /** Bare-stage shorthand: `--touched prd` names that stage's authoritative
- *  artifact. evals has no cascade row (RED artifacts re-run, they don't
- *  roll stages back), so it is deliberately absent. Flat-era names
- *  (prd.md/design.md/plan.md) map to their stage rows too — every
- *  pre-migration decisions/ report, todo, and in-flight session says
- *  `--touched design.md`, and refusing those would silently leave stale
- *  gate flags standing over a rewritten artifact (adversarial review). */
-const STAGE_SHORTHAND: Record<string, string> = {
-  prd: PRD_REL,
-  design: DESIGN_REL,
-  plan: PLAN_REL,
-  "prd.md": PRD_REL,
-  "design.md": DESIGN_REL,
-  "plan.md": PLAN_REL,
-};
+ *  artifact. evals has no cascade row (RED artifacts re-run, they don't roll
+ *  stages back), so it is deliberately absent.
+ *
+ *  It maps onto IDENTITIES, not paths, and that is the whole reason this
+ *  guard ships in the same phase as the re-key. The obvious fix for the flat
+ *  layout — pointing the shorthand at the project-level spelling — breaks the
+ *  command outright while the table is keyed on paths: nothing matches,
+ *  `cascadeFor()` returns null, and every invocation refuses. Naming the
+ *  identity is the fix one level up, and it is layout-blind by construction.
+ *
+ *  The flat-era names (`prd.md` / `design.md` / `plan.md`) are no longer
+ *  listed here — they are real `project-level` spellings, so the reverse
+ *  index resolves them under BOTH layouts (R-4). Every pre-migration
+ *  `decisions/` report, todo and in-flight session says `--touched
+ *  design.md`, and refusing those would silently leave stale gate flags
+ *  standing over a rewritten artifact. */
+/** A Map, not an object literal, because the key is raw user input: on a
+ *  plain object `--touched constructor` (or `toString`, or `valueOf`) reaches
+ *  the prototype chain and hands back a FUNCTION where an `ArtifactKind` is
+ *  expected. Nothing downstream currently mistakes one for a cascade row, so
+ *  today that resolves to a refusal by luck rather than by rule — and the
+ *  next reader of `kind` has no reason to expect it. A Map has no prototype
+ *  keys to reach. */
+const STAGE_SHORTHAND = new Map<string, ArtifactKind>([
+  ["prd", { kind: "agent", stage: "prd" }],
+  ["design", { kind: "agent", stage: "design" }],
+  ["plan", { kind: "agent", stage: "plan" }],
+]);
 
-/** Cascade row for a touched path, or null. Matches the workstream-relative
- *  key (`prd/agent.md`), a root-artifact basename (`expectations.md`), a
- *  longer path ending in the key, or the bare stage shorthand (`prd`).
- *  A bare `agent.md` is ambiguous across stages → null (refusal). human.md,
- *  outline.md and outline-critique.md never cascade — a digest refresh or
- *  outline critique must not reset gate flags. */
+/** The shorthands above, for the CLI's containment check — which must skip
+ *  exactly the inputs this resolves and no others. `commands/revise.ts` kept
+ *  its own `new Set(["prd","design","plan"])`; a fourth shorthand added here
+ *  would have been resolved by `cascadeFor` and then refused there as a
+ *  cross-workstream path, which reads as the command rejecting its own
+ *  documented input. */
+export const STAGE_SHORTHAND_NAMES: readonly string[] = [...STAGE_SHORTHAND.keys()];
+
+/** Cascade row for a touched path, or null.
+ *
+ *  Resolves the touched string to an `ArtifactKind` first — accepting BOTH
+ *  layouts' spellings, so `prd/agent.md` and `prd.md` name the same PRD —
+ *  then matches that identity against the table. It takes no layout parameter
+ *  and wants none: a user typing `--touched design.md` in a folder-layout
+ *  repo means the design doc, and a resolver that consulted the repo's layout
+ *  would refuse them (R-4).
+ *
+ *  Matches the doc-set-relative key (`prd/agent.md`), a root-artifact
+ *  basename (`expectations.md`), a longer path ending in either, or the bare
+ *  stage shorthand (`prd`). An AMBIGUOUS name refuses rather than guessing: a
+ *  bare `agent.md` belongs to no single stage, so the reverse index owns no
+ *  such key and this returns null. Refusing is recoverable — the user
+ *  re-types with the stage — while resolving to the wrong row silently leaves
+ *  stale gate flags standing over a rewritten artifact, which nothing
+ *  downstream can detect.
+ *
+ *  The human-facing companions resolve to real identities when fully spelled
+ *  and still never cascade: the table has no row for them, so refreshing a
+ *  digest or a critique cannot reset a gate flag. */
 export function cascadeFor(touched: string): CascadeEntry | null {
   const norm = touched.replace(/\\/g, "/").replace(/\/+$/, "");
   const segs = norm.split("/").filter((s) => s !== "");
   const last1 = segs[segs.length - 1] ?? "";
   const last2 = segs.slice(-2).join("/");
-  const shorthand = segs.length === 1 ? STAGE_SHORTHAND[norm] : undefined;
-  return (
-    CASCADE_TABLE.find(
-      (e) =>
-        e.artifact === last2 ||
-        e.artifact === last1 ||
-        e.artifact === shorthand,
-    ) ?? null
-  );
+  // Longest first: `prd/agent.md` must beat the ambiguous bare `agent.md`.
+  const kind =
+    (segs.length === 1 ? STAGE_SHORTHAND.get(norm) : undefined) ??
+    exactly(last2) ??
+    exactly(last1);
+  if (!kind) return null;
+  const id = artifactKindIdentity(kind);
+  return CASCADE_TABLE.find((e) => artifactKindIdentity(e.artifact) === id) ?? null;
+}
+
+/** The reverse lookup, narrowed back to an EXACT spelling.
+ *
+ *  `pathToArtifactKind` lowercases its keys, deliberately and for this very
+ *  surface — but folding case here would make `--touched PLAN.md` resolve to
+ *  the plan artifact, and `PLAN.md` is devx's own backlog: the single most
+ *  confusable name in any devx repo, sitting beside `plan.md` in the doc set
+ *  under `project-level`. A user who edited the backlog and reached for
+ *  `devx revise` would silently roll the workstream back to stage `plan` and
+ *  clear `plan_verified` + `evals_red`, with nothing downstream able to tell.
+ *
+ *  So the resolved kind must spell the input back, under one layout or the
+ *  other. That is what keeps every input `main` accepted resolving
+ *  identically while the project-level names newly resolve — and what keeps
+ *  a near-miss a refusal, which is recoverable, rather than a wrong cascade,
+ *  which is not. */
+function exactly(rel: string): ArtifactKind | null {
+  const kind = pathToArtifactKind(rel);
+  if (!kind) return null;
+  return DOCS_LAYOUTS.some((l) => artifactRel(l, kind) === rel) ? kind : null;
 }
 
 export interface ReviseComputation {

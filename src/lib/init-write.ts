@@ -54,7 +54,7 @@ import type {
 } from "./init-questions.js";
 import type { InitState } from "./init-state.js";
 import { writeAtomic } from "./supervisor-internal.js";
-import { DEFAULT_DOCS_LAYOUT } from "./engine/artifacts.js";
+import { resolveDocsLayout } from "./engine/artifacts.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -297,18 +297,27 @@ export function renderInitConfig(opts: RenderOpts): string {
   ]).map((ch) => stripNullTo(ch));
   const quietHours = config.notifications?.quiet_hours ?? "22:00-08:00";
   const thoroughness = config.thoroughness ?? deriveThoroughness(config.mode);
-  // This site WRITES the layout — it renders the answer the interview already
-  // collected into a NEW config file — so it is not one of the "readers" G-2
-  // counts (those resolve a repo's layout from a merged blob;
-  // `resolveDocsLayout` is the only one). The G-2 scan in
-  // test/engine-layout-map.test.ts names this function in its allowlist, with
-  // that reason, rather than the read being hidden from it by its spelling.
+  // Through the ONE resolver, not a second property read beside it. This site
+  // WRITES the layout — it renders the answer `devx init`'s interview already
+  // collected into a NEW config file — so it was allowlisted as a sanctioned
+  // non-resolver rather than counted (G-2). An allowlist is a claim a reviewer
+  // has to re-check, though, and it is unnecessary here: `resolveDocsLayout`
+  // answers exactly the question this line asks, over a `PartialConfig` whose
+  // shape is the same `engine.docs_layout` blob it reads everywhere else. One
+  // reader, no exception to maintain (dlr105).
   //
-  // The `?? ` is deliberate and NOT a destructuring default: `??` applies to
-  // `null` as well as `undefined`, and a `null` reaching the write would put
-  // `docs_layout: null` into devx.config.yaml, which the schema enum rejects.
-  const answeredLayout = config.engine?.docs_layout;
-  const docsLayout = answeredLayout ?? DEFAULT_DOCS_LAYOUT;
+  // It also subsumes the defaulting this line used to spell itself, including
+  // the case the `??` was there for: an EXPLICIT `null` (not merely
+  // `undefined`) must not reach the write as `docs_layout: null`, which the
+  // schema enum rejects. `asLayout()` rejects every non-enum value the same
+  // way, so the fallback is structural rather than one operator's reach.
+  //
+  // The resolver's second branch — the legacy `personalization["docs.layout"]`
+  // bank key — is inert on this input and stays that way by TYPE:
+  // `PartialConfig` has no `personalization` member, so `devx init` cannot
+  // hand one over. The behavior here is byte-identical to the read it
+  // replaced.
+  const docsLayout = resolveDocsLayout(config).layout;
 
   // YOLO defaults per MODES.md §2. Every value below has to live inside the
   // schema's enum constraints (see _devx/config-schema.json). Mode → gate /

@@ -38,19 +38,19 @@ export const OUTLINE_BASENAME = "outline.md";
 export const OUTLINE_CRITIQUE_BASENAME = "outline-critique.md";
 
 /** PRD stage's authoritative artifact (Gate 1 subject). */
-export const PRD_REL = "prd/agent.md";
+const PRD_REL = "prd/agent.md";
 /** Design stage's authoritative artifact (Gate 2 subject). */
-export const DESIGN_REL = "design/agent.md";
+const DESIGN_REL = "design/agent.md";
 /** Plan stage's authoritative artifact (Gate 3 subject; coverage table + phases). */
-export const PLAN_REL = "plan/agent.md";
+const PLAN_REL = "plan/agent.md";
 /** EARS expectations — Gate 1 co-input, Gate 4 driver. Workstream root. */
-export const EXPECTATIONS_REL = "expectations.md";
+const EXPECTATIONS_REL = "expectations.md";
 /** Derived working memory (`devx todo sync`). Workstream root; never a gate input. */
-export const TODO_REL = "todo.md";
+const TODO_REL = "todo.md";
 /** RED-gate artifact dir (E-* runnables/checklists + RED-report.md). */
 export const EVALS_DIR_REL = "evals";
 /** Gate 4's persisted report. */
-export const RED_REPORT_REL = "evals/RED-report.md";
+const RED_REPORT_REL = "evals/RED-report.md";
 /** Dated verify/critique/revision reports. */
 export const DECISIONS_DIR_REL = "decisions";
 /** Per-phase verification reports (/devx verify). */
@@ -68,18 +68,18 @@ export const SCAFFOLD_SUBDIRS = [
 ] as const;
 
 /** Workstream-relative path of a stage-folder file. */
-export function stageFileRel(stage: StageDir, basename: string): string {
+function stageFileRel(stage: StageDir, basename: string): string {
   return `${stage}/${basename}`;
 }
 
 /** Workstream-relative outline path for a stage. */
-export const outlineRel = (stage: StageDir): string =>
+const outlineRel = (stage: StageDir): string =>
   stageFileRel(stage, OUTLINE_BASENAME);
 /** Workstream-relative outline-critique path for a stage. */
-export const outlineCritiqueRel = (stage: StageDir): string =>
+const outlineCritiqueRel = (stage: StageDir): string =>
   stageFileRel(stage, OUTLINE_CRITIQUE_BASENAME);
 /** Workstream-relative human-digest path for a stage. */
-export const humanRel = (stage: StageDir): string =>
+const humanRel = (stage: StageDir): string =>
   stageFileRel(stage, HUMAN_BASENAME);
 
 // ---------------------------------------------------------------------------
@@ -101,11 +101,11 @@ export const humanRel = (stage: StageDir): string =>
 
 /** Repo-relative authoritative artifact for a stage, project-level layout
  *  (`prd.md`, `design.md`, `plan.md`; `evals` keeps its directory). */
-export const projectAgentRel = (stage: StageDir): string =>
+const projectAgentRel = (stage: StageDir): string =>
   stage === "evals" ? EVALS_DIR_REL : `${stage}.md`;
 
 /** Repo-relative human digest for a stage, project-level layout. */
-export const projectHumanRel = (stage: StageDir): string => `${stage}-human.md`;
+const projectHumanRel = (stage: StageDir): string => `${stage}-human.md`;
 
 /** Repo-relative HUMAN-ONLY outline for a stage, project-level layout. */
 export const projectOutlineRel = (stage: StageDir): string =>
@@ -113,7 +113,7 @@ export const projectOutlineRel = (stage: StageDir): string =>
 
 /** Repo-relative outline critique for a stage, project-level layout.
  *  Agent-writable, exactly as its folder-shaped counterpart is. */
-export const projectOutlineCritiqueRel = (stage: StageDir): string =>
+const projectOutlineCritiqueRel = (stage: StageDir): string =>
   `${stage}-${OUTLINE_CRITIQUE_BASENAME}`;
 
 /** Every project-level outline basename, lowercased — the protected set the
@@ -202,9 +202,15 @@ export const docsLayoutFrom = (merged: unknown): DocsLayout =>
 // Absolute resolvers.
 // ---------------------------------------------------------------------------
 
-/** Join a workstream-relative artifact path (POSIX form) onto an absolute
- *  workstream dir with the platform separator. */
-export function artifactAbs(wsAbs: string, rel: string): string {
+/** Join a doc-set-relative artifact path (POSIX form) onto an absolute
+ *  directory with the platform separator.
+ *
+ *  Module-private, and that is the point rather than an accident of having no
+ *  outside caller. It takes an ARBITRARY rel, so an exported version keeps
+ *  `artifactAbs(wsAbs, "prd/agent.md")` expressible — a hand-built
+ *  stage-subject path that carries no `join(` for E-3's scan to see. Callers
+ *  name the artifact (`stageSubject`, `planAbs`, …); only the map spells one. */
+function artifactAbs(wsAbs: string, rel: string): string {
   return join(wsAbs, ...rel.split("/"));
 }
 
@@ -269,7 +275,7 @@ export interface SubjectBase {
  *  layout is a shape, never a gate input, and a path resolver that throws
  *  bricks the command that asked — a caller's bad base surfaces as a missing
  *  file, which is a message rather than a crash. */
-function normalizeArtifactPath(p: string): string {
+export function normalizeArtifactPath(p: string): string {
   const slashed = p.trim().replace(/\\/g, "/");
   if (slashed === "") return "";
   const trimmed = posix
@@ -369,10 +375,16 @@ export function stageSubject(
  *  The layout travels WITH the base rather than beside it because the pair is
  *  what identifies a doc set: a `workstreamRel` of `.` means the repo root
  *  under `project-level` and a directory literally named `.` under
- *  `workstream`, and the ten helpers below cannot tell those apart from the
+ *  `workstream`, and the helpers below cannot tell those apart from the
  *  path alone. Splitting them into two arguments is what let 21 call sites
  *  hand a bare `wsAbs` to a layout-blind helper and read every artifact as
- *  missing (dlr104). */
+ *  missing (dlr104).
+ *
+ *  Four helpers, not the ten dlr104 wrote: the other six never acquired a
+ *  caller, and an exported resolver nobody calls is a bypass waiting for its
+ *  first one (E-2). A kind that needs an absolute path and has no helper here
+ *  reaches for `stageSubject(layout, base, kind).abs`, which is what these
+ *  are. Adding one back is a one-line change the day something calls it. */
 export interface ResolvedBase extends SubjectBase {
   layout: DocsLayout;
 }
@@ -380,26 +392,14 @@ export interface ResolvedBase extends SubjectBase {
 const absOf = (base: ResolvedBase, kind: ArtifactKind): string =>
   stageSubject(base.layout, base, kind).abs;
 
-export const prdAbs = (base: ResolvedBase): string =>
-  absOf(base, { kind: "agent", stage: "prd" });
-export const designAbs = (base: ResolvedBase): string =>
-  absOf(base, { kind: "agent", stage: "design" });
 export const planAbs = (base: ResolvedBase): string =>
   absOf(base, { kind: "agent", stage: "plan" });
-export const expectationsAbs = (base: ResolvedBase): string =>
-  absOf(base, { kind: "expectations" });
 export const todoAbs = (base: ResolvedBase): string =>
   absOf(base, { kind: "todo" });
 export const evalsDirAbs = (base: ResolvedBase): string =>
   absOf(base, { kind: "evals-dir" });
-export const redReportAbs = (base: ResolvedBase): string =>
-  absOf(base, { kind: "red-report" });
 export const decisionsDirAbs = (base: ResolvedBase): string =>
   absOf(base, { kind: "decisions-dir" });
-export const checkpointsDirAbs = (base: ResolvedBase): string =>
-  absOf(base, { kind: "checkpoints-dir" });
-export const resultsAbs = (base: ResolvedBase): string =>
-  absOf(base, { kind: "results" });
 
 /** `SCAFFOLD_SUBDIRS` as identities rather than rels — what the scaffold
  *  iterates so its three empty dirs land wherever the layout puts them
@@ -482,75 +482,15 @@ export const ALL_ARTIFACT_KINDS: readonly ArtifactKind[] = [
 
 /** Full identity of a kind — `(kind, stage)`, not just the discriminant.
  *  Comparing discriminants alone would let `human · prd` and `human · design`
- *  collide silently, and that is the collision that matters: the reverse
- *  lookup would return the wrong STAGE, which is a real file that exists. */
-const identityOf = (k: ArtifactKind): string =>
+ *  collide silently, and that is the collision that matters: two rows of the
+ *  cascade table, or of the reverse index, would answer for each other.
+ *
+ *  Exported because it is the ONLY sanctioned way to compare two kinds.
+ *  `ArtifactKind` is a plain object literal, so `===` is reference equality
+ *  and `JSON.stringify` is key-order dependent — both silently answer "not
+ *  the same artifact" for two spellings of one identity. */
+export const artifactKindIdentity = (k: ArtifactKind): string =>
   "stage" in k ? `${k.kind}:${k.stage}` : k.kind;
-
-/** Build the reverse index over a kind list. Exported for its negative
- *  control: a guard nothing can trip is a guard nobody knows works, and the
- *  live table has no collision to prove it with. */
-export function buildArtifactKindIndex(
-  kinds: readonly ArtifactKind[],
-  // Seam, and the only reason it exists: no two identities in the LIVE table
-  // spell the same path, so a collision cannot be constructed through the
-  // public API — and a guard that has never executed is a guard nobody knows
-  // works. Injecting the resolver lets the throw be proven.
-  relFor: (layout: DocsLayout, kind: ArtifactKind) => string = artifactRel,
-): ReadonlyMap<string, ArtifactKind> {
-  const map = new Map<string, ArtifactKind>();
-  for (const kind of kinds) {
-    for (const layout of DOCS_LAYOUTS) {
-      // Keys are lowercased: this backs a user-typed surface (`devx revise
-      // --touched`), the table's only uppercase basenames are `RESULTS.md`
-      // and `RED-report.md`, and `outline.ts`'s classifier already lowercases.
-      // Two case conventions in one repo is how a real path returns null.
-      const rel = normalizeArtifactPath(relFor(layout, kind)).toLowerCase();
-      const existing = map.get(rel);
-      if (existing && identityOf(existing) !== identityOf(kind)) {
-        throw new Error(
-          `artifacts: '${rel}' is claimed by both ` +
-            `'${identityOf(existing)}' and '${identityOf(kind)}'`,
-        );
-      }
-      if (!existing) map.set(rel, kind);
-    }
-  }
-  return map;
-}
-
-/** The same table read backwards, built once. Keyed on the doc-set-relative
- *  spelling in BOTH layouts, because a `--touched design.md` typed against a
- *  folder-layout repo (a flat-era shorthand) and the same string typed against
- *  a flat repo (the current name) must resolve to the same identity.
- *
- *  This runs at module load, and `engine/config.ts` now imports this file for
- *  values — so a throw here would brick every command. It cannot: the input is
- *  two compile-time constant lists, so the guard is a dev-time assert that
- *  fires the moment a new `StageDir` or kind introduces a collision, and never
- *  on user input. */
-const REVERSE_MAP = buildArtifactKindIndex(ALL_ARTIFACT_KINDS);
-
-/** Reverse of `stageSubject()`'s kind→path half: a **doc-set-relative**
- *  artifact path in EITHER layout's spelling → its layout-independent
- *  identity, or `null` when the map does not own the path.
- *
- *  Doc-set-relative, and the distinction is load-bearing: `stageSubject`
- *  returns a REPO-relative `rel`, so under `workstream` this is NOT its
- *  inverse — `pathToArtifactKind("_devx/workstreams/x/prd/agent.md")` is
- *  `null`, and a caller round-tripping a `.rel` must strip the workstream
- *  prefix first. Under `project-level` the two coincide because the doc set
- *  IS the repo root.
- *
- *  Because it is layout-blind by design (both spellings resolve), composing
- *  it with `stageSubject` can RELOCATE a path: in a workstream repo a file
- *  genuinely named `design.md` maps to `{agent, design}` and back out to
- *  `design/agent.md`. Consumers that mean "the artifact at this exact path"
- *  must check the layout themselves; the map answers "which artifact is this
- *  the name of", which is the question `devx revise --touched` asks. */
-export function pathToArtifactKind(rel: string): ArtifactKind | null {
-  return REVERSE_MAP.get(normalizeArtifactPath(rel).toLowerCase()) ?? null;
-}
 
 // ---------------------------------------------------------------------------
 // evals/ classification.

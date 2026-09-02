@@ -17,7 +17,7 @@
 
 
 import { type EngineState, readEngineState } from "./frontmatter.js";
-import { type ResolvedBase, TODO_REL, todoAbs } from "./artifacts.js";
+import { type ResolvedBase, todoAbs } from "./artifacts.js";
 import {
   type TodoDoc,
   type TodoGroundTruth,
@@ -32,8 +32,6 @@ export interface TodoReadFs {
   exists(path: string): boolean;
   readdir(path: string): string[];
 }
-
-export const TODO_FILENAME = TODO_REL;
 
 /**
  * Read + parse the doc set's todo.md. Null when the file is absent
