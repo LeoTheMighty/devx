@@ -31,7 +31,12 @@ import {
   type Stage,
 } from "./frontmatter.js";
 import { type TodoDoc, currentFocus } from "./todo.js";
-import { DECISIONS_DIR_REL, RED_REPORT_REL } from "./artifacts.js";
+import {
+  type ArtifactKind,
+  type DocsLayout,
+  DEFAULT_DOCS_LAYOUT,
+  stageSubject,
+} from "./artifacts.js";
 
 /** Rendered when a gate has no verdict and no legacy flag-true fallback. */
 export const NEVER_RUN = "—";
@@ -44,9 +49,16 @@ export const NEVER_RUN = "—";
 export interface GateSummaryContext {
   /** Workstream hash for re-run commands; falls back to state.hash. */
   hash?: string | null;
-  /** Repo-relative workstream dir (`_devx/workstreams/<slug>`) for report
-   *  pointers. Null/absent → pointers omitted. */
+  /** Repo-relative workstream dir (`_devx/workstreams/<slug>`, or `.` under
+   *  `project-level`) for report pointers. Null/absent → pointers omitted. */
   workstreamRel?: string | null;
+  /** Layout the pointers below resolve under. Absent ≡ the shipped default,
+   *  which is what every pre-dlr104 caller meant. It rides in the context
+   *  rather than being inferred from `workstreamRel` because `.` is a legal
+   *  directory name under `workstream` too — and because the two concatenations
+   *  this replaced rendered `./evals/RED-report.md` for a file at
+   *  `evals/RED-report.md`. */
+  layout?: DocsLayout;
   /** Plain listing of `<workstreamRel>/decisions/` (names only, unsorted).
    *  Absent dir ≡ []. */
   decisionNames?: readonly string[];
@@ -113,15 +125,19 @@ function failReportPointer(
 ): string | null {
   const ws = ctx.workstreamRel ?? null;
   if (ws === null) return null;
+  const layout = ctx.layout ?? DEFAULT_DOCS_LAYOUT;
+  const at = (kind: ArtifactKind): string =>
+    stageSubject(layout, { repoRoot: "", workstreamRel: ws }, kind).rel;
   if (key === "evals") {
-    return ctx.evalsReportExists === false
-      ? null
-      : `${ws}/${RED_REPORT_REL}`;
+    return ctx.evalsReportExists === false ? null : at({ kind: "red-report" });
   }
   const mode = COVERAGE_MODE[key];
   if (mode === undefined) return null; // prd — re-run command only
   const report = newestDecisionReport(ctx.decisionNames ?? [], mode);
-  return report !== null ? `${ws}/${DECISIONS_DIR_REL}/${report}` : null;
+  // The report's own filename is not an artifact identity — it is a dated
+  // entry INSIDE the decisions dir — so it joins onto the resolved dir rather
+  // than being spelled into a path of its own.
+  return report !== null ? `${at({ kind: "decisions-dir" })}/${report}` : null;
 }
 
 /**

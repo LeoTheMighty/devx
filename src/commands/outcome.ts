@@ -36,12 +36,13 @@
 // Spec: dev/dev-v2o101-2026-07-05T13:07-outcome-loop.md
 // Design: v2/02-engine.md §4.10; v2/06-phases.md §V2.6
 
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { Command } from "commander";
 
 import { attachPhase } from "../lib/help.js";
 import * as artifacts from "../lib/engine/artifacts.js";
 import { loadEngineContext } from "../lib/engine/context.js";
+import { type EngineConfig } from "../lib/engine/config.js";
 import { applyEnginePatch, readEngineState } from "../lib/engine/frontmatter.js";
 import {
   type GoalRowVerdict,
@@ -59,10 +60,12 @@ import {
 } from "../lib/engine/outcome.js";
 import {
   type EngineFs,
+  PROJECT_LEVEL_WORKSTREAM_REL,
   SLUG_RE,
   WorkstreamError,
   realEngineFs,
   resolveWorkstream,
+  workstreamSlugFor,
 } from "../lib/engine/workstream.js";
 import { formatDate } from "../lib/engine/verdict.js";
 
@@ -226,7 +229,7 @@ export function runOutcomeScore(
   }
 
   try {
-    return scoreResolved(ws, ctx.ctx.repoRoot, ctx.ctx.engine.workstreamsRoot, flags, io);
+    return scoreResolved(ws, ctx.ctx.repoRoot, ctx.ctx.engine, flags, io);
   } catch (e) {
     if (e instanceof OutcomeRefusal) {
       io.err(`devx outcome score: ${e.message}\n`);
@@ -243,10 +246,14 @@ export function runOutcomeScore(
 function scoreResolved(
   ws: ReturnType<typeof resolveWorkstream>,
   repoRoot: string,
-  workstreamsRoot: string,
+  // The whole EngineConfig, not just `workstreamsRoot`: the successor pointer
+  // and the record's title both have to be resolved through the LAYOUT, and a
+  // bare root cannot answer either (review BH#5).
+  engine: EngineConfig,
   flags: ScoreFlags,
   io: Io,
 ): number {
+  const workstreamsRoot = engine.workstreamsRoot;
   // ---- Flag validation (exit 2 on shape problems). -----------------------
   if (!flags.verdict || !isOutcomeVerdict(flags.verdict)) {
     throw new OutcomeError(
@@ -307,15 +314,25 @@ function scoreResolved(
   // truth, so overwrite and report it. A RESULTS.md with a SCORED status
   // never reaches this line — the already-scored refusal above is the
   // artifact's real protection.
-  const resultsAbs = artifacts.resultsAbs(ws.workstreamAbs);
-  const overwroteStaleResults = io.fs.exists(resultsAbs);
+  // Subjects, not concatenations: `rel` is what the operator reads and `abs`
+  // is what we open, and deriving one from the other by hand is how a flat
+  // repo gets told to look at `./RESULTS.md` for a file at `RESULTS.md` —
+  // or, worse, at a workstream directory it does not have (dlr104).
+  const at = (kind: artifacts.ArtifactKind): artifacts.StageSubject =>
+    artifacts.stageSubject(ws.layout, ws, kind);
+  // Exact-name under `project-level`, where these sit at the repo root beside
+  // devx's own backlogs and `fs.exists` is case-blind (artifacts.ts).
+  const has = (kind: artifacts.ArtifactKind): boolean =>
+    artifacts.artifactExists(io.fs, ws, kind);
+  const resultsFile = at({ kind: "results" });
+  const overwroteStaleResults = has({ kind: "results" });
 
   // ---- Inputs. -------------------------------------------------------------
-  const prdAbs = artifacts.prdAbs(ws.workstreamAbs);
-  if (!io.fs.exists(prdAbs)) {
-    throw new OutcomeError(`${ws.workstreamRel}/${artifacts.PRD_REL} not found — nothing to score against`);
+  const prd = at({ kind: "agent", stage: "prd" });
+  if (!has({ kind: "agent", stage: "prd" })) {
+    throw new OutcomeError(`${prd.rel} not found — nothing to score against`);
   }
-  const goals = parsePrdGoals(io.fs.readFile(prdAbs));
+  const goals = parsePrdGoals(io.fs.readFile(prd.abs));
   const { rows } = computeGoalRows(goals, { actuals, sources, results });
 
   const templateAbs = join(repoRoot, "_devx", "templates", "engine", "results.md");
@@ -329,24 +346,34 @@ function scoreResolved(
   // ---- Verdict-specific computation. ---------------------------------------
   let tune: ReturnType<typeof computeTune> | null = null;
   if (verdict === "tune") {
-    const expAbs = artifacts.expectationsAbs(ws.workstreamAbs);
-    if (!io.fs.exists(expAbs)) {
+    const expectations = at({ kind: "expectations" });
+    if (!has({ kind: "expectations" })) {
       throw new OutcomeError(
-        `${ws.workstreamRel}/${artifacts.EXPECTATIONS_REL} not found — tune's --reopen E-ids can't be validated`,
+        `${expectations.rel} not found — tune's --reopen E-ids can't be validated`,
       );
     }
     tune = computeTune(
       ws.state,
       flags.reopen ?? "",
-      io.fs.readFile(expAbs),
+      io.fs.readFile(expectations.abs),
       ws.hash,
     );
   }
 
   let successorHash: string | null = null;
   let successorSpecRel: string | null = null;
+  // Projected through the layout, like every other workstream pointer: under
+  // `project-level` there are no slug directories, so a raw
+  // `<root>/<slug>` marker matches NO spec (they all carry `workstream: .`).
+  // Left raw, `--successor` stamped no lineage while reporting success, and
+  // the self-successor guard below went dead — a workstream could be made its
+  // own successor (review BH#5).
   const successorWs =
-    verdict === "restart" ? `${workstreamsRoot}/${flags.successor}` : null;
+    verdict === "restart"
+      ? ws.layout === "project-level"
+        ? PROJECT_LEVEL_WORKSTREAM_REL
+        : `${workstreamsRoot}/${flags.successor}`
+      : null;
   if (verdict === "restart" && successorWs !== null) {
     // Adoption walk (same shape as createWorkstream's no-hash path): the
     // successor's plan spec is the one whose workstream: pointer claims
@@ -401,7 +428,12 @@ function scoreResolved(
   //      exists-refusal above would then block the re-run). ------------------
   const date = formatDate(io.now());
   const statusReason = flags.reason?.trim() || defaultStatusReason(verdict, rows);
-  const title = ws.workstreamRel.split("/").pop() ?? ws.hash;
+  // Through the shared helper: the tail of `.` is `.`, so under
+  // `project-level` a hand-rolled tail titles the outcome record "." — the
+  // slug lives in the plan spec's filename there. Same form `devx todo sync`
+  // already uses (review BH#5).
+  const title =
+    workstreamSlugFor(basename(ws.specAbs), ws.workstreamRel, engine) ?? ws.hash;
   const reading =
     flags.notes?.trim() ||
     "(no reading recorded — pass --notes with what the numbers mean)";
@@ -467,11 +499,14 @@ function scoreResolved(
   // rather than clobber (EC#1).
   let staleBackupRel: string | null = null;
   if (overwroteStaleResults) {
-    const backupName = `RESULTS.md.stale-${date}`;
-    io.fs.writeFile(join(ws.workstreamAbs, backupName), io.fs.readFile(resultsAbs));
-    staleBackupRel = `${ws.workstreamRel}/${backupName}`;
+    // Sibling by construction — suffixed onto the resolved subject rather
+    // than re-joined against the workstream dir, so the backup lands beside
+    // the file it backs up in either layout and its `rel` cannot spell that
+    // directory a second, different way.
+    io.fs.writeFile(`${resultsFile.abs}.stale-${date}`, io.fs.readFile(resultsFile.abs));
+    staleBackupRel = `${resultsFile.rel}.stale-${date}`;
   }
-  io.fs.writeFile(resultsAbs, resultsContent);
+  io.fs.writeFile(resultsFile.abs, resultsContent);
   io.fs.writeFile(ws.specAbs, patched);
   // The verdict is recorded at this point — a successor-side lineage write
   // failure must not fail the whole score (the verdict would then disagree
@@ -489,7 +524,7 @@ function scoreResolved(
     `${JSON.stringify({
       hash: ws.hash,
       verdict,
-      results: `${ws.workstreamRel}/RESULTS.md`,
+      results: resultsFile.rel,
       ...(overwroteStaleResults
         ? { overwrote_stale_results: true, stale_backup: staleBackupRel }
         : {}),

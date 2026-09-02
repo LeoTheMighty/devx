@@ -30,7 +30,11 @@
 // Design: v2/05-dispatcher.md §2 rows 9–12; v2/02-engine.md §5
 
 import { type EngineState } from "./frontmatter.js";
-import { DESIGN_REL, EXPECTATIONS_REL, PLAN_REL, PRD_REL } from "./artifacts.js";
+import {
+  type DocsLayout,
+  DEFAULT_DOCS_LAYOUT,
+  artifactRel,
+} from "./artifacts.js";
 import { isMeasureByDue, isOutcomeVerdict } from "./outcome.js";
 
 export interface WorkstreamArtifacts {
@@ -50,12 +54,36 @@ export interface NextDecision {
   reason: string;
 }
 
+/** The artifact names a row's reason PRINTS, in this repo's layout.
+ *
+ *  The rows used to close over the `*_REL` constants directly, which spells
+ *  `prd/agent.md` at a flat repo whose PRD is `prd.md` — a reason that names a
+ *  path nothing in that repo can produce, on the single most-read line devx
+ *  emits. Resolved once per call and passed in, so the table stays pure and
+ *  the layout is never a matching input: only the prose changes (dlr104). */
+interface ArtifactNames {
+  prd: string;
+  design: string;
+  plan: string;
+  expectations: string;
+}
+
+function artifactNamesFor(layout: DocsLayout): ArtifactNames {
+  return {
+    prd: artifactRel(layout, { kind: "agent", stage: "prd" }),
+    design: artifactRel(layout, { kind: "agent", stage: "design" }),
+    plan: artifactRel(layout, { kind: "agent", stage: "plan" }),
+    expectations: artifactRel(layout, { kind: "expectations" }),
+  };
+}
+
 interface NextRow {
   row: number;
   matches(s: EngineState, a: WorkstreamArtifacts, today: string | null): boolean;
   decide(
     hash: string,
     s: EngineState,
+    names: ArtifactNames,
   ): { command: string | null; reason: string };
 }
 
@@ -110,49 +138,49 @@ const TABLE: NextRow[] = [
   {
     row: 4,
     matches: (_s, a) => !a.prd || !a.expectations,
-    decide: (hash) => ({
+    decide: (hash, _s, n) => ({
       command: `/devx prd ${hash}`,
-      reason: `${PRD_REL} / ${EXPECTATIONS_REL} not yet authored`,
+      reason: `${n.prd} / ${n.expectations} not yet authored`,
     }),
   },
   {
     row: 5,
     matches: (s) => !s.gateStatus.prd_validated,
-    decide: (hash) => ({
+    decide: (hash, _s, n) => ({
       command: `devx gate prd ${hash}`,
-      reason: `Gate 1 open: ${PRD_REL} + ${EXPECTATIONS_REL} exist but prd_validated is false`,
+      reason: `Gate 1 open: ${n.prd} + ${n.expectations} exist but prd_validated is false`,
     }),
   },
   {
     row: 6,
     matches: (_s, a) => !a.design,
-    decide: (hash) => ({
+    decide: (hash, _s, n) => ({
       command: `/devx design ${hash}`,
-      reason: `${DESIGN_REL} not yet authored`,
+      reason: `${n.design} not yet authored`,
     }),
   },
   {
     row: 7,
     matches: (s) => !s.gateStatus.design_verified,
-    decide: (hash) => ({
+    decide: (hash, _s, n) => ({
       command: `devx gate coverage ${hash}`,
-      reason: `Gate 2 open: ${DESIGN_REL} exists but design_verified is false`,
+      reason: `Gate 2 open: ${n.design} exists but design_verified is false`,
     }),
   },
   {
     row: 8,
     matches: (_s, a) => !a.plan,
-    decide: (hash) => ({
+    decide: (hash, _s, n) => ({
       command: `/devx plan ${hash}`,
-      reason: `${PLAN_REL} not yet authored`,
+      reason: `${n.plan} not yet authored`,
     }),
   },
   {
     row: 9,
     matches: (s) => !s.gateStatus.plan_verified,
-    decide: (hash) => ({
+    decide: (hash, _s, n) => ({
       command: `devx gate coverage ${hash}`,
-      reason: `Gate 3 open: ${PLAN_REL} exists but plan_verified is false`,
+      reason: `Gate 3 open: ${n.plan} exists but plan_verified is false`,
     }),
   },
   {
@@ -189,10 +217,15 @@ export function nextForWorkstream(
   /** YYYY-MM-DD; gates row 2's pending-outcome branch on measure_by. Omit
    *  for the pre-v2o101 behavior (pending outcomes always actionable). */
   today: string | null = null,
+  /** Layout whose spellings the reasons print. Defaults to the shipped
+   *  layout, which is what every pre-dlr104 caller meant — the reason strings
+   *  under `workstream` are byte-identical either way. */
+  layout: DocsLayout = DEFAULT_DOCS_LAYOUT,
 ): NextDecision {
+  const names = artifactNamesFor(layout);
   for (const row of TABLE) {
     if (row.matches(state, artifacts, today)) {
-      return { row: row.row, ...row.decide(hash, state) };
+      return { row: row.row, ...row.decide(hash, state, names) };
     }
   }
   // Unreachable — row 12 always matches. Kept for the type system.

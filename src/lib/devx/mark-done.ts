@@ -48,8 +48,8 @@ import {
 } from "../backlog/mutate.js";
 import { type EngineConfig, engineConfigFrom } from "../engine/config.js";
 import { readEngineState } from "../engine/frontmatter.js";
-import { TODO_FILENAME } from "../engine/todo-truth.js";
 import { resolveSpecWorkstream } from "../engine/workstream.js";
+import * as artifacts from "../engine/artifacts.js";
 import { GRAPH_FILENAME, type RegenFn, regenerateGraph } from "../graph/regen.js";
 import { PROJECT_FILENAME } from "../config-io.js";
 import { isGitIgnored } from "../exec.js";
@@ -522,13 +522,21 @@ export function markDone(hash: string, opts: MarkDoneOpts): MarkDoneResult {
         );
       }
       if (planHash.workstreamRel !== null) {
-        const todoAbs = join(opts.repoRoot, planHash.workstreamRel, TODO_FILENAME);
+        // `todoPath`, and through the resolver: the local of the imported
+        // resolver's name shadowed it, and the hand-join underneath put
+        // todo.md under a directory a flat repo does not have — so finalize
+        // silently failed to stage the very file the sync had just rewritten.
+        const todoPath = artifacts.todoAbs({
+          repoRoot: opts.repoRoot,
+          workstreamRel: planHash.workstreamRel,
+          layout: engine.docsLayout,
+        });
         // Stage it whenever it exists, not only when the sync reported a
         // change: `git add` of an unchanged file is a no-op, whereas
         // omitting a file the sync DID rewrite leaves it uncommitted on
         // `main` for the next session to trip over.
-        if (fs.exists(todoAbs)) {
-          paths.push(relativeFromRepo(todoAbs, opts.repoRoot));
+        if (fs.exists(todoPath)) {
+          paths.push(relativeFromRepo(todoPath, opts.repoRoot));
         }
       }
     }

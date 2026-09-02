@@ -51,12 +51,15 @@ import {
 } from "./frontmatter.js";
 import { type EngineConfig } from "./config.js";
 import {
+  type ArtifactKind,
+  type DocsLayout,
+  type ResolvedBase,
   EXPECTATIONS_REL,
   PRD_REL,
-  SCAFFOLD_SUBDIRS,
+  SCAFFOLD_SUBDIR_KINDS,
   SUBJECT_STAGES,
   TODO_REL,
-  artifactAbs,
+  stageSubject,
 } from "./artifacts.js";
 import { writeAtomic } from "../supervisor-internal.js";
 
@@ -221,7 +224,10 @@ export class WorkstreamError extends Error {
 
 export interface CreateWorkstreamOpts {
   repoRoot: string;
-  slug: string;
+  /** Optional under `project-level`, where the doc set has no directory to
+   *  name and the slug titles the plan spec only; required under
+   *  `workstream`, where it IS the directory (design §"The slug"). */
+  slug?: string;
   /** Extend this existing plan spec instead of creating a fresh one. */
   hash?: string;
   engine: EngineConfig;
@@ -299,6 +305,183 @@ export function generateHash(
   throw new WorkstreamError("could not generate a collision-free hash");
 }
 
+/** The three artifacts the scaffold instantiates from shipped templates.
+ *
+ *  `kind` resolves the DESTINATION through the layout; `source` is the
+ *  template's own path under `_devx/templates/engine/`, which is
+ *  workstream-shaped on disk in BOTH layouts and must therefore stay a
+ *  literal. Routing the source through `stageSubject()` under `project-level`
+ *  would look for `_devx/templates/engine/prd.md` and throw `engine template
+ *  missing` on the very use case the layout exists for. */
+const SCAFFOLDED_ARTIFACTS: ReadonlyArray<{
+  kind: ArtifactKind;
+  source: string;
+  key: "prd" | "expectations" | "todo";
+}> = [
+  { kind: { kind: "agent", stage: "prd" }, source: PRD_REL, key: "prd" },
+  { kind: { kind: "expectations" }, source: EXPECTATIONS_REL, key: "expectations" },
+  { kind: { kind: "todo" }, source: TODO_REL, key: "todo" },
+];
+
+/** Artifacts whose presence proves a doc set already lives at a base. The
+ *  three authored subjects plus the two root files — anything the scaffold or
+ *  a stage would have written. */
+const DOC_SET_EVIDENCE: readonly ArtifactKind[] = [
+  ...SUBJECT_STAGES.map((stage): ArtifactKind => ({ kind: "agent", stage })),
+  { kind: "expectations" },
+  { kind: "todo" },
+];
+
+/**
+ * Is a doc set already present at this base?
+ *
+ * LOCAL and temporary: `dev-lay101` owns the shared one-doc-set predicate over
+ * the 0/1/≥2 × layout matrix, and this carries its signature so the two
+ * refusal sites (here and `devx layout migrate`) collapse onto it when it
+ * lands. Delete this then — never keep a second permanent definition
+ * (design §Out of scope; R-8).
+ *
+ * The question replaces "does the directory exist", which under
+ * `project-level` asks about the repo root and is therefore always true — so
+ * the no-hash adoption path, UC-1's exact flow, refused every invocation
+ * before writing anything.
+ *
+ * Under `workstream` the directory IS part of the doc set: nothing but
+ * scaffolding creates `<workstreams_root>/<slug>/`, so its existence is
+ * sufficient evidence and behavior there is unchanged, empty dir included.
+ * Under `project-level` the base is the repo root, which is evidence of
+ * nothing, so only artifacts count.
+ */
+function docSetPresentAt(
+  fs: Pick<EngineFs, "exists" | "readdir">,
+  base: ResolvedBase,
+): boolean {
+  if (base.layout !== "project-level") {
+    return fs.exists(join(base.repoRoot, ...base.workstreamRel.split("/")));
+  }
+  // Exact-name, NOT `fs.exists`. Under `project-level` the doc set sits at the
+  // repo root beside devx's own backlogs, and macOS/Windows filesystems are
+  // case-insensitive by default — so `existsSync("plan.md")` answers TRUE for
+  // the repo's `PLAN.md` backlog, and every scaffold refused with "a doc set
+  // already exists at '.'" on the one platform most owners run. `plan.md` is
+  // not `PLAN.md`; the listing is the only thing that knows that.
+  //
+  // (The deeper `plan.md`/`PLAN.md` collision this exposes is filed as
+  // `debug-135dc9` — probes elsewhere still ask `fs.exists`.)
+  const dirAbs = join(base.repoRoot, ...base.workstreamRel.split("/"));
+  let present: Set<string>;
+  try {
+    present = new Set(fs.readdir(dirAbs));
+  } catch {
+    return false;
+  }
+  return DOC_SET_EVIDENCE.some((kind) =>
+    present.has(basename(stageSubject(base.layout, base, kind).rel)),
+  );
+}
+
+/** Slug for a `project-level` scaffold invoked with none: the repo's own
+ *  directory name, kebab-normalized.
+ *
+ *  The slug still exists under this layout — it names the plan spec's file and
+ *  title (design §"The slug") — it just names no directory, so it needs a
+ *  source that is about the project rather than about a path. The repo's name
+ *  is the only one the tool can read without asking, and it is what the owner
+ *  would have typed. A name that normalizes to nothing (a repo checked out as
+ *  `_`, or at `/`) falls back to a constant rather than minting an invalid
+ *  spec filename. */
+export function defaultProjectSlug(repoRoot: string): string {
+  const normalized = basename(repoRoot)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 50)
+    .replace(/-+$/, "");
+  return normalized === "" ? "project" : normalized;
+}
+
+/** One doc set the repo holds: its identity slug and the base its artifacts
+ *  resolve against. */
+export interface DocSetEntry {
+  slug: string;
+  base: ResolvedBase;
+}
+
+/**
+ * Every doc set in the repo — the enumeration `devx graph`'s backfill and
+ * `devx layout migrate` both walk.
+ *
+ * Under `workstream` this is the `readdir(<workstreams_root>)` it always was.
+ * Under `project-level` that root does not exist, so the readdir yields
+ * nothing and phase ordering silently degrades to an empty board — no error,
+ * no warning, just missing edges. This layer answers the question the
+ * enumeration was really asking: there is exactly one doc set, at the repo
+ * root, and its slug comes from the plan spec that claims it (the same place
+ * `resolveSpecWorkstream` reads it from, so membership and enumeration cannot
+ * disagree about one workstream's name).
+ */
+export function enumerateDocSets(
+  fs: Pick<EngineFs, "exists" | "readdir" | "readFile">,
+  repoRoot: string,
+  engine: EngineConfig,
+  cache?: PlanSpecIndexCache,
+): DocSetEntry[] {
+  if (engine.docsLayout === "project-level") {
+    const base: ResolvedBase = {
+      repoRoot,
+      workstreamRel: PROJECT_LEVEL_WORKSTREAM_REL,
+      layout: engine.docsLayout,
+    };
+    // The claiming spec first (an explicit `workstream:` pointer is
+    // evidence), then any engine-managed plan spec — the same two passes, in
+    // the same order, as `resolveSpecWorkstream`'s flat arm.
+    const entries = planSpecEntries(fs, repoRoot, cache);
+    // Pass 1 projects the pointer exactly as `resolveSpecWorkstream` does —
+    // under this layout ANY non-null `workstream:` means "the root", including
+    // a stale `<root>/<slug>` left by a half-finished migration. A raw compare
+    // against `.` missed those, so the two disagreed about which spec owns the
+    // doc set; `readOrderingSignals`' membership guard then discarded every
+    // ordering signal, silently (review BH#3).
+    const claiming =
+      entries.find((e) => e.state.workstream !== null) ??
+      // Pass 2: no pointer anywhere. Prefer a LIVE workstream — `entries` is
+      // sorted by filename, i.e. by random hash, so "first engine spec" is an
+      // arbitrary pick that lands on a long-since-done one as often as not.
+      entries.find(
+        (e) =>
+          e.state.stage !== null &&
+          e.state.stage !== "done" &&
+          e.state.stage !== "retired",
+      ) ??
+      entries.find((e) => e.state.stage !== null);
+    // A doc set with no readable name is still a doc set. Returning [] here
+    // reproduces the exact silent-empty-board failure this function exists to
+    // prevent, and contradicts `planFilenameWorkstreamRel`'s stated contract:
+    // an unparseable hand-authored filename is no reason to report "no
+    // workstream" in a repo that plainly has exactly one (review BH#7).
+    const slug =
+      workstreamSlugFor(claiming?.name ?? null, PROJECT_LEVEL_WORKSTREAM_REL, engine) ??
+      defaultProjectSlug(repoRoot);
+    return [{ slug, base }];
+  }
+  const root = join(repoRoot, engine.workstreamsRoot);
+  if (!fs.exists(root)) return [];
+  let names: string[];
+  try {
+    names = [...fs.readdir(root)].sort();
+  } catch {
+    return [];
+  }
+  return names.map((slug) => ({
+    slug,
+    base: {
+      repoRoot,
+      workstreamRel: `${engine.workstreamsRoot}/${slug}`,
+      layout: engine.docsLayout,
+    },
+  }));
+}
+
 /**
  * Scaffold (or idempotently complete) a workstream. See file header for
  * the full contract. Throws WorkstreamRefusal (exit 1) / WorkstreamError
@@ -309,7 +492,23 @@ export function createWorkstream(
 ): CreateWorkstreamResult {
   const fs: EngineFs = { ...realEngineFs, ...(opts.fs ?? {}) };
   const now = (opts.now ?? (() => new Date()))();
-  const { repoRoot, slug } = opts;
+  const { repoRoot } = opts;
+  const flat = opts.engine.docsLayout === "project-level";
+
+  // A missing slug is a REFUSAL under `workstream` (valid request, engine says
+  // no) rather than a usage error, and it names the config key that made it
+  // required — the operator's fix is one line away and the message points at
+  // it. Under `project-level` the doc set has no directory, so the slug is
+  // pure identity and the repo's own name is the honest default.
+  if (opts.slug === undefined) {
+    if (!flat) {
+      throw new WorkstreamRefusal(
+        "a slug is required under `engine.docs_layout: workstream` — it names the workstream's directory. " +
+          "Run `devx workstream new <slug>`, or set `engine.docs_layout: project-level` for a repo that designs one thing at a time",
+      );
+    }
+  }
+  const slug = opts.slug ?? defaultProjectSlug(repoRoot);
 
   if (!SLUG_RE.test(slug) || slug.length > 50) {
     throw new WorkstreamError(
@@ -322,8 +521,17 @@ export function createWorkstream(
     );
   }
 
-  const wsRel = `${opts.engine.workstreamsRoot}/${slug}`;
-  const wsAbs = join(repoRoot, opts.engine.workstreamsRoot, slug);
+  // Under `project-level` the doc set IS the repo root and the slug names no
+  // directory at all (design §"The slug").
+  const wsRel = flat
+    ? PROJECT_LEVEL_WORKSTREAM_REL
+    : `${opts.engine.workstreamsRoot}/${slug}`;
+  const wsAbs = flat ? repoRoot : join(repoRoot, opts.engine.workstreamsRoot, slug);
+  const base: ResolvedBase = {
+    repoRoot,
+    workstreamRel: wsRel,
+    layout: opts.engine.docsLayout,
+  };
 
   // ---- Resolve the plan spec: --hash wins; otherwise look for a spec that
   //      already claims this workstream dir; otherwise create fresh. ------
@@ -333,7 +541,19 @@ export function createWorkstream(
     specAbs = findSpecForHashInFs(fs, repoRoot, PLAN_DIR, opts.hash);
     if (specAbs !== null) {
       specState = readEngineState(fs.readFile(specAbs));
-      if (specState.workstream !== null && specState.workstream !== wsRel) {
+      // Projected, not raw: under `project-level` every other resolver maps a
+      // stale `<root>/<slug>` pointer to `.` (planSpecWorkstreamRel,
+      // resolveWorkstream, resolveSpecWorkstream). Comparing raw here made this
+      // the ONE place that disagreed, so `--hash` adoption — the documented
+      // path for a spec that predates a layout flip — refused every time, and
+      // the no-hash path then minted a duplicate spec beside it (review EC#5).
+      const claimed =
+        specState.workstream === null
+          ? null
+          : flat
+            ? PROJECT_LEVEL_WORKSTREAM_REL
+            : specState.workstream;
+      if (claimed !== null && claimed !== wsRel) {
         throw new WorkstreamRefusal(
           `spec for hash '${opts.hash}' already belongs to workstream '${specState.workstream}' — refusing to rebind it to '${wsRel}'`,
         );
@@ -346,16 +566,44 @@ export function createWorkstream(
       for (const name of [...fs.readdir(planDir)].sort()) {
         if (!name.endsWith(".md")) continue;
         const st = readEngineState(fs.readFile(join(planDir, name)));
-        if (st.workstream === wsRel) {
-          specAbs = join(planDir, name);
-          specState = st;
-          break;
+        // Same projection as the `--hash` arm above.
+        const claimed =
+          st.workstream === null
+            ? null
+            : flat
+              ? PROJECT_LEVEL_WORKSTREAM_REL
+              : st.workstream;
+        if (claimed !== wsRel) continue;
+        // Under `project-level` `wsRel` is `.` for EVERY workstream, so this
+        // loop matches any spec that claims the root — not the one the
+        // operator named. Adopting it silently would return a hash and a
+        // filename slug that disagree with the requested slug, print
+        // "'<requested>' already scaffolded" for something never scaffolded,
+        // and title the templates from a name no artifact carries (review
+        // BH#4/EC#2). A repo that already designs one thing cannot start a
+        // second under this layout; say so instead.
+        const claimedSlug = workstreamSlugFor(name, wsRel, opts.engine);
+        if (flat && opts.slug !== undefined && claimedSlug !== slug) {
+          throw new WorkstreamRefusal(
+            `this repo's doc set already belongs to workstream '${claimedSlug ?? basename(name)}' (plan/${name}) — ` +
+              "`engine.docs_layout: project-level` holds exactly one doc set, so it cannot also hold " +
+              `'${slug}'. Finish or retire that workstream, or switch to \`engine.docs_layout: workstream\``,
+          );
         }
+        specAbs = join(planDir, name);
+        specState = st;
+        break;
       }
     }
-    if (specAbs === null && fs.exists(wsAbs)) {
+    if (specAbs === null && docSetPresentAt(fs, base)) {
+      // Wording stays byte-identical under `workstream`, where the probe is
+      // still literally "does the directory exist" — the operator's muscle
+      // memory and every doc that quotes this string keep working. Only the
+      // flat layout, where there is no directory to name, gets new prose.
       throw new WorkstreamRefusal(
-        `workstream dir '${wsRel}' exists but no plan spec points at it — re-run with --hash <hash> to bind an existing spec`,
+        flat
+          ? `a doc set already exists at the repo root but no plan spec points at it — re-run with --hash <hash> to bind an existing spec`
+          : `workstream dir '${wsRel}' exists but no plan spec points at it — re-run with --hash <hash> to bind an existing spec`,
       );
     }
   }
@@ -437,23 +685,34 @@ export function createWorkstream(
     fs.mkdirRecursive(wsAbs);
     created.dir = true;
   }
-  for (const sub of SCAFFOLD_SUBDIRS) {
-    const subAbs = join(wsAbs, sub);
-    if (!fs.exists(subAbs)) fs.mkdirRecursive(subAbs);
+  // `SCAFFOLD_SUBDIRS` land at the repo root under `project-level` (owner
+  // decision, 2026-09-01). They are layout-identical rels, so routing them
+  // through the base is what puts them there — no branch needed.
+  for (const kind of SCAFFOLD_SUBDIR_KINDS) {
+    const subAbs = stageSubject(base.layout, base, kind).abs;
+    if (fs.exists(subAbs)) continue;
+    fs.mkdirRecursive(subAbs);
+    // Counts as creation. Under `project-level` `wsAbs` IS the repo root, so
+    // the `created.dir` above can never fire — without this a run that made
+    // three new root directories reported `noop: true` and told the operator
+    // "already scaffolded — nothing to do" (review EC#7).
+    created.dir = true;
   }
 
   const title = titleFromSlug(slug);
-  for (const t of [
-    { name: PRD_REL, key: "prd" as const },
-    { name: EXPECTATIONS_REL, key: "expectations" as const },
-    { name: TODO_REL, key: "todo" as const },
-  ]) {
-    const dest = artifactAbs(wsAbs, t.name);
+  for (const t of SCAFFOLDED_ARTIFACTS) {
+    // DESTINATION resolves through the layout; SOURCE never does. The shipped
+    // templates are workstream-shaped on disk in BOTH layouts, so an
+    // `ArtifactKind`-driven rel of `prd.md` would look for
+    // `_devx/templates/engine/prd.md` — which does not exist — and throw
+    // `engine template missing` on every flat-repo scaffold (E-3's
+    // MUST_NOT_FLAG entry says the same thing from the other side).
+    const dest = stageSubject(base.layout, base, t.kind).abs;
     if (fs.exists(dest)) continue;
-    const templateAbs = join(repoRoot, TEMPLATES_DIR, ...t.name.split("/"));
+    const templateAbs = join(repoRoot, TEMPLATES_DIR, ...t.source.split("/"));
     if (!fs.exists(templateAbs)) {
       throw new WorkstreamError(
-        `engine template missing at ${TEMPLATES_DIR}/${t.name} — run \`devx init\` (v2 scaffold) first`,
+        `engine template missing at ${TEMPLATES_DIR}/${t.source} — run \`devx init\` (v2 scaffold) first`,
       );
     }
     const body = fs
@@ -538,6 +797,13 @@ export interface ResolvedWorkstream {
   workstreamRel: string;
   /** Absolute workstream dir. */
   workstreamAbs: string;
+  /** Repo root — carried so the resolved workstream IS an `artifacts.ResolvedBase`
+   *  and every `*Abs()` call site can pass `ws` straight through (dlr104). */
+  repoRoot: string;
+  /** The layout this workstream was resolved under. Travels with the base for
+   *  the same reason: a consumer holding one without the other cannot tell a
+   *  root doc set from a directory named `.`. */
+  layout: DocsLayout;
 }
 
 /**
@@ -603,6 +869,8 @@ export function resolveWorkstream(
     frontmatterError: frontmatterParseError(content),
     workstreamRel,
     workstreamAbs,
+    repoRoot,
+    layout: engine.docsLayout,
   };
 }
 

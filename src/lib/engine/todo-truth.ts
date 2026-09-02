@@ -15,10 +15,9 @@
 // Spec: dev/dev-hfi103-2026-07-24T10:41-todo-sync-renderers-status.md
 // Design: _devx/workstreams/harness-fold-in/design/agent.md §Interfaces
 
-import { join } from "node:path";
 
 import { type EngineState, readEngineState } from "./frontmatter.js";
-import { TODO_REL } from "./artifacts.js";
+import { type ResolvedBase, TODO_REL, todoAbs } from "./artifacts.js";
 import {
   type TodoDoc,
   type TodoGroundTruth,
@@ -37,16 +36,21 @@ export interface TodoReadFs {
 export const TODO_FILENAME = TODO_REL;
 
 /**
- * Read + parse `<workstreamAbs>/todo.md`. Null when the file is absent
+ * Read + parse the doc set's todo.md. Null when the file is absent
  * (grandfathered workstream — every renderer omits its lines). A present
  * but unreadable file throws; callers map that to a warning/exit per
  * their own contract.
+ *
+ * Takes the resolved base rather than a bare `workstreamAbs` (dlr104): the
+ * hand-join it replaced put todo.md under a directory that does not exist in
+ * a flat repo, so `devx next`'s focus line and every drift row read as
+ * silence there.
  */
 export function loadTodoDoc(
   fs: TodoReadFs,
-  workstreamAbs: string,
+  base: ResolvedBase,
 ): { content: string; doc: TodoDoc } | null {
-  const abs = join(workstreamAbs, TODO_FILENAME);
+  const abs = todoAbs(base);
   if (!fs.exists(abs)) return null;
   const content = fs.readFile(abs);
   return { content, doc: parseTodo(content) };

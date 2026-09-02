@@ -60,6 +60,7 @@ import { type TodoItem, parseTodo } from "../engine/todo.js";
 import {
   type EngineFs,
   type PlanSpecIndexCache,
+  enumerateDocSets,
   realEngineFs,
   resolveSpecWorkstream,
 } from "../engine/workstream.js";
@@ -203,9 +204,9 @@ function indexSpecs(
   repoRoot: string,
   engine: EngineConfig,
   warnings: string[],
+  planCache: PlanSpecIndexCache = {},
 ): Map<string, SpecInfo> {
   const out = new Map<string, SpecInfo>();
-  const planCache: PlanSpecIndexCache = {};
   for (const type of SPEC_TYPE_DIRS) {
     const dir = join(repoRoot, type);
     if (!fs.exists(dir)) continue;
@@ -297,6 +298,10 @@ function readOrderingSignals(
   repoRoot: string,
   engine: EngineConfig,
   specs: Map<string, SpecInfo>,
+  /** Shared with `indexSpecs`' membership resolution. Without it the flat
+   *  arm of `enumerateDocSets` re-reads every plan spec — and, worse, gets a
+   *  second chance to disagree with membership if `plan/` changes underfoot. */
+  planCache: PlanSpecIndexCache = {},
 ): Map<string, OrderingSignal> {
   const out = new Map<string, OrderingSignal>();
   for (const spec of specs.values()) {
@@ -309,14 +314,12 @@ function readOrderingSignals(
     }
   }
 
-  const root = join(repoRoot, engine.workstreamsRoot);
-  if (!fs.exists(root)) return out;
-  let entries: string[];
-  try {
-    entries = [...fs.readdir(root)].sort();
-  } catch {
-    return out;
-  }
+  // Layout-resolved ENUMERATION (dlr104). The `planAbs`/`todoAbs` calls below
+  // were never the defect here — the readdir one level up was. Under
+  // `project-level` `<workstreams_root>/` does not exist, so this returned an
+  // empty list and every phase-ordering edge silently vanished: no error, no
+  // warning, just a board missing its edges.
+  const docSets = enumerateDocSets(fs, repoRoot, engine, planCache);
 
   const record = (
     hashRaw: string,
@@ -346,8 +349,8 @@ function readOrderingSignals(
     out.set(hash, { phase, via, workstream: slug });
   };
 
-  for (const slug of entries) {
-    const planMd = planAbs(join(root, slug));
+  for (const { slug, base } of docSets) {
+    const planMd = planAbs(base);
     if (fs.exists(planMd)) {
       let content = "";
       try {
@@ -360,7 +363,7 @@ function readOrderingSignals(
         if (m) record(m[2], Number(m[1]), "plan-pointer", slug);
       }
     }
-    const todoMd = todoAbs(join(root, slug));
+    const todoMd = todoAbs(base);
     if (fs.exists(todoMd)) {
       let content = "";
       try {
@@ -479,7 +482,10 @@ export function planBackfill(
     };
   }
   const model = built.model;
-  const specs = indexSpecs(fs, repoRoot, engine, warnings);
+  // ONE index of plan/ for the whole run: membership resolution and the doc-set
+  // enumeration must not answer from two different reads of the same dir.
+  const planCache: PlanSpecIndexCache = {};
+  const specs = indexSpecs(fs, repoRoot, engine, warnings, planCache);
   const backlog = indexBacklogRows(fs, repoRoot);
   const statusOf = new Map(model.nodes.map((n) => [n.hash, n.status]));
 
@@ -525,7 +531,7 @@ export function planBackfill(
   // deliberately did not write (this workstream's own sgr106 declares
   // `blocked_by: [sgr103]` precisely because it is NOT blocked by sgr105).
   // Derivation fills silence; it never argues.
-  const signals = readOrderingSignals(fs, repoRoot, engine, specs);
+  const signals = readOrderingSignals(fs, repoRoot, engine, specs, planCache);
   const workstreamOf = (hash: string): string | null =>
     specs.get(hash)?.workstream ?? signals.get(hash)?.workstream ?? null;
   // A workstream's PLAN spec is its container, not a phase within it: it
