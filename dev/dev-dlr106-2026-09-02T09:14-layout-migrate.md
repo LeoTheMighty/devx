@@ -133,3 +133,13 @@ Parallel-safe with phase 7 in file terms.
   outline check`) — the fix edits a three-layer human-only guard owned by
   another subsystem. Re-review clean.
 - 2026-09-02T14:46:29-06:00 — merged via PR #156 (squash → 35a6ae0)
+- 2026-09-02T14:58 — phase 5: local gate green (`npm test` 4,157 passed / 0
+  failed, REAL_EXIT=0); QA walkthrough emitted at
+  `test/test-7fd3a7-2026-09-02T14:45-dlr106-qa-walkthrough.md` (3 machine
+  checks executed with evidence pasted, 3 human outstanding).
+- 2026-09-02T14:58 — phase 7: opened
+  https://github.com/LeoTheMighty/devx/pull/156. (These two lines were written
+  in the worktree after the story commit, so they missed the PR; ported here
+  rather than dropped. Out of order against the merge line above because the
+  status log is append-only.)
+
