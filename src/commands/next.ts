@@ -279,30 +279,36 @@ function runWorkstreamNext(
 
   // evals/ counts as "authored" when it holds anything besides the report
   // this same pipeline writes (RED-report.md is an output, not an input).
-  const evalsAbs = artifacts.evalsDirAbs(ws.workstreamAbs);
+  const evalsAbs = artifacts.evalsDirAbs(ws);
   let evalsAuthored = false;
   if (fs.exists(evalsAbs)) {
     evalsAuthored = fs.readdir(evalsAbs).some(artifacts.isAuthoredEvalEntry);
   }
 
+  // `artifactExists`, not `fs.exists` — under `project-level` a case-blind
+  // probe reads devx's own `PLAN.md` backlog as `plan.md` on macOS/Windows,
+  // so row 8 is unreachable and the dispatcher wedges on Gate 3 (artifacts.ts).
+  const has = (kind: artifacts.ArtifactKind): boolean =>
+    artifacts.artifactExists(fs, ws, kind);
   const decision = nextForWorkstream(
     ws.hash,
     ws.state,
     {
-      prd: fs.exists(artifacts.prdAbs(ws.workstreamAbs)),
-      expectations: fs.exists(artifacts.expectationsAbs(ws.workstreamAbs)),
-      design: fs.exists(artifacts.designAbs(ws.workstreamAbs)),
-      plan: fs.exists(artifacts.planAbs(ws.workstreamAbs)),
+      prd: has({ kind: "agent", stage: "prd" }),
+      expectations: has({ kind: "expectations" }),
+      design: has({ kind: "agent", stage: "design" }),
+      plan: has({ kind: "agent", stage: "plan" }),
       evalsAuthored,
     },
     // Row 2's pending-outcome branch is measure_by-gated (v2o101).
     formatDate((opts.now ?? (() => new Date()))()),
+    ws.layout,
   );
 
   // hfi102: the decisions/ listing feeds the FAIL fix-path pointers. An
   // unreadable decisions/ (e.g. a file squatting on the name) degrades to
   // re-run-only pointers rather than crashing the dispatcher.
-  const decisionsAbs = artifacts.decisionsDirAbs(ws.workstreamAbs);
+  const decisionsAbs = artifacts.decisionsDirAbs(ws);
   let decisionNames: readonly string[] = [];
   if (fs.exists(decisionsAbs)) {
     try {
@@ -322,7 +328,7 @@ function runWorkstreamNext(
   let todoDrift: TodoDrift[] = [];
   let loaded: ReturnType<typeof loadTodoDoc> = null;
   try {
-    loaded = loadTodoDoc(fs, ws.workstreamAbs);
+    loaded = loadTodoDoc(fs, ws);
   } catch {
     // unreadable todo.md — degrade to silence (advisory-only surface)
   }
@@ -343,8 +349,9 @@ function runWorkstreamNext(
       gate_summary: renderGateSummary(ws.state, {
         hash: ws.hash,
         workstreamRel: ws.workstreamRel,
+        layout: ws.layout,
         decisionNames,
-        evalsReportExists: fs.exists(artifacts.redReportAbs(ws.workstreamAbs)),
+        evalsReportExists: has({ kind: "red-report" }),
       }),
       focus,
       todo_drift: todoDrift,

@@ -14,7 +14,7 @@
 //
 // Design: v2/02-engine.md §3 (workstream anatomy)
 
-import { join, posix } from "node:path";
+import { basename, dirname, join, posix } from "node:path";
 
 // ---------------------------------------------------------------------------
 // Workstream-relative artifact paths (display form).
@@ -208,23 +208,6 @@ export function artifactAbs(wsAbs: string, rel: string): string {
   return join(wsAbs, ...rel.split("/"));
 }
 
-export const prdAbs = (wsAbs: string): string => artifactAbs(wsAbs, PRD_REL);
-export const designAbs = (wsAbs: string): string => artifactAbs(wsAbs, DESIGN_REL);
-export const planAbs = (wsAbs: string): string => artifactAbs(wsAbs, PLAN_REL);
-export const expectationsAbs = (wsAbs: string): string =>
-  artifactAbs(wsAbs, EXPECTATIONS_REL);
-export const todoAbs = (wsAbs: string): string => artifactAbs(wsAbs, TODO_REL);
-export const evalsDirAbs = (wsAbs: string): string =>
-  artifactAbs(wsAbs, EVALS_DIR_REL);
-export const redReportAbs = (wsAbs: string): string =>
-  artifactAbs(wsAbs, RED_REPORT_REL);
-export const decisionsDirAbs = (wsAbs: string): string =>
-  artifactAbs(wsAbs, DECISIONS_DIR_REL);
-export const checkpointsDirAbs = (wsAbs: string): string =>
-  artifactAbs(wsAbs, CHECKPOINTS_DIR_REL);
-export const resultsAbs = (wsAbs: string): string =>
-  artifactAbs(wsAbs, RESULTS_REL);
-
 // ---------------------------------------------------------------------------
 // The artifact map — one (layout, base, kind) → path decision.
 // ---------------------------------------------------------------------------
@@ -314,8 +297,13 @@ const COMPANION_REL = {
 /** Doc-set-relative path of an artifact under a given layout — the half of the
  *  map that the layout actually chooses. Layout-identical rows (`evals/`,
  *  `decisions/`, `checkpoints/`, `expectations.md`, `todo.md`, `RESULTS.md`,
- *  `evals/RED-report.md`) are stated once, not duplicated per branch. */
-function artifactRel(layout: DocsLayout, kind: ArtifactKind): string {
+ *  `evals/RED-report.md`) are stated once, not duplicated per branch.
+ *
+ *  Exported for the DISPLAY sites that name an artifact without reading it —
+ *  `engine/next.ts`'s row reasons, gate refusal prose. They have a layout but
+ *  no base, and spelling `prd/agent.md` at them in a flat repo names a file
+ *  that does not exist. */
+export function artifactRel(layout: DocsLayout, kind: ArtifactKind): string {
   switch (kind.kind) {
     case "agent":
       // `projectAgentRel` is `StageDir`-wide and returns the evals DIRECTORY
@@ -368,6 +356,110 @@ export function stageSubject(
   const wsRel = normalizeArtifactPath(base.workstreamRel);
   const rel = normalizeArtifactPath(wsRel === "" ? artifact : `${wsRel}/${artifact}`);
   return { rel, abs: artifactAbs(base.repoRoot, rel) };
+}
+
+// ---------------------------------------------------------------------------
+// Layout-aware absolute resolvers.
+// ---------------------------------------------------------------------------
+
+/** A doc-set base plus the layout that shapes it — exactly what
+ *  `resolveWorkstream()` returns, which is why every consumer can pass its
+ *  `ws` straight through.
+ *
+ *  The layout travels WITH the base rather than beside it because the pair is
+ *  what identifies a doc set: a `workstreamRel` of `.` means the repo root
+ *  under `project-level` and a directory literally named `.` under
+ *  `workstream`, and the ten helpers below cannot tell those apart from the
+ *  path alone. Splitting them into two arguments is what let 21 call sites
+ *  hand a bare `wsAbs` to a layout-blind helper and read every artifact as
+ *  missing (dlr104). */
+export interface ResolvedBase extends SubjectBase {
+  layout: DocsLayout;
+}
+
+const absOf = (base: ResolvedBase, kind: ArtifactKind): string =>
+  stageSubject(base.layout, base, kind).abs;
+
+export const prdAbs = (base: ResolvedBase): string =>
+  absOf(base, { kind: "agent", stage: "prd" });
+export const designAbs = (base: ResolvedBase): string =>
+  absOf(base, { kind: "agent", stage: "design" });
+export const planAbs = (base: ResolvedBase): string =>
+  absOf(base, { kind: "agent", stage: "plan" });
+export const expectationsAbs = (base: ResolvedBase): string =>
+  absOf(base, { kind: "expectations" });
+export const todoAbs = (base: ResolvedBase): string =>
+  absOf(base, { kind: "todo" });
+export const evalsDirAbs = (base: ResolvedBase): string =>
+  absOf(base, { kind: "evals-dir" });
+export const redReportAbs = (base: ResolvedBase): string =>
+  absOf(base, { kind: "red-report" });
+export const decisionsDirAbs = (base: ResolvedBase): string =>
+  absOf(base, { kind: "decisions-dir" });
+export const checkpointsDirAbs = (base: ResolvedBase): string =>
+  absOf(base, { kind: "checkpoints-dir" });
+export const resultsAbs = (base: ResolvedBase): string =>
+  absOf(base, { kind: "results" });
+
+/** `SCAFFOLD_SUBDIRS` as identities rather than rels — what the scaffold
+ *  iterates so its three empty dirs land wherever the layout puts them
+ *  (the repo root under `project-level`). Same order, and asserted to be the
+ *  same set as `SCAFFOLD_SUBDIRS` in `test/engine-artifacts.test.ts`: two
+ *  spellings of one list is how the flat layout ends up with two of the three.
+ */
+export const SCAFFOLD_SUBDIR_KINDS: readonly ArtifactKind[] = [
+  { kind: "decisions-dir" },
+  { kind: "checkpoints-dir" },
+  { kind: "evals-dir" },
+];
+
+/** Minimal read seam — `EngineFs`, `NextFs` and the eval fixtures all qualify
+ *  structurally, so this module still imports nothing from them. */
+export interface ArtifactProbeFs {
+  exists(path: string): boolean;
+  readdir(path: string): string[];
+}
+
+/**
+ * Does this artifact exist, under the name the layout actually gives it?
+ *
+ * `fs.exists` is not enough and the reason is specific to `project-level`:
+ * there the doc set IS the repo root, so `plan.md` sits beside devx's own
+ * `PLAN.md` backlog — and macOS (APFS/HFS+) and Windows (NTFS) are
+ * case-INSENSITIVE by default, so `existsSync("<root>/plan.md")` answers TRUE
+ * on a repo that has authored no plan at all. Every consequence of that is
+ * silent: `devx next` reports the plan authored and wedges on Gate 3 forever,
+ * `validate-emit` reads the BACKLOG as the epic plan, and `backfill` mines it
+ * for phase pointers. A directory listing is the only thing that knows
+ * `plan.md` is not `PLAN.md`.
+ *
+ * Under `workstream` the two questions cannot differ — an artifact lives in a
+ * directory devx owns, with no differently-cased neighbour — so that branch
+ * keeps the cheap `exists` and its behavior is unchanged.
+ *
+ * The general fix for every REMAINING `fs.exists` in the tree is `debug-135dc9`;
+ * this closes the sites dlr104 itself makes reachable.
+ */
+export function artifactExists(
+  fs: ArtifactProbeFs,
+  base: ResolvedBase,
+  kind: ArtifactKind,
+): boolean {
+  const subject = stageSubject(base.layout, base, kind);
+  if (base.layout !== "project-level") return fs.exists(subject.abs);
+  if (!fs.exists(subject.abs)) return false;
+  // Only now pay for the listing: the cheap probe is a correct NEGATIVE in
+  // both layouts, so the readdir runs only to disqualify a case-blind hit.
+  const parent = dirname(subject.abs);
+  const name = basename(subject.abs);
+  try {
+    return fs.readdir(parent).includes(name);
+  } catch {
+    // An unreadable parent cannot confirm the name. Answering false keeps the
+    // failure in the "artifact not authored" direction, which every consumer
+    // already handles, rather than handing back a file we could not verify.
+    return false;
+  }
 }
 
 /** Every representable identity, in one place, so both the reverse map and

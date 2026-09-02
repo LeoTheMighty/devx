@@ -893,9 +893,21 @@ function gatherWorkstreamSignals(
       outcomeDue.push({ hash, slug, measureBy: state.outcome.measure_by });
     }
 
-    const wsAbs = wsRel !== null ? join(repoRoot, ...wsRel.split("/")) : null;
-    const artifacts = artifactsFor(fs, wsAbs);
-    const decision = nextForWorkstream(hash, state, artifacts, today);
+    // The base, not a bare abs dir: `wsRel` is `.` under `project-level` and
+    // the resolvers need the layout to know that means the repo root rather
+    // than a directory named `.` (dlr104). Every probe below and the whole
+    // `artifactsFor` sweep hang off this — before it, a flat repo read every
+    // artifact as missing and `devx next` wedged on row 4 forever.
+    const base: wsArtifacts.ResolvedBase | null =
+      wsRel === null ? null : { repoRoot, workstreamRel: wsRel, layout: engine.docsLayout };
+    const artifacts = artifactsFor(fs, base);
+    const decision = nextForWorkstream(
+      hash,
+      state,
+      artifacts,
+      today,
+      engine.docsLayout,
+    );
 
     // hfi103: focus line + advisory todo-drift rows from todo.md — computed
     // for EVERY engine workstream, not just midPipeline ones, because
@@ -907,12 +919,19 @@ function gatherWorkstreamSignals(
     // never take the dispatcher down. The load and the drift compute carry
     // separate warnings so a dev/-scan failure isn't blamed on todo.md.
     let focus: string | null = null;
-    if (wsAbs !== null) {
+    if (base !== null) {
       let loaded: ReturnType<typeof loadTodoDoc> = null;
+      const todoRel = wsArtifacts.stageSubject(base.layout, base, {
+        kind: "todo",
+      }).rel;
       try {
-        loaded = loadTodoDoc(fs, wsAbs);
+        loaded = loadTodoDoc(fs, base);
       } catch (e) {
-        warnings.push(`${wsRel}/todo.md unreadable: ${errMessage(e)}`);
+        // The path the operator would open — resolved, not concatenated. Under
+        // `project-level` the hand-joined form named `./todo.md` under a
+        // workstream directory that does not exist, sending them looking for a
+        // file at a path nothing in the repo can produce.
+        warnings.push(`${todoRel} unreadable: ${errMessage(e)}`);
       }
       if (loaded !== null) {
         focus = renderFocusLine(loaded.doc, state.stage);
@@ -925,7 +944,7 @@ function gatherWorkstreamSignals(
           }
         } catch (e) {
           warnings.push(
-            `todo drift for ${wsRel} not computed (dev-spec scan failed): ${errMessage(e)}`,
+            `todo drift for ${slug ?? wsRel} not computed (dev-spec scan failed): ${errMessage(e)}`,
           );
         }
       }
@@ -939,13 +958,19 @@ function gatherWorkstreamSignals(
       // unreadable decisions/ (e.g. a file squatting on the name) degrades
       // to re-run-only pointers with a warning — same posture as the
       // per-spec read failures above, never a dispatcher crash.
-      const decisionsAbs = wsAbs !== null ? wsArtifacts.decisionsDirAbs(wsAbs) : null;
+      const decisions =
+        base !== null
+          ? wsArtifacts.stageSubject(base.layout, base, { kind: "decisions-dir" })
+          : null;
       let decisionNames: readonly string[] = [];
-      if (decisionsAbs !== null && fs.exists(decisionsAbs)) {
+      if (decisions !== null && fs.exists(decisions.abs)) {
         try {
-          decisionNames = fs.readdir(decisionsAbs);
+          decisionNames = fs.readdir(decisions.abs);
         } catch (e) {
-          warnings.push(`${wsRel}/decisions unreadable: ${errMessage(e)}`);
+          // Resolved, not concatenated — same rule as the todo.md warning
+          // above. `${wsRel}/decisions` renders `./decisions` under
+          // `project-level`, a spelling nothing in the repo produces.
+          warnings.push(`${decisions.rel} unreadable: ${errMessage(e)}`);
         }
       }
       midPipeline.push({
@@ -957,9 +982,11 @@ function gatherWorkstreamSignals(
         gateSummary: renderGateSummary(state, {
           hash,
           workstreamRel: wsRel,
+          layout: engine.docsLayout,
           decisionNames,
           evalsReportExists:
-            wsAbs !== null && fs.exists(wsArtifacts.redReportAbs(wsAbs)),
+            base !== null &&
+            wsArtifacts.artifactExists(fs, base, { kind: "red-report" }),
         }),
         focus,
       });
@@ -968,8 +995,17 @@ function gatherWorkstreamSignals(
   return { midPipeline, outcomeDue, todoDrift: allTodoDrift };
 }
 
-function artifactsFor(fs: NextFs, wsAbs: string | null): WorkstreamArtifacts {
-  if (wsAbs === null || !fs.exists(wsAbs)) {
+function artifactsFor(
+  fs: NextFs,
+  base: wsArtifacts.ResolvedBase | null,
+): WorkstreamArtifacts {
+  // The doc-set dir itself still gates the sweep — a `workstream:` pointer at
+  // a directory that was deleted must read as "nothing authored", not as a
+  // pile of ENOENTs. Under `project-level` the base is the repo root, which
+  // always exists, so the gate is a no-op there and the probes below answer.
+  const docSetAbs =
+    base === null ? null : join(base.repoRoot, ...base.workstreamRel.split("/"));
+  if (base === null || docSetAbs === null || !fs.exists(docSetAbs)) {
     return {
       prd: false,
       expectations: false,
@@ -978,16 +1014,21 @@ function artifactsFor(fs: NextFs, wsAbs: string | null): WorkstreamArtifacts {
       evalsAuthored: false,
     };
   }
-  const evalsAbs = wsArtifacts.evalsDirAbs(wsAbs);
+  const evalsAbs = wsArtifacts.evalsDirAbs(base);
   let evalsAuthored = false;
   if (fs.exists(evalsAbs)) {
     evalsAuthored = fs.readdir(evalsAbs).some(wsArtifacts.isAuthoredEvalEntry);
   }
+  // `artifactExists`, not `fs.exists`: under `project-level` a case-blind probe
+  // reads devx's own `PLAN.md` backlog as the plan artifact, so `plan` is true
+  // on every macOS flat repo and row 8 is unreachable (see artifacts.ts).
+  const at = (kind: wsArtifacts.ArtifactKind): boolean =>
+    wsArtifacts.artifactExists(fs, base, kind);
   return {
-    prd: fs.exists(wsArtifacts.prdAbs(wsAbs)),
-    expectations: fs.exists(wsArtifacts.expectationsAbs(wsAbs)),
-    design: fs.exists(wsArtifacts.designAbs(wsAbs)),
-    plan: fs.exists(wsArtifacts.planAbs(wsAbs)),
+    prd: at({ kind: "agent", stage: "prd" }),
+    expectations: at({ kind: "expectations" }),
+    design: at({ kind: "agent", stage: "design" }),
+    plan: at({ kind: "agent", stage: "plan" }),
     evalsAuthored,
   };
 }

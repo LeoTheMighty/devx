@@ -659,16 +659,55 @@ the resolvers behind it are correct (R-2).
     `devx workstream new <slug>` output byte-identical to `main`.
 
 **Tasks**:
-- [ ] T4.1 Author `evals/E-3_no-hand-joins.ts` + `test/engine-layout-no-hand-joins.test.ts` RED **before any hand-join is closed**, and run the negative control against the five live sites — files: `_devx/workstreams/docs-layout-resolution/evals/E-3_no-hand-joins.ts`, `test/engine-layout-no-hand-joins.test.ts`
-- [ ] T4.2 Author `evals/E-5_scaffold.ts` + companion test RED; register it in `SYNC_BLOCKING_TESTS` — files: `_devx/workstreams/docs-layout-resolution/evals/E-5_scaffold.ts`, `test/engine-layout-scaffold.test.ts`, `vitest.shared.ts`
-- [ ] T4.3 Re-signature the ten `*Abs()` helpers over `stageSubject()` — files: `src/lib/engine/artifacts.ts`
-- [ ] T4.4 Update the 21 remaining `*Abs()` call sites (`commands/gate.ts`'s 12 are Phase 2's) — files: the modules listed above
-- [ ] T4.5 Close the five hand-joins; rename the shadowing `todoAbs` locals — files: `src/lib/engine/todo-truth.ts`, `src/commands/todo.ts`, `src/lib/devx/mark-done.ts`, `src/lib/plan/validate-emit.ts`, `src/commands/outcome.ts`
-- [ ] T4.6 Layout-resolve `backfill.ts`'s enumeration — files: `src/lib/graph/backfill.ts`
-- [ ] T4.7 Route `devx next` probes and reason strings — files: `src/lib/next/gather.ts`, `src/commands/next.ts`, `src/lib/engine/next.ts`
-- [ ] T4.8 Move the message sites onto `subject.rel` — files: `src/lib/engine/render.ts`, `src/lib/next/gather.ts`
-- [ ] T4.9 `createWorkstream`: doc-set probe, `ArtifactKind` destination list, optional slug — files: `src/lib/engine/workstream.ts`
-- [ ] T4.10 Make the commander argument `[slug]`; move the refusal into `runWorkstreamNew` — files: `src/commands/workstream.ts`
+- [x] T4.1 Author `evals/E-3_no-hand-joins.ts` + `test/engine-layout-no-hand-joins.test.ts` RED **before any hand-join is closed**, and run the negative control against the five live sites — files: `_devx/workstreams/docs-layout-resolution/evals/E-3_no-hand-joins.ts`, `test/engine-layout-no-hand-joins.test.ts`
+- [x] T4.2 Author `evals/E-5_scaffold.ts` + companion test RED; register it in `SYNC_BLOCKING_TESTS` — files: `_devx/workstreams/docs-layout-resolution/evals/E-5_scaffold.ts`, `test/engine-layout-scaffold.test.ts`, `vitest.shared.ts`
+- [x] T4.3 Re-signature the ten `*Abs()` helpers over `stageSubject()` — files: `src/lib/engine/artifacts.ts`
+- [x] T4.4 Update the 21 remaining `*Abs()` call sites (`commands/gate.ts`'s 12 are Phase 2's) — files: the modules listed above
+- [x] T4.5 Close the five hand-joins; rename the shadowing `todoAbs` locals — files: `src/lib/engine/todo-truth.ts`, `src/commands/todo.ts`, `src/lib/devx/mark-done.ts`, `src/lib/plan/validate-emit.ts`, `src/commands/outcome.ts`
+- [x] T4.6 Layout-resolve `backfill.ts`'s enumeration — files: `src/lib/graph/backfill.ts`
+- [x] T4.7 Route `devx next` probes and reason strings — files: `src/lib/next/gather.ts`, `src/commands/next.ts`, `src/lib/engine/next.ts`
+- [x] T4.8 Move the message sites onto `subject.rel` — files: `src/lib/engine/render.ts`, `src/lib/next/gather.ts`
+- [x] T4.9 `createWorkstream`: doc-set probe, `ArtifactKind` destination list, optional slug — files: `src/lib/engine/workstream.ts`
+- [x] T4.10 Make the commander argument `[slug]`; move the refusal into `runWorkstreamNew` — files: `src/commands/workstream.ts`
+
+**As-built (dlr104).** Four departures, all inside phase 4's seam — none
+re-scopes another phase or contradicts the design, so none went through
+`devx revise`:
+
+- **T4.10's refusal landed one layer deeper than the task names.**
+  `runWorkstreamNew` keeps an arity check (`args.length > 1` → exit 2, plus
+  an explicitly-empty slug reading as absent); the refusal that NAMES
+  `engine.docs_layout: workstream` lives in `createWorkstream`, because that
+  is where the layout is. Putting it in the command layer would have meant
+  reading config twice. E-5's no-slug cases are reachable and exit 1 either
+  way.
+- **A tenth file joined the sweep: `artifactExists()` in `artifacts.ts`.**
+  Not in the Files list, and forced by a defect this phase uncovered rather
+  than by the design: under `project-level` the doc set sits at the repo root
+  beside devx's own backlogs, and `plan.md` / `PLAN.md` are the SAME FILE on
+  macOS and Windows. Every `fs.exists` artifact probe therefore answered true
+  on a repo that had authored nothing, so `devx next` skipped row 8 and
+  `validate-emit` read the BACKLOG as the epic plan. The probes now confirm
+  the name against a directory listing. Reads only — the write half
+  (authoring `plan.md` truncates `PLAN.md` in place, verified) is
+  `debug-135dc9`, and it is the more dangerous half.
+- **`enumerateDocSets` takes the shared `PlanSpecIndexCache`.** Without it
+  `backfill` read `plan/` twice per run and the two reads could disagree
+  about which spec owns the doc set — which silently discarded every
+  ordering signal, the exact failure T4.6 exists to fix.
+- **`scoreResolved` takes the whole `EngineConfig`, not `workstreamsRoot`.**
+  The successor pointer and the record's title both resolve through the
+  LAYOUT, and a bare root cannot answer either.
+
+Also corrected against the plan's own text: **E-3's `MUST_FLAG` negative
+control was rewritten** during T4.1. Its "was the code fixed or the scan
+blunted?" proxy asked whether a file still MENTIONED any subject name in raw
+text — and `design/agent.md` is a subject literal that appears in nearly every
+`src/` file's own `// Design:` header, so the proxy was true regardless of the
+code and the control could never report `closed`. Replaced with a per-site
+regex naming the exact expression that must be gone, and demonstrated in both
+directions. Record: `decisions/2026-09-02-e3-control-proxy.md`. NOT re-stamped
+— `devx gate evals` requires the evals to be RED, and four are green now.
 
 ### 5. Phase: Identity re-key and privatization
 

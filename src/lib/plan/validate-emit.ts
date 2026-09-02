@@ -47,7 +47,7 @@ import {
   readFileSync,
   readdirSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 
 import { blankFencedLines } from "../backlog/parse.js";
 import { isNullishScalar } from "../frontmatter-scalar.js";
@@ -55,7 +55,13 @@ import {
   type DeriveBranchConfig,
   deriveBranch,
 } from "./derive-branch.js";
-import { PLAN_REL } from "../engine/artifacts.js";
+import {
+  artifactExists,
+  artifactRel,
+  docsLayoutFrom,
+  stageSubject,
+} from "../engine/artifacts.js";
+import { PROJECT_LEVEL_WORKSTREAM_REL } from "../engine/workstream.js";
 
 // Same hash regex as plan-helper.ts (3-12 alnum chars). Used for the
 // synthesized retro hash and for parsing dev/ filenames; story-list
@@ -181,8 +187,49 @@ export function validateEmit(
   //     archive — it never gains new epics, so a new slug that misses
   //     both paths is a genuine not-found.
   const wsRoot = workstreamsRootFrom(inputs.config);
-  const planRel = `${wsRoot}/${inputs.epicSlug}/${PLAN_REL}`;
-  const planPath = join(inputs.repoRoot, ...planRel.split("/"));
+  const layout = docsLayoutFrom(inputs.config);
+  // How this epic's workstream is NAMED in a spec's `workstream:` frontmatter,
+  // and the base its artifacts resolve against. Under `project-level` there is
+  // no slug directory: the doc set is the repo root, the epic slug names the
+  // plan spec only.
+  const planBase = {
+    repoRoot: inputs.repoRoot,
+    workstreamRel:
+      layout === "project-level"
+        ? PROJECT_LEVEL_WORKSTREAM_REL
+        : `${wsRoot}/${inputs.epicSlug}`,
+    layout,
+  };
+  // Read the marker back OUT of a resolved subject rather than re-deriving it,
+  // so it passes through the same normalizer every artifact path does.
+  // `engineConfigFrom` strips a trailing slash from `workstreams_root` but not
+  // a leading `./`, and `stageSubject` strips exactly that — so a
+  // `workstreams_root: ./_devx/workstreams` gave a normalized `planRel` and an
+  // unnormalized marker, and `fromClaimRe`'s left boundary then rejected the
+  // `./`-spelled `from:` values that very config produces (review BH#10).
+  // Expectations is the anchor because it sits at the doc-set root in BOTH
+  // layouts, so its parent IS the base.
+  const wsDirMarker = posix.dirname(
+    stageSubject(layout, planBase, { kind: "expectations" }).rel,
+  );
+  const planSubject = stageSubject(layout, planBase, {
+    kind: "agent",
+    stage: "plan",
+  });
+  /** Doc-set-relative display name of the plan artifact — `plan/agent.md` or
+   *  `plan.md`. The messages below NAME the artifact; they do not build a path
+   *  to it, so they take this rather than the repo-relative `planSubject.rel`. */
+  const planName = artifactRel(layout, { kind: "agent", stage: "plan" });
+  const planRel = planSubject.rel;
+  const planPath = planSubject.abs;
+  // Exact-name under `project-level`: `fs.exists("<root>/plan.md")` answers
+  // true for devx's own `PLAN.md` backlog on macOS/Windows, and this probe
+  // decides whether to READ that file as the epic plan (artifacts.ts).
+  const planExists = artifactExists(
+    { exists: fs.exists, readdir: fs.readdir },
+    planBase,
+    { kind: "agent", stage: "plan" },
+  );
   const archiveRel = `_bmad-output/planning-artifacts/epic-${inputs.epicSlug}.md`;
   const archivePath = join(inputs.repoRoot, archiveRel);
   const triedPaths = [planPath, archivePath];
@@ -190,7 +237,7 @@ export function validateEmit(
   let source: "workstream-plan" | "frozen-epic";
   let epicPath: string;
   let epicRel: string;
-  if (fs.exists(planPath)) {
+  if (planExists) {
     source = "workstream-plan";
     epicPath = planPath;
     epicRel = planRel;
@@ -282,7 +329,6 @@ export function validateEmit(
   //         tracked by the epic. A spec left behind after a story rename or
   //         scope-cut is the regression class this catches. ------------
   const epicFromMarker = `epic-${inputs.epicSlug}.md`;
-  const wsDirMarker = `${wsRoot}/${inputs.epicSlug}`;
   for (const fn of sortedDevFiles) {
     const m = fn.match(/^dev-([a-z0-9]{3,12})-/i);
     if (!m) continue;
@@ -303,16 +349,25 @@ export function validateEmit(
       const fromVal = parseFrontmatterValue(body, "from");
       const wsVal = parseFrontmatterValue(body, "workstream");
       const fromClaimRe = new RegExp(
-        `(?:^|[\\s('"\`])${escapeRe(wsDirMarker)}/${escapeRe(PLAN_REL)}(?:$|[\\s)'"\`,;])`,
+        `(?:^|[\\s('"\`])${escapeRe(planRel)}(?:$|[\\s)'"\`,;])`,
       );
+      // The `workstream:` arm is a DIRECTORY marker, and under `project-level`
+      // there is no directory: `wsDirMarker` is `.`, which every engine-managed
+      // spec in the repo carries. Kept as a claim signal it would mark every
+      // dev spec of every past workstream an orphan of THIS epic and abort the
+      // emit run (adversarial review BH#1/EC#3). Under that layout the epic's
+      // identity lives in the plan spec's filename, which is what `from:`
+      // names — so the `from:` arm is the only one that can discriminate, and
+      // it is left to do the job alone.
+      const claimsViaWorkstreamDir =
+        layout !== "project-level" && wsVal === wsDirMarker;
       const claims =
-        (fromVal !== null && fromClaimRe.test(fromVal)) ||
-        wsVal === wsDirMarker;
+        (fromVal !== null && fromClaimRe.test(fromVal)) || claimsViaWorkstreamDir;
       if (claims) {
         issues.push({
           severity: "error",
           check: "orphan-spec-claims-epic",
-          message: `spec for '${hash}' claims workstream '${wsDirMarker}' but no phase in ${PLAN_REL} tracks it`,
+          message: `spec for '${hash}' claims ${layout === "project-level" ? planRel : `workstream '${wsDirMarker}'`} but no phase in ${planName} tracks it`,
           location: `dev/${fn}`,
         });
       }

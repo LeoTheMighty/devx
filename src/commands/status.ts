@@ -117,6 +117,11 @@ export function runStatus(opts: RunStatusOpts = {}): number {
       // bypass the layout guard and drop the workstream on the probe below.
       const wsRel = planSpecWorkstreamRel(name, state.workstream, engine);
       if (wsRel === null) continue;
+      const base: artifacts.ResolvedBase = {
+        repoRoot,
+        workstreamRel: wsRel,
+        layout: engine.docsLayout,
+      };
       const wsAbs = join(repoRoot, ...wsRel.split("/"));
       if (!fs.exists(wsAbs)) continue;
 
@@ -125,7 +130,7 @@ export function runStatus(opts: RunStatusOpts = {}): number {
         state.stage === "done" && state.outcome.status === "pending";
       if (!active && !outcomePending) continue;
 
-      const decisionsAbs = artifacts.decisionsDirAbs(wsAbs);
+      const decisionsAbs = artifacts.decisionsDirAbs(base);
       let decisionNames: readonly string[] = [];
       if (fs.exists(decisionsAbs)) {
         try {
@@ -137,13 +142,14 @@ export function runStatus(opts: RunStatusOpts = {}): number {
       const summary = renderGateSummary(state, {
         hash,
         workstreamRel: wsRel,
+        layout: engine.docsLayout,
         decisionNames,
-        evalsReportExists: fs.exists(artifacts.redReportAbs(wsAbs)),
+        evalsReportExists: artifacts.artifactExists(fs, base, { kind: "red-report" }),
       });
 
       let focusLine: string | null = null;
       try {
-        const loaded = loadTodoDoc(fs, wsAbs);
+        const loaded = loadTodoDoc(fs, base);
         focusLine = renderFocusLine(loaded?.doc ?? null, state.stage);
       } catch {
         // unreadable todo.md — the focus line is advisory; omit it

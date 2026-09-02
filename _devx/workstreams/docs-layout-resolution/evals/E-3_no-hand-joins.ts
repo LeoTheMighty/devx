@@ -172,11 +172,31 @@ for (const rel of consumers) hits.push(...scanFile(rel));
  *  hit — but a site that vanishes from the scan while its code is unchanged
  *  is a blunted scan, and that is what this catches. */
 const MUST_FLAG = [
-  { file: "src/lib/engine/todo-truth.ts", what: "join(workstreamAbs, TODO_FILENAME)" },
-  { file: "src/commands/todo.ts", what: "join(ws.workstreamAbs, TODO_FILENAME)" },
-  { file: "src/lib/devx/mark-done.ts", what: "join(repoRoot, workstreamRel, TODO_FILENAME)" },
-  { file: "src/lib/plan/validate-emit.ts", what: "`${wsRoot}/${epicSlug}/${PLAN_REL}`" },
-  { file: "src/commands/outcome.ts", what: "`${ws.workstreamRel}/RESULTS.md`" },
+  {
+    file: "src/lib/engine/todo-truth.ts",
+    what: "join(workstreamAbs, TODO_FILENAME)",
+    stillThere: /join\(\s*workstreamAbs\s*,\s*TODO_FILENAME\s*\)/,
+  },
+  {
+    file: "src/commands/todo.ts",
+    what: "join(ws.workstreamAbs, TODO_FILENAME)",
+    stillThere: /join\(\s*ws\.workstreamAbs\s*,\s*TODO_FILENAME\s*\)/,
+  },
+  {
+    file: "src/lib/devx/mark-done.ts",
+    what: "join(repoRoot, workstreamRel, TODO_FILENAME)",
+    stillThere: /join\(\s*opts\.repoRoot\s*,\s*planHash\.workstreamRel\s*,\s*TODO_FILENAME\s*\)/,
+  },
+  {
+    file: "src/lib/plan/validate-emit.ts",
+    what: "`${wsRoot}/${epicSlug}/${PLAN_REL}`",
+    stillThere: /\$\{wsRoot\}\/\$\{inputs\.epicSlug\}\/\$\{PLAN_REL\}/,
+  },
+  {
+    file: "src/commands/outcome.ts",
+    what: "`${ws.workstreamRel}/RESULTS.md`",
+    stillThere: /\$\{ws\.workstreamRel\}\/RESULTS\.md/,
+  },
 ];
 
 /** Sites that only LOOK like bypasses. Flagging one means the scan has become
@@ -206,11 +226,21 @@ for (const site of MUST_FLAG) {
   const codeGone = !existsSync(join(repoRoot, ...site.file.split("/")));
   if (!stillLive && !codeGone) {
     // Either Phase 4 closed it (fine) or the scan stopped seeing it (not).
+    //
+    // The question is about THIS SITE's code, so it is asked about this site's
+    // code: is the exact expression the entry names still present, with
+    // comments and strings blanked? The first spelling of this test asked
+    // whether the file still MENTIONED any subject name anywhere in its raw
+    // text — which every file in `src/` does, because every file cites its own
+    // `// Design: …/design/agent.md` header and `design/agent.md` is a subject
+    // literal. That proxy was therefore true no matter what the code said, so
+    // the control could never report `closed` and E-3 could never pass on a
+    // correctly-fixed tree. Naming the expression is strictly SHARPER, not
+    // looser: a blunted scan leaves the hand-join in place, and the hand-join
+    // in place is exactly what this now matches on. (dlr104; recorded in
+    // `decisions/2026-09-02-e3-control-proxy.md`.)
     const body = codeOnly(readSrc(site.file));
-    const identsStillThere = SUBJECT_IDENTS.some((id) =>
-      new RegExp(`\\b${id}\\b`).test(body),
-    ) || SUBJECT_LITERALS.some((lit) => readSrc(site.file).includes(lit));
-    if (identsStillThere) {
+    if (site.stillThere.test(body)) {
       controlFailures.push(
         `negative control: ${site.file} still mentions a stage-subject name but the scan flags nothing there — expected to catch ${site.what}. The scan has been blunted, not the code fixed (R-6).`,
       );

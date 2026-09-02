@@ -44,6 +44,7 @@ import {
   titleFromSlug,
   workstreamSlugFor,
 } from "../lib/engine/workstream.js";
+import * as artifacts from "../lib/engine/artifacts.js";
 
 export interface RunTodoSyncOpts {
   out?: (s: string) => void;
@@ -84,11 +85,14 @@ export function runTodoSync(
     throw e;
   }
 
-  const todoAbs = join(ws.workstreamAbs, TODO_FILENAME);
+  // `todoPath`, not `todoAbs` — the local used to shadow the imported resolver
+  // of that name, so a reader could not tell which one a line meant and the
+  // hand-join below hid behind the collision (dlr104).
+  const todoPath = artifacts.todoAbs(ws);
   let created = false;
   let content: string;
   try {
-    const loaded = loadTodoDoc(fs, ws.workstreamAbs);
+    const loaded = loadTodoDoc(fs, ws);
     if (loaded !== null) {
       content = loaded.content;
     } else {
@@ -120,7 +124,7 @@ export function runTodoSync(
     const truth = todoGroundTruth(fs, repoRoot, ws.state, doc);
     const trued = trueDerivedLines(content, truth);
     if (created || trued.trued.length > 0) {
-      fs.writeFile(todoAbs, trued.content);
+      fs.writeFile(todoPath, trued.content);
     }
     out(
       `${JSON.stringify({ hash: ws.hash, created, trued: trued.trued })}\n`,
