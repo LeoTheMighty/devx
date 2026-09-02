@@ -4,7 +4,7 @@
 
 # Story graph
 
-219 specs across 25 groups — 12 blocked · 151 done · 7 in-progress · 49 ready; 437 edges.
+221 specs across 25 groups — 12 blocked · 152 done · 6 in-progress · 51 ready; 439 edges.
 
 ## Legend
 
@@ -153,6 +153,7 @@ flowchart TD
   end
   subgraph sg_standalone["standalone — no workstream or epic"]
     28b267["28b267 learn.auto_allow — the retro watcher stop…"]
+    2d6fc1["2d6fc1 A peer session's story commit captured an…"]
     2e1174["2e1174 Tests in the ASYNC blocking pass sit with…"]
     2e7b45["2e7b45 QA walkthrough for 'Backfill — adds-only…"]
     357d0c["357d0c Loop instance registry: crash-orphan-thro…"]
@@ -168,6 +169,7 @@ flowchart TD
     6a913f["6a913f hash→spec resolution hardcodes dev/ acros…"]
     74632d["74632d loop-driver fixture teardown races on mac…"]
     7a2d1f["7a2d1f Mobile companion v0.1 through real-time s…"]
+    7b39ad["7b39ad QA walkthrough — workstream resolution +…"]
     7b3e2a["7b3e2a merge-gate reads YAML `branch: null` as t…"]
     7c1e93["7c1e93 loop-concurrency G-1 harness times out un…"]
     7e2b56["7e2b56 emit-retro-story writes its artifacts to…"]
@@ -333,6 +335,8 @@ flowchart TD
   dlr102 -.-> 4bd69f
   dlr102 --> dlr101
   dlr102 --- |par| dlr103
+  dlr103 -.-> 2d6fc1
+  dlr103 -.-> 7b39ad
   dlr103 --> dlr101
   dlr104 --> dlr102
   dlr104 --> dlr103
@@ -458,7 +462,7 @@ flowchart TD
   class a494be wip
   class dlr101 done
   class dlr102 done
-  class dlr103 wip
+  class dlr103 done
   class dlr104 ready
   class dlr105 ready
   class dlr106 ready
@@ -536,6 +540,7 @@ flowchart TD
   class d40007 ready
   class d40ret ready
   class 28b267 done
+  class 2d6fc1 ready
   class 2e1174 ready
   class 2e7b45 ready
   class 357d0c done
@@ -551,6 +556,7 @@ flowchart TD
   class 6a913f done
   class 74632d done
   class 7a2d1f wip
+  class 7b39ad ready
   class 7b3e2a done
   class 7c1e93 done
   class 7e2b56 done
