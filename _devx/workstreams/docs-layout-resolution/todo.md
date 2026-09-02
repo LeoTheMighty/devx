@@ -28,8 +28,28 @@
   - [x] Judge E-id → phase coverage table (8/8 covered after the E-3 re-order)
   - [x] Refresh `plan/human.md`
 - [x] Gate: coverage(plan)
-- [ ] Stage: RED
-- [ ] Gate: evals
+- [x] Stage: RED
+  - [x] Profile delta recorded: `evals.validation_source: both`
+  - [x] Scaffold `evals/outline.md`; offer it to the owner
+  - [x] Author `evals/E-1_gate-subjects.ts` (P0, phase 2)
+  - [x] Author `evals/E-2_single-reader.ts` (P0, phase 5)
+  - [x] Author `evals/E-3_no-hand-joins.ts` (P0, phase 4)
+  - [x] Author `evals/E-4_resolve-workstream.ts` (P0, phase 3)
+  - [x] Author `evals/E-5_scaffold.ts` (P0, phase 4)
+  - [x] Author `evals/E-6_migrate.ts` (P0, phase 6)
+  - [x] Author `evals/E-7_migrate-refusals.ts` (P0, phase 6)
+  - [x] Author `evals/E-8_docs-truth.ts` (P1, phase 7)
+  - [x] Confirm every P0 fails for the STATED reason, not harness breakage
+  - [x] Write `evals/RED-report.md` + `evals/human.md`
+- [x] Gate: evals
 - [ ] Stage: Execute
+  - [ ] Phase 1: The artifact map and the single layout reader -> dlr101
+  - [ ] Phase 2: Gate subject resolution -> dlr102
+  - [ ] Phase 3: Workstream resolution and the flat-era guard -> dlr103
+  - [ ] Phase 4: Consumer sweep and layout-aware scaffolding -> dlr104
+  - [ ] Phase 5: Identity re-key and privatization -> dlr105
+  - [ ] Phase 6: `devx layout migrate` -> dlr106
+  - [ ] Phase 7: Doc truth -> dlr107
+  - [ ] Retro story -> dlrret
 - [ ] Stage: Retro
 - [ ] Stage: Outcome

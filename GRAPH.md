@@ -4,7 +4,7 @@
 
 # Story graph
 
-206 specs across 24 groups — 12 blocked · 149 done · 5 in-progress · 40 ready; 410 edges.
+216 specs across 25 groups — 12 blocked · 149 done · 6 in-progress · 49 ready; 434 edges.
 
 ## Legend
 
@@ -23,6 +23,17 @@
 flowchart TD
   subgraph sg_blocker_push["blocker-push (workstream)"]
     e5a9c0["e5a9c0 Vision-gap Track 3 — Interim blocker push…"]
+  end
+  subgraph sg_docs_layout_resolution["docs-layout-resolution (workstream)"]
+    a494be["a494be Docs Layout Resolution"]
+    dlr101["dlr101 The artifact map and the single layout re…"]
+    dlr102["dlr102 Gate subject resolution"]
+    dlr103["dlr103 Workstream resolution and the flat-era gu…"]
+    dlr104["dlr104 Consumer sweep and layout-aware scaffoldi…"]
+    dlr105["dlr105 Identity re-key and privatization"]
+    dlr106["dlr106 devx layout migrate"]
+    dlr107["dlr107 Doc truth"]
+    dlrret["dlrret Retro + LEARN.md updates (interim retro d…"]
   end
   subgraph sg_execute_rehome_bmad_eject["execute-rehome-bmad-eject (workstream)"]
     bd5b5e["bd5b5e Execute Rehome Bmad Eject"]
@@ -192,6 +203,7 @@ flowchart TD
     f01000["f01000 Phase 5 — Test, debug, retro, learn"]
     f02000["f02000 Cross-cutting — thoroughness axis wiring"]
     f1d6b2["f1d6b2 Vision-gap Track 4 — Fleet layer: thin mu…"]
+    lay101["lay101 Enforce project-level's one-doc-set rule…"]
     lpf101["lpf101 Loop preflight main-health check"]
     roc101["roc101 /devx Phase 1 resume-detection — verify c…"]
     tur101["tur101 Retire the review tour — rip out `devx to…"]
@@ -240,6 +252,14 @@ flowchart TD
   a10ret --> a10003
   a10ret --> a10004
   a10ret --> a10005
+  a494be -.-> dlr101
+  a494be -.-> dlr102
+  a494be -.-> dlr103
+  a494be -.-> dlr104
+  a494be -.-> dlr105
+  a494be -.-> dlr106
+  a494be -.-> dlr107
+  a494be -.-> dlrret
   b01000 --> a01000
   b01000 -.-> grp_devx_skill
   b01000 -.-> grp_devx_manage_v0
@@ -305,6 +325,22 @@ flowchart TD
   d40ret --> d40007
   db36af --> dc7514
   dc7514 -.-> db36af
+  dlr102 --> dlr101
+  dlr102 --- |par| dlr103
+  dlr103 --> dlr101
+  dlr104 --> dlr102
+  dlr104 --> dlr103
+  dlr105 --> dlr104
+  dlr106 --> dlr105
+  dlr106 --- |par| dlr107
+  dlr107 --> dlr105
+  dlrret --> dlr101
+  dlrret --> dlr102
+  dlrret --> dlr103
+  dlrret --> dlr104
+  dlrret --> dlr105
+  dlrret --> dlr106
+  dlrret --> dlr107
   grp_devx_skill --> grp_mode_derived_merge_gate
   grp_devx_skill --> grp_pr_template
   grp_devx_skill -.-> roc101
@@ -412,6 +448,15 @@ flowchart TD
   classDef unknownStatus fill:#fff,stroke:#777,color:#222
   classDef collapsed fill:#eee,stroke:#777,color:#222
   class e5a9c0 ready
+  class a494be wip
+  class dlr101 ready
+  class dlr102 ready
+  class dlr103 ready
+  class dlr104 ready
+  class dlr105 ready
+  class dlr106 ready
+  class dlr107 ready
+  class dlrret ready
   class bd5b5e wip
   class grp_harness_fold_in collapsed
   class e0a67e wip
@@ -535,6 +580,7 @@ flowchart TD
   class f01000 blocked
   class f02000 blocked
   class f1d6b2 blocked
+  class lay101 ready
   class lpf101 done
   class roc101 done
   class tur101 done

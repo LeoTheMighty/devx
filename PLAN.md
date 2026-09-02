@@ -81,7 +81,7 @@ folder-per-artifact path, and the two purpose-built project-level resolvers in
 set, not a layout. `docs/CONFIG.md` §15 rule 5 and `config-schema.json:939`
 both claim otherwise.
 
-- [/] `plan/plan-a494be-2026-09-01T14:31-docs-layout-resolution.md` — Docs layout resolution: one stage-subject resolver consumed by every artifact call site, `docs_layout` on `EngineConfig`, `workstream: .` under project-level, layout-aware scaffolding, four hand-join bypasses rewired, `devx layout migrate --to <layout>`, and the two false doc claims corrected. Status: in-planning (Gate 1 PASS 2026-09-01; stage: design). Blocked-by: —. Related: lay101 (one-doc-set enforcement — adjacent, explicitly out of scope here). Migration case: ClassyLights `b7e38f`/`scene-engine`, mid-flight at the plan gate.
+- [x] `plan/plan-a494be-2026-09-01T14:31-docs-layout-resolution.md` — Docs layout resolution: one stage-subject resolver consumed by every artifact call site, `docs_layout` on `EngineConfig`, `workstream: .` under project-level, layout-aware scaffolding, four hand-join bypasses rewired, `devx layout migrate --to <layout>`, and the two false doc claims corrected. Status: done — all four gates PASS (prd + design + plan 2026-09-01/02, evals 2026-09-02); stage: executing. Emitted dlr101-dlr107 + dlrret. Blocked-by: —. Related: lay101 (one-doc-set enforcement — adjacent, explicitly out of scope here). Migration case: ClassyLights `b7e38f`/`scene-engine`, mid-flight at the plan gate.
 
 ## Cross-cutting plans
 

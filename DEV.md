@@ -277,3 +277,23 @@ uwgspk is parallel-safe with all of them.
 ### Standalone — config/layout hygiene
 
 - [ ] `dev/dev-lay101-2026-09-01T12:40-project-level-single-docset-guard.md` — Enforce `project-level`'s one-doc-set rule at the config seam (`devx workstream new` refusal + a `devx doctor` finding, one shared predicate). Replaces the `/devx-personalize` refusal that lost its home when the layout moved from the preference bank to `engine.docs_layout`. Status: ready. Blocked-by: —.
+
+### Workstream: docs-layout-resolution (`plan/plan-a494be-...`)
+
+`engine.docs_layout` is a config key that nothing meaningful reads: two
+documents claim it selects where every engine artifact lives, and no code
+implements that claim. Seven layered phases put ONE `(layout, base, kind)`
+decision behind every artifact path, then make the docs true. Workstream
+`_devx/workstreams/docs-layout-resolution/`; all four gates passed
+(prd + design + plan + evals, 2026-09-02). devx itself stays on `workstream`
+layout — every phase is a runtime no-op for it. Waves: dlr101 -> {dlr102,
+dlr103} -> dlr104 -> dlr105 -> {dlr106, dlr107}.
+
+- [ ] `dev/dev-dlr101-2026-09-02T09:14-artifact-map-single-reader.md` — Docs layout resolution phase 1: the artifact map and the single layout reader — `ArtifactKind` + `stageSubject()` + `pathToArtifactKind()`, `resolveDocsLayout()` as the ONE reader, `docsLayout`/`layoutSource` on `EngineConfig` above both guards. Additive in production; re-types 8 test literals. Blocked-by: —. Status: ready.
+- [ ] `dev/dev-dlr102-2026-09-02T09:14-gate-subject-resolution.md` — Docs layout resolution phase 2: gate subject resolution — the 12 `commands/gate.ts` subject reads, `gate-prd.ts`'s 19 `location:` + 6 `message:` fields, `gate-coverage.ts` refusal strings. 8 layout x gate combinations, 0 verdict differences, pinned absolutely so mutual failure cannot pass. Blocked-by: dlr101. Parallel-safe with dlr103. Status: ready.
+- [ ] `dev/dev-dlr103-2026-09-02T09:14-workstream-resolution-flat-guard.md` — Docs layout resolution phase 3: workstream resolution reaches the repo root under project-level (3 frontmatter states), `planFilenameWorkstreamRel()` re-signatured, the one flat-era guard that genuinely misfires discriminated, `layout-tree-mismatch` doctor finding. Ships no new user-reachable state (R-2). Blocked-by: dlr101. Parallel-safe with dlr102. Status: ready.
+- [ ] `dev/dev-dlr104-2026-09-02T09:14-consumer-sweep-scaffolding.md` — Docs layout resolution phase 4: the consumer sweep (ten `*Abs()` helpers over the resolved base, 21 call sites, every hand-join closed, `devx next` probes) plus layout-aware scaffolding with the slug optional. E-3's scan is authored FIRST and negative-controlled against the live sites (R-6). No compile break. Blocked-by: dlr102, dlr103. Status: ready.
+- [ ] `dev/dev-dlr105-2026-09-02T09:14-identity-rekey-privatization.md` — Docs layout resolution phase 5: `CASCADE_TABLE` re-keyed on `ArtifactKind`, `*_REL` + `artifactAbs` made private, orphaned resolvers deleted. THE RISKIEST PHASE — the only compile-breaking one, and where R-1 and R-4 live. Blocked-by: dlr104. Status: ready.
+- [ ] `dev/dev-dlr106-2026-09-02T09:14-layout-migrate.md` — Docs layout resolution phase 6: `devx layout migrate --to <layout> [--dry-run]` — pure `MovePlan` planner, `git mv` executor, 3 refusals computed before any move, no `--force`. NOT REVERT-SAFE for a repo that ran it (R-5); G-3's real evidence is MANUAL.md MV-a494be.1 on ClassyLights. Blocked-by: dlr105. Parallel-safe with dlr107. Status: ready.
+- [ ] `dev/dev-dlr107-2026-09-02T09:14-doc-truth.md` — Docs layout resolution phase 7: doc truth — CONFIG.md's artifact table restructured to one row per `ArtifactKind` (13 rows; the 13-row set-equality is the RED-bearing half), the schema description rewritten, and a follow-up filed for the nine skill-body path references. Blocked-by: dlr105. Parallel-safe with dlr106. Status: ready.
+- [ ] `dev/dev-dlrret-2026-09-02T09:18-retro-docs-layout-resolution.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: dlr101, dlr102, dlr103, dlr104, dlr105, dlr106, dlr107.
