@@ -3,13 +3,13 @@ hash: dlr101
 type: dev
 created: 2026-09-02T09:14:00-06:00
 title: "The artifact map and the single layout reader"
-status: ready
+status: in-progress
 from: plan/plan-a494be-2026-09-01T14:31-docs-layout-resolution.md
 plan: _devx/workstreams/docs-layout-resolution
 phase: 1
 blocked_by: []
 branch: feat/dev-dlr101
-owner: null
+owner: /devx-2026-09-02T0930-68861
 ---
 ## Goal
 
@@ -79,3 +79,4 @@ phase.
 
 - 2026-09-02T09:14 — emitted by /devx-plan (RED gate PASS; workstream
   docs-layout-resolution, plan phase 1).
+- 2026-09-02T09:30:38-06:00 — claimed by /devx in session /devx-2026-09-02T0930-68861
