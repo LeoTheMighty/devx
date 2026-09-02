@@ -3,13 +3,13 @@ hash: dlr102
 type: dev
 created: 2026-09-02T09:14:00-06:00
 title: "Gate subject resolution"
-status: ready
+status: in-progress
 from: plan/plan-a494be-2026-09-01T14:31-docs-layout-resolution.md
 plan: _devx/workstreams/docs-layout-resolution
 phase: 2
 blocked_by: [dlr101]
 branch: feat/dev-dlr102
-owner: null
+owner: /devx-2026-09-02T1015-47853
 ---
 ## Goal
 
@@ -63,3 +63,4 @@ Parallel-safe with phase 3 (disjoint file sets: 2 owns `gate*`, 3 owns
 
 - 2026-09-02T09:14 — emitted by /devx-plan (RED gate PASS; workstream
   docs-layout-resolution, plan phase 2).
+- 2026-09-02T10:15:01-06:00 — claimed by /devx in session /devx-2026-09-02T1015-47853
