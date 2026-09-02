@@ -3,13 +3,13 @@ hash: dlr105
 type: dev
 created: 2026-09-02T09:14:00-06:00
 title: "Identity re-key and privatization"
-status: ready
+status: in-progress
 from: plan/plan-a494be-2026-09-01T14:31-docs-layout-resolution.md
 plan: _devx/workstreams/docs-layout-resolution
 phase: 5
 blocked_by: [dlr104]
 branch: feat/dev-dlr105
-owner: null
+owner: /devx-2026-09-02T1226-80105
 ---
 ## Goal
 
@@ -89,3 +89,4 @@ Revert-safe (revert the PR).
 
 - 2026-09-02T09:14 — emitted by /devx-plan (RED gate PASS; workstream
   docs-layout-resolution, plan phase 5).
+- 2026-09-02T12:26:10-06:00 — claimed by /devx in session /devx-2026-09-02T1226-80105
