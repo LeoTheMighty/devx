@@ -952,6 +952,11 @@ export async function runLoop(opts: RunLoopOpts): Promise<RunLoopResult> {
         // class silently never fires and this self-heal is dead with no
         // signal (found in review).
         baseRef: baseBranchFrom(merged),
+        // The layout detectors' knobs (dlr103). Without them they fall back
+        // to ENGINE_DEFAULTS, which would report a custom-`workstreams_root`
+        // repo as clean and a `project-level` repo as wall-to-wall debris —
+        // and this is the pre-flight that decides whether the night starts.
+        engine: engineConfigFrom(merged),
         ...(opts.pidAlive !== undefined ? { pidAlive: opts.pidAlive } : {}),
       });
       const fixable = findings.filter((f) => f.fixable);

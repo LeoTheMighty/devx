@@ -49,7 +49,16 @@ export type FindingClass =
   /** Flat-era workstream artifact (pre folder-per-artifact layout):
    *  `<ws>/prd.md` where the engine now reads `<ws>/prd/agent.md`.
    *  Report-only — the repair is a `git mv` the operator runs. */
-  | "flat-era-workstream";
+  | "flat-era-workstream"
+  /** `engine.docs_layout` disagrees with the artifact tree on disk — a
+   *  `project-level` repo still carrying `<workstreams_root>/<slug>/` doc
+   *  sets, or a `workstream` repo carrying `prd.md`/`design.md`/`plan.md` at
+   *  the root. Usually an interrupted `devx layout migrate`, which is the
+   *  whole reason this class exists: it makes a half-moved tree a REPORTED
+   *  state instead of a silent one. Report-only by construction — the repair
+   *  moves real authored work, so it sits on the far side of the fix boundary
+   *  this file's header draws (dlr103). */
+  | "layout-tree-mismatch";
 
 export interface Finding {
   class: FindingClass;
