@@ -263,7 +263,7 @@ artifact's. Each eval asserts its own invariant **and** that its companion
 ## Phase checklist
 
 - [x] Phase 1: The artifact map and the single layout reader
-- [ ] Phase 2: Gate subject resolution
+- [x] Phase 2: Gate subject resolution
 - [ ] Phase 3: Workstream resolution and the flat-era guard
 - [ ] Phase 4: Consumer sweep and layout-aware scaffolding
 - [ ] Phase 5: Identity re-key and privatization
@@ -437,12 +437,22 @@ contract the whole workstream exists to honor.
   - Every `location:` and `message:` string emitted under `project-level`
     names a path that exists on the fixture disk.
   - devx's own gates return output identical to `main`.
+    **As-built — departed, deliberately.** Verdicts, exit codes, thresholds,
+    `gate_status` flips and stage advances are byte-identical (diffed by
+    running both builds over two identical scratch copies of this very
+    workstream). The `location:`/`message:` strings and the verify report's
+    Subject line are NOT: they moved from doc-set-relative to repo-relative.
+    `main` was already internally inconsistent — `commands/gate.ts` printed
+    repo-relative while `gate-prd.ts` printed doc-set-relative — so no option
+    preserved both spellings, and this one satisfies the criterion directly
+    above it. Scope is this phase's output strings only; nothing downstream
+    re-reads them.
 
 **Tasks**:
-- [ ] T2.1 Author `evals/E-1_gate-subjects.ts` + `test/engine-layout-gate-subjects.test.ts` RED, with both fixtures — files: `_devx/workstreams/docs-layout-resolution/evals/E-1_gate-subjects.ts`, `test/engine-layout-gate-subjects.test.ts`
-- [ ] T2.2 Resolve the 12 `commands/gate.ts` `*Abs()` subject reads through `stageSubject()`; fix the two lying refusal strings — files: `src/commands/gate.ts`
-- [ ] T2.3 Thread the resolved subject into `gate-prd.ts`'s 19 `location:` fields and 6 `message:` strings — files: `src/lib/engine/gate-prd.ts`
-- [ ] T2.4 Move `gate-coverage.ts` refusal/subject strings onto `subject.rel` — files: `src/lib/engine/gate-coverage.ts`
+- [x] T2.1 Author `test/engine-layout-gate-subjects.test.ts` — files: `test/engine-layout-gate-subjects.test.ts`. **As-built:** `evals/E-1_gate-subjects.ts` and its fixtures were authored at the RED stage and are locked, so this task was the suite half only; E-1 was re-run first and confirmed RED for the stated reason.
+- [x] T2.2 Resolve the 12 `commands/gate.ts` `*Abs()` subject reads through `stageSubject()`; fix the two lying refusal strings — files: `src/commands/gate.ts`. **As-built:** 5 refusal strings de-lied, not 2 — the same `${workstreamRel}/${REL}` shape also sat on `gate-input-missing` and the two report-path builders. `subjectsFor()` additionally exposes a normalized `docSetRel`/`docSetAbs`/`docSetLabel` (anchored on the expectations subject), because `runGateEvals` and `donePhasesFor` were still taking the RAW base — a verdict-affecting split once subjects normalize and that comparison does not.
+- [x] T2.3 Thread the resolved subject into `gate-prd.ts`'s 19 `location:` fields and 6 `message:` strings — files: `src/lib/engine/gate-prd.ts`. **As-built:** counts confirmed exactly 19 + 6. `prdRel`/`expectationsRel` are REQUIRED inputs, not defaulted — a default would be the folder spelling, wrong under `project-level` and wrong silently.
+- [x] T2.4 Move `gate-coverage.ts` refusal/subject strings onto `subject.rel` — files: `src/lib/engine/gate-coverage.ts`. **As-built:** also `src/lib/engine/gate-evals.ts` (unplanned, in-scope per "2 owns `gate*`") — `donePhasesFor` normalizes both sides of its shipped-phase comparison, and the two committed records take a display label so neither titles itself `# … — . —` under `project-level`.
 
 ### 3. Phase: Workstream resolution and the flat-era guard
 
@@ -506,12 +516,40 @@ user-reachable state** — that is what keeps R-2 closed.
   - devx's own `devx doctor` and `devx status` output are unchanged.
 
 **Tasks**:
-- [ ] T3.1 Author `evals/E-4_resolve-workstream.ts` + companion test RED — files: `_devx/workstreams/docs-layout-resolution/evals/E-4_resolve-workstream.ts`, `test/engine-layout-resolve-workstream.test.ts`
-- [ ] T3.2 Branch `resolveWorkstream()` and `resolveSpecWorkstream()` on layout — files: `src/lib/engine/workstream.ts`
-- [ ] T3.3 Re-signature `planFilenameWorkstreamRel()`; update its 4 call sites — files: `src/lib/engine/workstream.ts`, `src/commands/status.ts`, `src/lib/next/gather.ts`
-- [ ] T3.4 Layout-discriminate the flat-era refusal; derive its stage list from `STAGE_DIRS` — files: `src/lib/engine/workstream.ts`
-- [ ] T3.5 Honor `engine.workstreams_root` in `detectFlatWorkstreams`; early-return under `project-level` — files: `src/lib/doctor/detect.ts`
-- [ ] T3.6 Add the `layout-tree-mismatch` finding (`fixable: false`) — files: `src/lib/doctor/detect.ts`, `src/lib/doctor/types.ts`
+- [x] T3.1 Author `evals/E-4_resolve-workstream.ts` + companion test RED — files: `_devx/workstreams/docs-layout-resolution/evals/E-4_resolve-workstream.ts`, `test/engine-layout-resolve-workstream.test.ts`
+- [x] T3.2 Branch `resolveWorkstream()` and `resolveSpecWorkstream()` on layout — files: `src/lib/engine/workstream.ts`
+- [x] T3.3 Re-signature `planFilenameWorkstreamRel()`; update its 4 call sites — files: `src/lib/engine/workstream.ts`, `src/commands/status.ts`, `src/lib/next/gather.ts`
+- [x] T3.4 Layout-discriminate the flat-era refusal; derive its stage list from `SUBJECT_STAGES` — files: `src/lib/engine/workstream.ts`
+- [x] T3.5 Honor `engine.workstreams_root` in `detectFlatWorkstreams`; early-return under `project-level` — files: `src/lib/doctor/detect.ts`
+- [x] T3.6 Add the `layout-tree-mismatch` finding (`fixable: false`) — files: `src/lib/doctor/detect.ts`, `src/lib/doctor/types.ts`
+
+**As-built (dlr103).** Two departures, both narrow, neither re-scoping another
+phase:
+
+- T3.4's stage list is derived from **`SUBJECT_STAGES`**, not `STAGE_DIRS` as
+  written. `SUBJECT_STAGES` *is* `STAGE_DIRS` minus `evals`, so the
+  "derived, not inline" property the task asks for holds — but `evals` was a
+  DIRECTORY in the flat era too, so a literal `STAGE_DIRS` loop adds an
+  `evals.md` probe that would refuse a file the engine has never read and
+  print a `git mv evals.md evals/agent.md` recipe for a path that never
+  existed. Same substitution in T3.5's scan, which carried the same inline
+  triple. `detectFlatWorkstreams` also gained sorted, `isDirectory`-filtered
+  slug iteration so its finding order is deterministic.
+- T3.3 grew two more resolvers in `workstream.ts`: **`planSpecWorkstreamRel()`**
+  and **`workstreamSlugFor()`**. Re-signaturing `planFilenameWorkstreamRel()`
+  alone does not close the hole it was meant to close — two of its four call
+  sites spell the fallback as `state.workstream ?? planFilenameWorkstreamRel(…)`,
+  so a spec that HAS a pointer never reaches the layout-aware helper, and under
+  `project-level` that pointer is exactly the stale `<root>/<slug>` a
+  half-finished migration leaves behind (measured: `devx status` on `main`
+  reports "no active workstreams" for such a repo). The `??` and the slug tail
+  therefore moved into the resolvers with the guard. Consumers updated beyond
+  the planned three files: `src/commands/todo.ts` (its slug titled a scaffolded
+  `todo.md` "`.`") and `src/commands/status.ts:151` (rendered `. (<hash>)`).
+- `src/lib/doctor/detect.ts`'s root-level mismatch probe is additionally gated
+  on the repo carrying at least one engine-managed plan spec. `prd.md` /
+  `design.md` / `plan.md` are ordinary filenames; without the gate the finding
+  fires on any repo that keeps one and has never scaffolded a workstream.
 
 ### 4. Phase: Consumer sweep and layout-aware scaffolding
 

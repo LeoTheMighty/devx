@@ -31,7 +31,7 @@ import {
   parseCoversIds,
   parseExpectations,
 } from "./expectations.js";
-import { EVALS_DIR_REL, EXPECTATIONS_REL, PRD_REL } from "./artifacts.js";
+import { EVALS_DIR_REL } from "./artifacts.js";
 
 export interface GateGap {
   /** Stable check identifier — grep-able (mirrors validate-emit's shape). */
@@ -48,6 +48,22 @@ export interface GatePrdInputs {
   blockedBy: string[];
   /** engine.expectations_min (default 3). */
   expectationsMin: number;
+  /**
+   * Repo-relative display path of the PRD subject, resolved through the
+   * layout by the caller (`stageSubject`). Every `location:` and `message:`
+   * below is part of this gate's OUTPUT contract, not decoration — a gap
+   * pointing at `prd/agent.md:42` in a repo whose file is `prd.md` is a
+   * finding a human cannot act on.
+   *
+   * Required, not defaulted: the gate must not be able to name a subject
+   * nobody resolved. A default would be the folder-layout spelling, which
+   * is exactly the wrong answer under `project-level` and would be wrong
+   * silently. The gate still cannot see the LAYOUT — only the path.
+   */
+  prdRel: string;
+  /** Repo-relative display path of expectations.md. Same contract as
+   *  `prdRel`; the basename is layout-identical but the prefix is not. */
+  expectationsRel: string;
 }
 
 export interface GatePrdResult {
@@ -196,6 +212,11 @@ export function isConcreteVerifiedBy(value: string): boolean {
 
 export function evaluateGatePrd(inputs: GatePrdInputs): GatePrdResult {
   const gaps: GateGap[] = [];
+  // Bound once so every message and location below names the SAME resolved
+  // spelling. Two reads of the same subject is how one gap points at
+  // `prd.md` and the next at `prd/agent.md` in a single report.
+  const prdRel = inputs.prdRel;
+  const expectationsRel = inputs.expectationsRel;
 
   // ---- 1. PRD sections: present, non-empty, non-placeholder. ------------
   const sections = splitSections(inputs.prd);
@@ -205,8 +226,8 @@ export function evaluateGatePrd(inputs: GatePrdInputs): GatePrdResult {
     if (!section) {
       gaps.push({
         check: "prd-section-missing",
-        message: `${PRD_REL} is missing the \`## ${required}\` section`,
-        location: PRD_REL,
+        message: `${prdRel} is missing the \`## ${required}\` section`,
+        location: prdRel,
       });
       continue;
     }
@@ -214,8 +235,8 @@ export function evaluateGatePrd(inputs: GatePrdInputs): GatePrdResult {
     if (stripped.trim() === "") {
       gaps.push({
         check: "prd-section-empty",
-        message: `${PRD_REL} \`## ${required}\` has no content`,
-        location: `${PRD_REL}:${section.line}`,
+        message: `${prdRel} \`## ${required}\` has no content`,
+        location: `${prdRel}:${section.line}`,
       });
       continue;
     }
@@ -223,8 +244,8 @@ export function evaluateGatePrd(inputs: GatePrdInputs): GatePrdResult {
     if (placeholder) {
       gaps.push({
         check: "prd-section-placeholder",
-        message: `${PRD_REL} \`## ${required}\` still contains template furniture: ${placeholder}`,
-        location: `${PRD_REL}:${section.line}`,
+        message: `${prdRel} \`## ${required}\` still contains template furniture: ${placeholder}`,
+        location: `${prdRel}:${section.line}`,
       });
     }
   }
@@ -234,8 +255,8 @@ export function evaluateGatePrd(inputs: GatePrdInputs): GatePrdResult {
   if (blocks.length < inputs.expectationsMin) {
     gaps.push({
       check: "expectations-too-few",
-      message: `${EXPECTATIONS_REL} has ${blocks.length} E-block(s); engine.expectations_min is ${inputs.expectationsMin}`,
-      location: EXPECTATIONS_REL,
+      message: `${expectationsRel} has ${blocks.length} E-block(s); engine.expectations_min is ${inputs.expectationsMin}`,
+      location: expectationsRel,
     });
   }
 
@@ -245,7 +266,7 @@ export function evaluateGatePrd(inputs: GatePrdInputs): GatePrdResult {
   const coveredIds = new Set<string>();
 
   for (const block of blocks) {
-    const loc = `${EXPECTATIONS_REL}:${block.line}`;
+    const loc = `${expectationsRel}:${block.line}`;
     checkPriority(block, loc, gaps);
     checkExpectationEars(block, loc, gaps);
     checkThreshold(block, loc, gaps);
@@ -278,7 +299,7 @@ export function evaluateGatePrd(inputs: GatePrdInputs): GatePrdResult {
         if (!definedIds.has(id)) {
           gaps.push({
             check: "covers-id-dangling",
-            message: `${block.id} covers '${id}' but ${PRD_REL} defines no such ID`,
+            message: `${block.id} covers '${id}' but ${prdRel} defines no such ID`,
             location: loc,
           });
         }
@@ -292,8 +313,8 @@ export function evaluateGatePrd(inputs: GatePrdInputs): GatePrdResult {
     if (!coveredIds.has(ref.id)) {
       gaps.push({
         check: "goal-uncovered",
-        message: `${PRD_REL} goal '${ref.id}' is not covered by any expectation`,
-        location: `${PRD_REL}:${ref.line}`,
+        message: `${prdRel} goal '${ref.id}' is not covered by any expectation`,
+        location: `${prdRel}:${ref.line}`,
       });
     }
   }
@@ -401,7 +422,12 @@ function checkVerifiedBy(block: EBlock, loc: string, gaps: GateGap[]): void {
   if (!isConcreteVerifiedBy(block.verifiedBy)) {
     gaps.push({
       check: "expectation-verified-by-vague",
-      message: `${block.id} Verified-by '${block.verifiedBy}' is not a concrete runnable target (expected a test path or ${EVALS_DIR_REL}/E-${block.id.slice(2)}_*.md)`,
+      // The hint is deliberately NOT the resolved subject: it describes
+      // what the author types into the Verified-by field, which is written
+      // relative to the workstream, while the sibling `location:` is
+      // repo-relative. Saying so keeps one JSON blob from carrying two
+      // unlabelled path frames (review BH-5).
+      message: `${block.id} Verified-by '${block.verifiedBy}' is not a concrete runnable target (expected a repo-relative test path, or \`${EVALS_DIR_REL}/E-${block.id.slice(2)}_*.md\` relative to the workstream)`,
       location: loc,
     });
   }
