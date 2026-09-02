@@ -17,8 +17,17 @@
 - [x] Gate: prd
 - [x] Stage: Design
 - [x] Gate: coverage(design)
-- [ ] Stage: Plan
-- [ ] Gate: coverage(plan)
+- [x] Stage: Plan
+  - [x] Owner Q: phase shape → 6 phases, layered
+  - [x] Owner Q: 4 PRD baseline corrections → deferred (no `devx revise`)
+  - [x] Owner Q: `lay101` sequencing → local predicate, deleted on adoption
+  - [x] Profile delta recorded: `docs.human_render`, `plan.wave_execution`, `plan.risks_depth`
+  - [x] Ground the blast radius: 33 `*Abs()` + 72 `*_REL` across 17 modules
+  - [x] Draft `plan/agent.md` (7 phases, 4 waves, interrogated Risks)
+  - [x] Critique step (4 lenses) — 26 findings applied, 1 declined
+  - [x] Judge E-id → phase coverage table (8/8 covered after the E-3 re-order)
+  - [x] Refresh `plan/human.md`
+- [x] Gate: coverage(plan)
 - [ ] Stage: RED
 - [ ] Gate: evals
 - [ ] Stage: Execute
