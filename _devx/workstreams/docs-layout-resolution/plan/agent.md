@@ -262,7 +262,7 @@ artifact's. Each eval asserts its own invariant **and** that its companion
 
 ## Phase checklist
 
-- [ ] Phase 1: The artifact map and the single layout reader
+- [x] Phase 1: The artifact map and the single layout reader
 - [ ] Phase 2: Gate subject resolution
 - [ ] Phase 3: Workstream resolution and the flat-era guard
 - [ ] Phase 4: Consumer sweep and layout-aware scaffolding
@@ -316,9 +316,21 @@ helper that varies `merged` while holding `engine` fixed.
   `EngineConfig` and `ENGINE_DEFAULTS`; assign both in `engineConfigFrom()`
   **above** the two early-return guards.
 - `src/lib/next/gather.ts` — delete `docsLayoutUnset()`; its one caller (the
-  unset-layout nag) becomes `engine.layoutSource === "default"`.
+  unset-layout nag) becomes `engine.layoutSource === "default"`. **As-built:**
+  this is NOT behaviour-preserving and the warning text changed with it. The
+  retired predicate asked whether the key was PRESENT, so a typo'd value stayed
+  silent; `layoutSource` asks whether a layout RESOLVED, so it now nags. Kept
+  (better signal; `loadMerged` runs no schema validation, so a typo really does
+  reach here) and the message reworded to "unset or not one of `workstream` /
+  `project-level`" so it no longer calls a set key unset.
 - `src/lib/init-questions.ts` — replace the duplicate `DocsLayout` type at
   `:58` with an import from `artifacts.ts`.
+- `src/lib/init-write.ts` — **as-built, not planned**: `renderInitConfig`
+  was a THIRD site naming the key (`config.engine?.docs_layout`), which the
+  Current state's "two functions read the layout key" missed. It is a WRITE
+  site (it renders init's own interview answer into a new config), so it is
+  not a resolver — but the G-2 scan counts textually, so it is allowlisted
+  BY NAME in the phase-1 test rather than reshaped to hide from the regex.
 - `test/next-dispatch.test.ts` — five `engine` literals (`:774,795,836,1882,1914`)
   **and** the `layoutWarnings(merged)` helper at `:785-830`, whose four
   assertions vary `merged` against a fixed `engine` literal and must now vary
@@ -370,12 +382,12 @@ helper that varies `merged` while holding `engine` fixed.
     caller moved.
 
 **Tasks**:
-- [ ] T1.1 Add `SubjectStage` / `ArtifactKind` / `StageSubject` / `stageSubject()` / `pathToArtifactKind()` — files: `src/lib/engine/artifacts.ts`
-- [ ] T1.2 Add `resolveDocsLayout()`; reduce `docsLayoutFrom()` to a wrapper — files: `src/lib/engine/artifacts.ts`
-- [ ] T1.3 Add `docsLayout` + `layoutSource` to `EngineConfig`/`ENGINE_DEFAULTS`, assigned above both guards — files: `src/lib/engine/config.ts`
-- [ ] T1.4 Delete `docsLayoutUnset()`; move its caller onto `layoutSource` — files: `src/lib/next/gather.ts`
-- [ ] T1.5 Replace the duplicate `DocsLayout` type with an import — files: `src/lib/init-questions.ts`
-- [ ] T1.6 Re-type the 8 hand-built `engine` literals and rewrite `layoutWarnings()` to vary `layoutSource` — files: `test/next-dispatch.test.ts`, `test/frontmatter-unreadable-reported.test.ts`, `test/spec-lock.test.ts`, `test/devx-split.test.ts`, `test/engine-prose-budget.test.ts`
+- [x] T1.1 Add `SubjectStage` / `ArtifactKind` / `StageSubject` / `stageSubject()` / `pathToArtifactKind()` — files: `src/lib/engine/artifacts.ts`
+- [x] T1.2 Add `resolveDocsLayout()`; reduce `docsLayoutFrom()` to a wrapper — files: `src/lib/engine/artifacts.ts`
+- [x] T1.3 Add `docsLayout` + `layoutSource` to `EngineConfig`/`ENGINE_DEFAULTS`, assigned above both guards — files: `src/lib/engine/config.ts`
+- [x] T1.4 Delete `docsLayoutUnset()`; move its caller onto `layoutSource` — files: `src/lib/next/gather.ts`
+- [x] T1.5 Replace the duplicate `DocsLayout` type with an import — files: `src/lib/init-questions.ts`
+- [x] T1.6 Re-type the 8 hand-built `engine` literals and rewrite `layoutWarnings()` to vary `layoutSource` — files: `test/next-dispatch.test.ts`, `test/frontmatter-unreadable-reported.test.ts`, `test/spec-lock.test.ts`, `test/devx-split.test.ts`, `test/engine-prose-budget.test.ts`
 
 ### 2. Phase: Gate subject resolution
 

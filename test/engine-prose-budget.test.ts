@@ -150,6 +150,10 @@ describe("engineConfigFrom — defensive engine.* reads (AC #12)", () => {
       // §31 Reading Guide columns — defaults to the plan-stage critique
       // lenses so a repo has one reviewer vocabulary, not two.
       readingGuideRoles: ["pm", "architect", "dev", "qa"],
+      // §15 artifact-tree shape, plus where the resolution found it.
+      // `default` is what `devx next`'s advisory nag reads.
+      docsLayout: "workstream",
+      layoutSource: "default",
     });
   });
 

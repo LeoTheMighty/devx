@@ -21,6 +21,7 @@
 // Epic: _bmad-output/planning-artifacts/epic-init-skill.md
 
 import { resolveVersion } from "./version.js";
+import type { DocsLayout } from "./engine/artifacts.js";
 import type {
   HaltAndConfirm,
   InitState,
@@ -54,8 +55,12 @@ export type GitStrategy = "single-branch" | "develop-main-split";
 /** Shape of the artifact tree — `engine.docs_layout`. Committed repo policy,
  *  never a preference (docs/CONFIG.md §15): it names where files the whole
  *  repo shares get written. Asked here because init is the only moment the
- *  answer is cheap — once a tree exists, changing it means moving artifacts. */
-export type DocsLayout = "workstream" | "project-level";
+ *  answer is cheap — once a tree exists, changing it means moving artifacts.
+ *
+ *  Re-exported from the resolver rather than restated: a parallel hand-written
+ *  union drifts from `DOCS_LAYOUTS` exactly the way two config readers drift
+ *  from each other. */
+export type { DocsLayout };
 
 export interface Question {
   id: QuestionId;

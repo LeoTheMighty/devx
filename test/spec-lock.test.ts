@@ -31,6 +31,7 @@ import {
 } from "../src/lib/devx/spec-lock.js";
 import { parseLockOwner } from "../src/lib/devx/verify-claim.js";
 import { pickNextItem } from "../src/lib/loop/driver.js";
+import { ENGINE_DEFAULTS } from "../src/lib/engine/config.js";
 
 /** A PID that provably belonged to an already-exited process. */
 function deadPid(): number {
@@ -456,12 +457,7 @@ describe("pickNextItem spec-lock masking", () => {
 // ---------------------------------------------------------------------------
 
 describe("gather spec-lock surfaces", () => {
-  const ENGINE = {
-    workstreamsRoot: "_devx/workstreams",
-    expectationsMin: 3,
-    proseBudgetKb: 60,
-    readingGuideRoles: ["pm", "architect", "dev", "qa"],
-  };
+  const ENGINE = { ...ENGINE_DEFAULTS };
 
   function gatherFixture(status: "in-progress" | "ready", lockBody: string | null): string {
     tmp = mkdtempSync(join(tmpdir(), "devx-spec-lock-gather-"));

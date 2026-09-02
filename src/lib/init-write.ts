@@ -54,6 +54,7 @@ import type {
 } from "./init-questions.js";
 import type { InitState } from "./init-state.js";
 import { writeAtomic } from "./supervisor-internal.js";
+import { DEFAULT_DOCS_LAYOUT } from "./engine/artifacts.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -296,6 +297,18 @@ export function renderInitConfig(opts: RenderOpts): string {
   ]).map((ch) => stripNullTo(ch));
   const quietHours = config.notifications?.quiet_hours ?? "22:00-08:00";
   const thoroughness = config.thoroughness ?? deriveThoroughness(config.mode);
+  // This site WRITES the layout — it renders the answer the interview already
+  // collected into a NEW config file — so it is not one of the "readers" G-2
+  // counts (those resolve a repo's layout from a merged blob;
+  // `resolveDocsLayout` is the only one). The G-2 scan in
+  // test/engine-layout-map.test.ts names this function in its allowlist, with
+  // that reason, rather than the read being hidden from it by its spelling.
+  //
+  // The `?? ` is deliberate and NOT a destructuring default: `??` applies to
+  // `null` as well as `undefined`, and a `null` reaching the write would put
+  // `docs_layout: null` into devx.config.yaml, which the schema enum rejects.
+  const answeredLayout = config.engine?.docs_layout;
+  const docsLayout = answeredLayout ?? DEFAULT_DOCS_LAYOUT;
 
   // YOLO defaults per MODES.md §2. Every value below has to live inside the
   // schema's enum constraints (see _devx/config-schema.json). Mode → gate /
@@ -507,7 +520,7 @@ export function renderInitConfig(opts: RenderOpts): string {
       // N14, written EXPLICITLY rather than left to the shipped default: the
       // layout decides where every artifact lands, and a key absent from the
       // file is a question nobody was asked (docs/CONFIG.md §15).
-      docs_layout: config.engine?.docs_layout ?? "workstream",
+      docs_layout: docsLayout,
       archive_root: "_devx/archive",
       code_citation_hints: [],
       expectations_min: 3,

@@ -155,10 +155,25 @@ export function gatherRepoSnapshot(opts: GatherOpts): RepoSnapshot {
   // nudges), whereas a `devx doctor` finding would flip that command's exit
   // code to 3 for every pre-existing repo with no `--fix` able to clear it.
   // An unclearable red check is how a true signal gets trained away.
-  if (docsLayoutUnset(opts.merged)) {
+  //
+  // The question is asked of the ALREADY-RESOLVED layout, not of the raw
+  // config: a second predicate re-reading the two keys beside
+  // `resolveDocsLayout()` would be the same drift bug wearing a new name
+  // (G-2 counts one FUNCTION, not one file).
+  //
+  // "unset OR not one of …" rather than plain "unset", and that wording is the
+  // one behavior change this phase makes. The retired predicate asked whether
+  // the key was PRESENT, so a typo'd `docs_layout: workstrem` counted as
+  // chosen and stayed silent; `layoutSource` asks whether a layout was
+  // RESOLVED, so it now nags. That is the better signal — `loadMerged` runs no
+  // schema validation, so an out-of-enum value really does reach here and
+  // really does resolve through the default — but a message telling someone
+  // their key is unset while it sits in their config is a message that lies.
+  if (opts.engine.layoutSource === "default") {
     warnings.push(
-      "engine.docs_layout is unset — artifacts resolve through the `workstream` " +
-        "default nobody chose. Set it in devx.config.yaml (docs/CONFIG.md §15).",
+      "engine.docs_layout is unset or not one of `workstream` / `project-level` — " +
+        "artifacts resolve through the `workstream` default nobody chose. " +
+        "Set it in devx.config.yaml (docs/CONFIG.md §15).",
     );
   }
 
@@ -1152,23 +1167,6 @@ function gatherManagerHeartbeat(
     warnings.push(`manager heartbeat unreadable: ${errMessage(e)}`);
     return dead;
   }
-}
-
-/** True when neither the config key nor its legacy bank spelling is present.
- *  Mirrors `docsLayoutFrom()`'s two reads — a repo that answered the old key
- *  HAS chosen a layout, and nagging it would be noise. */
-function docsLayoutUnset(merged: unknown): boolean {
-  if (!merged || typeof merged !== "object") return false;
-  const m = merged as Record<string, unknown>;
-  const section = (name: string): Record<string, unknown> | undefined => {
-    const v = m[name];
-    return typeof v === "object" && v !== null ? (v as Record<string, unknown>) : undefined;
-  };
-  const set = (v: unknown): boolean => typeof v === "string" && v.trim() !== "";
-  return (
-    !set(section("engine")?.docs_layout) &&
-    !set(section("personalization")?.["docs.layout"])
-  );
 }
 
 function heartbeatIntervalFrom(merged: unknown): number {
