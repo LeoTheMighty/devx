@@ -104,3 +104,19 @@ directory.
 - 2026-09-02T09:14 — emitted by /devx-plan (RED gate PASS; workstream
   docs-layout-resolution, plan phase 4).
 - 2026-09-02T11:18:53-06:00 — claimed by /devx in session /devx-2026-09-02T1118-43725
+- 2026-09-02T11:22 — phase 2: spec ACs direct (v2 native); 10 ACs;
+  workstream=docs-layout-resolution; red-artifacts=evals/E-3_no-hand-joins.ts,
+  evals/E-5_scaffold.ts. Both re-run and watched failing NOW, for their stated
+  reasons: E-3 named 11 live bypass sites plus the missing companion test; E-5
+  named all four slug×layout combinations plus its missing companion test.
+  Neither failure was harness breakage — both scans spawned and produced real
+  output (the mlc101 check).
+- 2026-09-02T11:50 — phase 3: ten `*Abs()` helpers re-signatured over
+  `stageSubject()` on a resolved base (`ResolvedBase = {repoRoot,
+  workstreamRel, layout}`); `resolveWorkstream` now returns one, so `ws`
+  passes straight through at all 21 call sites. Five hand-joins closed, two
+  shadowing `todoAbs` locals renamed to `todoPath`, `backfill`'s ENUMERATION
+  (not its calls) moved to a new `enumerateDocSets()`, `devx next` reason
+  strings and gate-summary pointers made layout-aware, and `devx workstream
+  new`'s slug made optional behind a refusal that names
+  `engine.docs_layout: workstream`.
