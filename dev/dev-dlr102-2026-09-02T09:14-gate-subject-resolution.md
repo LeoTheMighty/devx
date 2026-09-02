@@ -3,7 +3,7 @@ hash: dlr102
 type: dev
 created: 2026-09-02T09:14:00-06:00
 title: "Gate subject resolution"
-status: in-progress
+status: done
 from: plan/plan-a494be-2026-09-01T14:31-docs-layout-resolution.md
 plan: _devx/workstreams/docs-layout-resolution
 phase: 2
@@ -118,4 +118,4 @@ Parallel-safe with phase 3 (disjoint file sets: 2 owns `gate*`, 3 owns
   correctly still RED. This phase evidences the resolver, not an end-to-end
   reachable configuration; the base spelling is pinned as a named constant so
   dlr103 changing it must change it here on purpose.
-
+- 2026-09-02T10:58:12-06:00 — merged via PR #152 (squash → 3e61e67)

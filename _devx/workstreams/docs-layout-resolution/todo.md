@@ -51,8 +51,30 @@
     - [x] T1.5 duplicate `DocsLayout` type replaced by a re-export
     - [x] T1.6 9 hand-built `engine` literals re-typed; `layoutWarnings()` rewritten
     - [x] Unplanned: a THIRD reader (`init-write.ts` `renderInitConfig`) closed
-  - [ ] Phase 2: Gate subject resolution -> dlr102
+  - [x] Phase 2: Gate subject resolution -> dlr102
+    - [x] Confirm E-1's RED is honest (names the missing feature, not infra)
+    - [x] T2.2 12 `commands/gate.ts` `*Abs()` reads through `stageSubject()`
+    - [x] T2.2 the two lying refusal strings (gate prd input-missing, gate evals expectations)
+    - [x] T2.3 `gate-prd.ts` 19 `location:` + 6 `message:` onto the resolved subject
+    - [x] T2.4 `gate-coverage.ts` refusals + verify-report Subject onto `subject.rel`
+    - [x] T2.1 `test/engine-layout-gate-subjects.test.ts` (28 tests; 8 combinations)
+    - [x] Negative control: disable the layout branch -> 15/28 red
+    - [x] Negative control: break BOTH layouts identically -> 9 red (AC 2)
+    - [x] AC 5: devx's own gates diffed against `main` on a scratch copy
+    - [x] Phase 4: 3-agent parallel review — 12 findings, all fixed in-place
+    - [x] Closed the leg-(c) blind spot (`path.join` eats `./`) with a spelling assertion
+    - [x] Re-anchored the doc-set base off `todo.md` after the firewall test flagged it
   - [ ] Phase 3: Workstream resolution and the flat-era guard -> dlr103
+    - [x] Confirm E-4's RED is honest (names the missing feature, not infra)
+    - [x] T3.1 `test/engine-layout-resolve-workstream.test.ts` RED
+    - [x] T3.2 `resolveWorkstream()` + `resolveSpecWorkstream()` branch on layout
+    - [x] T3.3 `planFilenameWorkstreamRel()` re-signatured; 4 call sites updated
+    - [x] Unplanned: `planSpecWorkstreamRel()` + `workstreamSlugFor()` — the `??`
+          fallback and the slug tail moved off the call sites too
+    - [x] T3.4 flat-era refusal layout-discriminated; stage list derived (`SUBJECT_STAGES`)
+    - [x] T3.5 `detectFlatWorkstreams` honors `workstreams_root`; early-return
+    - [x] T3.6 `layout-tree-mismatch` finding (`fixable: false`)
+    - [x] AC 6: devx's own `doctor`/`status`/`next` diffed byte-identical vs main
   - [ ] Phase 4: Consumer sweep and layout-aware scaffolding -> dlr104
   - [ ] Phase 5: Identity re-key and privatization -> dlr105
   - [ ] Phase 6: `devx layout migrate` -> dlr106

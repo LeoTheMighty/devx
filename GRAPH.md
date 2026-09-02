@@ -4,7 +4,7 @@
 
 # Story graph
 
-218 specs across 25 groups — 12 blocked · 150 done · 8 in-progress · 48 ready; 436 edges.
+219 specs across 25 groups — 12 blocked · 151 done · 7 in-progress · 49 ready; 437 edges.
 
 ## Legend
 
@@ -159,6 +159,7 @@ flowchart TD
     3b9e07["3b9e07 `devx loop` never emits the mandatory `ph…"]
     3ca108["3ca108 QA walkthrough — the artifact map and the…"]
     494590["494590 Loop token accounting implausibly low — b…"]
+    4bd69f["4bd69f QA walkthrough — gate subject resolution…"]
     4d1a9c["4d1a9c claim commits on whatever branch the main…"]
     4d9c1a["4d9c1a QA walkthrough — sgr104 regen hooks (clai…"]
     5c8b21["5c8b21 loop-concurrency G-1 test sits ~1.3x unde…"]
@@ -329,6 +330,7 @@ flowchart TD
   db36af --> dc7514
   dc7514 -.-> db36af
   dlr101 -.-> 3ca108
+  dlr102 -.-> 4bd69f
   dlr102 --> dlr101
   dlr102 --- |par| dlr103
   dlr103 --> dlr101
@@ -455,7 +457,7 @@ flowchart TD
   class 75563d ready
   class a494be wip
   class dlr101 done
-  class dlr102 wip
+  class dlr102 done
   class dlr103 wip
   class dlr104 ready
   class dlr105 ready
@@ -540,6 +542,7 @@ flowchart TD
   class 3b9e07 done
   class 3ca108 ready
   class 494590 done
+  class 4bd69f ready
   class 4d1a9c done
   class 4d9c1a ready
   class 5c8b21 done
