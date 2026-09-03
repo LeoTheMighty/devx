@@ -190,6 +190,17 @@ describe("cli303 — devx --help command listing", () => {
         init [options]               Scaffold a devx repo non-interactively (config,
                                      backlogs, CLAUDE.md, CI, skills); --resume-gh
                                      replays deferred GitHub-side ops.
+        archive [options] <target>   Move a CLOSED workstream's doc set to
+                                     engine.archive_root (and back with --restore),
+                                     so the live tree lists what is in flight rather
+                                     than everything ever worked on. \`git mv\`, then
+                                     the plan spec's \`workstream:\` is re-pointed so
+                                     the artifacts still resolve. Refuses (exit 1, 0
+                                     files moved) on: workstream-live,
+                                     destination-occupied, no-workstream,
+                                     unmapped-doc-set-files, dirty-tree,
+                                     untracked-sources, nested-repo-root,
+                                     not-a-git-repo. There is no --force.
         devx-helper                  Helpers invoked by the /devx skill body (Phase
                                      1). Subcommand-driven; mirrors \`devx merge-gate\`
                                      + \`devx plan-helper\`.

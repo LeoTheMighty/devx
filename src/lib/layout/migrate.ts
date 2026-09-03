@@ -335,8 +335,12 @@ const FILE_KINDS: readonly ArtifactKind[] = ALL_ARTIFACT_KINDS.filter(
 /** Files under `dirAbs`, as paths relative to it, POSIX-spelled, depth-first
  *  and sorted so a plan is reproducible run to run. Directories are recursed,
  *  never emitted: git tracks files, so an empty directory is not a move.
- *  Symlinks are leaves — see `realMigrateFs.isDirectory`. */
-function walkFiles(
+ *  Symlinks are leaves — see `realMigrateFs.isDirectory`.
+ *
+ *  Exported at arc101: `devx archive`'s verbatim regime walks a doc set the
+ *  same way, and a second four-line recursion is a second set of decisions
+ *  about symlinks, sort order and unreadable directories. */
+export function walkFiles(
   fs: Pick<MigrateFs, "readdir" | "isDirectory">,
   dirAbs: string,
   prefix = "",
@@ -410,6 +414,64 @@ function docSetRelFor(
   const rel = planFilenameWorkstreamRel(name, { ...engine, docsLayout: layout });
   if (rel === null) return null;
   return normalizeArtifactPath(rel) || PROJECT_LEVEL_WORKSTREAM_REL;
+}
+
+/**
+ * Every file move that carries one doc set from (layout, base) to another,
+ * plus the set of sources it claimed.
+ *
+ * Extracted at arc101 because `devx archive` performs the SAME operation
+ * against different bases — a live doc set to `<archive_root>/<slug>` and
+ * back — and a second copy of this loop is precisely the drift CLAUDE.md's
+ * don't-duplicate rule exists to stop. The two callers differ only in which
+ * (layout, base) pairs they hand in; every subtlety below (exact-name probing,
+ * the double-reach dedupe, directory walking) is identical for both and would
+ * have had to be re-discovered by the copy.
+ *
+ * `seen` is returned, not just `moves`: the `unmapped-doc-set-files` refusal
+ * is computed by subtracting it from a walk of the source, and a caller that
+ * re-derived that set from `moves` would silently disagree on the files the
+ * map reaches twice.
+ */
+export function buildDocSetMoves(
+  fs: MigrateFs,
+  fromLayout: DocsLayout,
+  sourceBase: ResolvedBase,
+  toLayout: DocsLayout,
+  targetBase: ResolvedBase,
+): { moves: Move[]; seen: Set<string> } {
+  const moves: Move[] = [];
+  const seen = new Set<string>();
+  const push = (src: string, dst: string, kind: string): void => {
+    // A file the map reaches twice (`evals/RED-report.md` is only excluded
+    // from FILE_KINDS because of this) must appear once. Dedupe on the SOURCE:
+    // two plans for one file is one `git mv` failing on the second attempt.
+    if (src === dst || seen.has(src)) return;
+    seen.add(src);
+    moves.push({ from: src, to: dst, kind });
+  };
+
+  for (const kind of FILE_KINDS) {
+    const src = stageSubject(fromLayout, sourceBase, kind);
+    const dst = stageSubject(toLayout, targetBase, kind);
+    // Exact-name, for the same reason `docSetPresentAt` is: under
+    // `project-level` these sit beside `PLAN.md`/`DEV.md` on a case-insensitive
+    // filesystem, so `fs.exists` alone would plan a move of a file that is not
+    // there — and `git mv` would move the BACKLOG.
+    if (!fileExistsExact(fs, src.abs)) continue;
+    push(src.rel, dst.rel, artifactKindIdentity(kind));
+  }
+
+  for (const kind of DIR_KINDS) {
+    const src = stageSubject(fromLayout, sourceBase, kind);
+    const dst = stageSubject(toLayout, targetBase, kind);
+    if (!fs.exists(src.abs) || !fs.isDirectory(src.abs)) continue;
+    for (const rel of walkFiles(fs, src.abs)) {
+      push(`${src.rel}/${rel}`, `${dst.rel}/${rel}`, artifactKindIdentity(kind));
+    }
+  }
+
+  return { moves, seen };
 }
 
 /**
@@ -606,36 +668,7 @@ export function planLayoutMigration(
   }
 
   // ---- the moves -----------------------------------------------------------
-  const moves: Move[] = [];
-  const seen = new Set<string>();
-  const push = (src: string, dst: string, kind: string): void => {
-    // A file the map reaches twice (`evals/RED-report.md` is only excluded
-    // from FILE_KINDS because of this) must appear once. Dedupe on the SOURCE:
-    // two plans for one file is one `git mv` failing on the second attempt.
-    if (src === dst || seen.has(src)) return;
-    seen.add(src);
-    moves.push({ from: src, to: dst, kind });
-  };
-
-  for (const kind of FILE_KINDS) {
-    const src = stageSubject(from, sourceBase, kind);
-    const dst = stageSubject(target, targetBase, kind);
-    // Exact-name, for the same reason `docSetPresentAt` is: under
-    // `project-level` these sit beside `PLAN.md`/`DEV.md` on a case-insensitive
-    // filesystem, so `fs.exists` alone would plan a move of a file that is not
-    // there — and `git mv` would move the BACKLOG.
-    if (!fileExistsExact(fs, src.abs)) continue;
-    push(src.rel, dst.rel, artifactKindIdentity(kind));
-  }
-
-  for (const kind of DIR_KINDS) {
-    const src = stageSubject(from, sourceBase, kind);
-    const dst = stageSubject(target, targetBase, kind);
-    if (!fs.exists(src.abs) || !fs.isDirectory(src.abs)) continue;
-    for (const rel of walkFiles(fs, src.abs)) {
-      push(`${src.rel}/${rel}`, `${dst.rel}/${rel}`, artifactKindIdentity(kind));
-    }
-  }
+  const { moves, seen } = buildDocSetMoves(fs, from, sourceBase, target, targetBase);
 
   // ---- independent refusals, accumulated -----------------------------------
   const refusals: Refusal[] = [];
@@ -886,8 +919,16 @@ export interface ExecuteMigrationOpts {
   fs: MigrateFs;
   writeFs: MigrateWriteFs;
   /** Injected so the config write is testable without a real YAML round-trip
-   *  against the caller's own config file. Defaults to the real writer. */
-  setLayout?: (target: DocsLayout, configPath: string) => void;
+   *  against the caller's own config file. Defaults to the real writer.
+   *
+   *  `null` SKIPS the config step entirely, and that is not a test seam:
+   *  `devx archive` (arc101) performs the same moves and the same
+   *  `workstream:` rewrite, but changes no layout — writing
+   *  `engine.docs_layout` there would record a layout change that did not
+   *  happen. Expressed as a value rather than a second executor because the
+   *  alternative is forking a function whose ordering guarantees are the
+   *  whole reason it exists. */
+  setLayout?: ((target: DocsLayout, configPath: string) => void) | null;
 }
 
 export interface ExecuteMigrationResult {
@@ -994,12 +1035,15 @@ export function executeMigration(
   opts: ExecuteMigrationOpts,
 ): ExecuteMigrationResult {
   const { repoRoot, plan, exec, fs, writeFs } = opts;
+  // `undefined` → the real writer; `null` → no config step at all (archive).
   const setLayout =
-    opts.setLayout ??
-    ((target, configPath) =>
-      setLeaf(["engine", "docs_layout"], target, "project", {
-        projectPath: configPath,
-      }));
+    opts.setLayout === null
+      ? null
+      : (opts.setLayout ??
+        ((target: DocsLayout, configPath: string) =>
+          setLeaf(["engine", "docs_layout"], target, "project", {
+            projectPath: configPath,
+          })));
 
   const untracked = untrackedSourcesRefusal(exec, repoRoot, plan.moves);
   if (untracked !== null) throw new MigrationRefused(untracked);
@@ -1078,20 +1122,22 @@ export function executeMigration(
   // directories are not tracked), so it cannot affect the recovery above.
   const pruned = pruneSourceDocSet(fs, writeFs, repoRoot, plan);
 
-  try {
-    setLayout(plan.to, opts.configPath);
-  } catch (e) {
-    throw new MigrationAborted(
-      "the files moved and the spec was rewritten, but the config write failed: " +
-        `${e instanceof Error ? e.message : String(e)}. Set ` +
-        `\`engine.docs_layout: ${plan.to}\` by hand — the tree is already in that shape, ` +
-        "and `devx doctor`'s `layout-tree-mismatch` finding will keep reporting the gap " +
-        "until you do.",
-      moved,
-    );
+  if (setLayout !== null) {
+    try {
+      setLayout(plan.to, opts.configPath);
+    } catch (e) {
+      throw new MigrationAborted(
+        "the files moved and the spec was rewritten, but the config write failed: " +
+          `${e instanceof Error ? e.message : String(e)}. Set ` +
+          `\`engine.docs_layout: ${plan.to}\` by hand — the tree is already in that shape, ` +
+          "and `devx doctor`'s `layout-tree-mismatch` finding will keep reporting the gap " +
+          "until you do.",
+        moved,
+      );
+    }
   }
 
-  return { moved, specRewritten, configWritten: true, pruned };
+  return { moved, specRewritten, configWritten: setLayout !== null, pruned };
 }
 
 /**

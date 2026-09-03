@@ -341,7 +341,7 @@ and templates (fail CI if the engine's loadable prose regresses past budget).
 ```yaml
 engine:
   workstreams_root: _devx/workstreams
-  archive_root: _devx/archive
+  archive_root: _devx/archive   # `devx archive` moves a CLOSED doc set here (arc101)
   code_citation_hints: []        # paths design-stage grounds discussion in
   expectations_min: 3
   prose_budget_kb: 60            # canary threshold for S-1

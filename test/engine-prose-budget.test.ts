@@ -145,6 +145,9 @@ describe("engineConfigFrom — defensive engine.* reads (AC #12)", () => {
   it("defaults match v2/02-engine.md §7", () => {
     expect(ENGINE_DEFAULTS).toEqual({
       workstreamsRoot: "_devx/workstreams",
+      // arc101: read by `devx archive`. Until then the key was written into
+      // every config and read by nothing.
+      archiveRoot: "_devx/archive",
       expectationsMin: 3,
       proseBudgetKb: 60,
       // §31 Reading Guide columns — defaults to the plan-stage critique

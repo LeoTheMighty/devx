@@ -17,6 +17,11 @@ import {
 
 export interface EngineConfig {
   workstreamsRoot: string;
+  /** Where a CLOSED doc set is moved by `devx archive` (arc101). Read here
+   *  and nowhere else, which is the point: the key has been written into
+   *  every config `devx init` produces since it existed, and until arc101
+   *  nothing read it — a documented knob that did nothing. */
+  archiveRoot: string;
   expectationsMin: number;
   proseBudgetKb: number;
   /** Column set for the design human render's Reading Guide (§31 port).
@@ -41,6 +46,7 @@ export interface EngineConfig {
  *  would otherwise leak into every later caller in the process. */
 export const ENGINE_DEFAULTS: EngineConfig = Object.freeze({
   workstreamsRoot: "_devx/workstreams",
+  archiveRoot: "_devx/archive",
   expectationsMin: 3,
   proseBudgetKb: 60,
   readingGuideRoles: Object.freeze(["pm", "architect", "dev", "qa"]) as string[],
@@ -81,6 +87,9 @@ export function engineConfigFrom(merged: unknown): EngineConfig {
   const e = engine as Record<string, unknown>;
   if (typeof e.workstreams_root === "string" && e.workstreams_root.trim() !== "") {
     out.workstreamsRoot = e.workstreams_root.trim().replace(/\/+$/, "");
+  }
+  if (typeof e.archive_root === "string" && e.archive_root.trim() !== "") {
+    out.archiveRoot = e.archive_root.trim().replace(/\/+$/, "");
   }
   if (
     typeof e.expectations_min === "number" &&

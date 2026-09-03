@@ -408,7 +408,7 @@ observability:
 engine:
   workstreams_root: _devx/workstreams   # where per-workstream artifacts live
   docs_layout: workstream               # workstream | project-level — the tree's SHAPE
-  archive_root: _devx/archive           # closed/retired workstreams move here
+  archive_root: _devx/archive           # where `devx archive` moves a CLOSED doc set
   code_citation_hints: []               # paths the design stage grounds discussion in
   expectations_min: 3                   # Gate 1 floor: ≥N E-blocks in expectations.md
   prose_budget_kb: 60                   # S-1 canary threshold over shipped skill/template prose
@@ -421,6 +421,34 @@ engine:
 Full engine contract: `v2/02-engine.md` §7. A leftover `bmad:` key from a
 pre-v2 config loads with a deprecation warning, not an error (migration shim
 in config-io); the section itself was retired at v2x101.
+
+### `archive_root` — where a finished workstream goes
+
+`devx archive <hash|slug>` `git mv`s a CLOSED doc set here and re-points the
+plan spec's `workstream:` so its artifacts still resolve — `devx outcome` and
+every gate keep working on an archived workstream, because the pointer moved
+with it. `--restore` is the inverse and round-trips losslessly; `--dry-run`
+renders the moves and makes none.
+
+It refuses, exiting 1 having moved nothing and with no `--force`, on:
+`workstream-live` (the target's `stage` is neither `done` nor `retired` — the
+whole safety property), `destination-occupied`, `no-workstream`, and the
+shared preconditions `dirty-tree` / `untracked-sources` / `nested-repo-root` /
+`not-a-git-repo`.
+
+Two properties worth knowing:
+
+- **The archive always stores the folder shape**, whatever layout the repo
+  runs. That keeps the archive layout-independent — a repo that later flips
+  `docs_layout` does not end up with half its history in each shape.
+- **Everything in the doc set travels**, including the files the artifact map
+  cannot name (`RETRO-<date>.md`, `research/`). Under the folder layout the
+  directory belongs to the workstream outright, so a retro is not a stray to
+  refuse over — it is the most valuable thing in a finished doc set.
+
+Archiving is also the missing lifecycle step for `project-level`: that layout
+holds exactly one in-flight doc set (rule 4 below), so without a way to retire
+the finished one, a flat repo could never start a second unit of work.
 
 ### `docs_layout` — the two shapes
 

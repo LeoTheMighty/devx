@@ -30,6 +30,7 @@ import * as gateCommand from "./commands/gate.js";
 import * as graphCommand from "./commands/graph.js";
 import * as initCommand from "./commands/init.js";
 import * as killCommand from "./commands/kill.js";
+import * as archiveCommand from "./commands/archive.js";
 import * as layoutCommand from "./commands/layout.js";
 import * as learnHelperCommand from "./commands/learn-helper.js";
 import * as learnWatchCommand from "./commands/learn-watch.js";
@@ -71,6 +72,7 @@ const commands: CommandModule[] = [
   graphCommand,
   initCommand,
   killCommand,
+  archiveCommand,
   layoutCommand,
   learnHelperCommand,
   learnWatchCommand,
