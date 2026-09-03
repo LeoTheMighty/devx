@@ -5,8 +5,8 @@ created: 2026-09-03T11:00:00-06:00
 title: "`devx archive` — retire a closed workstream out of the live list"
 from: null
 spawned: []
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-09-03T1101-38694
 branch: null
 ---
 
@@ -100,6 +100,7 @@ week and hits this the moment `scene-engine` closes.
   The owner's underlying complaint was clutter, not layout; archiving is the
   operation that was actually missing. `engine.archive_root` confirmed to have
   zero readers in `src/` outside `init-write.ts`'s writer.
+- 2026-09-03T11:01:47-06:00 — claimed by /devx in session /devx-2026-09-03T1101-38694
 
 ## Links
 

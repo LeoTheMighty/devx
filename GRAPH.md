@@ -4,7 +4,7 @@
 
 # Story graph
 
-231 specs across 25 groups — 12 blocked · 157 done · 6 in-progress · 56 ready; 449 edges.
+232 specs across 25 groups — 12 blocked · 157 done · 7 in-progress · 56 ready; 449 edges.
 
 ## Legend
 
@@ -191,6 +191,7 @@ flowchart TD
     a57f22["a57f22 Skill bodies name the folder shape, not t…"]
     a7c3f9["a7c3f9 Backlog-lock timeouts count toward the sy…"]
     ac0751["ac0751 QA walkthrough — docs-layout doc truth (d…"]
+    arc101["arc101 `devx archive` — retire a closed workstre…"]
     b01000["b01000 Phase 1 — Single-agent core loop: /devx-p…"]
     b02000["b02000 Phase 7 — Exploratory QA: browser-use sub…"]
     b365ac["b365ac yaml in devDependencies but imported at r…"]
@@ -598,6 +599,7 @@ flowchart TD
   class a57f22 done
   class a7c3f9 done
   class ac0751 ready
+  class arc101 wip
   class b01000 done
   class b02000 blocked
   class b365ac done
