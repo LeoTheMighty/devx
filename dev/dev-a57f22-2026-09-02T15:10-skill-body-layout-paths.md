@@ -3,7 +3,7 @@ hash: a57f22
 type: dev
 created: 2026-09-02T15:10:00-06:00
 title: "Skill bodies name the folder shape, not the layout"
-status: in-progress
+status: done
 from: dev/dev-dlr107-2026-09-02T09:14-doc-truth.md
 blocked_by: []
 branch: null
@@ -117,3 +117,4 @@ unenforced) — same family, different surface.
   QA walkthrough emitted at `test/test-53bf7b-2026-09-03T10:14-a57f22-qa-walkthrough.md`
   — 5 machine checks executed inline with real evidence pasted, 2 human
   checks outstanding.
+- 2026-09-03T10:28:23-06:00 — merged via PR #158 (squash → 6b36317)
