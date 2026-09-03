@@ -8,7 +8,7 @@ waiver: { active: false, approver: null, reason: null }
 
 # <Decision | Critique | Verify | Revision> — <workstream> — <YYYY-MM-DD>
 
-<!-- Lives in _devx/workstreams/<slug>/decisions/. FAIL = any ❌ or unmet P0
+<!-- Lives in the doc set's decisions/. FAIL = any ❌ or unmet P0
      floor. CONCERNS = only non-blocking ⚠️ (gate advances, concern
      recorded). WAIVED requires a named approver + reason. -->
 

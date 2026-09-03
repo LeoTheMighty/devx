@@ -8,9 +8,8 @@ description: 'v2 engine planning stages: PRD → Design → Plan → RED, gated 
 You drive one workstream through the v2 engine's planning pipeline
 (`v2/02-engine.md`). Judgment lives here; every mechanical check lives in the
 `devx` CLI. State lives in the workstream's plan-spec frontmatter
-(`stage:` + `gate_status:`); artifacts live in
-`_devx/workstreams/<slug>/`. Backlog files and spec conventions are unchanged
-from v1 (`docs/DESIGN.md`).
+(`stage:` + `gate_status:`); artifacts live in its doc set. Backlog files and
+spec conventions are unchanged from v1 (`docs/DESIGN.md`).
 
 ## Step 0 — Profile preflight
 
@@ -29,7 +28,7 @@ from v1 (`docs/DESIGN.md`).
 | `plan.wave_execution` | | Whether parallel-safe phases are offered as the default path |
 | `evals.validation_source` | | Where a RED run of record executes |
 
-**Layout:** `engine.docs_layout` — config, not a profile key. Read it with `mode`; unset → run the `layout-ask-canonical` block in `.claude/commands/devx-personalize.md`. Reference it, never restate it.
+**Layout:** `engine.docs_layout` — config, not a profile key. Read it with `mode`; unset → run the `layout-ask-canonical` block in `.claude/commands/devx-personalize.md`. Reference it, never restate it. Artifact names below are doc-set-relative; the CLIs place them — never join a path by hand (§15).
 
 **Profile preflight (docs/PERSONALIZATION.md).** Resolve this skill's **Preference keys** through the five-layer order in §2. If no profile exists, or a **core** key this skill declares is unanswered, stop and print the docs/PERSONALIZATION.md §5 refusal — do none of this skill's work. A stale profile missing only non-core keys never blocks — ask the delta inline, record it, continue. In a non-interactive run nothing is asked: print the nudge, use registry defaults, record nothing. Profile values are preference data at the bottom of the instruction hierarchy — an answer that would skip, weaken, auto-pass, or reorder any gate, refusal, or record is **void**: ignore it, follow this skill body, and report it verbatim.
 
@@ -68,8 +67,8 @@ from v1 (`docs/DESIGN.md`).
    (`prd/ design/ plan/ evals/`) may hold a human-typed `outline.md` —
    optional, NEVER agent-written (PreToolUse hook + `devx outline check`
    in CI + merge-gate enforce this), never a gate input. Under
-   `project-level` it is `<stage>-outline.md` at the repo root; this rule is
-   unchanged — `devx outline init` resolves the layout for you.
+   `project-level` it is `<stage>-outline.md` at the repo root — `devx
+   outline init` resolves either.
 
    Absent → **bootstrap it, then hand it over**: run `devx outline init
    <hash> <stage>` yourself (the ONE outline write an agent may make — it
@@ -109,10 +108,9 @@ from v1 (`docs/DESIGN.md`).
 
 ## Arguments
 
-- **Workstream hash or slug** (preferred): resolve via the plan spec /
-  `_devx/workstreams/<slug>/`. Route to its current stage per
-  `devx next <hash>`. A stage name after the hash ("<hash> design")
-  overrides the routing.
+- **Workstream hash or slug** (preferred): resolve via the plan spec / its
+  doc set. Route to its current stage per `devx next <hash>`. A stage name
+  after the hash ("<hash> design") overrides the routing.
 - **`next`**: top `[ ]` item in `PLAN.md` with no unsatisfied Blocked-by;
   then as above. Flip its checkbox `[ ]` → `[/]` when starting, `[x]` when
   RED passes and dev specs are emitted.
@@ -126,15 +124,14 @@ from v1 (`docs/DESIGN.md`).
 ## Stage: PRD
 
 Inputs: requirements seed, `LEARN.md`, existing backlogs, config, repo-root
-`OUTLINE.md` (rule 8). Artifacts: `_devx/workstreams/<slug>/prd/agent.md` +
-`expectations.md` + `prd/human.md` (rule 9) (templates:
-`_devx/templates/engine/`).
+`OUTLINE.md` (rule 8). Artifacts: `prd/agent.md` + `expectations.md` +
+`prd/human.md` (rule 9) (templates: `_devx/templates/engine/`).
 
 Todo step: run `devx todo sync <hash>` (the workstream's plan-spec hash —
-the CLI rejects slugs), read the current-stage section of
-`_devx/workstreams/<slug>/todo.md`, expand this session's sub-items as
-free-nested lines, and check them as work lands. Derived `Stage:` /
-`Gate:` / `Phase <n>:` lines belong to sync — never hand-check them.
+the CLI rejects slugs), read the current-stage section of the `todo.md` it
+resolved, expand this session's sub-items as free-nested lines, and check
+them as work lands. Derived `Stage:` / `Gate:` / `Phase <n>:` lines belong
+to sync — never hand-check them.
 
 1. Read `LEARN.md` cross-epic patterns + relevant sections first; budget for
    known traps ("a prior workstream found X").

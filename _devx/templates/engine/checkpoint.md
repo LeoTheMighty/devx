@@ -7,7 +7,7 @@ updated: <YYYY-MM-DD>
 
 # Checkpoint — <workstream> phase <N> — <YYYY-MM-DD>
 
-<!-- Lives in _devx/workstreams/<slug>/checkpoints/phase-<N>.md. The phase's
+<!-- Lives in the doc set's checkpoints/phase-<N>.md. The phase's
      verification plan run as the pass/fail of record. Five-step gate
      function: identify command → run fresh → read full output + exit code →
      verify → only then claim. "Should pass" is a banned phrase.
