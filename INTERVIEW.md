@@ -174,10 +174,20 @@ loop can read.
     `test/engine-prose-budget.test.ts`. Full record:
     `_devx/retros/v2-migration-2026-07-05.md` §"S-1 verification" +
     `LEARN.md § v2-migration` E8.
+  - Update 2026-09-03 (from /devx on dev-a57f22): **"nothing operationally"
+    has expired.** The full-run surface is now 122,819 B against the
+    2×-budget drift tripwire's 122,880 B — **61 bytes of headroom**, and it
+    was **37 bytes** before this item shaved some back. That assertion lives
+    in `test/engine-prose-budget.test.ts` alongside the 60 KB canary, which
+    still has ~6 KB free; measuring only the canary (as a57f22's own AC 4
+    did) reads as "comfortable" while the binding constraint is one sentence
+    from red. a57f22's first draft added ~588 B of layout prose and reddened
+    CI. Practical effect: option (c) "leave as-is" now means the next prose
+    PR fails, and every prose change must be net-neutral or pay for itself.
   - Question: Accept 64.2 KB as the new end-to-end budget reality, or
     shrink it back under 60 KB?
-  - Blocks: nothing operationally (CI is green either way); blocks closing
-    the S-1 ledger line honestly.
+  - Blocks: closing the S-1 ledger line honestly — and, since 2026-09-03,
+    any PR that adds prose to `devx.md` or the engine templates.
   - Options:
     - (a) Raise `engine.prose_budget_kb` to 70 with a rationale comment and
       add `devx.md` to the gated surface list — the budget becomes honest

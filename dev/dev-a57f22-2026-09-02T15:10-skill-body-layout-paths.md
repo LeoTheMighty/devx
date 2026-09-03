@@ -75,3 +75,45 @@ unenforced) — same family, different surface.
   present at the cited line numbers on `feat/dev-dlr107`, and the S-1
   headroom re-measured rather than inherited.
 - 2026-09-03T09:56:47-06:00 — claimed by /devx in session /devx-2026-09-03T0956-12807
+- 2026-09-03T10:00 — phase 2: spec ACs direct (v2 native); 5 ACs;
+  workstream=none (plain dev spec, `from: dlr107`; no `gate_status:`, so no
+  locked-eval verification applies); red-artifacts=none.
+- 2026-09-03T10:05 — phase 3: rewrote all 9 cited sites plus 3 uncited ones of
+  the same shape (devx.md Key References, and the `checkpoint.md` /
+  `decision.md` engine templates). 2 sites resolve via the CLI that already
+  resolves them (`devx todo sync` in both skills — AC 1's preferred form); the
+  rest became doc-set-relative names covered by each document's existing
+  **Layout:** anchor, extended by one sentence pointing at `docs/CONFIG.md`
+  §15. No path-printing CLI exists today (`devx layout` has only `migrate`),
+  which is why the CLI form was available at only 2 of 9 — noted as a
+  follow-up rather than built here. AC 3's guard is
+  `test/skill-body-layout-paths.test.ts`.
+- 2026-09-03T10:13 — phase 4: sequential multi-lens adversarial review (Blind
+  Hunter / Edge Case Hunter / Acceptance Auditor run one at a time, context
+  reset between). The **parallel shape was unavailable**: this session's
+  policy forbids subagent fan-out ("Do not call the AgentTool unless the user
+  requested it"), so per `/devx` Phase 4 step 2b an above-threshold surface
+  (multi-regex) takes a sanctioned compensation rather than a plain single
+  pass. 7 findings (2 HIGH, 3 MED, 2 LOW); ALL fixed in-place; re-review
+  clean. Most load-bearing: the scan regex required a path segment after
+  `<root>/`, so it did **not** match the bare `` `_devx/workstreams/` ``
+  form — which is exactly cited site devx-plan.md:12, i.e. the guard would
+  not have caught the bug it was written for; the trailing segment is now
+  optional and the bare-root shape is verified RED. Also HIGH: AC 4's
+  measurement covered only the S-1 *canary* (6,102 B free) and missed the
+  full-run *drift tripwire* in the same test file, which had **37 bytes** of
+  headroom on `main` — the first draft (+588 B) reddened it. Others: the
+  proximity check had no test of its own (a bug there would silently make the
+  invariant vacuous); two shipped engine templates carried the same hardcoded
+  root and were outside the scan; byte-trimming had dropped the
+  `project-level` outline filename that rule 8's own "Present → read it" step
+  depends on.
+- 2026-09-03T10:30 — phase 5: local gates green in the worktree —
+  `npm test` (build + typecheck + 140 parallel + 38 blocking test files,
+  REAL_EXIT=0), `devx graph --check` clean (230 nodes / 448 edges / 25
+  groups). AC 4 verified on both assertions without raising
+  `engine.prose_budget_kb`: canary 6,127 B free; full-run tripwire 61 B free,
+  up from 37 B on `main` (devx-plan.md −3 B, devx.md +1 B, templates −22 B).
+  QA walkthrough emitted at `test/test-53bf7b-2026-09-03T10:14-a57f22-qa-walkthrough.md`
+  — 5 machine checks executed inline with real evidence pasted, 2 human
+  checks outstanding.
