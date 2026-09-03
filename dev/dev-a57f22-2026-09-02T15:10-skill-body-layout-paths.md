@@ -3,11 +3,11 @@ hash: a57f22
 type: dev
 created: 2026-09-02T15:10:00-06:00
 title: "Skill bodies name the folder shape, not the layout"
-status: ready
+status: in-progress
 from: dev/dev-dlr107-2026-09-02T09:14-doc-truth.md
 blocked_by: []
 branch: null
-owner: null
+owner: /devx-2026-09-03T0956-12807
 ---
 ## Goal
 
@@ -74,3 +74,4 @@ unenforced) — same family, different surface.
 - 2026-09-02T15:10 — filed by /devx on dlr107 (AC 6); nine sites confirmed
   present at the cited line numbers on `feat/dev-dlr107`, and the S-1
   headroom re-measured rather than inherited.
+- 2026-09-03T09:56:47-06:00 — claimed by /devx in session /devx-2026-09-03T0956-12807

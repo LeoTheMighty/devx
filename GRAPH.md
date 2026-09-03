@@ -4,7 +4,7 @@
 
 # Story graph
 
-230 specs across 25 groups — 12 blocked · 156 done · 6 in-progress · 56 ready; 448 edges.
+230 specs across 25 groups — 12 blocked · 156 done · 7 in-progress · 55 ready; 448 edges.
 
 ## Legend
 
@@ -592,7 +592,7 @@ flowchart TD
   class a01000 done
   class a02000 blocked
   class a03000 blocked
-  class a57f22 ready
+  class a57f22 wip
   class a7c3f9 done
   class ac0751 ready
   class b01000 done
