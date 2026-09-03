@@ -276,7 +276,7 @@ uwgspk is parallel-safe with all of them.
 
 ### Standalone — config/layout hygiene
 
-- [/] `dev/dev-arc101-2026-09-03T11:00-devx-archive.md` — `devx archive <hash|slug>` (+ `--restore`, `--dry-run`): move a CLOSED workstream to `engine.archive_root`, re-point the plan spec so it still resolves, reusing `layout migrate`'s planner/executor rather than a second copy. `archive_root` has been written into every config since init and read by nothing. Also the missing lifecycle step for `project-level`, which otherwise can never start a second unit of work. Status: in-progress. Blocked-by: —.
+- [x] `dev/dev-arc101-2026-09-03T11:00-devx-archive.md` — `devx archive <hash|slug>` (+ `--restore`, `--dry-run`): move a CLOSED workstream to `engine.archive_root`, re-point the plan spec so it still resolves, reusing `layout migrate`'s planner/executor rather than a second copy. `archive_root` has been written into every config since init and read by nothing. Also the missing lifecycle step for `project-level`, which otherwise can never start a second unit of work. Status: done. Blocked-by: —. PR: https://github.com/LeoTheMighty/devx/pull/159 (merged b4aa030)
 - [ ] `dev/dev-lay101-2026-09-01T12:40-project-level-single-docset-guard.md` — Enforce `project-level`'s one-doc-set rule at the config seam (`devx workstream new` refusal + a `devx doctor` finding, one shared predicate). Replaces the `/devx-personalize` refusal that lost its home when the layout moved from the preference bank to `engine.docs_layout`. Status: ready. Blocked-by: —.
 
 ### Workstream: docs-layout-resolution (`plan/plan-a494be-...`)

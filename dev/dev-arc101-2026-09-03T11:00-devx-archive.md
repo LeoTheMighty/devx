@@ -5,7 +5,7 @@ created: 2026-09-03T11:00:00-06:00
 title: "`devx archive` — retire a closed workstream out of the live list"
 from: null
 spawned: []
-status: in-progress
+status: done
 owner: /devx-2026-09-03T1101-38694
 branch: null
 ---
@@ -101,6 +101,11 @@ week and hits this the moment `scene-engine` closes.
   operation that was actually missing. `engine.archive_root` confirmed to have
   zero readers in `src/` outside `init-write.ts`'s writer.
 - 2026-09-03T11:01:47-06:00 — claimed by /devx in session /devx-2026-09-03T1101-38694
+- 2026-09-03T11:05 — phase 2: spec ACs direct (v2 native); 7 ACs; workstream=none; red-artifacts=none
+- 2026-09-03T11:20 — phase 3: implemented. `buildDocSetMoves()` extracted from `planLayoutMigration` and exported (the two commands now share one mover); `executeMigration` gained `setLayout: null` to skip the config step for an operation that changes no layout; `archiveRoot` added to `EngineConfig` + `ENGINE_DEFAULTS` + `engineConfigFrom` (the inert-key fix — `engine.archive_root` had no reader); new `src/lib/archive/plan.ts` (planner) + `src/commands/archive.ts` (CLI) + cli.ts registration; `walkFiles` exported for the second caller. Files: 6 changed, 2 added.
+- 2026-09-03T11:35 — phase 4: single-pass + empirical real-repo leg (sequential lenses over the diff, then running the built CLI against this repo's own closed workstreams). **The parallel 3-agent shape was unavailable — this session's policy forbids spawning subagents** — so per `/devx` Phase 4 step 2b the empirical leg was substituted rather than falling back to a plain single pass. 4 findings, ALL fixed in-place: (HIGH, empirical) the first implementation inherited `layout migrate`'s `unmapped-doc-set-files` refusal and so refused `story-graph` — every closed workstream carries a `RETRO-*.md` and `research/` the artifact map cannot name; archiving now moves a doc set VERBATIM when both sides are folder-shaped, and reserves the map for shape-crossing moves where names must be translated. (MED) `norm()` re-derived the exported `normalizeArtifactPath` — imported it instead. (MED) a local `walkAll` duplicated migrate's private `walkFiles` — exported and shared, since two callers is the moment to share. (LOW) a dead `export { artifactKindIdentity }` re-export removed. Re-review clean. Two further findings came from the tests themselves and are recorded as behaviour, not bugs: `devx status` correctly omits an archived workstream (it lists ACTIVE ones, and archiving requires `stage: done`), and a bare `git commit -m` after an archive leaves the tree dirty because the spec rewrite is unstaged — the same clean-tree precondition `layout migrate` carries.
+- 2026-09-03T12:05 — phase 7: PR https://github.com/LeoTheMighty/devx/pull/159. pr body had unresolved placeholder acceptance-criteria — this spec writes its ACs as a numbered list rather than `- [ ]` checkboxes, so `extractAcChecklist` found none to lift. Recorded rather than papered over; the PR body carries the ACs in prose via --summary.
+- 2026-09-03T11:22:58-06:00 — merged via PR #159 (squash → b4aa030)
 
 ## Links
 
