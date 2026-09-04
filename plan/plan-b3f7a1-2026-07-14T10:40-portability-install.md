@@ -9,7 +9,7 @@ spawned: [pin101, pin102, pin103, pin104, pin105, pinret]
 mode: YOLO
 project_shape: empty-dream
 thoroughness: send-it
-stack_layers: [ backend ]
+stack_layers: [backend]
 blocked_by: []
 stage: done
 entered_at: prd
@@ -21,7 +21,7 @@ gate_status:
 outcome:
   status: null
   measure_by: null
-workstream: _devx/workstreams/portability-install
+workstream: _devx/archive/portability-install
 ---
 
 ## Goal
