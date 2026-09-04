@@ -14,7 +14,7 @@ gate_status:
 outcome:
   status: null
   measure_by: null
-workstream: _devx/workstreams/retro-listener
+workstream: _devx/archive/retro-listener
 gate_verdicts:
   prd: PASS
   design: PASS
