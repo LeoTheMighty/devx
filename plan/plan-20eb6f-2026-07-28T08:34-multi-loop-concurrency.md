@@ -9,7 +9,7 @@ spawned: []
 mode: YOLO
 project_shape: empty-dream
 thoroughness: send-it
-stack_layers: [ backend ]
+stack_layers: [backend]
 blocked_by: []
 stage: done
 entered_at: prd
@@ -21,7 +21,7 @@ gate_status:
 outcome:
   status: pending
   measure_by: 2026-08-31
-workstream: _devx/workstreams/multi-loop-concurrency
+workstream: _devx/archive/multi-loop-concurrency
 gate_verdicts:
   prd: PASS
   design: PASS
