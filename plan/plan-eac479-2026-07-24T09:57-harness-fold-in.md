@@ -14,7 +14,7 @@ gate_status:
 outcome:
   status: pending
   measure_by: 2026-08-21
-workstream: _devx/workstreams/harness-fold-in
+workstream: _devx/archive/harness-fold-in
 ---
 
 ## Goal
