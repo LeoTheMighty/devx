@@ -70,6 +70,8 @@ export interface RunOutlineOpts {
   env?: Record<string, string | undefined>;
   /** Test seam for `guard`'s stdin. */
   stdin?: () => string;
+  /** Test seam for L3's TTY probe; defaults to `process.stdin.isTTY`. */
+  stdinIsTTY?: boolean;
 }
 
 interface Io {
@@ -78,6 +80,9 @@ interface Io {
   fs: EngineFs;
   exec: Exec;
   env: Record<string, string | undefined>;
+  /** Whether stdin is an interactive terminal. Half of L3's answer — see
+   *  `isAgentSessionEnv`; the env marker is the other half. */
+  stdinIsTTY: boolean;
 }
 
 function ioOf(opts: RunOutlineOpts): Io {
@@ -87,6 +92,7 @@ function ioOf(opts: RunOutlineOpts): Io {
     fs: { ...realEngineFs, ...opts.fs },
     exec: opts.exec ?? realExec,
     env: opts.env ?? process.env,
+    stdinIsTTY: opts.stdinIsTTY ?? process.stdin.isTTY === true,
   };
 }
 
@@ -410,7 +416,7 @@ export function runOutlineCommit(
   opts: RunOutlineOpts = {},
 ): number {
   const io = ioOf(opts);
-  if (isAgentSessionEnv(io.env)) {
+  if (isAgentSessionEnv(io.env, { stdinIsTTY: io.stdinIsTTY })) {
     io.err(`${agentSessionRefusal("commit")}\n`);
     return 1;
   }
