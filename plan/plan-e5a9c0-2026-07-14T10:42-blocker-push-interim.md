@@ -21,7 +21,7 @@ gate_status:
 outcome:
   status: null
   measure_by: null
-workstream: _devx/workstreams/blocker-push
+workstream: _devx/workstreams/blocker-push-interim
 gate_verdicts:
   prd: PASS
 ---
