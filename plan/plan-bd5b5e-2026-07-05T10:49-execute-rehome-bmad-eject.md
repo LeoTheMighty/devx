@@ -14,7 +14,7 @@ gate_status:
 outcome:
   status: keep
   measure_by: 2026-08-02
-workstream: _devx/workstreams/execute-rehome-bmad-eject
+workstream: _devx/archive/execute-rehome-bmad-eject
 ---
 
 ## Goal
