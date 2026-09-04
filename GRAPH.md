@@ -4,7 +4,7 @@
 
 # Story graph
 
-232 specs across 25 groups — 12 blocked · 162 done · 3 in-progress · 55 ready; 449 edges.
+232 specs across 25 groups — 12 blocked · 162 done · 4 in-progress · 54 ready; 449 edges.
 
 ## Legend
 
@@ -21,8 +21,8 @@
 
 ```mermaid
 flowchart TD
-  subgraph sg_blocker_push["blocker-push (workstream)"]
-    grp_blocker_push["blocker-push — 1/1 done"]
+  subgraph sg_blocker_push_interim["blocker-push-interim (workstream)"]
+    grp_blocker_push_interim["blocker-push-interim — 1/1 done"]
   end
   subgraph sg_docs_layout_resolution["docs-layout-resolution (workstream)"]
     75563d["75563d RED eval sha lock is unwired — Gate 4 nev…"]
@@ -459,7 +459,7 @@ flowchart TD
   classDef dropped fill:#eee,stroke:#aaa,color:#444
   classDef unknownStatus fill:#fff,stroke:#777,color:#222
   classDef collapsed fill:#eee,stroke:#777,color:#222
-  class grp_blocker_push collapsed
+  class grp_blocker_push_interim collapsed
   class 75563d ready
   class a494be done
   class dlr101 done
@@ -536,7 +536,7 @@ flowchart TD
   class d40007 ready
   class d40ret ready
   class 00b4d3 ready
-  class 135dc9 ready
+  class 135dc9 wip
   class 28b267 done
   class 2d6fc1 ready
   class 2e1174 ready

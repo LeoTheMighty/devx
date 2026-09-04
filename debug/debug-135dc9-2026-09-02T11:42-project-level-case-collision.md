@@ -4,8 +4,8 @@ type: debug
 created: 2026-09-02T11:42:00-06:00
 title: "project-level artifact names collide with devx's own root backlogs on case-insensitive filesystems"
 from: dev/dev-dlr104-2026-09-02T09:14-consumer-sweep-scaffolding.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-09-04T1025-7917
 branch: null
 ---
 ## Goal
@@ -91,3 +91,4 @@ backlog. dlr106 should treat this as a refusal input.
 
 - 2026-09-02T11:42 — filed by /devx during dlr104 Phase 4 (out-of-scope bug
   found while implementing the doc-set probe).
+- 2026-09-04T10:25:49-06:00 — claimed by /devx in session /devx-2026-09-04T1025-7917
