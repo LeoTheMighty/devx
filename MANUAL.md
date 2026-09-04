@@ -245,7 +245,10 @@ CLI serves a downstream-shaped repo with zero devx-repo state reads
     commit GRAPH.md in the same PR → merge.
   - Blocks: G-2 scoring (due 2026-08-23).
 
-- [ ] **MV-a494be.1 — ClassyLights `b7e38f`: run `devx layout migrate --to project-level` for real.**
+- [x] **MV-a494be.1 — ClassyLights `b7e38f`: run `devx layout migrate --to project-level` for real.**
+  **DONE 2026-09-04** — 8/8 moved, zero refusals, gates preserved. ClassyLights
+  `0742ae8`; verdict recorded in
+  `_devx/workstreams/docs-layout-resolution/decisions/2026-09-04-classylights-migration.md`.
   - Why: this is G-3's evidence, and the fixture cannot be it. `test/engine-layout-migrate.test.ts`
     and E-6 prove the MECHANISM on a reproduction of `b7e38f`; only the real
     repo proves the migration on a tree devx does not own. The phase is not
@@ -265,8 +268,13 @@ CLI serves a downstream-shaped repo with zero devx-repo state reads
        Every artifact should land at its docs/CONFIG.md §15 counterpart.
     4. `devx layout migrate --to project-level`.
     5. Confirm `git diff` shows the plan spec's `workstream:` changed and
-       `gate_status`/`gate_verdicts` EMPTY — Gates 1 and 2 cost a stage
-       round-trip each to re-earn.
+       `gate_status`/`gate_verdicts` UNCHANGED — no diff lines against either
+       block. Passed gates survive by construction (dlr106 AC 3): gate state
+       lives in the spec, not the tree, and layout is not a gate input.
+       Verified on the real repo 2026-09-04 — `prd: PASS` / `design: PASS`
+       came through untouched. (This step previously said "EMPTY", which read
+       as "the gates were cleared" and would make a correct migration look
+       like a failed one.)
     6. `devx gate coverage b7e38f` — it must run to a verdict on the migrated
        tree.
     7. Record the verdict in
