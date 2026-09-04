@@ -42,9 +42,9 @@ between the built single-repo system and the owner's intended use — portable
 install, overnight usage-window riding, blocker push, multi-repo fleet.
 Ship order = list order; mobile backlog (below) pauses until f1d6b2 ships.
 
-- [x] `plan/plan-b3f7a1-2026-07-14T10:40-portability-install.md` — Track 1 — Portability & install (packaged skills, real `devx init` scaffold, S-5 on palateful). Status: planned (all 4 gates passed 2026-07-14; 5 dev specs pin101–pin105 + pinret emitted to DEV.md § Vision-gap tracks; stage: executing). Blocked-by: —.
+- [x] `plan/plan-b3f7a1-2026-07-14T10:40-portability-install.md` — Track 1 — Portability & install (packaged skills, real `devx init` scaffold, S-5 on palateful). Status: done (closed 2026-09-04 — pin101-pin104 + pinret merged; pin105 live half remains as a standalone MANUAL-gated DEV row; archived).md § Vision-gap tracks; stage: executing). Blocked-by: —.
 - [/] `plan/plan-c8e2d4-2026-07-14T10:41-usage-window-governor.md` — Track 2 — Usage-window governor (`devx loop` pauses on subscription limit, resumes on reset; re-homes d01000's capacity slice + OPEN_QUESTIONS §3). Status: ready. Blocked-by: —.
-- [ ] `plan/plan-e5a9c0-2026-07-14T10:42-blocker-push-interim.md` — Track 3 — Interim blocker push (GitHub blockers-issue @mention; retired by mobile relay). Status: ready. Blocked-by: —.
+- [x] `plan/plan-e5a9c0-2026-07-14T10:42-blocker-push-interim.md` — Track 3 — Interim blocker push (GitHub blockers-issue @mention; retired by mobile relay). Status: RETIRED 2026-09-04 by owner decision — PRD+Gate 1 only, Design never started, zero dev specs emitted; superseded by the move to project-level standing docs; archived. Blocked-by: —.
 - [-] `plan/plan-f1d6b2-2026-07-14T10:43-fleet-layer.md` — Track 4 — Fleet layer (`~/.devx/projects.yaml`, `devx fleet loop`, aggregated report, `/devx-fleet`; supersedes ROADMAP:16 scope per INTERVIEW Q#10). Status: blocked. Blocked-by: b3f7a1, c8e2d4.
 
 ## Multi-loop concurrency (2026-07-28)
@@ -65,9 +65,9 @@ CLI primitive shared by interactive `/devx` and the `devx loop` driver
 cold. Merge-first preferred, branch-handoff fallback. Kills the hfi102
 abandoned-while-done class.
 
-- [/] `plan/plan-e0a67e-2026-07-28T12:15-mid-story-split.md` — Mid-story split: split primitive + carried-forward context contract, loop split paths + `split` outcome, Handoff Snippet retirement + skills/docs sweep, state-hygiene invariants. Status: executing (all 4 gates passed 2026-07-28; RED artifacts observed right-reason; emitted mss101–mss104 + mssret to DEV.md). Blocked-by: —. Related: mlc103 (spec-lock lifecycle), db36af (doctor), lpf101 (preflight).
+- [x] `plan/plan-e0a67e-2026-07-28T12:15-mid-story-split.md` — Mid-story split: split primitive + carried-forward context contract, loop split paths + `split` outcome, Handoff Snippet retirement + skills/docs sweep, state-hygiene invariants. Status: done (closed 2026-09-04 — mss101-mss104 + mssret all merged; Execute+Retro were complete, only todo.md lagged; archived).md). Blocked-by: —. Related: mlc103 (spec-lock lifecycle), db36af (doctor), lpf101 (preflight).
 
-- [/] `plan/plan-620c74-2026-07-29T11:56-retro-listener.md` — Retro listener: auto-spawn `/devx-learn` from the friction nudge (port of `mycase/8am-harness` PR #36 — Stop/SessionEnd listener hook, serial `devx learn-watch` drainer with tmux/Terminal fork-spawn, wire-protocol pin, `/devx-init` hook distribution, five-outlet routing rework; phase-2 unattended retros out of scope). Status: executing (all 4 gates passed 2026-07-30; RED artifacts observed right-reason; emitted rtl101–rtl106 + rtlret to DEV.md). Blocked-by: —. Related: eac479 (harness fold-in — the nudge + /devx-learn this listens for).
+- [x] `plan/plan-620c74-2026-07-29T11:56-retro-listener.md` — Retro listener: auto-spawn `/devx-learn` from the friction nudge (port of `mycase/8am-harness` PR #36 — Stop/SessionEnd listener hook, serial `devx learn-watch` drainer with tmux/Terminal fork-spawn, wire-protocol pin, `/devx-init` hook distribution, five-outlet routing rework; phase-2 unattended retros out of scope). Status: done (closed 2026-09-04 — rtl101-rtl106 + rtlret all merged; dev-9946f9 human smoke remains as a standalone DEV row; archived).md). Blocked-by: —. Related: eac479 (harness fold-in — the nudge + /devx-learn this listens for).
 
 - [x] `plan/plan-62bcd1-2026-08-02T09:00-story-graph.md` — Story Graph: auto-generated GRAPH.md (Mermaid DAG of all specs grouped by workstream/epic), edge-source union + tokenizer hardening, loop regeneration hooks, assisted backfill porting friend-finder-mesh + palateful. Status: done (all 7 phases merged PRs #110/#111/#112/#114/#117/#118/#120 by 2026-08-05; retro 2026-08-06 `RETRO-2026-08-06.md`; outcome armed, measure-by 2026-09-20; G-2 attended legs = MANUAL.md MV-sgr107.1–.3). Blocked-by: —. Related: db36af (doctor owns drift *fixing*; graph only warns).
 
@@ -81,7 +81,7 @@ folder-per-artifact path, and the two purpose-built project-level resolvers in
 set, not a layout. `docs/CONFIG.md` §15 rule 5 and `config-schema.json:939`
 both claim otherwise.
 
-- [x] `plan/plan-a494be-2026-09-01T14:31-docs-layout-resolution.md` — Docs layout resolution: one stage-subject resolver consumed by every artifact call site, `docs_layout` on `EngineConfig`, `workstream: .` under project-level, layout-aware scaffolding, four hand-join bypasses rewired, `devx layout migrate --to <layout>`, and the two false doc claims corrected. Status: done — all four gates PASS (prd + design + plan 2026-09-01/02, evals 2026-09-02); stage: executing. Emitted dlr101-dlr107 + dlrret. Blocked-by: —. Related: lay101 (one-doc-set enforcement — adjacent, explicitly out of scope here). Migration case: ClassyLights `b7e38f`/`scene-engine`, mid-flight at the plan gate.
+- [x] `plan/plan-a494be-2026-09-01T14:31-docs-layout-resolution.md` — Docs layout resolution: one stage-subject resolver consumed by every artifact call site, `docs_layout` on `EngineConfig`, `workstream: .` under project-level, layout-aware scaffolding, four hand-join bypasses rewired, `devx layout migrate --to <layout>`, and the two false doc claims corrected. Status: done (closed 2026-09-04 — all 7 phases + a57f22 merged; dlrret retro remains as a standalone DEV row; archived). Emitted dlr101-dlr107 + dlrret. Blocked-by: —. Related: lay101 (one-doc-set enforcement — adjacent, explicitly out of scope here). Migration case: ClassyLights `b7e38f`/`scene-engine`, mid-flight at the plan gate.
 
 ## Cross-cutting plans
 

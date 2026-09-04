@@ -3,8 +3,8 @@ hash: 620c74
 type: plan
 created: 2026-07-29T11:56:06-06:00
 title: Retro Listener
-status: in-progress
-stage: executing
+status: done
+stage: done
 entered_at: prd
 gate_status:
   prd_validated: true
@@ -27,6 +27,8 @@ gate_verdicts:
 Workstream 'Retro Listener' — PRD stage next. Artifacts live in `_devx/workstreams/retro-listener/`.
 
 ## Status log
+
+- 2026-09-04T09:44 — workstream CLOSED. rtl101-rtl106 + rtlret merged (PRs #104-#109/#141). Only dev-9946f9 remains — a human smoke of the learn-watch Terminal.app spawn arm; it stays an open standalone DEV row. Follow-ups 343b43 + e2da94 were filed FROM the retro and belong to no workstream.
 
 - 2026-07-29T11:56 — workstream scaffolded by `devx workstream new retro-listener`.
 - 2026-07-29T12:05 — PRD stage: prd.md + expectations.md (8 E-blocks, 4×P0) authored from upstream mycase/8am-harness PR #36 port requirements; `devx gate prd 620c74` PASS (after fixing 1 placeholder-lookalike + 3 non-numeric thresholds); upstream sources mirrored to reference/.

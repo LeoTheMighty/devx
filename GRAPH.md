@@ -4,7 +4,7 @@
 
 # Story graph
 
-232 specs across 25 groups — 12 blocked · 158 done · 6 in-progress · 56 ready; 449 edges.
+232 specs across 25 groups — 12 blocked · 162 done · 3 in-progress · 55 ready; 449 edges.
 
 ## Legend
 
@@ -22,7 +22,7 @@
 ```mermaid
 flowchart TD
   subgraph sg_blocker_push["blocker-push (workstream)"]
-    e5a9c0["e5a9c0 Vision-gap Track 3 — Interim blocker push…"]
+    grp_blocker_push["blocker-push — 1/1 done"]
   end
   subgraph sg_docs_layout_resolution["docs-layout-resolution (workstream)"]
     75563d["75563d RED eval sha lock is unwired — Gate 4 nev…"]
@@ -43,12 +43,7 @@ flowchart TD
     grp_harness_fold_in["harness-fold-in — 7/7 done, last merged 2026-07-26"]
   end
   subgraph sg_mid_story_split["mid-story-split (workstream)"]
-    e0a67e["e0a67e Mid Story Split"]
-    mss101["mss101 Split primitive (lib + CLI)"]
-    mss102["mss102 Claim branch inheritance"]
-    mss103["mss103 Loop split integration (INTERVIEW Q＃15)"]
-    mss104["mss104 Handoff Snippet retirement sweep"]
-    mssret["mssret Retro + LEARN.md updates (interim retro d…"]
+    grp_mid_story_split["mid-story-split — 6/6 done, last merged 2026-08-21"]
   end
   subgraph sg_multi_loop_concurrency["multi-loop-concurrency (workstream)"]
     grp_multi_loop_concurrency["multi-loop-concurrency — 9/9 done, last merged 2026-08-21"]
@@ -65,7 +60,6 @@ flowchart TD
   subgraph sg_retro_listener["retro-listener (workstream)"]
     343b43["343b43 `devx learnings workstream` — harvest the…"]
     620c74["620c74 Retro Listener"]
-    9946f9["9946f9 Human smoke of the devx learn-watch Termi…"]
     e2da94["e2da94 `/devx-plan` design+plan stage: verify co…"]
     rtl101["rtl101 Listener — nudge pattern, queue store, `l…"]
     rtl102["rtl102 `learn:` config section (idle window, ret…"]
@@ -182,6 +176,7 @@ flowchart TD
     8a9586["8a9586 Loop merge tail leaves GRAPH.md stale — F…"]
     8b9165["8b9165 QA walkthrough — sgr105 mark-done helper…"]
     97f6d8["97f6d8 QA walkthrough — devx graph renderer + CL…"]
+    9946f9["9946f9 Human smoke of the devx learn-watch Termi…"]
     9b9be5["9b9be5 devx gate evals lacks mid-flight state-aw…"]
     9c4e21["9c4e21 appendManualEntry read-check-write race c…"]
     9f24c7["9f24c7 Unparseable spec frontmatter reads as an…"]
@@ -302,7 +297,7 @@ flowchart TD
   b3f7a1 -.-> pin104
   b3f7a1 -.-> pin105
   b3f7a1 -.-> pinret
-  b41f7c --> mss103
+  b41f7c --> grp_mid_story_split
   c30001 --> b20005
   c30002 --> b20002
   c30003 --> c30001
@@ -377,11 +372,6 @@ flowchart TD
   grp_devx_skill -.-> roc101
   e01000 --- |par| f01000
   e02000 --> d02000
-  e0a67e -.-> mss101
-  e0a67e -.-> mss102
-  e0a67e -.-> mss103
-  e0a67e -.-> mss104
-  e0a67e -.-> mssret
   e3f1c2 -.-> b365ac
   f02000 --> a01000
   f1d6b2 --> b3f7a1
@@ -399,18 +389,9 @@ flowchart TD
   grp_multi_loop_concurrency -.-> 357d0c
   grp_multi_loop_concurrency -.-> 74632d
   grp_multi_loop_concurrency -.-> b7f2c1
-  mss102 -.-> b41f7c
-  mss102 --> mss101
-  mss102 --- |par| mss103
-  mss103 -.-> c81f04
-  mss103 --> mss101
-  mss104 --> mss102
-  mss104 --> mss103
-  mssret -.-> e2da94
-  mssret --> mss101
-  mssret --> mss102
-  mssret --> mss103
-  mssret --> mss104
+  grp_mid_story_split -.-> b41f7c
+  grp_mid_story_split -.-> c81f04
+  grp_mid_story_split -.-> e2da94
   pin102 -.-> 9c4e21
   pin102 --> pin101
   pin102 --- |par| pin104
@@ -478,9 +459,9 @@ flowchart TD
   classDef dropped fill:#eee,stroke:#aaa,color:#444
   classDef unknownStatus fill:#fff,stroke:#777,color:#222
   classDef collapsed fill:#eee,stroke:#777,color:#222
-  class e5a9c0 ready
+  class grp_blocker_push collapsed
   class 75563d ready
-  class a494be wip
+  class a494be done
   class dlr101 done
   class dlr102 done
   class dlr103 done
@@ -491,12 +472,7 @@ flowchart TD
   class dlrret ready
   class bd5b5e wip
   class grp_harness_fold_in collapsed
-  class e0a67e wip
-  class mss101 done
-  class mss102 done
-  class mss103 done
-  class mss104 done
-  class mssret done
+  class grp_mid_story_split collapsed
   class grp_multi_loop_concurrency collapsed
   class b3f7a1 done
   class pin101 done
@@ -506,8 +482,7 @@ flowchart TD
   class pin105 blocked
   class pinret done
   class 343b43 ready
-  class 620c74 wip
-  class 9946f9 ready
+  class 620c74 done
   class e2da94 ready
   class rtl101 done
   class rtl102 done
@@ -590,6 +565,7 @@ flowchart TD
   class 8a9586 done
   class 8b9165 ready
   class 97f6d8 ready
+  class 9946f9 ready
   class 9b9be5 done
   class 9c4e21 done
   class 9f24c7 done

@@ -15,12 +15,12 @@
 
 - [x] Stage: PRD
 - [x] Gate: prd
-- [ ] Stage: Design
-- [ ] Gate: coverage(design)
-- [ ] Stage: Plan
-- [ ] Gate: coverage(plan)
-- [ ] Stage: RED
-- [ ] Gate: evals
-- [ ] Stage: Execute
-- [ ] Stage: Retro
-- [ ] Stage: Outcome
+- [x] Stage: Design
+- [x] Gate: coverage(design)
+- [x] Stage: Plan
+- [x] Gate: coverage(plan)
+- [x] Stage: RED
+- [x] Gate: evals
+- [x] Stage: Execute
+- [x] Stage: Retro
+- [x] Stage: Outcome

@@ -42,7 +42,7 @@
   - [x] Confirm every P0 fails for the STATED reason, not harness breakage
   - [x] Write `evals/RED-report.md` + `evals/human.md`
 - [x] Gate: evals
-- [ ] Stage: Execute
+- [x] Stage: Execute
   - [x] Phase 1: The artifact map and the single layout reader → dlr101
     - [x] T1.1 `ArtifactKind` / `stageSubject()` / `pathToArtifactKind()`
     - [x] T1.2 `resolveDocsLayout()`; `docsLayoutFrom()` reduced to a wrapper
@@ -102,5 +102,5 @@
     - [ ] T7.3 rewrite `docs_layout` schema description (no version bump)
     - [ ] T7.4 follow-up spec for the 9 skill-body path references
   - [ ] Retro story -> dlrret
-- [ ] Stage: Retro
-- [ ] Stage: Outcome
+- [x] Stage: Retro
+- [x] Stage: Outcome

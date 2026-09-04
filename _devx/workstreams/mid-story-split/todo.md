@@ -40,7 +40,7 @@
   - [x] `devx gate evals e0a67e` → PASS (5 right-reason runs, 0 deferred) → evals_red, stage: executing
   - [x] Emit mss101–mss104 + mssret (validate-emit ok)
 - [x] Gate: evals
-- [ ] Stage: Execute
+- [x] Stage: Execute
   - [x] Phase 1: Split primitive (lib + CLI) → mss101
     - [x] T1.1 SplitPayload + validateSplitPayload
     - [x] T1.2 composeSplit (both shapes)
@@ -90,5 +90,5 @@
           threshold; marker-bearing so reviewed at regex level); 3 findings
           (1 HIGH lock-release mechanism unnamed, 2 MED `$SCRATCH` scope +
           merge-first ordering vs the ownership guard), all fixed in-place
-- [ ] Stage: Retro
-- [ ] Stage: Outcome
+- [x] Stage: Retro
+- [x] Stage: Outcome

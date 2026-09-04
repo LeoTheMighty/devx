@@ -11,7 +11,7 @@ project_shape: empty-dream
 thoroughness: send-it
 stack_layers: [ backend ]
 blocked_by: []
-stage: executing
+stage: done
 entered_at: prd
 gate_status:
   prd_validated: true
@@ -90,6 +90,8 @@ repo + palateful) → ret.
 - [ ] SETUP.md/INSTALL.md describe only paths that exist.
 
 ## Status log
+
+- 2026-09-04T09:44 — workstream CLOSED. pin101-pin104 + pinret merged (PRs #69/#70/#73/#74/#141). Only pin105's LIVE half remains, gated on MANUAL MV-pin105.1 — a human errand, not agent work; it stays an open standalone DEV row and does not need this workstream live.
 
 - 2026-07-14T10:40 — filed from the vision-gap drift audit (plan
   sparkling-bubbling-pie, approved 2026-07-14). Track 1 of 4; ships first.

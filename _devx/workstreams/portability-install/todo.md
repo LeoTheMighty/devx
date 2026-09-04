@@ -21,6 +21,6 @@
 - [x] Gate: coverage(plan)
 - [x] Stage: RED
 - [x] Gate: evals
-- [ ] Stage: Execute
+- [x] Stage: Execute
 - [x] Stage: Retro
-- [ ] Stage: Outcome
+- [x] Stage: Outcome

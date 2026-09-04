@@ -3,7 +3,7 @@ hash: e5a9c0
 type: plan
 created: 2026-07-14T10:42:00-07:00
 title: "Vision-gap Track 3 — Interim blocker push: GitHub-native notifications until the mobile relay ships"
-status: ready
+status: done
 from: PLAN.md#vision-gap-tracks (drift audit 2026-07-14; interim slice of plan-e01000's notification-filters scope)
 spawned: []
 mode: YOLO
@@ -11,7 +11,7 @@ project_shape: empty-dream
 thoroughness: send-it
 stack_layers: [backend]
 blocked_by: []
-stage: design
+stage: done
 entered_at: prd
 gate_status:
   prd_validated: true
@@ -88,6 +88,8 @@ comment) → emit-point wiring (loop + reconcile + report) → ret.
       (dedupe/coalesce within a run).
 
 ## Status log
+
+- 2026-09-04T09:44 — workstream CLOSED. RETIRED by owner decision 2026-09-04, not completed. PRD + Gate 1 passed; Design never started and zero dev specs were ever emitted. Superseded by the move to project-level standing docs. The PRD survives under the archive if the interim-blocker-push idea is ever revived.
 
 - 2026-07-14T10:42 — filed from the vision-gap drift audit (plan
   sparkling-bubbling-pie, approved 2026-07-14). Track 3 of 4. Transport
