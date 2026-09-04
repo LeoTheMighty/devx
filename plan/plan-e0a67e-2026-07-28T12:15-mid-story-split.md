@@ -14,7 +14,7 @@ gate_status:
 outcome:
   status: null
   measure_by: null
-workstream: _devx/workstreams/mid-story-split
+workstream: _devx/archive/mid-story-split
 gate_verdicts:
   prd: PASS
   design: PASS
