@@ -14,7 +14,7 @@ gate_status:
 outcome:
   status: pending
   measure_by: 2026-09-20
-workstream: _devx/workstreams/story-graph
+workstream: _devx/archive/story-graph
 gate_verdicts:
   prd: PASS
   design: CONCERNS
