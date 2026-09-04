@@ -151,10 +151,30 @@ describe("devx outline commit", () => {
       err: io.err,
       projectPath: repo.configPath,
       env: { CHIRP_SESSION_ID: "s1" },
+      stdinIsTTY: false,
     });
     expect(code).toBe(1);
     expect(io.stderr()).toContain("refusing to run inside an agent session");
     expect(git(repo.root, "status", "--porcelain")).toContain("OUTLINE.md");
+  });
+
+  it("allows an interactive terminal that inherits session markers", () => {
+    // A Xirp terminal window the human opened: marker set (session-wide),
+    // stdin a TTY. The agent's tool call above differs only in the TTY.
+    const repo = makeGitRepo();
+    repo.write("OUTLINE.md", "# by human\n");
+    const io = captureIo();
+    const code = runOutlineCommit({}, {
+      out: io.out,
+      err: io.err,
+      projectPath: repo.configPath,
+      env: { CHIRP_SESSION_ID: "s1" },
+      stdinIsTTY: true,
+    });
+    expect(code).toBe(0);
+    expect(git(repo.root, "status", "--porcelain").trim()).toBe("");
+    const show = git(repo.root, "show", "--name-only", "--format=%s", "HEAD");
+    expect(show).toContain("OUTLINE.md");
   });
 
   it("commits ONLY outline paths, leaving other dirty files behind", () => {

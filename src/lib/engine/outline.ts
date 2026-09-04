@@ -10,8 +10,8 @@
 //   L1 (write-time)  PreToolUse hook → `devx outline guard` → guardDecision()
 //   L2 (merge-time)  `devx outline check` diff scan → classifyDiffNames();
 //                    also surfaced as merge-gate's `outlineClean` signal
-//   L3 (human-side)  `devx outline commit` refuses under agent-session env
-//                    markers → isAgentSessionEnv()
+//   L3 (human-side)  `devx outline commit` refuses when an agent-session env
+//                    marker is set AND stdin is not a TTY → isAgentSessionEnv()
 //
 // One agent-runnable seam exists, and only one: `devx outline init`. It
 // CREATES the empty scaffold and never overwrites, so it cannot touch a byte
@@ -324,13 +324,18 @@ export function renderDenyJson(reason: string): string {
 // Agent-session detection (L3)
 // ---------------------------------------------------------------------------
 
-/** Env markers that identify an agent-driven shell. CLAUDECODE is set by
+/** Env markers that identify an agent-CAPABLE session. CLAUDECODE is set by
  *  Claude Code's Bash tool; CHIRP_SESSION_ID by the Xirp session harness. */
 export const AGENT_ENV_MARKERS = ["CLAUDECODE", "CHIRP_SESSION_ID"] as const;
 
-/** True when the environment says an agent (not a plain human terminal) is
- *  running this process. */
-export function isAgentSessionEnv(
+/** True when a marker is present with a non-empty value.
+ *
+ *  Session-scoped, not shell-scoped: the Xirp harness exports
+ *  CHIRP_SESSION_ID once for the entire session, so this is equally true in
+ *  a terminal window the human opened inside Xirp and in a shell an agent
+ *  drives. A marker answers "could an agent be driving this?", never "is
+ *  one?" — which is why `isAgentSessionEnv` asks a second question. */
+export function hasAgentEnvMarker(
   env: Record<string, string | undefined>,
 ): boolean {
   return AGENT_ENV_MARKERS.some((k) => {
@@ -339,12 +344,41 @@ export function isAgentSessionEnv(
   });
 }
 
+/** True when the environment says an agent (not a plain human terminal) is
+ *  running this process.
+ *
+ *  Two signals, because neither is sufficient alone. The env marker says an
+ *  agent COULD be driving this shell; the TTY says whether a human is
+ *  actually sitting at it. Agent tool calls get a piped, non-interactive
+ *  stdin — Claude Code's Bash tool and Xirp's agent shells both do — while a
+ *  terminal window the human opened has a TTY even though it inherits the
+ *  session's markers. Requiring both keeps every agent-driven shell refused
+ *  and stops refusing the human for where their terminal happens to live.
+ *
+ *  L3 is a speed bump against an agent laundering its own outline writes
+ *  past L1/L2, not a defense against a determined forger — a marker was
+ *  always as strippable as a TTY is fakeable. Covering human shells too
+ *  bought no protection and cost the one workflow L3 exists to permit.
+ *
+ *  `stdinIsTTY` is a parameter rather than a `process.stdin` read because
+ *  this module is pure decision logic — the caller owns the I/O. Omitting it
+ *  means "not a TTY", so a caller that cannot answer keeps the old strict
+ *  behavior: the safe direction for a guard. */
+export function isAgentSessionEnv(
+  env: Record<string, string | undefined>,
+  opts: { stdinIsTTY?: boolean } = {},
+): boolean {
+  return hasAgentEnvMarker(env) && opts.stdinIsTTY !== true;
+}
+
 /** Refusal text for a human-only outline subcommand (today: `commit`) run
  *  under an agent session. `init` is exempt — see the L3 note in the header. */
 export function agentSessionRefusal(subcommand: string): string {
   return (
     `devx outline ${subcommand}: refusing to run inside an agent session ` +
-    `(${AGENT_ENV_MARKERS.join("/")} set). Outlines are typed by a human — ` +
-    `run this from your own terminal (outside Claude Code / Xirp).`
+    `(${AGENT_ENV_MARKERS.join("/")} set, and stdin is not a TTY). Outlines ` +
+    `are typed by a human — run this from an interactive terminal you are ` +
+    `sitting at. A terminal window inside Claude Code / Xirp is fine; an ` +
+    `agent's tool call is not.`
   );
 }

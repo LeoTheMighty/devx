@@ -11,6 +11,7 @@ import {
   agentSessionRefusal,
   classifyDiffNames,
   guardDecision,
+  hasAgentEnvMarker,
   isAgentSessionEnv,
   isProtectedOutlinePath,
   outlineKindOf,
@@ -325,6 +326,40 @@ describe("isAgentSessionEnv", () => {
     expect(isAgentSessionEnv({ CHIRP_SESSION_ID: "abc" })).toBe(true);
     expect(isAgentSessionEnv({ CLAUDECODE: "" })).toBe(false);
     expect(AGENT_ENV_MARKERS).toContain("CLAUDECODE");
+  });
+
+  it("a marker with a TTY is a human terminal inside an agent session", () => {
+    // The Xirp harness exports CHIRP_SESSION_ID session-wide, so the human's
+    // own terminal window carries it too. The TTY is what separates them.
+    expect(
+      isAgentSessionEnv({ CHIRP_SESSION_ID: "s1" }, { stdinIsTTY: true }),
+    ).toBe(false);
+    expect(isAgentSessionEnv({ CLAUDECODE: "1" }, { stdinIsTTY: true })).toBe(
+      false,
+    );
+  });
+
+  it("a marker without a TTY is an agent tool call — still refused", () => {
+    expect(
+      isAgentSessionEnv({ CHIRP_SESSION_ID: "s1" }, { stdinIsTTY: false }),
+    ).toBe(true);
+    expect(isAgentSessionEnv({ CLAUDECODE: "1" }, {})).toBe(true);
+  });
+
+  it("omitting stdinIsTTY fails closed", () => {
+    expect(isAgentSessionEnv({ CLAUDECODE: "1" })).toBe(true);
+  });
+
+  it("a TTY alone is not an agent session — no marker, no refusal", () => {
+    expect(isAgentSessionEnv({}, { stdinIsTTY: false })).toBe(false);
+    expect(hasAgentEnvMarker({})).toBe(false);
+    expect(hasAgentEnvMarker({ CHIRP_SESSION_ID: "s1" })).toBe(true);
+  });
+
+  it("the refusal names both signals", () => {
+    const msg = agentSessionRefusal("commit");
+    expect(msg).toContain("stdin is not a TTY");
+    expect(msg).not.toContain("outside Claude Code / Xirp");
   });
 });
 
