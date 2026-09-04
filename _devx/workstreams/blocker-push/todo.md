@@ -13,8 +13,8 @@
   - Hand-edits are legal — the next writer reconciles.
 -->
 
-- [ ] Stage: PRD
-- [ ] Gate: prd
+- [x] Stage: PRD
+- [x] Gate: prd
 - [ ] Stage: Design
 - [ ] Gate: coverage(design)
 - [ ] Stage: Plan
