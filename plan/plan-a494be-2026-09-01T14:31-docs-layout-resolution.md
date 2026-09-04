@@ -14,7 +14,7 @@ gate_status:
 outcome:
   status: null
   measure_by: null
-workstream: _devx/workstreams/docs-layout-resolution
+workstream: _devx/archive/docs-layout-resolution
 gate_verdicts:
   prd: PASS
   design: PASS
