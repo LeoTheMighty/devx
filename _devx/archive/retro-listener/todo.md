@@ -29,4 +29,6 @@
   - [x] Phase 5: Hook registration template + `/devx-init` distribution → rtl105
   - [x] Phase 6: `/devx-learn` outlet routing rework → rtl106
 - [x] Stage: Retro
-- [x] Stage: Outcome
+- [ ] Stage: Outcome
+
+<!-- CLOSED 2026-09-04. Retro shipped (rtlret, PR #141). Outcome never armed or scored. -->

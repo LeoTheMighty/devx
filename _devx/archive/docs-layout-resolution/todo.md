@@ -102,5 +102,7 @@
     - [ ] T7.3 rewrite `docs_layout` schema description (no version bump)
     - [ ] T7.4 follow-up spec for the 9 skill-body path references
   - [ ] Retro story -> dlrret
-- [x] Stage: Retro
-- [x] Stage: Outcome
+- [ ] Stage: Retro
+- [ ] Stage: Outcome
+
+<!-- CLOSED 2026-09-04. CLOSED 2026-09-04 with dlrret still open — it lives on as a standalone DEV row. Outcome never armed or scored. -->

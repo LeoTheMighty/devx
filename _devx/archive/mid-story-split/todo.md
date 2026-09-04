@@ -91,4 +91,6 @@
           (1 HIGH lock-release mechanism unnamed, 2 MED `$SCRATCH` scope +
           merge-first ordering vs the ownership guard), all fixed in-place
 - [x] Stage: Retro
-- [x] Stage: Outcome
+- [ ] Stage: Outcome
+
+<!-- CLOSED 2026-09-04. Retro shipped (mssret, PR #141). Outcome never armed or scored. -->

@@ -15,12 +15,15 @@
 
 - [x] Stage: PRD
 - [x] Gate: prd
-- [x] Stage: Design
-- [x] Gate: coverage(design)
-- [x] Stage: Plan
-- [x] Gate: coverage(plan)
-- [x] Stage: RED
-- [x] Gate: evals
-- [x] Stage: Execute
-- [x] Stage: Retro
-- [x] Stage: Outcome
+- [ ] Stage: Design
+- [ ] Gate: coverage(design)
+- [ ] Stage: Plan
+- [ ] Gate: coverage(plan)
+- [ ] Stage: RED
+- [ ] Gate: evals
+- [ ] Stage: Execute
+- [ ] Stage: Retro
+- [ ] Stage: Outcome
+
+<!-- RETIRED 2026-09-04 by owner decision: never reached Design.
+     Only PRD + Gate 1 ever passed; the unchecked rows below them never ran. -->

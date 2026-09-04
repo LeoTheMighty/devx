@@ -23,4 +23,6 @@
 - [x] Gate: evals
 - [x] Stage: Execute
 - [x] Stage: Retro
-- [x] Stage: Outcome
+- [ ] Stage: Outcome
+
+<!-- CLOSED 2026-09-04. Retro shipped (pinret, PR #141). Outcome never armed or scored. -->
