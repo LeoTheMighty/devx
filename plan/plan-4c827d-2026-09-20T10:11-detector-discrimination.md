@@ -22,14 +22,15 @@ branch: null
 
 devx has no notion of **detector health**. Nothing anywhere asserts that
 a check is still capable of reporting, and nothing notices a check whose
-output has stopped carrying information. Four state-management defects
-surfaced across two repos on 2026-09-20; three of them are instances of
-that gap, and the specimens are unusually clean.
+output has stopped carrying information. A day of cross-session triage
+on 2026-09-20 surfaced six specimens across two repos, five of them in
+devx itself — see §Evidence, and read the *units*, because one of them
+is a single event wearing a count of ten.
 
 **This plan item exists to get an owner decision on shape, not to
-prescribe one.** The four underlying fixes stay independent and are
-already filed — this is about whether to add a systemic property on top,
-and which one.
+prescribe one.** The underlying fixes stay independent and are already
+filed — this is about whether to add a systemic property on top, and
+which one.
 
 ## The property, stated precisely
 
@@ -58,6 +59,52 @@ repro block showing one. The scan was not scoped to the frontmatter
 block, so it matched frontmatter-shaped prose. A detector that fires on
 unscoped matches discriminates between nothing.
 
+## Evidence (units matter more than counts)
+
+Six specimens as of 2026-09-20, five of them in devx itself. **Read the
+unit on each one** — a count of symptoms over-weights a bug that fired
+once.
+
+| Specimen | Measured | Unit |
+|---|---|---|
+| palateful deploy-freshness | 50 scheduled runs, 50 failures, 51 days, prod never once measured | per-run; genuinely 50 lapses |
+| devx spec-lock classifier | every lock, always `dead` (`dev-f83b04`) | per-lock; saturated |
+| devx `doctor` orphan-worktree | asserts uncommitted changes on 3 clean worktrees; conflates repo-level stashes with worktree-local state | per-worktree |
+| devx `doctor` dead-owner | tells the reader to "inspect `.worktrees/`" for 10 claims that have no worktree | per-claim |
+| devx `merge-gate` | `"no PR yet"` with the PR open and mergeable | per-query |
+| devx backlog write-back | **one batch-merge event**, 10 rows, 51 days | **per-event — NOT ten lapses** |
+
+The last row is the one that changes conclusions. All ten palateful PRs
+merged on 2026-07-31 inside a single 24-minute window (15:59:45Z #4 →
+16:23:36Z #20). That is one write-back step failing once, not ten
+independent drifts. A property that samples *rows* sees ten instances
+and over-weights it; a property that samples *events* sees one. It also
+sharpens what group 1 actually is: the loss is **atomic with the batch**
+— a merge event has a write-back step nothing verifies completed — which
+is a different detector shape from "notice that a row is old."
+
+This cuts the same way as the caveat under Option D: six specimens in
+one day looks striking, and part of that is unit inflation plus the fact
+that we went looking. Weigh it accordingly.
+
+**Two corrections to the raw tally, so the item does not inherit them:**
+
+1. The merge-gate specimen is real but its *cause* was misreported.
+   merge-gate is fully type-aware (`findSpecForHashAnyType`,
+   `merge-gate.ts:334`); it has no `--type` flag because it does not need
+   one. `"no PR yet"` is a branch-resolution mismatch — see
+   `debug-7d96be`. It stays on this list for the right reason: `gh pr
+   list --head X` returning `[]` is reported identically whether X is
+   wrong or the PR does not exist, and the gate cannot tell you which.
+2. A seventh candidate was dropped: `unknown command 'tour'` is a
+   *current* build behaving correctly (tour retired at tur101), not a
+   detector failure.
+
+The sharper statement of the pattern, from the reporting session: it is
+not that detectors go stale — it is that **detectors answer from the
+wrong predicate and cannot tell you they did**. Every row above is a
+confident wrong answer, not an error or a silence.
+
 ## The three groups (the four defects are not one cause)
 
 Collapsing these into a single story would produce something that
@@ -65,9 +112,9 @@ describes a mood rather than a defect. They are:
 
 | Group | Defects | Shape |
 |---|---|---|
-| **Write path corrupts or fails to update state** | duplicate `owner:` key on claim (`debug-828385`, confirmed in the wild on `imptb1`); stale `DEV.md`/`DEBUG.md` rows pointing at merged work (palateful-0a) | Mechanical, independently fixable, no shared code |
-| **Detector exists but its output carries no information** | dead-PID lock classifier (`dev-f83b04`); palateful deploy-freshness (50/50); the unscoped key scan | The real pair — and the only group this plan item is about |
-| **No detector exists at all** | finished work stranding in conflicted PRs (palateful `debug-prstrnd`) | A missing feature, not a broken one |
+| **Write path corrupts or fails to update state** | duplicate `owner:` key on claim (`debug-828385`, confirmed in the wild on `imptb1`); backlog write-back missed after a batch merge (palateful, 1 event / 10 rows / 51 days) | Mechanical, independently fixable, no shared code. The write-back case is **event-atomic**, not gradual drift |
+| **Detector exists but its output carries no information** | dead-PID lock classifier (`dev-f83b04`); palateful deploy-freshness (50/50); both `doctor` findings; `merge-gate`'s "no PR yet"; the unscoped key scan | The only group this plan item is about |
+| **No detector exists at all** | finished work stranding in conflicted PRs (palateful `debug-prstrnd`) | A missing feature, not a broken one. Caught **in transition** 2026-09-20: PR #24 went CONFLICTING/DIRTY under observation when #25 and #1 landed beneath it — a live specimen, not a retrospective one |
 
 Only the middle group motivates a systemic property. Group 1 is a set of
 bugs. Group 3 is a backlog item. Do not let the plan absorb them.
