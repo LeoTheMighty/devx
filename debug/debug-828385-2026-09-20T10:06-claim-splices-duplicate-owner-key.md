@@ -91,7 +91,26 @@ so a dependency bump can silently flip which owner wins.
    `.+?` requires a character, so a bare key reads as absent, and the
    `m` flag is not anchored to the frontmatter block, so an `owner:`
    line anywhere in the body can match. Decide and pin both.
-6. Full suite green; `npm run typecheck` clean.
+6. **A key match must be line-anchored, never a substring.** A `title:`
+   value can legitimately contain the text `owner:` — this very spec's
+   title does — so any check that counts `/owner:/` occurrences rather
+   than `/^owner:/` lines reports a phantom duplicate. Demonstrated live
+   on 2026-09-20: a cross-repo scan flagged THIS file as carrying two
+   `owner:` keys; the frontmatter block has 2 substring occurrences and
+   exactly 1 line-anchored key, and claiming it produces a single
+   correct owner. Every reader and every validator touched by this story
+   gets a test with `owner:` embedded in a quoted `title:`.
+7. **Close the re-seed path.** ACs 1-4 fix the write path and clean
+   existing corruption, but nothing stops the next hand-authored spec
+   from reintroducing a bare key. Every machine authoring site already
+   emits `owner: null` (`split.ts:406`, `split.ts:530`,
+   `learn/propose.ts:208`, `gather.ts:434`), so there is no emitter to
+   fix — the exposed population is hand-authored specs, which means the
+   durable control is a **validator**, not a writer change. Add a
+   structural check (natural home: `plan/validate-emit.ts`, which
+   already owns `spec-missing-branch-frontmatter`) that rejects a bare
+   `owner:`/`status:` key and any duplicate frontmatter key.
+8. Full suite green; `npm run typecheck` clean.
 
 ## Technical notes
 
@@ -123,6 +142,19 @@ one-line correction behind a design decision.
   `--type debug` bug; the type attribution is **incorrect** — the trigger
   is a bare `owner:` key, and this repo's debug specs escape it only
   because they all use `owner: null`.
+- 2026-09-20T10:12-06:00 — a cross-repo scan reported THIS spec as
+  carrying a bare `owner:` key, i.e. as unworkable by the defect it
+  documents. **Checked and false.** Line 9 is `owner: null`; a
+  line-anchored scan of `dev/`, `debug/` and `plan/` finds no bare
+  `owner:` key anywhere in this repo. Replaying `updateSpecForClaim`
+  against the real file yields 1 owner key and `verify-claim` reads the
+  correct token. The scan matched the **substring** `owner:` inside this
+  spec's quoted `title:` — the frontmatter block holds 2 substring
+  occurrences and 1 line-anchored key. Turned into AC 6 rather than
+  discarded: the false positive is a live demonstration of the hazard
+  the reader audit is for. AC 7 added from the same exchange (the
+  re-seed path), with the scan of authoring sites showing every machine
+  emitter already writes `owner: null`.
 
 ## Links
 
