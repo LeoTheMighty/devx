@@ -61,7 +61,7 @@ unscoped matches discriminates between nothing.
 
 ## Evidence (units matter more than counts)
 
-Six specimens as of 2026-09-20, five of them in devx itself. **Read the
+Seven specimens as of 2026-09-20, six of them in devx itself. **Read the
 unit on each one** — a count of symptoms over-weights a bug that fired
 once.
 
@@ -73,6 +73,7 @@ once.
 | devx `doctor` dead-owner | tells the reader to "inspect `.worktrees/`" for 10 claims that have no worktree | per-claim |
 | devx `merge-gate` | `"no PR yet"` with the PR open and mergeable — **three states, one answer**: wrong branch, no PR, or a `branch:` sentinel the reader doesn't recognize | per-query |
 | devx backlog write-back | **one batch-merge event**, 10 rows, 51 days | **per-event — NOT ten lapses** |
+| devx packaged-skills guard | passes CI correctly while palateful runs skill bodies 146/161/184 lines behind HEAD, incl. 16 `tour` refs to a command retired 6 weeks ago | per-repo — **population stops one hop short** |
 
 The last row is the one that changes conclusions. All ten palateful PRs
 merged on 2026-07-31 inside a single 24-minute window (15:59:45Z #4 →
@@ -129,9 +130,55 @@ describes a mood rather than a defect. They are:
 | **Write path corrupts or fails to update state** | duplicate `owner:` key on claim (`debug-828385`, confirmed in the wild on `imptb1`); backlog write-back missed after a batch merge (palateful, 1 event / 10 rows / 51 days) | Mechanical, independently fixable, no shared code. The write-back case is **event-atomic**, not gradual drift |
 | **Detector exists but its output carries no information** | dead-PID lock classifier (`dev-f83b04`); palateful deploy-freshness (50/50); both `doctor` findings; `merge-gate`'s "no PR yet"; the unscoped key scan | The only group this plan item is about |
 | **No detector exists at all** | finished work stranding in conflicted PRs (palateful `debug-prstrnd`) | A missing feature, not a broken one. Caught **in transition** 2026-09-20: PR #24 went CONFLICTING/DIRTY under observation when #25 and #1 landed beneath it — a live specimen, not a retrospective one |
+| **Detector's population stops short of the failure** | packaged-skills drift guard (pin101) — green in devx, blind to consumer installs | Added 2026-09-20; see §"A fourth shape" — this one changes the options, not just the count |
 
-Only the middle group motivates a systemic property. Group 1 is a set of
-bugs. Group 3 is a backlog item. Do not let the plan absorb them.
+The middle group motivates the systemic property. Group 1 is a set of
+bugs. Group 3 is a backlog item. Do not let the plan absorb them. Group
+4 arrived last and is the only one that constrains the *answer* rather
+than supplying evidence for the question.
+
+### A fourth shape the three groups do not describe
+
+The packaged-skills specimen was offered as group 3 ("no detector
+exists"). **It is not.** A detector exists, is CI-enforced, and is
+passing correctly: `scripts/sync-skills.mjs --check` (pin101) compares
+`.claude/commands/` against `skills/`, and `test/skills-sync.test.ts`
+fails the build on divergence. Verified at HEAD — the mirror is clean,
+all four bodies match (722/400/283/178 lines), zero `tour` references.
+
+The guard's population is **devx's own tree**. It proves the npm tarball
+matches devx's source. It says nothing about whether an *installed*
+`.claude/commands/` in a consumer repo matches the tarball it came from
+— and that is exactly where the failure is. palateful is running
+`devx.md` 146 lines behind, `devx-plan.md` 161 behind, `devx-learn.md`
+184 behind (nearly triple), and its installed `devx.md` carries 16
+references to `tour`, including a whole `### Phase 7.5: Review Tour`
+section invoking `devx tour gather` / `devx tour build`, for a command
+retired at tur101 on 2026-08-04.
+
+So the shape is: **a detector whose population stops one hop short of
+where the failure occurs.** Not answering the wrong predicate (group 2),
+not absent (group 3). It is green, and correct to be green, and useless
+against the thing it appears to cover.
+
+This is the one specimen that changes the options analysis rather than
+adding to the pile. Options A and B both operate on devx's detectors
+*within devx* — a discrimination ledger would record pin101's guard as
+healthy, and a negative control would prove it can tell a drifted mirror
+from a clean one, which it genuinely can. Neither catches a population
+that ends at the repo boundary. **Any option chosen here needs an
+explicit answer for "what is this detector's population, and is the
+failure inside it?"** — which is a different question from "does this
+detector discriminate," and cheaper to ask.
+
+It also lands on open question 2 below with some force: devx's
+detectors mostly stop at devx, and the repo that keeps paying is
+palateful.
+
+Caveat, in keeping with the rest of this section: this is one consumer
+repo measured once. The drift numbers are concrete and currently live,
+so it is not subject to the "we went looking" discount in the way the
+count-based specimens are — but it is n=1 on installs.
 
 ## Options (for the owner decision)
 
