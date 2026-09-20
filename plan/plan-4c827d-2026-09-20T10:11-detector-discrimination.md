@@ -32,6 +32,50 @@ prescribe one.** The underlying fixes stay independent and are already
 filed — this is about whether to add a systemic property on top, and
 which one.
 
+## The framing (it earned the top slot by changing the answer)
+
+Every specimen below is the same inference: **something true of a proxy
+was read as the fact itself.**
+
+| Proxy measured | Read as |
+|---|---|
+| present in an open-PR listing | merged |
+| a lock's PID is gone | the owner is gone |
+| the file is saved in the worktree | the work is shared |
+| `gh pr list --head X` returned `[]` | no PR exists |
+| the sync check is green | the install matches |
+| a worktree exists | it holds uncommitted work |
+
+palateful-4f's phrasing: **the check and the claim are one step apart,
+and nobody verifies the step.**
+
+The reporting session set the right test for whether this belongs at the
+top or in a closing line — *does it change which option you'd pick or
+how you'd scope it?* It does, so it is here. Applied honestly, it breaks
+the recommendation this item shipped with:
+
+**A negative control (Option B) cannot catch a wrong proxy, because the
+control is written by the same person holding the same proxy
+assumption.** Take pin101's skills guard. Its negative control is "a
+drifted mirror must fail, a clean mirror must pass" — both fixtures
+built inside devx, both confirming that `skills/` matching
+`.claude/commands/` is the thing worth checking. The control passes, the
+detector is genuinely correct, and the gap (consumer installs) is
+untouched. B tests the implementation against the proxy; it never tests
+the proxy against the claim.
+
+That demotes B from "recommended" to "necessary but blind in exactly the
+direction these failures come from," and it is why **Option E** exists
+below. It also explains the population case, which sat awkwardly outside
+all three original groups: pin101's guard is a perfectly good proxy for
+the wrong claim.
+
+The framing's own weakness, stated so the item cannot hide behind it:
+"verify your proxies" is close to unfalsifiable, and an item that opens
+with an aphorism can smuggle a weak recommendation in behind a
+strong-sounding frame. The options below are the part that has to do
+work — judge them, not the sentence.
+
 ## The property, stated precisely
 
 The naive framing is "a detector that reports nothing is
@@ -234,19 +278,67 @@ Treat the pattern as a review heuristic rather than machinery.
   cluster, but it is one day. The cluster may reflect that we went
   looking, not that the rate is high.
 
+### Option E — Proxy register
+
+For each detector, declare three things in one place: the **proxy** it
+measures, the **claim** it is read as, and the conditions under which
+they diverge. A detector without a register entry fails review; an entry
+whose divergence conditions are unaddressed is a finding.
+
+- **Catches:** the population case (pin101's entry would read "proxy:
+  devx's mirror matches; claim: the install matches" and the gap is
+  visible on the page), the sentinel case (`proxy: gh returned []`;
+  `claim: no PR exists`), the lock classifier, and the two human errors.
+  It is the only option that catches a *wrong proxy* rather than a
+  broken implementation.
+- **Cost:** low and entirely authoring-time. No store, no runtime
+  component, no tunable. A table and a review rule.
+- **Risk:** it is documentation, so it rots like documentation, and it
+  catches nothing automatically once written. It is a thinking aid with
+  teeth at review time, not a gate.
+- **Why it is not just B:** B asks "does this detector work?" E asks
+  "is this detector measuring the thing we're about to claim?" Every
+  specimen here answers yes to the first and no to the second.
+
 ## Recommendation
 
-**B now, C if the scheduled surfaces grow, A only on evidence.**
+**E first, then B, C if the scheduled surfaces grow, A only on
+evidence.**
+
+This is a change from the item's original recommendation of B-first,
+and the reason is in §The framing: B cannot catch a wrong proxy because
+the control inherits the proxy. E is the cheaper question *and* the one
+that covers the specimen that broke the original ranking. B stays —
+once the proxy is right, a negative control is what keeps the
+implementation honest — but it is second, not first.
 
 B is cheap, has no runtime surface, no store, and no self-application
 paradox, and it converts the property into something authors feel at the
 moment they write a detector — which is where two of the three specimens
-were born. C is worth pricing separately because the deploy-freshness
+were born. E is cheaper still and strictly upstream of it. C is worth pricing separately because the deploy-freshness
 case is the one with a measured 51-day cost and B provably would not
 have caught it. A is the only complete answer and also the only one that
 can generate its own class of uninformative findings; it should wait
 until B and C have produced evidence about how often production
 degeneracy actually occurs.
+
+### On the two human specimens
+
+Two of the seven are humans making the same inference as the code (an
+open-PR listing read as merged; a worktree save read as shared), and
+both were caught the same way the code ones were — by checking the
+underlying fact (`mergedAt` + ancestry; `git status`) rather than the
+proxy.
+
+Stated at the strength it deserves: this is **weak** evidence that the
+failure is about the shape of the inference rather than about software.
+n=2, both inside a session where everyone was already primed to hunt
+proxy errors, and the base rate for "a person conflates a listing with a
+fact" is unmeasured. It is not nothing, though, and it has one concrete
+implication: if the error is cognitive rather than technical, a register
+that forces someone to write the mapping down (E) is better targeted
+than runtime instrumentation (A). That is a modest argument, and it is
+offered as one.
 
 ## Open questions for the owner
 
