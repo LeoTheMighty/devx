@@ -127,10 +127,9 @@ worthless.
 
 - **(a) Owner PID passed in.** `composeSpecLockBody` already accepts
   `opts.pid`; the `/devx` skill would pass the owning Claude session's
-  pid via a new `--owner-pid` flag. Cleanest model, but needs a reliable
-  way for a Bash tool call to learn its session's pid — `$PPID` is the
-  harness's shell spawner, not the session. Harness-coupled and worth a
-  timeboxed spike before committing to it.
+  pid via a new `--owner-pid` flag. Cleanest model. **The spike is done
+  — see (d); the pid is reliably obtainable and this is now the
+  recommended shape.**
 - **(b) Heartbeat.** Liveness = lock mtime (or a sidecar) refreshed
   recently. Works uniformly for both holders and is harness-independent,
   but interactive `/devx` has no daemon to do the refreshing — it would
@@ -143,11 +142,67 @@ worthless.
   conservative bias, but does not actually *detect* a dead interactive
   holder — it only stops lying about one.
 
+- **(d) Ancestry walk to the Claude session, validated against the
+  harness session registry.** Claude Code maintains one record per live
+  session at `~/.claude/sessions/<pid>.json`, named by the session's real
+  pid, carrying `pid`, `sessionId`, `cwd`, `procStart`, `kind`
+  (`"interactive"`), `entrypoint`, and `version`. This supplies all three
+  things (a) needed: the owner pid, a `procStart` for the recycling
+  guard, and a holder-kind discriminator.
+
+  **Verified 2026-09-20 on this machine** (Claude Code 2.1.273, 13 live
+  records) — the specifics matter, because two plausible lookup
+  strategies are wrong:
+
+  - **The pid IS discoverable by ancestry, contrary to this spec's first
+    draft.** Measured from a `node` process spawned exactly as the `devx`
+    CLI is: `node(4492) <- /bin/zsh(4489) <- claude(72093) <-
+    Xirp node-runtime(71962) <- tmux`. So `$PPID` *inside the Bash tool's
+    shell* IS the Claude session pid directly; from inside the CLI
+    process it is a two-hop walk (`process.ppid` is the zsh). The earlier
+    claim that `$PPID` finds only "the harness's shell spawner" was
+    wrong and is retracted.
+  - **Do NOT key the lookup on `cwd`.** Seven live records shared
+    `~/personal/palateful` at measurement time, so `cwd` is not unique.
+    Worse, record 63843's `cwd` was a *worktree*
+    (`.../budgeter-worktree-session-nervy-tern-u2hp`), and `/devx` does
+    its work inside `.worktrees/dev-<hash>/` — so matching a session's
+    `cwd` against the canonical repo root misses exactly the sessions
+    this feature exists to track.
+
+  The robust shape is therefore: **walk the pid ancestry until a process
+  named `claude` has a matching `~/.claude/sessions/<pid>.json`**, and use
+  the registry as the *validator and metadata source* for that walk
+  rather than as a `cwd`-keyed index. That sidesteps both the
+  non-uniqueness and the worktree problem, and yields an exact answer
+  instead of a heuristic.
+
+  Residual risks to handle, not to hand-wave:
+  - It is **Claude Code harness state, not a devx contract**. Gate on the
+    record's `version` field and degrade to (c) when the shape is
+    unrecognized — never fail a claim because the registry moved.
+  - **Stale-record reaping is UNVERIFIED.** All 13 records were live at
+    measurement, so whether an exited session's file is removed was not
+    observable. Treat a record as authoritative only after an
+    independent `ps` liveness check on its `pid`; never trust file
+    existence alone.
+  - `procStart` is a coarse local-time string (`"Sun Sep 20 15:54:57
+    2026"`, 1-second resolution, no offset) — not the ISO-ms
+    `pid_started_at` the classifier stores. Within `RECYCLING_GRACE_MS`
+    (2s), but parse it deliberately and store a normalized value.
+  - It does not exist for a non-Claude loop process, which is fine:
+    `driver.ts:831`'s in-process `process.pid` is already correct and
+    stays on its own path.
+
 (c) is the floor — it fixes consequences 1, 2 and 4 by making the
-classification honest, without claiming detection it cannot deliver. (a)
-is the ceiling. Do not ship (a) on an unverified assumption about the
-harness; spike it first and fall back to (c) if the pid is not reliably
-obtainable.
+classification honest, without claiming detection it cannot deliver.
+**(a) via (d) is now the recommended shape**, since the spike that
+blocked it is resolved: the pid is obtainable, exactly and cheaply. Ship
+(a)+(d) with (c)'s holder-kind field in the body regardless — the
+discriminator is worth having on its own, and it is what lets the
+implementation degrade to (c) when the registry is absent or its
+`version` is unrecognized. (b) heartbeat is now the least attractive
+option and should not be built unless (d) fails in practice.
 
 ### Files
 
@@ -189,6 +244,19 @@ obtainable.
   does **not** hold on the normal path — see §"What this is NOT". The
   defect is real but is degraded detection and a single-layer mutual
   exclusion, not an open double-claim.
+- 2026-09-20T10:05-06:00 — AC 3 spike **resolved before implementation**,
+  so the story no longer carries an open design blocker. The coordinator
+  session pointed at `~/.claude/sessions/<pid>.json`; verified here on
+  Claude Code 2.1.273 against 13 live records. Two corrections came out
+  of the verification and are written into candidate (d): this spec's
+  original `$PPID` claim was **wrong** (the Bash tool's `$PPID` IS the
+  Claude session pid; from the CLI it is a two-hop walk), and the
+  coordinator's suggested `cwd` match is **not viable** (7 live records
+  shared one `cwd`; one record's `cwd` was a worktree, which is where
+  `/devx` actually runs). Recommended shape moved from (c) to (a)-via-(d)
+  with (c)'s holder-kind field retained as the degrade path. Stale-record
+  reaping remains unverified — flagged in (d) as requiring an independent
+  `ps` check.
 
 ## Links
 
