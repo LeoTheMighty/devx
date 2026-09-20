@@ -272,6 +272,10 @@ uwgspk is parallel-safe with all of them.
 - [ ] `dev/dev-uwgspk-2026-08-21T14:30-uwgspk.md` — Spike: does a usage-probe API exist at all? Findings doc only, timeboxed to one story. Parallel-safe with uwg101-104. Status: ready. From: epic-usage-window-governor.
 - [ ] `dev/dev-uwgret-2026-08-21T13:14-retro-usage-window-governor.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: uwg101, uwg102, uwg103.
 
+### Standalone — lock correctness
+
+- [ ] `dev/dev-f83b04-2026-09-20T09:58-spec-lock-holder-liveness.md` — Spec-lock liveness: record the holder, not the CLI that wrote the file. Every interactive claim's lock is born dead (`composeSpecLockBody` defaults `pid` to the short-lived `devx devx-helper claim` process; `defaultSessionId()` embeds the same dying pid), so `classifySpecLock` returns `dead` for healthy claims — 17/17 locks in a live palateful sample. **Not an open double-claim**: `allowReap`'s row-readiness gate still refuses. What IS broken: `devx doctor`'s `dead-owner` detector is pure noise, the 2h stale-live-lock WARN is unreachable, pick-time masking is inert, and mutual exclusion rests on a single layer. Status: ready. Blocked-by: —. From: coordinator session 2026-09-20.
+
 ### Standalone — config/layout hygiene
 
 - [-] `dev/dev-pin105-2026-07-14T12:04-s5-validation.md` — S-5 validation: timed scratch scenario + live palateful checklist. Status: blocked (scripted half merged; live half waits on MANUAL MV-pin105.1). Blocked-by: pin103, pin104. Requires user action (live palateful run). PR: https://github.com/LeoTheMighty/devx/pull/75 (merged f9e4428; scripted half). **Re-homed 2026-09-04**: portability-install closed; this row stands alone (waits on MANUAL MV-pin105.1).
