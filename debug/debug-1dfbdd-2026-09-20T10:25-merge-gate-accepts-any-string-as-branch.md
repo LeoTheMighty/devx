@@ -77,11 +77,15 @@ enumerate: devx cannot enumerate sentinels it has never seen.
    check that failed. It must NOT be reported as "no PR yet". Suggested:
    exit 2 with `reason: "spec branch 'unassigned' does not exist (from
    frontmatter); derived branch would be 'feat/debug-lgort1'"`.
-3. **Three states, three answers.** `gh pr list --head X` returning `[]`
-   currently means any of: X is wrong, no PR exists, or X is an
-   unrecognized sentinel. The gate must distinguish them. At minimum the
-   reason string carries the branch actually queried — one line that
-   turns an undiagnosable answer into a diagnosable one.
+3. **Three states, three answers — and this AC is unconditional.**
+   `gh pr list --head X` returning `[]` currently means any of: X is
+   wrong, no PR exists, or X is an unrecognized sentinel. The gate must
+   distinguish them. The floor is that the reason string carries the
+   branch actually queried: `no PR yet (queried --head 'unassigned')`.
+   That is one line, it degrades gracefully if AC 1 never ships, and it
+   would have ended this investigation at first contact instead of
+   costing a cross-session hunt and two wrong hypotheses. Ship it even
+   if everything else here slips.
 4. `NULLISH_SCALARS` is **unchanged**. A test pins that `unassigned`
    is NOT nullish, with a comment explaining that extending the set is
    the wrong fix, so a future reader does not "fix" this by enumerating.
@@ -96,10 +100,47 @@ enumerate: devx cannot enumerate sentinels it has never seen.
 
 ## Technical notes
 
-The cheap half of this (AC 3) is worth doing even if AC 1 is deferred:
-carrying the queried branch in the reason string costs one line and
-would have made `lgort1` self-diagnosing on first contact instead of
-requiring a cross-session investigation.
+### Do NOT fix this by making `claim` write `branch:`
+
+The sentinel survives a successful claim — `lgort1` was claimed
+(`chore: claim lgort1 for /devx`, palateful `13b4ecb1`) and its
+`branch:` still reads `unassigned`, because `claimSpec` writes status,
+owner and the status-log line and never touches `branch:`
+(`updateSpecForClaim`, `claim.ts:469-507`). That looks like a partial
+write worth closing, and it is not.
+
+`branch: null` is a **supported, working state**, and devx relies on it.
+Verified in this repo: `debug-135dc9` is `status: in-progress` right now
+with `branch: null`, and merge-gate's `deriveBranch` fallback resolves
+it correctly. Specs that do carry a branch (`dev-uwg102`,
+`dev-dlr105`) got it from the `/devx-plan` emit path, which is the
+authored-branch contract `merge-gate.ts:366-370` documents.
+
+So there are two legitimate states — authored branch, or null and
+derived — and adding a write-back to `claim` would mask the sentinel
+rather than fix the reader, while changing behavior for every spec in
+every repo. The reader fix (ACs 1-3) is the correct and sufficient one.
+
+### The write side is still real, but it belongs to the validator
+
+`unassigned` reaching a spec at all is a write/read contract gap: an
+authoring path emitted a value devx's readers were never told about.
+The durable control is `debug-828385` AC 7's validator, generalized
+one step — reject any frontmatter value that is neither null nor valid
+for its key, rather than only rejecting bare and duplicate keys. That
+is the same "validate, don't enumerate" rule arriving from the value
+side instead of the key side.
+
+### `cldb01` is a live landmine, not a historical artifact
+
+palateful's `cldb01` carries **both** sentinels (`owner: unassigned`,
+`branch: unassigned`) and is `status: ready`, unclaimed. Whoever claims
+it next reproduces `lgort1`'s gate failure exactly. Its `owner:` is not
+bare (there is a space after the colon), so `debug-828385`'s splice does
+not apply — it will be replaced cleanly, and the exposure is the branch
+field alone, which claim leaves untouched by design. Worth a heads-up in
+that repo ahead of the devx-side fix; it is repo state, not a devx
+defect, and does not belong in these ACs.
 
 Deliberately filed separately from `debug-7d96be` (claim/merge-gate type
 conventions). Same command, different cause, different fix — 7d96be is
@@ -119,6 +160,17 @@ it (a branch-name mismatch); its status log now carries the correction.
 
 ## Status log
 
+- 2026-09-20T10:30-06:00 — provenance traced by the coordinator
+  session: only two palateful specs carry `branch: unassigned`
+  (`lgort1`, `cldb01`), both filed 2026-07-27 by the same parent
+  (`btri01`), so the sentinel is one authoring path's "not yet set".
+  `lgort1` proves the value survives a claim. Checked here whether that
+  means `claim` should write `branch:` back — **it should not**:
+  `branch: null` is a working state (`debug-135dc9` is in-progress with
+  it today and derives correctly), so a write-back would mask the
+  sentinel instead of fixing the reader. Recorded as a Technical note so
+  the next reader does not reach for it. AC 3 made unconditional at the
+  reporting session's request.
 - 2026-09-20T10:25-06:00 — filed. Root cause measured by the
   coordinator session in palateful against `lgort1` (branch exists, PR
   #27 open on it, `branch: unassigned` in frontmatter); mechanism
