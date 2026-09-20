@@ -94,11 +94,13 @@ grep '^branch:' debug/debug-lgort1-*.md # what the spec claims
 # and compare against deriveBranch(config, "debug", "lgort1")
 ```
 
-The likely shapes are a hand-created branch that does not match
-`deriveBranch`'s output, or a `branch:` frontmatter value written by a
-claim that ran under the wrong type. Either way the fix belongs here
-only if it turns out to be a devx defect rather than repo state — file
-separately if it is repo state.
+**RESOLVED 2026-09-20, and the hypothesis above was wrong.** It is not
+repo state and not a branch mismatch: the branch exists, matches
+`deriveBranch` exactly, and is PR #27's `headRefName`. `lgort1` carries
+`branch: unassigned`, and merge-gate's guard accepts any non-null string
+as a branch name — so it queried `gh pr list --head unassigned`. Filed
+as `debug-1dfbdd`; it is a devx reader defect, not repo state. The ACs
+in this story are unaffected.
 
 ### Related but separate: the gate's uninformative answer
 
@@ -138,6 +140,11 @@ CLI" problem is `dev-pin101`'s territory.
 
 ## Status log
 
+- 2026-09-20T10:25-06:00 — the branch-mismatch hypothesis recorded
+  below is **superseded**: the real cause is `branch: unassigned` and a
+  merge-gate guard that accepts any non-null string as a branch name
+  (`debug-1dfbdd`). The refutation of the dead-end framing stands — the
+  gate is type-aware, and the failure had nothing to do with type.
 - 2026-09-20T10:21-06:00 — filed. All three reported items checked in
   source at `9dc2366`. Item 1 (claim needs `--type`) **confirmed**, and
   widened: the real defect is two resolution conventions in one loop,

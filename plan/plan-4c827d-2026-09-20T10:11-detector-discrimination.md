@@ -71,7 +71,7 @@ once.
 | devx spec-lock classifier | every lock, always `dead` (`dev-f83b04`) | per-lock; saturated |
 | devx `doctor` orphan-worktree | asserts uncommitted changes on 3 clean worktrees; conflates repo-level stashes with worktree-local state | per-worktree |
 | devx `doctor` dead-owner | tells the reader to "inspect `.worktrees/`" for 10 claims that have no worktree | per-claim |
-| devx `merge-gate` | `"no PR yet"` with the PR open and mergeable | per-query |
+| devx `merge-gate` | `"no PR yet"` with the PR open and mergeable — **three states, one answer**: wrong branch, no PR, or a `branch:` sentinel the reader doesn't recognize | per-query |
 | devx backlog write-back | **one batch-merge event**, 10 rows, 51 days | **per-event — NOT ten lapses** |
 
 The last row is the one that changes conclusions. All ten palateful PRs
@@ -89,13 +89,27 @@ that we went looking. Weigh it accordingly.
 
 **Two corrections to the raw tally, so the item does not inherit them:**
 
-1. The merge-gate specimen is real but its *cause* was misreported.
-   merge-gate is fully type-aware (`findSpecForHashAnyType`,
-   `merge-gate.ts:334`); it has no `--type` flag because it does not need
-   one. `"no PR yet"` is a branch-resolution mismatch — see
-   `debug-7d96be`. It stays on this list for the right reason: `gh pr
-   list --head X` returning `[]` is reported identically whether X is
-   wrong or the PR does not exist, and the gate cannot tell you which.
+1. The merge-gate specimen is real but its cause was misreported
+   **twice**, and the final answer is the most useful version. It is not
+   a type gap (the gate is type-aware via `findSpecForHashAnyType`,
+   `merge-gate.ts:334`), and it is not a branch mismatch either. The
+   measured cause is `branch: unassigned` in the spec and a guard that
+   accepts any non-null string as a branch name (`debug-1dfbdd`), so the
+   gate queried `gh pr list --head unassigned`.
+   This makes it the **sharpest specimen on the list**: `[]` is reported
+   identically for three different states — the branch is wrong, no PR
+   exists, or the `branch:` field holds a sentinel the reader has never
+   heard of. The third is the actual one, and it is the one no amount of
+   enumeration can catch: `unassigned` appears nowhere in devx's tree,
+   so the reader is being asked to recognize a value it was never told
+   about. A detector that answers from *is this null* when the question
+   is *is this a branch that exists* will keep being confidently wrong,
+   and this is the second sentinel to walk through it (`debug-7b3e2a`
+   was the first, with `null`).
+   It is also the cleanest evidence for **validate, don't enumerate** —
+   the same trap `debug-828385` AC 7 identified independently on
+   frontmatter keys, which is some evidence the trap is systemic rather
+   than two coincidences.
 2. A seventh candidate was dropped: `unknown command 'tour'` is a
    *current* build behaving correctly (tour retired at tur101), not a
    detector failure.
