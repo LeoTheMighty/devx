@@ -91,15 +91,22 @@ so a dependency bump can silently flip which owner wins.
    `.+?` requires a character, so a bare key reads as absent, and the
    `m` flag is not anchored to the frontmatter block, so an `owner:`
    line anywhere in the body can match. Decide and pin both.
-6. **A key match must be line-anchored, never a substring.** A `title:`
-   value can legitimately contain the text `owner:` — this very spec's
-   title does — so any check that counts `/owner:/` occurrences rather
-   than `/^owner:/` lines reports a phantom duplicate. Demonstrated live
-   on 2026-09-20: a cross-repo scan flagged THIS file as carrying two
-   `owner:` keys; the frontmatter block has 2 substring occurrences and
-   exactly 1 line-anchored key, and claiming it produces a single
-   correct owner. Every reader and every validator touched by this story
-   gets a test with `owner:` embedded in a quoted `title:`.
+6. **A key match must be BLOCK-SCOPED to the frontmatter, and
+   line-anchored.** Scoping is the load-bearing half. Demonstrated live
+   on 2026-09-20: a cross-repo scan (`grep -rl '^owner:$'` — correctly
+   anchored) flagged THIS file as carrying a bare `owner:` key. It
+   matched line 49 — inside the fenced ```yaml repro block in the story
+   BODY, not the frontmatter. Anchoring was never the problem, so an
+   anchor-only rule would not have caught it. A spec *about* frontmatter
+   keys will always contain frontmatter-shaped lines in its body, and
+   this one does by construction.
+   Require both: parse strictly between the opening `---` and the
+   closing `---`, ignore everything after, and anchor within that block.
+   Tests: (a) a bare `owner:` in a fenced body block must not be seen;
+   (b) `owner:` inside a quoted `title:` value must not be counted — the
+   frontmatter block of this spec holds 2 substring occurrences of
+   `owner:` and exactly 1 line-anchored key, so an unscoped *or*
+   unanchored reader is wrong in a different way.
 7. **Close the re-seed path.** ACs 1-4 fix the write path and clean
    existing corruption, but nothing stops the next hand-authored spec
    from reintroducing a bare key. Every machine authoring site already
@@ -108,8 +115,15 @@ so a dependency bump can silently flip which owner wins.
    fix — the exposed population is hand-authored specs, which means the
    durable control is a **validator**, not a writer change. Add a
    structural check (natural home: `plan/validate-emit.ts`, which
-   already owns `spec-missing-branch-frontmatter`) that rejects a bare
-   `owner:`/`status:` key and any duplicate frontmatter key.
+   already owns `spec-missing-branch-frontmatter`) that rejects **any**
+   bare frontmatter key and **any** duplicate frontmatter key —
+   generically, not by enumerating `owner:` and `status:`. Confirmed
+   need: palateful's `imptb1` carries a bare `branch:` key on line 10
+   alongside the duplicated `owner:` pair. `branch:` happens to be safe
+   from *this* splice (claim never writes it; the three readers at
+   `verify-claim.ts:223`, `split.ts:905`, `detect.ts:712` all use
+   `\s*`), but enumerating keys means the next key to acquire a writer
+   re-opens the hole silently.
 8. Full suite green; `npm run typecheck` clean.
 
 ## Technical notes
@@ -155,6 +169,22 @@ one-line correction behind a design decision.
   the reader audit is for. AC 7 added from the same exchange (the
   re-seed path), with the scan of authoring sites showing every machine
   emitter already writes `owner: null`.
+- 2026-09-20T10:20-06:00 — **the 10:12 diagnosis above was wrong in its
+  mechanism**, corrected by the reporting session. The scan was
+  `grep -rl '^owner:$'`: correctly line-anchored, and it matched line 49
+  of this file — the bare key inside the fenced ```yaml repro block in
+  the BODY — not the title substring. The false positive was real; the
+  cause was **absent block-scoping**, not absent anchoring. AC 6
+  rewritten accordingly: scoping is the control that would have caught
+  it, anchoring alone would not. The title-substring case is retained as
+  a second test only.
+  Same exchange confirmed the defect **in the wild on a second repo**:
+  palateful's `imptb1`, block-scoped count = 2 line-anchored `owner:`
+  keys, in exactly the predicted layout (real owner at `statusIdx + 1`,
+  stale bare key below it, last-wins read returns `""`). Claimed 09:58
+  and hand-deduped in PR #26; `main` carries both keys until it merges.
+  The spec was authored ~7 weeks before this story existed. AC 7
+  generalized from that spec's bare `branch:` key.
 
 ## Links
 
