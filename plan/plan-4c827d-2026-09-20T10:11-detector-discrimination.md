@@ -285,25 +285,56 @@ measures, the **claim** it is read as, and the conditions under which
 they diverge. A detector without a register entry fails review; an entry
 whose divergence conditions are unaddressed is a finding.
 
-- **Catches:** the population case (pin101's entry would read "proxy:
-  devx's mirror matches; claim: the install matches" and the gap is
-  visible on the page), the sentinel case (`proxy: gh returned []`;
-  `claim: no PR exists`), the lock classifier, and the two human errors.
-  It is the only option that catches a *wrong proxy* rather than a
-  broken implementation.
+- **Catches:** proxies that are **visibly narrower than their claim** —
+  the population case, the sentinel case, the lock classifier, and the
+  two human errors. That is the honest promise, and it is smaller than
+  "catches wrong proxies": a genuinely subtle gap survives a register
+  exactly as it survives everything else here.
 - **Cost:** low and entirely authoring-time. No store, no runtime
   component, no tunable. A table and a review rule.
-- **Risk:** it is documentation, so it rots like documentation, and it
-  catches nothing automatically once written. It is a thinking aid with
-  teeth at review time, not a gate.
 - **Why it is not just B:** B asks "does this detector work?" E asks
   "is this detector measuring the thing we're about to claim?" Every
   specimen here answers yes to the first and no to the second.
 
+**The objection, and why E survives it.** A proxy register is itself a
+proxy. It records that somebody once thought about divergence; nothing
+verifies the entry stays true, and nothing catches an author who simply
+could not imagine the divergence condition. pin101's author would never
+have written "diverges when the consumer install drifts from the
+tarball" — had they had that thought, they would have widened the check
+instead. So E inherits B's imagination limit one level up, and it decays
+silently the way documentation always does.
+
+E survives because **enumerating divergences correctly is not where its
+value is.** The value is that writing the proxy and the claim as **two
+separate sentences** makes the gap legible to a later reader who was
+never primed. pin101's entry would have read:
+
+- *proxy:* devx's `skills/` matches `.claude/commands/`
+- *claim:* installed skills match their source
+
+Those are visibly not the same sentence, to anybody, without needing to
+have anticipated the consumer-install case. E converts a failure of
+**imagination** into a failure of **reading** — and reading is the thing
+a second person can do that the author could not.
+
+That is also what the binding AC has to be: **the claim must be stated
+in terms of what a person actually cares about, never in terms of the
+mechanism.** An entry reading "proxy: the sync check passes / claim:
+skills are in sync" has recorded nothing — it is one sentence twice, and
+it defeats the whole device. A register that permits mechanism-restated-
+as-claim is worse than no register, because it looks like diligence.
+
+(Objection and resolution both from the coordinator session; the
+bounded promise above replaces this item's earlier overclaim that E
+"catches wrong proxies".)
+
 ## Recommendation
 
 **E first, then B, C if the scheduled surfaces grow, A only on
-evidence.**
+evidence.** E's promise is bounded — visibly narrower proxies, not
+subtle ones — and its binding rule is the claim-not-in-mechanism-terms
+AC above. Without that rule it is ceremony.
 
 This is a change from the item's original recommendation of B-first,
 and the reason is in §The framing: B cannot catch a wrong proxy because
