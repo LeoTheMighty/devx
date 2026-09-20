@@ -105,7 +105,7 @@ unscoped matches discriminates between nothing.
 
 ## Evidence (units matter more than counts)
 
-Seven specimens as of 2026-09-20, six of them in devx itself. **Read the
+Nine specimens as of 2026-09-20, eight of them in devx itself. **Read the
 unit on each one** — a count of symptoms over-weights a bug that fired
 once.
 
@@ -118,6 +118,8 @@ once.
 | devx `merge-gate` | `"no PR yet"` with the PR open and mergeable — **three states, one answer**: wrong branch, no PR, or a `branch:` sentinel the reader doesn't recognize | per-query |
 | devx backlog write-back | **one batch-merge event**, 10 rows, 51 days | **per-event — NOT ten lapses** |
 | devx packaged-skills guard | passes CI correctly while palateful runs skill bodies 146/161/184 lines behind HEAD, incl. 16 `tour` refs to a command retired 6 weeks ago | per-repo — **population stops one hop short** |
+| devx `doctor` dead-blocker | fired correctly for `bqa102`; **structurally could not fire** for `rsh102`, whose blocker was itself stale and therefore looked alive | per-row — **input is the same class of stale data it detects** |
+| devx `next` drift on `rsh102` | reported the status mismatch correctly, as a `drift[]` field beside a routing decision pointing at a different item — ignored 7 weeks | per-report — **detected and unreadable in context** |
 
 The last row is the one that changes conclusions. All ten palateful PRs
 merged on 2026-07-31 inside a single 24-minute window (15:59:45Z #4 →
@@ -223,6 +225,66 @@ Caveat, in keeping with the rest of this section: this is one consumer
 repo measured once. The drift numbers are concrete and currently live,
 so it is not subject to the "we went looking" discount in the way the
 count-based specimens are — but it is n=1 on installs.
+
+### Why devx's backlog checks fail together: they are mutually referential
+
+palateful-0a's `stalebk1` (`542f6a71`) supplies the diagnosis this item
+was missing, and it is not "the detectors are absent." They ran. They
+failed in two different ways at once:
+
+- `devx next` **did** report the `rsh102` status mismatch — as a
+  `drift[]` field beside a routing decision pointing at a different
+  item. Detected, emitted, and ignored for seven weeks. That is a
+  presentation failure, not a detection failure, and no property about
+  detector health touches it.
+- `devx doctor`'s `dead-blocker` check fired correctly for `bqa102` and
+  **could not structurally fire** for `rsh102`, because `rsh102`'s
+  blocker was itself stale and therefore looked alive.
+
+0a's one-line version: **every current check compares one backlog
+assertion to another; nothing compares a row to the merge that ended the
+work.**
+
+That is the concrete remedy this item otherwise lacks. Every option
+above is about how we know a detector works; this is a check to build —
+compare a backlog row against **git/GitHub**, the merge that actually
+ended the work, rather than against another row. Cheaper than a
+discrimination ledger, testable, and independent by construction.
+
+**It is also the strongest evidence anyone has produced that Option E
+would have worked**, because it is derived from a real seven-week
+failure rather than reasoned forward. Write E's two sentences for the
+backlog checks and the gap is immediate:
+
+- *proxy:* another row says this is blocked
+- *claim:* the work is not done
+
+Visibly different sentences, no imagination required — exactly the case
+E is scoped to catch.
+
+### The self-referential divergence condition (an addition to E)
+
+`dead-blocker` is a shape none of the other specimens share: a detector
+**structurally incapable of firing in precisely the situation it was
+built for**, because its input is the same class of stale assertion it
+exists to detect. Not a wrong proxy, not a missing detector, not a
+population gap.
+
+E surfaces it with a distinctive signature. Asked "under what conditions
+do proxy and claim diverge," the honest entry for `dead-blocker` reads:
+*whenever the thing I am reading is wrong in the way I am looking for.*
+That is self-defeating on its face.
+
+So the register needs a second reading rule alongside the
+claim-not-in-mechanism-terms one:
+
+> **An entry whose divergence condition is self-referential names a
+> detector that cannot work. It needs an independent input, not a better
+> implementation.**
+
+That rule is what turns E from a thinking aid into something with a
+verdict, and `dead-blocker` → "read git, not another row" is the worked
+example.
 
 ## Options (for the owner decision)
 
@@ -333,8 +395,17 @@ bounded promise above replaces this item's earlier overclaim that E
 
 **E first, then B, C if the scheduled surfaces grow, A only on
 evidence.** E's promise is bounded — visibly narrower proxies, not
-subtle ones — and its binding rule is the claim-not-in-mechanism-terms
-AC above. Without that rule it is ceremony.
+subtle ones — and it has two binding rules: the claim must not restate
+the mechanism, and a self-referential divergence condition is a verdict
+that the detector needs an independent input. Without both it is
+ceremony.
+
+**Ship the independent-input check alongside E**, whichever option is
+chosen: compare a backlog row against the merge that ended the work
+rather than against another row (§"Why devx's backlog checks fail
+together"). It is the one concrete deliverable in this item, it is
+cheap, and it discharges `dead-blocker`'s self-referential entry rather
+than documenting it.
 
 This is a change from the item's original recommendation of B-first,
 and the reason is in §The framing: B cannot catch a wrong proxy because
@@ -371,6 +442,17 @@ that forces someone to write the mapping down (E) is better targeted
 than runtime instrumentation (A). That is a modest argument, and it is
 offered as one.
 
+### Still uncovered: detected but unreadable
+
+The `devx next` half of the `rsh102` failure is not addressed by any
+option here, and the item should not pretend otherwise. The drift was
+computed correctly and rendered where nobody would act on it. A
+discrimination ledger would score that detector as healthy — it
+discriminated. A register entry would be accurate. The failure is in
+presentation, and it cost the same seven weeks as the blind one.
+
+Whether that belongs in this item or a separate one is open question 4.
+
 ## Open questions for the owner
 
 1. Is the 51-day freeze the motivating cost, or is the lock classifier?
@@ -382,6 +464,9 @@ offered as one.
 3. Group 3 (no detector exists) is not covered by any option here. Is
    "every state transition needs a detector" a separate plan item, or
    out of scope?
+4. A correct detector whose output is rendered where nobody reads it
+   (`devx next`'s `rsh102` drift, 7 weeks) fails as expensively as a
+   blind one, and no option here touches it. Same item, or separate?
 
 ## Links
 
