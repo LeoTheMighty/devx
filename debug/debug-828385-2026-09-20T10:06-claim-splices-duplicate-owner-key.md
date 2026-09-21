@@ -126,17 +126,31 @@ so a dependency bump can silently flip which owner wins.
    emits `owner: null` (`split.ts:406`, `split.ts:530`,
    `learn/propose.ts:208`, `gather.ts:434`), so there is no emitter to
    fix — the exposed population is hand-authored specs, which means the
-   durable control is a **validator**, not a writer change. Add a
-   structural check (natural home: `plan/validate-emit.ts`, which
-   already owns `spec-missing-branch-frontmatter`) that rejects **any**
-   bare frontmatter key and **any** duplicate frontmatter key —
-   generically, not by enumerating `owner:` and `status:`. Confirmed
-   need: palateful's `imptb1` carries a bare `branch:` key on line 10
-   alongside the duplicated `owner:` pair. `branch:` happens to be safe
-   from *this* splice (claim never writes it; the three readers at
-   `verify-claim.ts:223`, `split.ts:905`, `detect.ts:712` all use
-   `\s*`), but enumerating keys means the next key to acquire a writer
-   re-opens the hole silently.
+   durable control is **one shape-agnostic write primitive**, and a
+   validator that rejects only what is genuinely invalid. The two halves
+   were fused in an earlier draft of this AC; they are separate.
+
+   **7a — the write path (this is the real fix).** Add
+   `upsertFrontmatterKey(fmLines, key, value)`: one primitive whose
+   replace branch matches BOTH `^key:\s*$` and `^key:\s+…`, so bareness
+   can never route to insert. Every frontmatter writer goes through it.
+   A future key that acquires a writer then inherits correctness instead
+   of re-opening the hole — which is the anti-enumeration property this
+   AC was reaching for, sited where it actually holds.
+
+   **7b — the validator rejects DUPLICATE keys only.** A duplicate
+   frontmatter key is unambiguously wrong in any YAML. Natural home:
+   `plan/validate-emit.ts`, which already owns
+   `spec-missing-branch-frontmatter`.
+
+   **A bare key is NOT a defect and must stay legal.** `key:` with
+   nothing after it is conventional YAML for a nested mapping or an
+   empty value, and devx's own plan-spec template depends on it:
+   measured 2026-09-20, **14 of 25 `plan/` specs** carry bare
+   `gate_status:` / `outcome:` / `gate_verdicts:` / `spawned:`, including
+   `plan-4c827d` — the spec that argues for this validator. Rejecting
+   bare keys generically would outlaw the repo's own template. The data
+   is fine; the regex editing it was wrong.
 8. Full suite green; `npm run typecheck` clean.
 
 ## Technical notes
@@ -182,6 +196,27 @@ one-line correction behind a design decision.
   the reader audit is for. AC 7 added from the same exchange (the
   re-seed path), with the scan of authoring sites showing every machine
   emitter already writes `owner: null`.
+- 2026-09-20T11:05-06:00 — **AC 7 rewritten; its earlier text was
+  wrong.** palateful-2d found that "reject any bare frontmatter key"
+  would red-flag 14 of devx's own 25 plan specs — verified here: bare
+  `gate_status:` / `outcome:` / `gate_verdicts:` / `spawned:` are
+  conventional YAML for nested mappings and empty values, and
+  `plan-4c827d` (the spec arguing for the validator) is itself one of
+  the 14. Two properties had been fused: duplicate keys are always
+  invalid and belong to a validator; bare keys are valid and
+  load-bearing. The splice is not caused by bareness being wrong — it is
+  caused by a WRITER using a detector stricter than the YAML it edits.
+  So the anti-enumeration control moves to the write path as
+  `upsertFrontmatterKey` (7a), and the validator keeps only
+  duplicate-key rejection (7b). 2d's reading, adopted over the literal
+  text.
+  Also from 2d: **AC 3's live population is zero** — `imptb1` was
+  repaired at `65d4d75a` (PR #26), traced per-revision
+  (`0aff93a7`=1 → `36a2372b` claim =2 → `65d4d75a`=1), so the wild
+  instance is historical and AC 3 needs a synthetic fixture. And the
+  re-seed path is a **template**, not ad-hoc typing: pre-claim `imptb1`
+  had `owner:` and `branch:` both bare, so whatever authored it writes
+  every optional key bare. That is what 7a has to survive.
 - 2026-09-20T10:45-06:00 — two corrections from palateful-2d, who read
   the source independently. (a) "Nothing in the claim path branches on
   type" is **false** — it branches in six places; only
