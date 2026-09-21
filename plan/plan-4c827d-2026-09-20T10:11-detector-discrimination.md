@@ -228,6 +228,17 @@ repo measured once. The drift numbers are concrete and currently live,
 so it is not subject to the "we went looking" discount in the way the
 count-based specimens are — but it is n=1 on installs.
 
+**First observed impact on a real decision (2026-09-21), from palateful-fb.**
+`00b4d3` was chosen to run through `/devx` specifically so its Phase 4
+parallel review would actually run on a guard-loosening change. It could not
+go to fb: that session is rooted in palateful, where `/devx` loads the
+installed consumer copy — 576 lines, 2 `Phase 7.5` + 3 `devx tour`
+references, against devx's own 741 lines with none. Routing the review
+through the stale copy would have defeated the reason for choosing the
+route. So the blindness this specimen describes stopped being latent: it
+decided which session could safely do a piece of work, and the only thing
+that caught it was someone checking which copy a session actually loads.
+
 ### Why devx's backlog checks fail together: they are mutually referential
 
 palateful-0a's `stalebk1` (`542f6a71`) supplies the diagnosis this item
