@@ -3,8 +3,8 @@ hash: 2d6fc1
 type: debug
 created: 2026-09-02T11:20:00-06:00
 title: "A peer session's story commit captured another session's uncommitted workstream-artifact edit"
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-09-21T1236-75585
 branch: null
 from: dev/dev-dlr103-2026-09-02T09:14-workstream-resolution-flat-guard.md
 ---
@@ -84,3 +84,4 @@ concurrent-session bookkeeping, not in layout resolution.
 
 - 2026-09-02T11:20 — filed by /devx during dlr103 (PR #153) after the merge
   conflict surfaced it. Mechanism NOT determined; evidence recorded above.
+- 2026-09-21T12:36:15-06:00 — claimed by /devx in session /devx-2026-09-21T1236-75585
