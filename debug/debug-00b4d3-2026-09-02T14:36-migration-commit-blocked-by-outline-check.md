@@ -4,8 +4,8 @@ type: debug
 created: 2026-09-02T14:36:00-06:00
 title: "A layout-migration commit is blocked by devx outline check"
 from: dev/dev-dlr106-2026-09-02T09:14-layout-migrate.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-09-21T1324-85133
 branch: null
 ---
 
@@ -64,3 +64,4 @@ operation, so neither is the burden it would be for an agent flow).
 
 - 2026-09-02T14:36 — filed from dlr106 Phase 4 adversarial review (3-agent
   parallel shape; Blind Hunter finding 7, reproduced against a real fixture).
+- 2026-09-21T13:24:10-06:00 — claimed by /devx in session /devx-2026-09-21T1324-85133
