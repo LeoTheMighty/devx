@@ -2,7 +2,7 @@
 hash: d315b9
 type: debug
 created: 2026-09-21T12:05:00-06:00
-title: "The helper path skips three steps the /devx skill enforces — deploy, status-log discipline, Phase 4 review — and each skip is silent"
+title: "The helper path skips steps the /devx skill enforces — deploy, status-log discipline, Phase 4 review, the finalize tail — and each skip is silent"
 from: debug/debug-2e1174-2026-08-21T16:05-blocking-pass-timeout-headroom.md
 status: ready
 owner: null
@@ -59,22 +59,41 @@ the hand-run helper path (`claim` → edit → PR → `gh pr merge` → `mark-do
 silently skips. All three were hit on the same day, by the same session and
 the coordinator, on real merges.
 
-### Instance 2 — `mark-done` can redden `main`, and the PR's CI cannot see it
+### Instance 2 — a story can merge without its `phase 4:` line and red `main` instead of its own PR
+
+*Absorbed from `debug-5284ae` (filed 2026-09-02 from dlr105), which carried
+the better analysis and is closed as superseded by this spec.*
 
 `test/devx-status-log-discipline.test.ts` (dvx103) requires a `phase 4:`
-line on every shipped dev spec. It decides "shipped" from `status: done` *or*
-a `phase 5:`/`phase 7:` status-log line — and those phase lines are written
-**by the skill, on the feature branch**, which is what lets the check fail a
-skill-run PR before merge. A helper-run item writes no phase lines, so on its
-PR branch it is not yet "shipped" and the check passes vacuously. It becomes
-"shipped" only when `mark-done` flips `status: done` **on `main`** — at which
-point `main` goes red.
+line on every shipped dev spec. Its ship-stage predicate is `status: done` |
+`merged via PR` | a `phase 5:`/`phase 7:` status-log line. **Timing bug in the
+predicate, not a missing rule:** the first two are written by `finalize` /
+`mark-done` *after* the merge, and the last two exist on the branch only if
+the author wrote them — the very discipline the test enforces. So for a story
+whose log has no branch-time marker, every ship-stage trigger is post-merge by
+construction: the check passes on the feature branch and fires on `main`.
 
-Measured: dev-5c215e (PR #168, CI green) was closed with `mark-done` at
-`74d93cd`; `main`'s CI went red at that commit and stayed red for three
-commits / ~45 minutes until `87040e9` added the line. The closing session
-then pushed two more commits onto red `main` without checking — the same
-"signal existed, nothing made you look" as instance 1.
+It has happened twice, 19 days apart, and the second time while the first
+report sat unclaimed:
+
+- **2026-09-02 — dlr104** (5284ae's case): log went `phase 2:` → `phase 3:`
+  → merge; `main` went red when `status: done` landed, ~1h until dlr105
+  inherited it.
+- **2026-09-21 — dev-5c215e** (this filer's): PR #168 green; `mark-done`
+  at `74d93cd` flipped `status: done` on `main`; red for three commits /
+  ~45 min until `87040e9`. The closing session then pushed two more commits
+  onto red `main` without checking. **The filer had been shown 5284ae as an
+  unclaimed item several times that day and never opened it** — a known,
+  well-analysed escape route walked a second time because it was never read.
+
+**Where the fix belongs.** 5284ae proposed `devx merge-gate` as the natural
+home ("the suite is the wrong instrument for a rule about what a branch may
+merge"). Instances 1 and 5 of this same spec qualify that: hand-merges via
+`gh pr merge` never run `merge-gate`, so a gate-only check is skipped by
+exactly the path this spec is about. **PR CI runs whatever the merge path.**
+So the primary fix is a branch-time trigger in the predicate itself (5284ae's
+first candidate: any `phase <n>:` line with n ≥ 3), with `merge-gate` as a
+second line, not the only one.
 
 ### Instance 3 — helper-run items skip Phase 4 review entirely
 
@@ -111,14 +130,32 @@ were deliberately **not** backfilled here, because grandfather-vs-retroactive
 is the sequencing decision this AC exists to make, and `7d96be` is inside
 palateful-2d's fix-forward from its retroactive review.
 
+### Instance 5 — a hand-merge skips `finalize`'s tail, and the skip hides itself from its own detector
+
+Found by devx-b6, measured by the coordinator, re-verified here
+2026-09-21. `debug-1dfbdd` merged as PR #163 at 16:29Z via `gh pr merge`.
+Because `finalize` never ran, its tail never ran either: the spec still reads
+`status: in-progress`, its DEBUG.md row is still `[/]`, and
+`.devx-cache/locks/spec-1dfbdd.lock` is still held. `devx doctor --json`
+reports **zero** `stale-lock` findings and never mentions `1dfbdd` — because
+the status never flipped, the held lock looks like a live claim, which is
+exactly what `stale-lock` is designed *not* to flag.
+
+This instance adds a property the others lack: **the gap conceals itself.**
+Instances 1–4 leave a detectable trace somewhere (a stale-build warning, a red
+`main`, a missing line). Here the skipped step's absence is precisely the
+state that tells the detector "nothing is wrong".
+
 ### Why these are one defect
 
 Each is a step the skill enforces by *doing* it, so nothing ever had to
-*check* for it — and the helper path, which does not do it, inherits no
-check. Instances 2 and 3 converge on one enforcement point: **close time.**
-A `mark-done` that refused to close a dev spec with no `phase 4:` line would
-have caught both — the red `main` (instance 2) and, by forcing the question
-"did a review run?", the missing reviews (instance 3).
+Instances 2 and 3 converge on one enforcement point, **and it must be
+branch-time, not close-time**: a `phase 4:` requirement that bites on the
+PR's own CI would have stopped dlr104 and 5c215e from merging without the
+line, and — by forcing the question "did a review run?" before merge — would
+have surfaced the missing reviews (instance 3). A close-time check in
+`mark-done` (this spec's first proposal) would only have refused the
+bookkeeping after the unreviewed code had already merged.
 
 One limit, stated so the fix is not oversold: a close-time check can require
 the line to **exist** and to **say what ran**; it cannot verify that a review
@@ -144,12 +181,21 @@ happened. The line is a claim, and its honesty is the writer's. That is
 - [ ] AC 4: Read-only subcommands keep working on a stale build — refusing
       `verify-claim` or `next` would turn a deploy lag into an outage.
 
-- [ ] AC 5 (instance 2): `mark-done` on a dev spec with no `phase 4:`
-      status-log line refuses before writing anything, naming the missing
-      line — so a close can no longer turn `main` red for a check the PR
-      could not run. Same rule as dvx103, applied at the moment it would
-      otherwise first bite.
-- [ ] AC 6 (instance 3): the refusal message says what the line is for
+- [ ] AC 5 (instance 2, from 5284ae): a repro — a fixture spec whose
+      status log carries a `phase 3:` line and no `phase 4:`/`phase 5:`/
+      `phase 7:` line is NOT flagged by the current predicate, and IS
+      flagged after the fix; dlr104's real (corrected) log is a regression
+      fixture.
+- [ ] AC 5b: the ship-stage predicate gains a branch-time trigger that does
+      not depend on the author having written a later phase line (e.g. any
+      `phase <n>:` with n ≥ 3), so the check fires on the PR's own CI —
+      which runs regardless of merge path. `merge-gate` may also run it,
+      but not instead.
+- [ ] AC 5c (from 5284ae): a story that has legitimately not reached Phase
+      4 (mid-implementation, `phase 2:` only) still passes — a check that
+      fires on work in flight becomes noise the next author learns to
+      ignore.
+- [ ] AC 6 (instance 3): the check's failure message says what the line is for
       (the Phase 4 review audit trail) and that it must state what review
       actually ran — including "none" — rather than a template to paste.
       A refusal that is satisfied by pasting boilerplate reproduces
@@ -161,6 +207,11 @@ happened. The line is a claim, and its honesty is the writer's. That is
       entry with a reason — so extending the check does not turn `main` red
       (instance 2's failure, reproduced by the fix for it). Prefer honest
       retroactive lines; a grandfather entry is a permanent exemption.
+- [ ] AC 9 (instance 5): a spec whose branch has a **merged** PR but whose
+      status is not `done` (or whose lock is still held) is reported — by
+      `devx doctor` or equivalent — as a merged-but-unclosed item, not
+      treated as a live claim. `1dfbdd`'s state on 2026-09-21 is the
+      fixture: doctor reported nothing for it.
 - [ ] AC 7: the skill body's hand-run guidance (or `mark-done --help`)
       names all three steps the helper path does not perform — rebuild,
       status-log discipline, Phase 4 — so an operator choosing the helpers
@@ -192,3 +243,10 @@ happened. The line is a claim, and its honesty is the writer's. That is
   reads only `dev/`, so it could not flag the Phase 4 skips on the debug-type
   PRs that made up most of the day's merges. Measured: 7 of 29 done debug
   specs lack the line. AC 8 requires resolving those 7 in the same change.
+- 2026-09-21T13:25 — absorbed `debug-5284ae` (same defect as instance 2,
+  filed 19 days earlier with the sharper analysis; closed as superseded). The
+  filer's close-time `mark-done` proposal is replaced by 5284ae's branch-time
+  predicate fix, qualified: `merge-gate` alone is skipped by hand-merges, so
+  the check must bite in PR CI. Added instance 5 (hand-merge skips
+  `finalize`'s tail; `1dfbdd` merged-but-in-progress with its lock held, and
+  `doctor` reports nothing — verified). Five instances.

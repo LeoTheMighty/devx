@@ -72,3 +72,10 @@ untouched and the next story can walk it.
 
 - 2026-09-02T13:14 — filed by /devx during dlr105 (out-of-scope finding; the
   inherited red was fixed in dlr105's PR, this spec owns the escape route).
+- 2026-09-21T13:25 — **closed as superseded by `debug-d315b9`**, where this
+  is instance 2 of five ("the helper path skips steps the /devx skill
+  enforces"). This spec's analysis and ACs 1–4 carry over there intact and
+  credited; its proposed home (`merge-gate`) is qualified there, because
+  hand-merges via `gh pr merge` skip `merge-gate`, so the check must bite in
+  PR CI. The escape route was walked a second time on 2026-09-21 (dev-5c215e,
+  `main` red 74d93cd→87040e9) while this spec sat unclaimed.
