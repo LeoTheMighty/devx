@@ -7,7 +7,7 @@ from: null
 spawned: []
 status: in-progress
 owner: /devx-2026-09-20T1808-45652
-branch: null
+branch: feat/debug-828385
 ---
 
 ## Goal
