@@ -58,12 +58,12 @@ describe("stepBody / stepBodySha", () => {
       "| 2026-08-31 | RED | no governor yet |",
       "| 2026-08-31 | RED | no governor yet |\n| 2026-09-01 | GREEN | governor landed |",
     );
-    expect(stepBodySha(after)).toBe(stepBodySha(EVAL));
+    expect(stepBodySha("evals/E-1.md", after)).toBe(stepBodySha("evals/E-1.md", EVAL));
   });
 
   it("is stable across whitespace churn — the lock must not cry wolf", () => {
     const reflowed = EVAL.replace(/\n/g, "\r\n").replace("## Steps", "## Steps   ");
-    expect(stepBodySha(reflowed)).toBe(stepBodySha(EVAL));
+    expect(stepBodySha("evals/E-1.md", reflowed)).toBe(stepBodySha("evals/E-1.md", EVAL));
   });
 
   it("MOVES when a step is softened", () => {
@@ -71,12 +71,12 @@ describe("stepBody / stepBodySha", () => {
       "Assert the loop refuses to claim a new item.",
       "Assert the loop logs a warning.",
     );
-    expect(stepBodySha(softened)).not.toBe(stepBodySha(EVAL));
+    expect(stepBodySha("evals/E-1.md", softened)).not.toBe(stepBodySha("evals/E-1.md", EVAL));
   });
 
   it("moves when a step is deleted outright", () => {
     const gutted = EVAL.replace("2. Assert the loop refuses to claim a new item.\n", "");
-    expect(stepBodySha(gutted)).not.toBe(stepBodySha(EVAL));
+    expect(stepBodySha("evals/E-1.md", gutted)).not.toBe(stepBodySha("evals/E-1.md", EVAL));
   });
 });
 

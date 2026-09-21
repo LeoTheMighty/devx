@@ -59,6 +59,13 @@ export type GateFlag = (typeof GATE_FLAGS)[number];
 
 export type GateStatus = Record<GateFlag, boolean>;
 
+/** `gate_status.red_eval_shas` — eval path → step-body sha256, written by
+ *  Gate 4 (debug-75563d). It lives under `gate_status:` but is NOT a gate
+ *  flag: `GateStatus` is a 4-key boolean map and this is a string map, so
+ *  it is carried as its own state/patch field. The flag reader iterates
+ *  `GATE_FLAGS` by name, so this sibling key is invisible to it. */
+export type RedEvalShas = Record<string, string>;
+
 /** Gate-name keys for the `gate_verdicts:` sibling map (hfi102). Named after
  *  the gates themselves (the resolved 2026-07-24 design decision), not the
  *  boolean flags — `coverage` runs twice (design/plan mode), so the map keys
@@ -89,6 +96,10 @@ export interface EngineState {
   stage: Stage | null;
   enteredAt: string | null;
   gateStatus: GateStatus;
+  /** Empty when the workstream was never stamped — which is how a
+   *  pre-debug-75563d workstream looks, and what `verifyStepBodies`
+   *  reports as the advisory `unstamped`. */
+  redEvalShas: RedEvalShas;
   gateVerdicts: GateVerdicts;
   outcome: Outcome;
   /** Repo-relative workstream dir (`_devx/workstreams/<slug>`), if recorded. */
@@ -108,6 +119,11 @@ export interface EnginePatch {
   stage?: Stage;
   enteredAt?: string;
   gateStatus?: Partial<GateStatus>;
+  /** Gate 4's step-body stamp. Replaces the whole map — a re-run of
+   *  `devx gate evals` re-stamps from scratch, which is the only
+   *  sanctioned way for a locked eval to move (CLAUDE.md § "Fix the code,
+   *  not the eval"). */
+  redEvalShas?: RedEvalShas;
   /** `null` clears a gate's verdict back to never-evaluated (revise path). */
   gateVerdicts?: Partial<GateVerdicts>;
   outcome?: Partial<Outcome>;
@@ -227,6 +243,7 @@ export function readEngineState(content: string): EngineState {
     stage: null,
     enteredAt: null,
     gateStatus: emptyGateStatus(),
+    redEvalShas: {},
     gateVerdicts: emptyGateVerdicts(),
     outcome: { status: null, measure_by: null },
     workstream: null,
@@ -283,6 +300,12 @@ export function readEngineState(content: string): EngineState {
     const gs = fm.gate_status as Record<string, unknown>;
     for (const flag of GATE_FLAGS) {
       state.gateStatus[flag] = gs[flag] === true;
+    }
+    const shas = gs.red_eval_shas;
+    if (shas && typeof shas === "object" && !Array.isArray(shas)) {
+      for (const [k, v] of Object.entries(shas as Record<string, unknown>)) {
+        if (typeof v === "string" && v !== "") state.redEvalShas[k] = v;
+      }
     }
   }
 
@@ -378,6 +401,16 @@ export function applyEnginePatch(content: string, patch: EnginePatch): string {
     for (const flag of GATE_FLAGS) {
       const v = patch.gateStatus[flag];
       if (v !== undefined) doc.setIn(["gate_status", flag], v);
+    }
+  }
+  if (patch.redEvalShas !== undefined) {
+    // Replace wholesale rather than merging: a re-stamp must be able to
+    // DROP an eval that no longer exists, and merging would leave its sha
+    // behind forever, where `verifyStepBodies` reads it as `missing` and
+    // blocks the workstream on an eval nobody deleted improperly.
+    doc.deleteIn(["gate_status", "red_eval_shas"]);
+    for (const [k, v] of Object.entries(patch.redEvalShas)) {
+      doc.setIn(["gate_status", "red_eval_shas", k], v);
     }
   }
   if (patch.gateVerdicts) {

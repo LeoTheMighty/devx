@@ -39,6 +39,7 @@ function state(overrides: {
       evals_red: false,
       ...(overrides.gates ?? {}),
     },
+    redEvalShas: {},
     gateVerdicts: { prd: null, design: null, plan: null, evals: null },
     outcome: {
       status: overrides.outcomeStatus ?? null,

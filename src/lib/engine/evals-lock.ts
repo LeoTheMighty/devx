@@ -69,9 +69,29 @@ export function stepBody(md: string): string {
     .trim();
 }
 
-/** sha256 of an eval's step body — the value Gate 4 stamps. */
-export function stepBodySha(md: string): string {
-  return createHash("sha256").update(stepBody(md), "utf8").digest("hex");
+/**
+ * The lockable content of an eval artifact, decided by its path (AC 4 of
+ * debug-75563d).
+ *
+ * `stepBody()`'s result-of-record stripping is written for step-bearing
+ * MARKDOWN: it drops `Status:` / `Last run:` lines and Runs-table rows so
+ * recording a run never reads as editing the eval. Applied to a `.ts`
+ * eval that rule is wrong and silently destructive — a script whose
+ * source contains a line like `| date | RED |` (a template literal, a
+ * fixture, a comment) would have that line stripped from its own hash,
+ * so editing it afterwards would not register as `moved`.
+ *
+ * A non-markdown eval is therefore all step body and is hashed whole.
+ * Both the stamp and the verify go through here, so the two can never
+ * disagree about what a given artifact's lockable content is.
+ */
+export function lockableBody(evalPath: string, raw: string): string {
+  return evalPath.toLowerCase().endsWith(".md") ? stepBody(raw) : raw;
+}
+
+/** sha256 of an eval's lockable body — the value Gate 4 stamps. */
+export function stepBodySha(evalPath: string, raw: string): string {
+  return createHash("sha256").update(lockableBody(evalPath, raw), "utf8").digest("hex");
 }
 
 // ---------------------------------------------------------------------------
@@ -84,7 +104,7 @@ export type RedEvalShas = Record<string, string>;
 /** Stamp every eval's step body. Called by Gate 4 on a PASS. */
 export function stampEvalShas(evals: Record<string, string>): RedEvalShas {
   const out: RedEvalShas = {};
-  for (const [rel, md] of Object.entries(evals)) out[rel] = stepBodySha(md);
+  for (const [rel, md] of Object.entries(evals)) out[rel] = stepBodySha(rel, md);
   return out;
 }
 
@@ -119,7 +139,7 @@ export function verifyStepBodies(
       });
       continue;
     }
-    const now = stepBodySha(current[rel]);
+    const now = stepBodySha(rel, current[rel]);
     if (now !== sha) {
       findings.push({
         kind: "moved",

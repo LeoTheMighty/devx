@@ -51,6 +51,11 @@ import {
   renderRedReport,
   runGateEvals,
 } from "../lib/engine/gate-evals.js";
+import {
+  blocksVerification,
+  stampEvalShas,
+  verifyStepBodies,
+} from "../lib/engine/evals-lock.js";
 import { formatDate } from "../lib/engine/verdict.js";
 import {
   type EngineFs,
@@ -495,13 +500,56 @@ export function runGateCoverage(
 }
 
 // ---------------------------------------------------------------------------
-// devx gate evals <hash> [--dry-run]
+// devx gate evals <hash> [--dry-run] [--verify]
 // ---------------------------------------------------------------------------
+
+/**
+ * Read each run eval's artifact for stamping. Keys are REPO-relative —
+ * the form `EvalRun.artifact` already carries (`gate-evals.ts:474`,
+ * `base.artifact = rel`) — because an eval artifact is not always inside
+ * the workstream: `resolveArtifactPath` resolves `evals/…` against the
+ * workstream and everything else against the repo root, so a phase
+ * verified by `test/foo.test.ts` has no workstream-relative spelling.
+ * `verifyStepBodies` only compares stamped keys against caller-supplied
+ * current keys, so consistency is what matters, not which root.
+ *
+ * Artifacts are passed through RAW. The `.md`-vs-other decision (AC 4)
+ * lives in `lockableBody`, so the stamp and `verifyStepBodies` cannot
+ * disagree about an artifact's lockable content — making it here would
+ * have put the rule on one side of the lock only.
+ *
+ * A missing or unreadable artifact is SKIPPED rather than stamped empty:
+ * an empty-string sha would lock the eval to "absent" and the next run
+ * would read the real file as `moved`. Absent from the stamp is what
+ * `verifyStepBodies` already calls `unstamped`, which is advisory.
+ */
+function collectEvalBodies(
+  repoRoot: string,
+  io: GateIo,
+  runs: readonly { artifact: string | null }[],
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const run of runs) {
+    const rel = run.artifact;
+    if (rel === null || rel in out) continue;
+    const abs = join(repoRoot, ...rel.split("/"));
+    if (!io.fs.exists(abs)) continue;
+    let raw: string;
+    try {
+      raw = io.fs.readFile(abs);
+    } catch {
+      continue;
+    }
+    out[rel] = raw;
+  }
+  return out;
+}
 
 export function runGateEvalsCli(
   args: string[],
   flags: {
     dryRun?: boolean;
+    verify?: boolean;
     waive?: string[];
     reason?: string;
     approver?: string;
@@ -511,7 +559,7 @@ export function runGateEvalsCli(
   const io = ioFrom(opts);
   if (args.length !== 1) {
     io.err(
-      "usage: devx gate evals <hash> [--dry-run] [--waive <E-n> --reason <text> [--approver <name>]]\n",
+      "usage: devx gate evals <hash> [--dry-run] [--verify] [--waive <E-n> --reason <text> [--approver <name>]]\n",
     );
     return 2;
   }
@@ -547,9 +595,54 @@ export function runGateEvalsCli(
       return 2;
     }
   }
+  if (flags.verify && (flags.dryRun || waive.length > 0)) {
+    io.err("devx gate evals: --verify cannot be combined with --dry-run or --waive\n");
+    return 2;
+  }
+
   const r = resolveOrFail(args[0], "devx gate evals", opts, io);
   if (!r.ok) return r.code;
   const { ws, subjects } = r;
+
+  // --verify (L3 of the RED lock, debug-75563d): re-hash the stamped evals
+  // and report bodies that moved or vanished under their stamp. Runs
+  // nothing, writes nothing — this is the read-only half that `/devx`
+  // Phase 5 calls before declaring a story green. Without it the stamp
+  // written above would be computed and never read, which is the very
+  // shape this story exists to remove.
+  if (flags.verify) {
+    // Self-review: `current` is built FROM the stamped keys, so it is a
+    // subset of `stamped` by construction and `verifyStepBodies`'s third
+    // finding kind — `unstamped`, an eval on disk that Gate 4 never
+    // stamped — can never fire here. That is deliberate, not an
+    // oversight: detecting it means re-resolving expectations + the plan
+    // coverage table, i.e. the whole gate, which is exactly the work
+    // `--verify` exists to avoid. `unstamped` is advisory and never
+    // blocks (`blocksVerification`), so the omission cannot change a
+    // verdict — it only means `--verify` will not TELL you about a newly
+    // added eval. Re-run the gate itself to bring one under the lock.
+    const stamped = ws.state.redEvalShas;
+    const current = collectEvalBodies(
+      r.repoRoot,
+      io,
+      Object.keys(stamped).map((artifact) => ({ artifact })),
+    );
+    const findings = verifyStepBodies(stamped, current);
+    const blocking = blocksVerification(findings);
+    io.out(
+      `${JSON.stringify({
+        verify: blocking ? "FAIL" : "PASS",
+        hash: ws.hash,
+        stamped: Object.keys(stamped).length,
+        findings,
+      })}\n`,
+    );
+    // Exit 1 on a moved/missing body — the hard stop. `unstamped` alone
+    // never blocks: it is how a pre-stamp workstream looks (AC 5), and
+    // failing those would retroactively block every workstream whose
+    // Gate 4 predates this fix.
+    return blocking ? 1 : 0;
+  }
 
   // Predecessor gates must have passed (tenet 2).
   if (!ws.state.gateStatus.plan_verified) {
@@ -652,9 +745,26 @@ export function runGateEvalsCli(
   let flipped: Record<string, unknown> | null = null;
   if (result.verdict !== "FAIL") {
     const newStage = advanceStage(ws.state.stage, "executing");
+    // debug-75563d: stamp every run eval's step-body sha (L2 of the RED
+    // lock). Before this, `stampEvalShas` had zero callers — the library
+    // shipped, the call site did not — so `red_eval_shas` was never
+    // written, `verifyStepBodies()` had nothing to verify, and the lock's
+    // own grandfathering rule read every workstream as "predates the
+    // stamp". An inert producer did not fail loudly; it read as
+    // permission.
+    //
+    // Stamped on every NON-FAIL verdict, not only PASS, because the
+    // condition that matters is the one right here: `evals_red` flips and
+    // execution begins. A CONCERNS or WAIVED workstream proceeds to
+    // implement against these evals exactly as a PASS does, so leaving
+    // either unstamped would make `--waive` a silent lock bypass — the
+    // gate would record an operator override AND quietly drop the
+    // immutability the override was never asked to waive.
+    const redEvalShas = stampEvalShas(collectEvalBodies(r.repoRoot, io, result.runs));
     try {
       const updated = applyEnginePatch(ws.content, {
         gateStatus: { evals_red: true },
+        redEvalShas,
         stage: newStage,
         gateVerdicts: { evals: result.verdict },
       });
@@ -735,6 +845,10 @@ export function register(program: Command): void {
     .argument("<hash>", "workstream (plan spec) hash")
     .option("--dry-run", "resolve artifacts + commands, run nothing, write nothing")
     .option(
+      "--verify",
+      "L3: re-hash the stamped evals and FAIL (exit 1) on a body that moved or vanished under its stamp; runs nothing, writes nothing",
+    )
+    .option(
       "--waive <e-id>",
       "record a D-9 WAIVED verdict for this expectation instead of demanding RED (repeatable)",
       (v: string, prev: string[]) => [...prev, v],
@@ -747,6 +861,7 @@ export function register(program: Command): void {
         hash: string,
         cmdOpts: {
           dryRun?: boolean;
+          verify?: boolean;
           waive: string[];
           reason?: string;
           approver?: string;
@@ -754,6 +869,7 @@ export function register(program: Command): void {
       ) => {
         const code = runGateEvalsCli([hash], {
           dryRun: cmdOpts.dryRun,
+          verify: cmdOpts.verify,
           waive: cmdOpts.waive,
           reason: cmdOpts.reason,
           approver:

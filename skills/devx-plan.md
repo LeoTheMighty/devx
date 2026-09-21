@@ -298,11 +298,11 @@ free-nested sub-items (contract in Stage: PRD).
    existed to pass it.
 
    If the expectation genuinely changed, the sanctioned path is to say so and
-   re-run `devx gate evals <hash>`, which re-stamps the bodies. Editing under
-   the lock is refused at write time by the guard, and `verifyStepBodies()`
-   FAILs a body that moved — including an eval deleted out from under its own
-   stamp. Workstreams whose RED gate predates the stamp are grandfathered:
-   unstamped evals report, never block.
+   re-run `devx gate evals <hash>`, which re-stamps the bodies.
+   `devx gate evals <hash> --verify` FAILs a body that moved — including an
+   eval deleted out from under its own stamp. Workstreams whose RED gate
+   predates the stamp are grandfathered: unstamped evals report, never
+   block.
 
 3. On PASS (flips `evals_red` + `stage: executing`): **emit the dev specs**
    — one per plan phase, v1 contract unchanged: spec file under `dev/`

@@ -177,6 +177,7 @@ function allTrueState(
       plan_verified: true,
       evals_red: true,
     },
+    redEvalShas: {},
     gateVerdicts: { prd: null, design: null, plan: null, evals: null },
     outcome: { status: null, measure_by: null },
     workstream: "_devx/workstreams/demo",
