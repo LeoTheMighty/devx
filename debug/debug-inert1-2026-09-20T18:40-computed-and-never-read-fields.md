@@ -48,7 +48,7 @@ in it is weaker than one argued from three that are right.
 | symbol | occurrences outside its own module | verdict |
 |---|---|---|
 | `unparsedTopLevel` | 0 (5 total, all `engine/todo.ts`) | **inert** |
-| `proseBudgetKb` | 0 (3 total, all `engine/config.ts`) | **inert** |
+| `proseBudgetKb` | 0 in `src/`; read by `test/engine-prose-budget.test.ts` — **the S-1 CI gate, its designed consumer** | **NOT inert — corrected 2026-09-21, see below** |
 | `archiveRoot` | 1 — **consumed** at `lib/archive/plan.ts:181` | **NOT inert** |
 | `stampEvalShas` | 0 in `src/` (definition only, `engine/evals-lock.ts:85`); **2 in `test/`** | **inert in production** |
 
@@ -100,7 +100,7 @@ switched off in week two. Whatever ships must handle the one-hop read.
       codebase and read nowhere outside their defining module. Start with
       `TodoDoc`/`EngineConfig`-shaped interface fields; a whole-program
       unused-export sweep is a superset and also acceptable.
-- [ ] AC 2: `unparsedTopLevel` and `proseBudgetKb` are both reported.
+- [ ] AC 2: `unparsedTopLevel` is reported. (`proseBudgetKb` was listed here and was wrong — see the 2026-09-21 correction; it belongs with `archiveRoot` as a false-positive guard.)
       `stampEvalShas` is the third specimen but is being given a caller under
       `75563d` — pin its pre-fix state as a fixture rather than expecting a
       live report.
@@ -112,6 +112,14 @@ switched off in week two. Whatever ships must handle the one-hop read.
       the shape that survives review. **`stampEvalShas` is the fixture**: two
       callers in `test/`, none in `src/`. A detector that counts test reads
       passes it, and passing it is the bug.
+      **Carve-out, added 2026-09-21:** a config knob whose designed consumer
+      *is* a CI gate is live, not inert. `proseBudgetKb` (and, since D-14,
+      `fullRunProseBudgetKb`) is read only by `test/engine-prose-budget.test.ts`
+      — and that test is the knob's entire purpose. The distinguishing
+      question is not "is the reader a test?" but "is the reader asserting
+      *about* the value, or *governed by* it?" A unit test of `stampEvalShas`
+      asserts about it (coverage); the S-1 canary is governed by
+      `proseBudgetKb` (a gate). Only the first kind fails to count.
 - [ ] AC 5: Output lands somewhere consumed — `devx doctor`, a CI step, or a
       `DEBUG.md` write. A report that only prints into a run log reproduces
       the defect it detects. (See `plan-4c827d`; also the palateful
@@ -160,3 +168,16 @@ switched off in week two. Whatever ships must handle the one-hop read.
   the whole history, and test-covered-but-production-dead, which makes it
   AC 4's fixture rather than just another instance. b6 also confirmed the
   `archiveRoot` correction at source.
+- 2026-09-21T12:50 — **correction by the filer.** `proseBudgetKb` is not
+  inert: its designed consumer is the S-1 prose-budget canary, a CI gate.
+  I checked `src/` only, found zero readers, and called it inert — the
+  reachability check was right and the conclusion was wrong, because a
+  gate living in `test/` is still a production consumer of its threshold.
+  Found while adding a second such knob for D-14 (5c215e), which the AC 4
+  as written would also have flagged. AC 4 now carries the carve-out, and
+  `proseBudgetKb` moves beside `archiveRoot` as a false-positive guard.
+  Also: `stampEvalShas` now has a production caller (`gate.ts:763`, #164),
+  so of the original specimens only `unparsedTopLevel` is still inert
+  today. The class stands; the specimen count is one live instance plus
+  two pinned fixtures (`stampEvalShas` pre-#164, `unparsedTopLevel`) and two
+  false-positive guards (`archiveRoot`, `proseBudgetKb`).
