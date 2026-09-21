@@ -5,7 +5,7 @@ created: 2026-09-20T10:21:00-06:00
 title: "claim requires --type while merge-gate auto-resolves: two type conventions in one loop"
 from: null
 spawned: []
-status: in-progress
+status: done
 owner: /devx-2026-09-21T1024-41522
 branch: null
 ---
@@ -268,6 +268,7 @@ override test correctly stays green.
   (`devx tour`) **inverted** — tour was retired at tur101, so the CLI is
   current and the skill body is stale.
 - 2026-09-21T10:24:00-06:00 — claimed by /devx in session /devx-2026-09-21T1024-41522
+- 2026-09-21T10:48:44-06:00 — merged via PR #167 (squash → 8e05e05)
 
 ## Links
 
