@@ -4,7 +4,7 @@
 
 # Story graph
 
-247 specs across 25 groups — 12 blocked · 170 done · 6 in-progress · 59 ready; 457 edges.
+248 specs across 25 groups — 12 blocked · 172 done · 5 in-progress · 59 ready; 458 edges.
 
 ## Legend
 
@@ -162,9 +162,9 @@ flowchart TD
     4c827d["4c827d Detector Discrimination"]
     4d1a9c["4d1a9c claim commits on whatever branch the main…"]
     4d9c1a["4d9c1a QA walkthrough — sgr104 regen hooks (clai…"]
-    5284ae["5284ae Phase-4 discipline check escapes the feat…"]
     53bf7b["53bf7b QA walkthrough — skill bodies name the fo…"]
     5c215e["5c215e S-1: give the full-run prose surface its…"]
+    5c75cb["5c75cb A PR's green CI describes the base it was…"]
     5c8b21["5c8b21 loop-concurrency G-1 test sits ~1.3x unde…"]
     5e1a77["5e1a77 16 tests run past their own timeout and s…"]
     62dd91["62dd91 QA walkthrough — consumer sweep and layou…"]
@@ -205,7 +205,7 @@ flowchart TD
     cf65aa["cf65aa loop merge tail never emits the dvx103 ph…"]
     d01000["d01000 Phase 3 — Parallelism & coordination: loc…"]
     d02000["d02000 Phase 9 — Modes & full gate cascade"]
-    d315b9["d315b9 The helper path skips three steps the /de…"]
+    d315b9["d315b9 The helper path skips steps the /devx ski…"]
     d7e8e5["d7e8e5 Merge-tail helpers treat transient gh Gra…"]
     d982ea["d982ea Warn at filing time when a new spec subst…"]
     db36af["db36af devx doctor — mechanical state reconcilia…"]
@@ -217,6 +217,7 @@ flowchart TD
     eac611["eac611 Integration: manage tick writes state in…"]
     ebf8c4["ebf8c4 QA walkthrough — learn.auto_allow unatten…"]
     ecdcda["ecdcda manage-spawn / manage-spawn-integration t…"]
+    ed8f8d["ed8f8d Three hash resolvers disagree on a hash d…"]
     ef5059["ef5059 QA walkthrough — identity re-key and priv…"]
     evlk01["evlk01 RED eval lock only guards files it alread…"]
     evlk02["evlk02 RED eval lock is detection-only — the wri…"]
@@ -263,6 +264,8 @@ flowchart TD
   7a2d1f -.-> b20ret
   7a2d1f -.-> c30ret
   7a2d1f -.-> d40ret
+  7d96be -.-> 5c75cb
+  7d96be -.-> ed8f8d
   828385 -.-> 108c57
   9946f9 --> rtl104
   9c4e21 -.-> 6a913f
@@ -371,7 +374,6 @@ flowchart TD
   dlr104 -.-> 62dd91
   dlr104 --> dlr102
   dlr104 --> dlr103
-  dlr105 -.-> 5284ae
   dlr105 --> dlr104
   dlr105 -.-> ef5059
   dlr106 -.-> 00b4d3
@@ -564,7 +566,7 @@ flowchart TD
   class 1dfbdd done
   class 28b267 done
   class 2d6fc1 wip
-  class 2e1174 wip
+  class 2e1174 done
   class 2e7b45 ready
   class 357d0c done
   class 3b9e07 done
@@ -574,9 +576,9 @@ flowchart TD
   class 4c827d ready
   class 4d1a9c done
   class 4d9c1a ready
-  class 5284ae ready
   class 53bf7b ready
   class 5c215e done
+  class 5c75cb ready
   class 5c8b21 done
   class 5e1a77 done
   class 62dd91 ready
@@ -629,8 +631,9 @@ flowchart TD
   class eac611 done
   class ebf8c4 ready
   class ecdcda done
+  class ed8f8d ready
   class ef5059 ready
-  class evlk01 ready
+  class evlk01 done
   class evlk02 ready
   class evlk03 ready
   class f01000 blocked

@@ -4,7 +4,7 @@ type: debug
 created: 2026-08-21T16:05:00-06:00
 title: "Tests in the ASYNC blocking pass sit within 15% of their 5s default cap and fail CI on load alone"
 from: dev/dev-uwg102-2026-08-21T14:30-uwg102.md
-status: in-progress
+status: done
 owner: /devx-2026-09-21T1134-29407
 blocked_by: []
 branch: feat/debug-2e1174
@@ -189,6 +189,7 @@ evidence should not be read as a CI observation.
   touches no driver code). One instance fixed in that PR; the class left
   open here rather than swept blind.
 - 2026-09-21T11:34:41-06:00 — claimed by /devx in session /devx-2026-09-21T1134-29407
+- 2026-09-21T13:05:25-06:00 — merged via PR #169 (squash → d695d5c)
 
 ## Links
 
