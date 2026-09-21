@@ -4,7 +4,7 @@ type: debug
 created: 2026-09-20T18:45:00-06:00
 title: "workstream-migration-integrity pins a hardcoded floor of 9 that the archival invalidated"
 from: debug/debug-f4149e-2026-09-02T11:55-todo-phase-pointer-arrow-silent.md
-status: in-progress
+status: done
 owner: /devx-2026-09-20T1831-10025
 branch: feat/debug-wsmig1
 ---
@@ -134,3 +134,4 @@ a real decision about what the invariant protects — hence: not made here.
   `manage-loop > exits 0 with the lock released after SIGTERM` — did not
   reproduce in isolation, on clean `main`, or on the second full run;
   recorded as a flake, not fixed, and not mine to claim either way.
+- 2026-09-21T10:15:44-06:00 — merged via PR #165 (squash → 3235437)
