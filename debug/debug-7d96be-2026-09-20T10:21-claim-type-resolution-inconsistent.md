@@ -194,8 +194,12 @@ any direct caller of the library did not. Same command, both conventions.
 - **An explicit `--type` is still validated up front**, so a bad flag costs
   nothing, and an explicit type that names the wrong dir fails with the
   pre-7d96be message byte-for-byte.
-- A hash resolving to an unclaimable type (e.g. `plan`) is refused at
-  `validate`, naming the type and path.
+- A hash resolving to an unclaimable type (e.g. `plan`) is refused before
+  any write, naming the type and path — at `validate` in claim, mark-done,
+  split and verify-claim, and at `resolve` in finalize, which has no
+  `validate` stage. (As merged in #167 this said `validate` for all five;
+  verify-claim did not refuse at all and finalize refused at `resolve`.
+  Corrected in the 7d96be review fix-forward.)
 
 ### AC 4 — skill body
 
