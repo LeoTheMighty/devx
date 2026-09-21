@@ -44,7 +44,7 @@ Backlog for `/devx` debug routing. Each entry points at a spec file under
 
 ## Found during 2e1174 (2026-09-21)
 
-- [ ] `debug/debug-d315b9-2026-09-21T12:05-merged-not-deployed.md` — A merge via `gh pr merge` bypasses `finalize`, the only thing that rebuilds `dist/`, so the deployed `devx` silently lags `main`. #167 was merged but NOT deployed for ~1h: a no-`--type` claim failed the pre-#167 way until a manual `build:swap`. The stale-build warning fired on every call and changed nothing — habituated past by one session and **filtered out by construction** by another (`grep -v "^devx: "` strips it, since it shares the prefix with chatter). Fix: rebuild on the merge path, and carry staleness in the JSON rather than a prefixed stderr line. Status: ready. From: 2e1174 claim.
+- [ ] `debug/debug-d315b9-2026-09-21T12:05-merged-not-deployed.md` — **The helper path skips three steps the `/devx` skill enforces, each silently.** (1) `gh pr merge` bypasses `finalize`, so the deployed `devx` lags `main` — #167 was merged but not live for ~1h; the stale-build warning was habituated past and, in one session, stripped by construction (`grep -v "^devx: "`). (2) `mark-done` can redden `main` on dvx103's `phase 4:` check, which a helper-run PR's CI cannot see — `main` red 74d93cd→87040e9, ~45 min. (3) Helper-run items skip Phase 4 review: none of the eight PRs merged 2026-09-21 had one; retroactive cross-reviews ordered. (2) and (3) converge on one close-time check. Status: ready. From: 2e1174 claim.
 
 ## Found during f4149e (2026-09-20)
 
