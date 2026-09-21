@@ -93,11 +93,11 @@ export type VerifyClaimResult =
        * YAML, and devx's hand-rolled readers disagree about which one wins,
        * so a move to a real YAML parser could silently flip the answer.
        *
-       * Reported, never blocking: `parseSpecClaimFields` resolves
-       * first-wins and that resolution is correct for every instance of
-       * this corruption (828385 — claim wrote the authoritative value
-       * ABOVE the stale key). Halting a legitimate resume over a stray
-       * key would reintroduce the harm the fix removed.
+       * Reported, never blocking: `parseSpecClaimFields` resolves a
+       * duplicate to its first meaningful value (debug-108c57), which is
+       * right in both key orders the old claim splice produced. Ownership
+       * is decided from the lock regardless, so a stray key never needs to
+       * halt a resume.
        */
       specDuplicateKeys: string[];
     }
@@ -227,24 +227,34 @@ export interface SpecClaimFields {
  * frontmatter block itself is missing — a spec without frontmatter is
  * out-of-convention and verify-claim can't reason about it.
  *
- * ## Duplicate keys resolve FIRST-wins, deliberately (828385 AC 4)
+ * ## Duplicate keys resolve to the first NON-EMPTY value (debug-108c57 item 13)
  *
- * This loop used to reassign on every match with no break, so the LAST
- * occurrence won — incidentally, not by decision. That interacted with the
- * old claim splice to produce the defect 828385 exists for: claim inserted
- * the real owner at `statusIdx + 1`, i.e. ABOVE a stale bare `owner:`, and
- * last-wins then read the trailing empty one as `""`. `/devx` Phase 1's
- * resume-detection HALTs on an ownership mismatch, so a claim silently
- * poisoned its own resume path.
+ * This loop originally reassigned on every match, so the LAST occurrence
+ * won — incidentally, not by decision. Against the old claim splice, which
+ * put the real owner at `statusIdx + 1` ABOVE a stale bare `owner:`,
+ * last-wins read the trailing empty key as `""`.
  *
- * First-wins is the right resolution rather than merely the opposite one:
- * in every instance of this corruption the authoritative value is the one
- * claim wrote, and claim wrote it above the stale key. So first-wins reads
- * the already-corrupted population CORRECTLY, where refusing outright would
- * halt a legitimate resume on a spec whose real owner is unambiguous.
+ * 828385 changed it to first-wins, reasoning that "the authoritative value
+ * sits above the stale key". That holds only for one key order. A spec
+ * that lists `owner:` before `status:` got the splice BELOW the stale key,
+ * and first-wins reads that one as empty. Preferring the first non-empty
+ * value is right in both orders, because the old splice only ever produced
+ * (value, bare) pairs. No real spec puts `owner:` before `status:` (0 of
+ * the 223 devx + palateful specs carrying both keys, measured 2026-09-21),
+ * so this changes no current result — it removes the order dependence
+ * instead of relying on the corpus never having it. The rule lives in `frontmatterKeyValue`, so
+ * every reader built on frontmatter-keys resolves a duplicate the same way.
  *
- * The duplication is still reported via `duplicateKeys` — resolving a
- * corrupt spec usefully is not the same as pretending it is clean.
+ * Note what this does NOT decide. Ownership comes from the LOCK
+ * (`verifyClaim`); the spec's `owner:` feeds only the advisory
+ * `specOwnerDrift`. 828385 claimed the old last-wins read made `/devx`
+ * Phase 1 HALT against the legitimate owner — it did not, since an empty
+ * owner normalizes to null and suppresses even the drift flag. The fix is
+ * still worth having: the value is displayed, and a wrong one misleads.
+ *
+ * The duplication is always reported via `duplicateKeys`, and the CLI
+ * prints it (item 12) — resolving a corrupt spec usefully is not the same
+ * as pretending it is clean.
  */
 export function parseSpecClaimFields(content: string): SpecClaimFields {
   const fm = splitFrontmatterLines(content);
@@ -261,6 +271,7 @@ export function parseSpecClaimFields(content: string): SpecClaimFields {
     duplicateKeys: duplicateFrontmatterKeys(fm.lines),
   };
 }
+
 
 // ---------------------------------------------------------------------------
 // Driver

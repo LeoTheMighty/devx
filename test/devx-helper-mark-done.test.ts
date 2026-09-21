@@ -179,6 +179,21 @@ Do the thing.
 `;
 
 describe("updateSpecForDone", () => {
+  it("reads `status:` in every spelling the key matcher accepts (review round 2)", () => {
+    for (const spelling of ['"status": in-progress', "status : in-progress", "status: in-progress  # claimed"]) {
+      const spec = SAMPLE_SPEC.replace(/^status: .*$/m, spelling);
+      const out = updateSpecForDone(spec, "2026-08-05T12:00:00-06:00", "merged");
+      expect(out).toMatch(/^status: done/m);
+    }
+  });
+
+  it("refuses a bare `status:` with a message naming the empty value (debug-108c57 item 16)", () => {
+    const bare = SAMPLE_SPEC.replace(/^status: .*$/m, "status:");
+    expect(() => updateSpecForDone(bare, "2026-08-05T12:00:00-06:00", "merged")).toThrow(
+      /status: `?, not `in-progress`|not `in-progress`/,
+    );
+  });
+
   it("flips status: in-progress → done and appends the status-log line", () => {
     const out = updateSpecForDone(
       SAMPLE_SPEC,

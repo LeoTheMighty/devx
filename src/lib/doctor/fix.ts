@@ -18,6 +18,7 @@
 import { unlinkSync } from "node:fs";
 import {
   findFrontmatterKeys,
+  frontmatterKeyValue,
   renderFrontmatter,
   splitFrontmatterLines,
   upsertFrontmatterKey,
@@ -87,7 +88,16 @@ export function replaceFrontmatterStatus(content: string, status: string): strin
   // silently not replaced and doctor reported a fix it had not made.
   if (findFrontmatterKeys(fm.lines, "status").length === 0) return content;
   const before = fm.lines.join("\n");
-  upsertFrontmatterKey(fm.lines, "status", status);
+  try {
+    upsertFrontmatterKey(fm.lines, "status", status);
+  } catch {
+    // A `status:` that heads a multi-line value cannot be overwritten with
+    // a scalar without orphaning its lines. Return it unchanged: the
+    // bookkeeping repair calls this AFTER removing the worktree and branch,
+    // and a throw there turned a mostly-done repair into ok:false with no
+    // audit line (review round 2). The caller reports the skipped reset.
+    return content;
+  }
   if (fm.lines.join("\n") === before) return content;
   return renderFrontmatter(fm);
 }
@@ -229,15 +239,22 @@ export async function applyFixes(
                 : res.reason,
             );
           }
+          // Say what actually happened (debug-108c57 item 7). When the lock
+          // was already gone by the time the repair ran (`missing`), the
+          // outcome is the same, but this used to record "removed stale spec
+          // lock" in the spec's append-only audit line — a permanent record
+          // of an action that never happened.
+          const alreadyGone = !res.released;
+          const what = alreadyGone ? "stale spec lock was already gone" : "removed stale spec lock";
           const written =
             f.hash !== undefined
-              ? audit(opts, f.hash, `devx doctor --fix: removed stale spec lock (${f.detail})`, fs, write)
+              ? audit(opts, f.hash, `devx doctor --fix: ${what} (${f.detail})`, fs, write)
               : null;
           results.push({
             class: f.class,
             target: f.target,
             ok: true,
-            action: `removed the stale lock`,
+            action: alreadyGone ? "found the stale lock already gone" : "removed the stale lock",
             // The lock itself is gitignored; only the audit line is tracked.
             ...(written !== null ? { paths: [written] } : {}),
           });
@@ -374,6 +391,13 @@ export async function applyFixes(
           // rewrites the first body line that happens to start with
           // `status:` when the frontmatter has none (found in review).
           const next = replaceFrontmatterStatus(content, "ready");
+          const fmNow = splitFrontmatterLines(content);
+          const statusNow = fmNow ? frontmatterKeyValue(fmNow.lines, "status") : null;
+          if (next === content && statusNow !== null && statusNow.trim() !== "ready") {
+            // Say so rather than omit it — the pre-#162 version of this
+            // silently skipped the reset and still returned ok:true.
+            done.push("left `status:` unchanged — it is not a single-line value; reset it by hand");
+          }
           if (next !== content) {
             write(resolved.path, next);
             done.push("reset the spec to `status: ready`");

@@ -58,7 +58,13 @@ export type FindingClass =
    *  state instead of a silent one. Report-only by construction — the repair
    *  moves real authored work, so it sits on the far side of the fix boundary
    *  this file's header draws (dlr103). */
-  | "layout-tree-mismatch";
+  | "layout-tree-mismatch"
+  /** A spec whose frontmatter declares a key twice, or leaves `owner:` /
+   *  `branch:` bare (debug-108c57). Report-only: which copy of a duplicate
+   *  is right is a judgement about the spec's history, not a mechanical
+   *  repair. Scans every spec directory, so the hand-authored `debug/`
+   *  specs that `devx plan-helper validate-emit` never reaches are covered. */
+  | "malformed-frontmatter";
 
 export interface Finding {
   class: FindingClass;

@@ -29,6 +29,11 @@
 // under `opts.cacheDir` (default: `.devx-cache`). Tests pass an empty
 // tmpdir as cwd to avoid reading the real project's backlog files.
 
+import {
+  editFrontmatter,
+  findFrontmatterKeys,
+  upsertFrontmatterKey,
+} from "../frontmatter-keys.js";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -587,22 +592,26 @@ function blockSpecFile(
  * `blocked` with the exact same discipline) — wrap-don't-duplicate.
  */
 export function replaceFrontmatterStatus(content: string, value: string): string {
-  // Match leading `---\n...---\n` with `s` flag (dotAll) for multi-line
-  // body. The frontmatter must START at the file head — a body `---` that
-  // isn't preceded by a frontmatter is correctly NOT matched. CRLF-tolerant
-  // (`\r?\n`) so a Windows-editor-saved spec still flips (v2l101 EC-MED-5);
-  // a status line's own trailing `\r` survives via the `(.*)` capture.
-  const fmRe = /^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n)/;
-  const m = fmRe.exec(content);
-  if (!m) return content;
-  const [, head, body, tail] = m;
-  // Inside the frontmatter body, replace the FIRST `status: <scalar>` line.
-  // `\S+` handles tags / quotes / nested-but-flat values. A multi-line
-  // scalar (`status: |`) doesn't match — caller accepts the no-op (above).
-  const statusRe = /^(status:\s*)\S+(.*)$/m;
-  if (!statusRe.test(body)) return content;
-  const newBody = body.replace(statusRe, `$1${value}$2`);
-  return head + newBody + tail + content.slice(m[0].length);
+  // Routed through the shared frontmatter-keys logic (debug-108c57 item 1).
+  // The old `/^(status:\s*)\S+(.*)$/m` let `\s*` cross the newline after a
+  // BARE `status:`, so `status:\nowner: /devx-me` became
+  // `status:\nblocked /devx-me` — the owner key destroyed, and the caller
+  // told the flip succeeded. `editFrontmatter` keeps the file's CRLF, which
+  // this function has always preserved (v2l101 EC-MED-5).
+  //
+  // Contract kept: returns `content` unchanged when there is no status
+  // line, or when `status:` heads a multi-line value — the caller treats
+  // "unchanged" as "could not flip".
+  const next = editFrontmatter(content, (lines) => {
+    if (findFrontmatterKeys(lines, "status").length === 0) return false;
+    try {
+      upsertFrontmatterKey(lines, "status", value);
+    } catch {
+      return false;
+    }
+    return true;
+  });
+  return next ?? content;
 }
 
 /**

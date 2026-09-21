@@ -378,6 +378,40 @@ describe("devx devx-helper verify-claim — exit 0 (owned)", () => {
   let fx: Fixture;
   afterEach(() => destroy(fx));
 
+  it("debug-108c57 item 12: duplicate frontmatter keys are WARNed on stderr; stdout and exit unchanged", async () => {
+    fx = makeFixture({
+      lockBody: lockBodyFor(OWNER_SID),
+      rawSpec: [
+        "---",
+        `hash: ${HASH}`,
+        "status: in-progress",
+        `owner: /devx-${OWNER_SID}`,
+        "owner:",
+        "---",
+        "",
+        "## Status log",
+        "",
+        "- x",
+        "",
+      ].join("\n"),
+    });
+    const { code, io } = await run(fx, [HASH, "--session-token", OWNER_SID]);
+    expect(code).toBe(0);
+    expect(JSON.parse(io.stdout)).toEqual({ hash: HASH, owned: true, sessionToken: OWNER_SID });
+    expect(io.stderr).toMatch(/'owner' more than once/);
+  });
+
+  it("debug-108c57 item 13: owner-before-status corruption reads the non-empty owner", () => {
+    // The old splice put the real owner at statusIdx+1. When `owner:` came
+    // BEFORE `status:`, that landed it BELOW the stale bare key, so plain
+    // first-wins read the empty one. First non-empty is right in both orders.
+    const f = parseSpecClaimFields(
+      ["---", "owner:", "status: in-progress", `owner: /devx-${OWNER_SID}`, "---", ""].join("\n"),
+    );
+    expect(f.owner).toBe(`/devx-${OWNER_SID}`);
+    expect(f.duplicateKeys).toEqual(["owner"]);
+  });
+
   it("lock exists + token matches + spec in-progress → exit 0, JSON {hash, owned, sessionToken}", async () => {
     fx = makeFixture({ lockBody: lockBodyFor(OWNER_SID) });
     const { code, io } = await run(fx, [

@@ -173,6 +173,57 @@ story's surface:
 
 ## Status log
 
+- 2026-09-21T14:41-06:00 — phase 4: self-review of this fix = three-agent parallel adversarial review (Blind Hunter + Edge Case Hunter + Acceptance Auditor), pre-merge; ~16 unique findings (0 HIGH, 2 MED from the Edge Case Hunter + 1 MED from the Auditor, rest LOW), all fixed, then re-verified by targeted tests for each finding plus an empirical real-corpus leg (new vs origin/main writers and readers over 320 real specs: 0 differences). Details below.
+- 2026-09-21T14:40-06:00 — **implemented; two rounds of three-agent
+  review on the fix itself** (Blind Hunter + Edge Case Hunter + Acceptance
+  Auditor in parallel, both rounds). This PR changes the same shared
+  primitive #162 did, so it got the review #162 skipped.
+  - Round 1 on the fix: Edge 5, Blind 6, Auditor 12; about 16 unique after
+    overlap, 0 HIGH. The ones that mattered: (a) the scalar-overwrite
+    refusal added in item 9 THREW on `status: ready` followed by an
+    indented comment — a regression on input every writer used to handle;
+    (b) the empty-block support claimed in item 5 swallowed body text up to
+    a later `---` rule (greedy optional group; fixed with `??`); (c)
+    `keyBlockEnd` missed a column-0 comment inside a value and a compact
+    sequence under a bare header; (d) doctor's owner reader and
+    verify-claim resolved duplicates differently, so doctor's own message
+    was false; (e) doctor's `malformed-frontmatter` detail never named the
+    file. All fixed, each with a test.
+  - Round 2 = targeted tests for every round-1 finding plus an empirical
+    real-corpus leg: the new and the pre-change (`origin/main`) loop
+    writer, doctor writer and `parseSpecClaimFields` run over all 320 spec
+    files in devx + palateful, three status values each — **0
+    differences**. `malformed-frontmatter` reports 0 on both repos, and
+    fires on a temp repo seeded with the shapes (negative control).
+  - The three regression tests in existing files (items 7, 12, 13) were
+    run against unfixed `main` and fail there, and only there.
+
+  **Corrections to this spec's own claims:**
+  - **Item 2/3's `ownership:` claim is false.** `/^owner:/` never matched
+    `ownership:` — the colon must follow `owner` directly. It came from the
+    first review of #162; I wrote it into the ACs, two code comments and a
+    test without running the one-line check. The test is kept as a guard,
+    relabelled as such; item 2's real regression is the last-wins
+    `status:` rewrite, which fails on `main`.
+  - **Item 13's "292" is wrong.** Re-measured by parsing frontmatter: 223
+    specs carry both `owner:` and `status:`, and 0 put `owner:` first.
+  - **Item 14 was narrowed, deliberately.** It asked that `owner:` be null
+    or a `/devx-` token. Measured by two methods (an awk scan, then
+    `splitFrontmatter` + the `yaml` package): 23 of 223 real owner values
+    are neither — 19 bare `/devx`, 2 `interactive-session-…`, 1 human
+    session label, 1 `unassigned` — and most are legitimate. Ownership is
+    decided from the lock, so the rule would flag noise with no hazard
+    behind it. Shipped instead: duplicate keys, and a bare (or
+    comment-only) `owner:` / `branch:`. The `branch:` sentinel case cannot
+    be caught by shape and stays with `debug-1dfbdd`'s reader.
+
+  **Kept as known limits, stated in code:** a multi-line flow value whose
+  continuation starts at column 0 is not treated as part of its key; a
+  duplicate pair whose FIRST copy heads a block refuses, while one whose
+  LATER copy does is deleted with its lines (converging on the first copy).
+  Neither shape exists in either repo.
+
+
 - 2026-09-21T12:02-06:00 — filed from the retroactive three-agent review of
   PR #162. Blind Hunter 4 findings, Edge Case Hunter 7, Acceptance Auditor
   11; about 16 unique after overlap. The four MED findings in items 1, 4,

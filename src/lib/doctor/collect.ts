@@ -11,6 +11,7 @@
 import { realExecAsync } from "../exec.js";
 import {
   detectDeadBlockers,
+  detectMalformedFrontmatter,
   detectDeadOwners,
   detectFlatWorkstreams,
   detectLayoutTreeMismatch,
@@ -41,6 +42,7 @@ export async function collectFindings(
     ...detectMirrorDrift(base),
     ...detectDeadOwners(base),
     ...detectDeadBlockers(base),
+    ...detectMalformedFrontmatter(base),
     ...detectFlatWorkstreams(base),
     ...detectLayoutTreeMismatch(base),
   ];

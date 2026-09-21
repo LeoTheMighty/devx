@@ -35,6 +35,11 @@
 // Spec: dev/dev-mss101-2026-07-28T13:43-split-primitive-lib-cli.md
 // Design: _devx/workstreams/mid-story-split/design/agent.md § Architecture 1
 
+import {
+  editFrontmatter,
+  findFrontmatterKeys,
+  upsertFrontmatterKey,
+} from "../frontmatter-keys.js";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 
@@ -516,31 +521,34 @@ function appendSpawned(content: string, followUpHash: string): string {
 /** branch-handoff parent terminal patch: `status: superseded`,
  *  `superseded_by: <hash>` (workstream lineage vocabulary at dev-spec
  *  level), `owner:` cleared. */
-function patchParentSuperseded(content: string, followUpHash: string): string {
-  const fmMatch = /^---\n([\s\S]*?)\n---/.exec(content);
-  if (!fmMatch) {
-    throw new SplitError("compose", "parent spec missing frontmatter block");
+/** Exported for tests (debug-108c57 item 2). */
+export function patchParentSuperseded(content: string, followUpHash: string): string {
+  // Through the shared key logic (debug-108c57 item 2). The old scan's
+  // `status:` detection was last-wins, where the shared readers resolve to
+  // the first meaningful copy, so on a duplicated `status:` it rewrote the
+  // copy nobody reads and left the other in place.
+  let failure: string | null = null;
+  const next = editFrontmatter(content, (lines) => {
+    if (findFrontmatterKeys(lines, "status").length === 0) {
+      failure = "parent spec frontmatter missing `status:` line";
+      return false;
+    }
+    try {
+      upsertFrontmatterKey(lines, "status", "superseded");
+      upsertFrontmatterKey(lines, "superseded_by", followUpHash, { afterKey: "status" });
+      if (findFrontmatterKeys(lines, "owner").length > 0) {
+        upsertFrontmatterKey(lines, "owner", "null");
+      }
+    } catch (e) {
+      failure = e instanceof Error ? e.message : String(e);
+      return false;
+    }
+    return true;
+  });
+  if (next === null) {
+    throw new SplitError("compose", failure ?? "parent spec missing frontmatter block");
   }
-  const fmLines = fmMatch[1].split("\n");
-  let statusIdx = -1;
-  let supersededIdx = -1;
-  for (let i = 0; i < fmLines.length; i++) {
-    if (/^status:/.test(fmLines[i])) statusIdx = i;
-    if (/^superseded_by:/.test(fmLines[i])) supersededIdx = i;
-    if (/^owner:/.test(fmLines[i])) fmLines[i] = "owner: null";
-  }
-  if (statusIdx === -1) {
-    throw new SplitError("compose", "parent spec frontmatter missing `status:` line");
-  }
-  fmLines[statusIdx] = "status: superseded";
-  if (supersededIdx !== -1) {
-    fmLines[supersededIdx] = `superseded_by: ${followUpHash}`;
-  } else {
-    fmLines.splice(statusIdx + 1, 0, `superseded_by: ${followUpHash}`);
-  }
-  const before = content.slice(0, fmMatch.index);
-  const after = content.slice(fmMatch.index + fmMatch[0].length);
-  return `${before}---\n${fmLines.join("\n")}\n---${after}`;
+  return next;
 }
 
 /**

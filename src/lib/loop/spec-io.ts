@@ -23,6 +23,13 @@
 //
 // Spec: dev/dev-v2l101-2026-07-05T13:06-overnight-loop.md
 
+import {
+  editFrontmatter,
+  findFrontmatterKeys,
+  frontmatterKeyValue,
+  keyBlockEnd,
+  splitFrontmatterLines,
+} from "../frontmatter-keys.js";
 import { readFileSync } from "node:fs";
 
 import { writeAtomic } from "../supervisor-internal.js";
@@ -208,7 +215,13 @@ export function appendStatusEntryToFile(
 export function setSpecStatus(specPath: string, status: string): boolean {
   const content = readFileSync(specPath, "utf8");
   const next = replaceFrontmatterStatus(content, status);
-  if (next === content && !content.includes(`status: ${status}`)) return false;
+  // Success means the FRONTMATTER now says `status: <status>` (debug-108c57
+  // item 6). The old check was a whole-file `content.includes(...)`, so a
+  // spec with no frontmatter status whose body happened to mention
+  // `status: done` reported a flip that never happened.
+  const fm = splitFrontmatterLines(next);
+  const now = fm ? frontmatterKeyValue(fm.lines, "status") : null;
+  if (now === null || now.trim() !== status) return false;
   if (next !== content) writeAtomic(specPath, next);
   return true;
 }
@@ -221,17 +234,20 @@ export function setSpecStatus(specPath: string, status: string): boolean {
  */
 export function clearSpecOwner(specPath: string): boolean {
   const content = readFileSync(specPath, "utf8");
-  const fmRe = /^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n)/;
-  const m = fmRe.exec(content);
-  if (!m) return false;
-  const [, head, body, tail] = m;
-  // Line-based removal (not a regex collapse) so neighbouring lines — and
-  // their CRLF endings — are untouched.
-  const lines = body.split("\n");
-  const idx = lines.findIndex((l) => /^owner:/.test(l));
-  if (idx === -1) return false;
-  lines.splice(idx, 1);
-  writeAtomic(specPath, head + lines.join("\n") + tail + content.slice(m[0].length));
+  // Every `owner:` key goes, with its continuation lines (debug-108c57
+  // item 3). The old line scan removed only the first `owner:`, leaving the
+  // second of a duplicated pair as the spec's owner. CRLF is kept, as
+  // before.
+  const next = editFrontmatter(content, (lines) => {
+    const idxs = findFrontmatterKeys(lines, "owner");
+    if (idxs.length === 0) return false;
+    for (let n = idxs.length - 1; n >= 0; n--) {
+      lines.splice(idxs[n], keyBlockEnd(lines, idxs[n]) - idxs[n]);
+    }
+    return true;
+  });
+  if (next === null) return false;
+  writeAtomic(specPath, next);
   return true;
 }
 

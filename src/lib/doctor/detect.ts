@@ -16,6 +16,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import {
   frontmatterKeyValue,
+  specFrontmatterIssues,
   splitFrontmatterLines,
 } from "../frontmatter-keys.js";
 import { isNullishScalar } from "../frontmatter-scalar.js";
@@ -430,6 +431,57 @@ function subdirs(fs: DoctorFs, abs: string): string[] {
  *  `<root>/<slug>/<stage>.md` and never a repo-root file, so unlike
  *  `createWorkstream`'s guard it has no way to misfire on a flat repo's own
  *  `prd.md` — a repo-root `prd.md` is not under `<root>/<slug>/`. */
+/**
+ * `malformed-frontmatter` — a spec with a duplicated frontmatter key, or a
+ * bare `owner:` / `branch:` (debug-108c57 item 15).
+ *
+ * The same rule set as `devx plan-helper validate-emit`
+ * (`specFrontmatterIssues`), but over EVERY spec directory. The validator
+ * runs only on a planning epic's `dev/` specs, so the population 828385
+ * was about — hand-authored `debug/` specs — was never checked by anything.
+ */
+export function detectMalformedFrontmatter(opts: DetectOpts): Finding[] {
+  const fs = opts.fs ?? realDoctorFs;
+  const findings: Finding[] = [];
+  for (const type of SPEC_TYPE_DIRS) {
+    const dir = join(opts.repoRoot, type);
+    if (!fs.exists(dir)) continue;
+    let names: string[];
+    try {
+      names = fs.readdir(dir);
+    } catch {
+      continue;
+    }
+    for (const name of names.sort()) {
+      if (!name.endsWith(".md")) continue;
+      let content: string;
+      try {
+        content = fs.readFile(join(dir, name));
+      } catch {
+        continue;
+      }
+      const fm = splitFrontmatterLines(content);
+      if (!fm) continue;
+      for (const issue of specFrontmatterIssues(fm.lines)) {
+        const keys = issue.keys.map((k) => `\`${k}:\``).join(", ");
+        findings.push({
+          class: "malformed-frontmatter",
+          target: `${type}/${name}`,
+          // The detail names the file: doctor's human output prints only
+          // `class: detail`, and every other detector carries its own
+          // subject in the detail (review round 2).
+          detail:
+            issue.kind === "duplicate"
+              ? `${type}/${name} declares ${keys} more than once — readers do not agree on which copy wins; decide which is right and delete the rest`
+              : `${type}/${name} leaves ${keys} bare — write \`null\` for an unset value`,
+          fixable: false,
+        });
+      }
+    }
+  }
+  return findings;
+}
+
 export function detectFlatWorkstreams(opts: DetectOpts): Finding[] {
   const fs = opts.fs ?? realDoctorFs;
   const engine = opts.engine ?? ENGINE_DEFAULTS;

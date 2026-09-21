@@ -163,16 +163,31 @@ export interface EnginePatch {
  * between the opening and closing `---`; delim is the newline that follows
  * the closing `---` ("" when the file ends right there); body is everything
  * after it. `fmText + delim + body` concatenated back around the fences
- * reproduces the input byte-for-byte. Returns null when the file has no
- * frontmatter block. CRLF-tolerant on the delimiters.
+ * reproduces the input, except that trailing whitespace on a fence line is
+ * normalized away. Returns null when the file has no frontmatter block.
+ * CRLF-tolerant on the delimiters.
+ *
+ * Tolerant of trailing spaces/tabs on either fence (debug-108c57 item 5).
+ * The per-site regexes that 828385 replaced with this one accepted a
+ * closing `--- `; this one did not, so a spec with an invisible trailing
+ * space became "no frontmatter" to every migrated reader and writer. It
+ * was worse than a refusal: with the closing fence unmatched, the lazy
+ * body match ran on to the next `---` in the document, so a markdown
+ * horizontal rule in the body could end the block and body lines above it
+ * were read as frontmatter. An empty block (`---` then `---`) is accepted
+ * too, as an empty fmText.
  */
 export function splitFrontmatter(
   content: string,
 ): { fmText: string; delim: string; body: string } | null {
-  const m = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/.exec(content);
+  // `??` — the empty-block alternative is tried FIRST. A greedy `?` tries
+  // the content group first, and on an empty block the lazy body then runs
+  // on to the next `---` line in the document (a markdown rule), reading
+  // body text as frontmatter (review round 2).
+  const m = /^---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)??---[ \t]*(\r?\n|$)/.exec(content);
   if (!m) return null;
   return {
-    fmText: m[1],
+    fmText: m[1] ?? "",
     delim: m[2],
     body: content.slice(m[0].length),
   };
