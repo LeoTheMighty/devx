@@ -202,6 +202,8 @@ one-line correction behind a design decision.
 
 ## Status log
 
+- 2026-09-21T12:02-06:00 — **two claims in this spec were wrong**, found by the retroactive review of PR #162 and confirmed by reading the code. (1) The §Goal HALT did not happen in devx: the pre-fix `verify-claim` decides ownership only from the lock (`6b8684bd^:verify-claim.ts:335`); the spec's `owner:` fed only the advisory `specOwnerDrift`, and an empty owner normalizes to null, so even that stayed false. The duplicate key was real; the HALT severity was stated without checking the decision logic, by me when filing, and repeated in messages without anyone checking it. (2) "doctor reported a fix it had not made" is inaccurate: on a bare `status:` the old fix silently omitted the reset while returning `ok: true`. Findings and fixes: `debug-108c57`.
+
 - 2026-09-20T10:06-06:00 — filed. Reproduced against `ce88a36` by
   calling `updateSpecForClaim` directly across four `owner:` shapes; the
   verify-claim consequence was confirmed by replaying its parse loop over
