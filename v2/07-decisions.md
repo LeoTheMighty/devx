@@ -181,6 +181,13 @@ file; supersessions are appended, never rewritten.
   knobs stay independent. Deliberately **not** written into new projects'
   configs by `devx init`: the canary lives only in this repo's suite, so
   downstream the key would be written and never read.
+  *Evidence (2026-09-21): Leo approved 128KB (relayed by the coordinator
+  session) and PR #168 merged as 8ad6324. **He approved it with the ~three-week
+  horizon explicitly in view**: at the observed growth rate this budget
+  binds again around mid-October, and that is the intended moment to decide
+  Q#9 option (b) — load only the dispatcher arm a run needs — not a surprise
+  and not a cue for another raise. The `[user]` marker stays until Leo flips
+  it himself, per D-2's precedent.*
 
 ## Open questions (non-blocking, tracked)
 

@@ -4,7 +4,7 @@ type: dev
 created: 2026-09-21T12:10:00-06:00
 title: "S-1: give the full-run prose surface its own deliberate budget"
 from: INTERVIEW.md Q#9
-status: in-progress
+status: done
 owner: /devx-2026-09-21T1051-42433
 branch: null
 ---
@@ -59,3 +59,4 @@ bodies true and replaced existing prose to fit (−354 net); 7d96be needed
   fails the gate at today's 122,852 B, and re-coupling the knobs fails the
   independence test. The existing "defaults match 02-engine.md §7" guard
   caught §7 being stale mid-change — updated both sides.
+- 2026-09-21T11:33:51-06:00 — merged via PR #168 (squash → 8ad6324)
