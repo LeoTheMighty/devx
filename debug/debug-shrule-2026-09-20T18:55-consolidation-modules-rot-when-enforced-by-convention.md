@@ -191,6 +191,33 @@ safe once the fence parse actually works, at which point `{}` genuinely means
 silent right answer for a loud wrong one — the same trap that killed the
 precondition design in `debug-1dfbdd`.
 
+### The recurring shape: a fix for a silent-wrong-answer bug fails loud-wrong
+
+Three times on 2026-09-20, a proposed fix for a quiet wrong answer would have
+shipped a loud wrong one. None of the three was caught by its own author:
+
+| Proposed fix | Would have broken | Caught by |
+|---|---|---|
+| Validate branch existence as a **precondition** (`debug-1dfbdd`) | every spec with a merged PR whose branch was deleted — the normal end state under `--delete-branch` | `devx-b6` |
+| Move `workstream-migration-integrity`'s floor from 9 to **1** (`wsmig1`) | the only assertion standing between 24 never-registered tests and total silence | `palateful-fb`, then `palateful-2d` |
+| Emit "could not read the spec" **before** fixing the fence parse (AC 7) | every CRLF spec that currently resolves correctly by derivation | this spec's author, after 2d proposed it |
+
+The mechanism is the same each time: the quiet bug leaves a fallback path
+doing something reasonable, and the fix removes the quiet without checking
+what the fallback was carrying. **It does not announce itself while you are
+pleased with the diagnosis** — each of these was proposed immediately after
+correctly root-causing something hard.
+
+The practical rule: when a fix converts a silent state into a reported one,
+enumerate what is *currently* reaching the silent path and succeeding. If
+anything is, the fix is a sequencing problem, not a one-liner. That is why
+AC 7 is explicitly not startable before AC 5.
+
+Worth noting none of the three authors caught their own. That is a fourth
+independent argument for AC 4's preference for structural controls: review by
+the person holding the diagnosis is the weakest link in this whole story, and
+it failed three times out of three in a single day.
+
 ## Acceptance criteria
 
 1. `debug-7b3e2a`'s Status log records that its fix was incomplete, which
@@ -229,7 +256,15 @@ precondition design in `debug-1dfbdd`.
    `splitFrontmatterLines`. 2d proposed this and it is right: the name
    without a qualifier should belong to the thing that does the parsing, not
    to a view over it. Renaming happens on #162 rather than being left for a
-   conflict resolution to guess at.
+   conflict resolution to guess at. **Landed 2026-09-20.**
+   Evidence that "before both land" was the right instruction: performing the
+   rename caught a doc comment that referred to the *engine's*
+   `splitFrontmatter` and renamed that too, leaving the comment explaining the
+   delegation describing a function that does not exist. It typechecked and
+   the suite passed — a mechanical rename across a name-collision boundary
+   cannot distinguish "my symbol" from "prose about yours", and neither can
+   the compiler. Caught by reading the diff. Resolving a collision *during* a
+   merge, with two branches' prose in play, is strictly worse odds.
 7. `merge-gate` distinguishes "read the spec, found no PR" from "could not
    read the spec". **Must land with AC 5, not before it** — see the
    sequencing constraint above; on its own it converts CRLF specs that
