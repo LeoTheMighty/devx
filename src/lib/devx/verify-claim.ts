@@ -30,6 +30,11 @@
 //       epic-devx-skill E13 — resume-collision incident 2026-05-07)
 
 import { join } from "node:path";
+import {
+  duplicateFrontmatterKeys,
+  frontmatterKeyValue,
+  splitFrontmatterLines,
+} from "../frontmatter-keys.js";
 
 import { isNullishScalar } from "../frontmatter-scalar.js";
 
@@ -82,6 +87,19 @@ export type VerifyClaimResult =
        * ownership-blocking (the lock holder owns the claim either way).
        */
       specStatusDrift: boolean;
+      /**
+       * Top-level frontmatter keys the spec declares more than once.
+       * Non-empty means the spec is corrupt — duplicate keys are invalid
+       * YAML, and devx's hand-rolled readers disagree about which one wins,
+       * so a move to a real YAML parser could silently flip the answer.
+       *
+       * Reported, never blocking: `parseSpecClaimFields` resolves
+       * first-wins and that resolution is correct for every instance of
+       * this corruption (828385 — claim wrote the authoritative value
+       * ABOVE the stale key). Halting a legitimate resume over a stray
+       * key would reintroduce the harm the fix removed.
+       */
+      specDuplicateKeys: string[];
     }
   | {
       status: "owned-by-other-session";
@@ -96,6 +114,9 @@ export type VerifyClaimResult =
       hash: string;
       /** Raw `owner:` frontmatter value, or null when the field is absent. */
       specOwner: string | null;
+      /** See the `owned` variant. Surfaced here too: an orphaned claim is
+       *  exactly where a corrupt spec is most likely to be found. */
+      specDuplicateKeys: string[];
     };
 
 /**
@@ -193,6 +214,11 @@ export interface SpecClaimFields {
    *  A branch-handoff follow-up (mss102) records its parent's WIP branch
    *  here; claimSpec attaches to it when it names an existing branch. */
   branch: string | null;
+  /** Top-level frontmatter keys declared more than once. Non-empty means
+   *  the spec is corrupt: duplicate keys are invalid YAML, and the values
+   *  above were resolved first-wins (see `parseSpecClaimFields`). Callers
+   *  surface this rather than acting as if the spec were clean. */
+  duplicateKeys: string[];
 }
 
 /**
@@ -200,32 +226,40 @@ export interface SpecClaimFields {
  * frontmatter block. Throws VerifyClaimError("spec-parse") when the
  * frontmatter block itself is missing — a spec without frontmatter is
  * out-of-convention and verify-claim can't reason about it.
+ *
+ * ## Duplicate keys resolve FIRST-wins, deliberately (828385 AC 4)
+ *
+ * This loop used to reassign on every match with no break, so the LAST
+ * occurrence won — incidentally, not by decision. That interacted with the
+ * old claim splice to produce the defect 828385 exists for: claim inserted
+ * the real owner at `statusIdx + 1`, i.e. ABOVE a stale bare `owner:`, and
+ * last-wins then read the trailing empty one as `""`. `/devx` Phase 1's
+ * resume-detection HALTs on an ownership mismatch, so a claim silently
+ * poisoned its own resume path.
+ *
+ * First-wins is the right resolution rather than merely the opposite one:
+ * in every instance of this corruption the authoritative value is the one
+ * claim wrote, and claim wrote it above the stale key. So first-wins reads
+ * the already-corrupted population CORRECTLY, where refusing outright would
+ * halt a legitimate resume on a spec whose real owner is unambiguous.
+ *
+ * The duplication is still reported via `duplicateKeys` — resolving a
+ * corrupt spec usefully is not the same as pretending it is clean.
  */
 export function parseSpecClaimFields(content: string): SpecClaimFields {
-  const fmMatch = /^---\n([\s\S]*?)\n---/.exec(content);
-  if (!fmMatch) {
+  const fm = splitFrontmatterLines(content);
+  if (!fm) {
     throw new VerifyClaimError("spec-parse", "spec missing frontmatter block");
   }
-  let owner: string | null = null;
-  let status: string | null = null;
-  let branch: string | null = null;
-  for (const line of fmMatch[1].split("\n")) {
-    const ownerMatch = /^owner:\s*(.*)$/.exec(line);
-    if (ownerMatch) {
-      owner = normalizePlainScalar(ownerMatch[1]);
-      continue;
-    }
-    const statusMatch = /^status:\s*(.*)$/.exec(line);
-    if (statusMatch) {
-      status = normalizePlainScalar(statusMatch[1]);
-      continue;
-    }
-    const branchMatch = /^branch:\s*(.*)$/.exec(line);
-    if (branchMatch) {
-      branch = normalizeBranchScalar(branchMatch[1]);
-    }
-  }
-  return { owner, status, branch };
+  const rawOwner = frontmatterKeyValue(fm.lines, "owner");
+  const rawStatus = frontmatterKeyValue(fm.lines, "status");
+  const rawBranch = frontmatterKeyValue(fm.lines, "branch");
+  return {
+    owner: rawOwner === null ? null : normalizePlainScalar(rawOwner),
+    status: rawStatus === null ? null : normalizePlainScalar(rawStatus),
+    branch: rawBranch === null ? null : normalizeBranchScalar(rawBranch),
+    duplicateKeys: duplicateFrontmatterKeys(fm.lines),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -308,6 +342,7 @@ export function verifyClaim(
         status: "in-progress-without-lock",
         hash,
         specOwner: specFields.owner,
+        specDuplicateKeys: specFields.duplicateKeys,
       };
     }
     throw new VerifyClaimError(
@@ -354,6 +389,7 @@ export function verifyClaim(
     specOwner: specFields.owner,
     specOwnerDrift,
     specStatusDrift,
+    specDuplicateKeys: specFields.duplicateKeys,
   };
 }
 

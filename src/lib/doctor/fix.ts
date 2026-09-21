@@ -16,6 +16,12 @@
 // Spec: dev/dev-db36af-2026-07-25T08:55-devx-doctor-reconcile.md
 
 import { unlinkSync } from "node:fs";
+import {
+  findFrontmatterKeys,
+  renderFrontmatter,
+  splitFrontmatterLines,
+  upsertFrontmatterKey,
+} from "../frontmatter-keys.js";
 import { join } from "node:path";
 
 import { type BacklogLockFn, withBacklogLock } from "../backlog/mutate.js";
@@ -74,11 +80,16 @@ export function isSafeBranchName(name: string): boolean {
 
 /** Rewrite `status:` INSIDE the leading `---` frontmatter block only. */
 export function replaceFrontmatterStatus(content: string, status: string): string {
-  const m = /^---\n([\s\S]*?)\n---/.exec(content);
-  if (!m) return content;
-  const next = m[1].replace(/^status:[ \t]*\S.*$/m, `status: ${status}`);
-  if (next === m[1]) return content;
-  return `---\n${next}\n---${content.slice(m[0].length)}`;
+  const fm = splitFrontmatterLines(content);
+  if (!fm) return content;
+  // 828385 AC 5: the old pattern was `/^status:[ \t]*\S.*$/m` — the `\S`
+  // requires a non-space character after the colon, so a BARE `status:` was
+  // silently not replaced and doctor reported a fix it had not made.
+  if (findFrontmatterKeys(fm.lines, "status").length === 0) return content;
+  const before = fm.lines.join("\n");
+  upsertFrontmatterKey(fm.lines, "status", status);
+  if (fm.lines.join("\n") === before) return content;
+  return renderFrontmatter(fm);
 }
 
 function escapeRegex(s: string): string {

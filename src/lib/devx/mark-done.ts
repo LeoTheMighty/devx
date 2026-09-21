@@ -70,6 +70,12 @@ import {
   relativeFromRepo,
 } from "./claim.js";
 import { releaseSpecLockForClosedSpec, specLockPath } from "./spec-lock.js";
+import {
+  findFrontmatterKeys,
+  renderFrontmatter,
+  splitFrontmatterLines,
+  upsertFrontmatterKey,
+} from "../frontmatter-keys.js";
 import { appendStatusLogLine } from "./status-log.js";
 
 const HASH_RE = /^[a-z0-9]{3,12}$/i;
@@ -247,18 +253,19 @@ export function updateSpecForDone(
   isoTimestamp: string,
   logLine: string,
 ): string {
-  const fmMatch = /^---\n([\s\S]*?)\n---/.exec(content);
-  if (!fmMatch) {
+  const fm = splitFrontmatterLines(content);
+  if (!fm) {
     throw new MarkDoneError("compose", "spec missing frontmatter block");
   }
-  const fmLines = fmMatch[1].split("\n");
-  let statusIdx = -1;
-  for (let i = 0; i < fmLines.length; i++) {
-    if (/^status:\s/.test(fmLines[i])) statusIdx = i;
-  }
-  if (statusIdx === -1) {
+  const fmLines = fm.lines;
+  // 828385 AC 5: this carried the same `/^status:\s/` defect as claim's —
+  // a bare `status:` left statusIdx at -1 and threw "frontmatter missing
+  // status: line" on a spec that plainly had one.
+  const statusIdxs = findFrontmatterKeys(fmLines, "status");
+  if (statusIdxs.length === 0) {
     throw new MarkDoneError("compose", "frontmatter missing `status:` line");
   }
+  const statusIdx = statusIdxs[0];
   const current = fmLines[statusIdx].replace(/^status:\s*/, "").trim();
   if (current !== "in-progress") {
     throw new MarkDoneError(
@@ -267,11 +274,8 @@ export function updateSpecForDone(
         `mark-done closes a claimed item`,
     );
   }
-  fmLines[statusIdx] = "status: done";
-  const updated =
-    content.slice(0, fmMatch.index) +
-    `---\n${fmLines.join("\n")}\n---` +
-    content.slice(fmMatch.index + fmMatch[0].length);
+  upsertFrontmatterKey(fmLines, "status", "done");
+  const updated = renderFrontmatter(fm);
   return appendStatusLogLine(updated, `- ${isoTimestamp} — ${logLine}`);
 }
 

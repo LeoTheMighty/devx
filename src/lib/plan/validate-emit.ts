@@ -48,6 +48,10 @@ import {
   readdirSync,
 } from "node:fs";
 import { join, posix } from "node:path";
+import {
+  duplicateFrontmatterKeys,
+  splitFrontmatterLines,
+} from "../frontmatter-keys.js";
 
 import { blankFencedLines } from "../backlog/parse.js";
 import { isNullishScalar } from "../frontmatter-scalar.js";
@@ -482,6 +486,44 @@ export function validateEmit(
         severity: "error",
         check: "branch-mismatch",
         message: `spec for '${hash}' has branch='${branch}'; deriveBranch yields '${expected}'`,
+        location: specRel,
+      });
+    }
+  }
+
+  // --- 5b) Duplicate frontmatter keys in any story spec. ----------------
+  //
+  // 828385 AC 7b. Duplicate top-level keys are invalid YAML whatever the
+  // key is, and devx's hand-rolled readers disagree about which one wins —
+  // so a dependency bump to a real YAML parser can silently flip the answer.
+  //
+  // Generic on purpose. The tempting version enumerates the keys devx
+  // writes today (`owner:`, `status:`), but that has the same failure one
+  // level up: the next key to acquire a writer re-opens the hole, because
+  // nothing reminds its author the check exists.
+  //
+  // BARE keys are deliberately NOT flagged. A bare key is valid YAML and is
+  // load-bearing in devx's own templates — `gate_status:`, `outcome:` and
+  // `gate_verdicts:` head nested mappings in 14 of 25 plan specs, `spawned:`
+  // bare is an empty list. The 828385 splice was never caused by bareness
+  // being invalid; it was a writer using a detector stricter than the YAML
+  // it edited. That half is fixed at the writer (AC 7a,
+  // `upsertFrontmatterKey`), not by outlawing the data.
+  for (const { hash } of storyHashes) {
+    const specFn = specByHash.get(hash);
+    if (!specFn) continue; // already flagged in check #1
+    const specRel = `dev/${specFn}`;
+    const fm = splitFrontmatterLines(fs.readFile(join(inputs.repoRoot, specRel)));
+    if (!fm) continue;
+    const dupes = duplicateFrontmatterKeys(fm.lines);
+    if (dupes.length > 0) {
+      issues.push({
+        severity: "error",
+        check: "spec-duplicate-frontmatter-key",
+        message:
+          `spec for '${hash}' declares duplicate frontmatter ` +
+          `${dupes.length === 1 ? "key" : "keys"}: ` +
+          dupes.map((k) => `\`${k}:\``).join(", "),
         location: specRel,
       });
     }

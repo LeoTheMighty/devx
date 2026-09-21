@@ -7,7 +7,7 @@ from: null
 spawned: []
 status: in-progress
 owner: /devx-2026-09-20T1808-45652
-branch: null
+branch: feat/debug-828385
 ---
 
 ## Goal
@@ -322,3 +322,155 @@ invites someone to "verify" against a file that was never affected.
   — same class: hand-rolled frontmatter parser vs a degenerate YAML value.
 - `dev/dev-f83b04-2026-09-20T09:58-spec-lock-holder-liveness.md` — same
   claim path, unrelated cause.
+- 2026-09-20T18:05-06:00 — phase 2/3: implemented. New module
+  `src/lib/frontmatter-keys.ts` is the AC 7a primitive —
+  `splitFrontmatter` / `renderFrontmatter` (block scoping),
+  `findFrontmatterKeys` / `frontmatterKeyValue` (shape-agnostic read via
+  `^key:(?=\s|$)`), `upsertFrontmatterKey` (replace-first-and-delete-the-rest,
+  so ACs 1 and 3 are the same code path), `duplicateFrontmatterKeys`.
+  Writers routed through it: `claim.ts` `updateSpecForClaim` (AC 1 + AC 2),
+  `mark-done.ts` `updateSpecForDone`, `doctor/fix.ts`
+  `replaceFrontmatterStatus`. Readers fixed: `doctor/detect.ts` `ownerOf`
+  and the `branch:` read at :712 (AC 5), `verify-claim.ts`
+  `parseSpecClaimFields` (AC 4). Validator added in
+  `plan/validate-emit.ts` as `spec-duplicate-frontmatter-key` (AC 7b).
+  **AC 5 surface was larger than the spec's Files list.** Two more sites
+  carried the identical `:\s`-vs-`:\s*` defect and were not listed:
+  `mark-done.ts:257` (`/^status:\s/` — a bare `status:` made it throw
+  "frontmatter missing `status:` line" on a spec that had one, same shape as
+  AC 2 but in the close path rather than the claim path) and
+  `doctor/fix.ts:79` (`/^status:[ \t]*\S.*$/m` — the `\S` requires a
+  non-space character, so a bare `status:` was silently not replaced and
+  doctor reported a fix it had not made). Both fixed.
+  **AC 4 resolved as first-wins, not refusal.** In every instance of this
+  corruption the authoritative value is the one claim wrote, and claim wrote
+  it ABOVE the stale key — so first-wins reads the corrupted population
+  *correctly*, where refusing would halt a legitimate resume over a stray
+  key and so reintroduce the exact harm the fix removes. The duplication is
+  still surfaced, via `SpecClaimFields.duplicateKeys` and
+  `VerifyClaimResult.specDuplicateKeys` alongside the existing
+  `specOwnerDrift` / `specStatusDrift` signals.
+- 2026-09-20T18:20-06:00 — phase 4: single-pass adversarial review; 2
+  findings (0 HIGH, 2 MED), both fixed in place.
+  (1) `duplicateKeys` was dangling — added to `SpecClaimFields` and tested,
+  but no caller consumed it, so a corrupt spec still reached the operator
+  silently. That is half of AC 4 missing, not a style nit: "resolve
+  deliberately" without surfacing is still an implicit resolution. Wired
+  through to `VerifyClaimResult` as `specDuplicateKeys` on both the `owned`
+  and `in-progress-without-lock` variants, which is where the sibling drift
+  signals already live.
+  (2) `duplicateFrontmatterKeys` used `^([^\s:#][^:]*):(?=\s|$)`, which
+  reads a column-0 YAML list item (`- foo: bar`) as a key named `- foo` —
+  the same reader-disagrees-with-YAML class this story exists to end, newly
+  introduced by the fix for it. Tightened to
+  `^([A-Za-z_][A-Za-z0-9_.-]*):(?=\s|$)` and validated against every
+  top-level frontmatter key in devx + palateful (168 distinct, 0 missed),
+  so the tightening is measured rather than assumed. Regression test added.
+  Also checked and cleared: `afterKey` anchor resolution in claim (status is
+  upserted first and throws if absent, so the anchor always exists);
+  `renderFrontmatter` round-trips an untouched spec byte-for-byte;
+  `ownerOf`'s nullish-before-quote-strip ordering now matches
+  `frontmatter-scalar.ts`'s documented contract, which is a deliberate
+  behaviour change (`owner: "null"` is the string `null` per YAML) and is
+  the whole point of debug-7b3e2a.
+- 2026-09-20T18:30-06:00 — phase 5: `npm test` (which also runs
+  `npm run build` + `tsc --noEmit`) — **3315 passed, 1 failed**. The single
+  failure is `test/workstream-migration-integrity.test.ts` asserting
+  `slugs.length >= 9` against a `_devx/workstreams/` that now holds 1 entry.
+  **Pre-existing and unrelated**: reproduced on a clean `main` worktree with
+  an empty working tree before any of this work was applied. Filed as
+  `debug/debug-09451f-...-workstream-integrity-test-red-on-main.md` + DEBUG.md
+  row rather than fixed here — it is an archiving-drift guard, not a
+  frontmatter defect, and folding it in would put a one-line correction
+  behind an unrelated judgment about what the floor should be.
+- 2026-09-20T18:55-06:00 — phase 7: PR
+  https://github.com/LeoTheMighty/devx/pull/162. CI **failure**, and it is
+  the pre-existing red, not this branch: both runners report `1 failed |
+  3315 passed` with `workstream-migration-integrity` >
+  "found the real workstreams" as the only failure
+  (`expected 1 to be greater than or equal to 9`), identical to a clean
+  `main`. Tracked by `debug-wsmig1`, which now blocks every devx PR — see
+  its status log.
+  Gap-filing correction: the `debug-09451f` spec filed here at 18:25 was a
+  duplicate of `debug-wsmig1`, filed ~20 minutes earlier by palateful-fb
+  off its own full-suite run. Folded into wsmig1 (its AC 4 is the one thing
+  09451f carried that wsmig1 did not — whether the file's looping
+  assertions silently dropped from 9 workstreams to 1) and 09451f deleted
+  along with its DEBUG.md row. Two sessions, same pre-existing red, neither
+  able to see the other: a same-day second instance of `d982ea`.
+- 2026-09-20T19:45-06:00 — **`detect.ts` overlaps with `shrule` (#166); four
+  fixes here must not revert with the hunk.** cc's shrule independently found
+  that `ownerOf()` carries the narrow hand-rolled nullish rule, and traced the
+  consequence further than this story did: `owner:` feeds the dead-owner
+  detector, so `owner: NULL` made an *ownerless* spec read as owned and the
+  detector silently skipped the exact case it exists for. If the split lands
+  all three shrule readers in #166 and this branch reverts its `ownerOf` hunk,
+  these four are independent of the nullish rule and would revert with it:
+    1. `ownerOf` — `.+?` requires a character, so a BARE `owner:` read as
+       *absent* rather than *empty*; the reader could not tell the two apart.
+    2. `ownerOf` — the `m` flag anchors to any line in the FILE, not to the
+       frontmatter block, so an `owner:` line in a spec's BODY could answer
+       for its frontmatter. 828385's own body has one, by construction.
+    3. `detect.ts:712` `branch:` — identical `.+?` defect.
+    4. `detect.ts:712` `branch:` — identical unscoped-`m` defect.
+  Whichever PR ends up carrying `detect.ts`, it must carry all four. A
+  reviewer reading only the shrule framing (which is about the nullish rule)
+  would not think to look for them.
+- 2026-09-20T20:10-06:00 — **the new primitive had a CRLF regression; found by
+  checking a peer's claim rather than by review.** palateful-cc, coordinating
+  the `detect.ts` overlap, said "`splitFrontmatter` already exists on main, so
+  only `frontmatterKeyValue` arrives with you". Verifying that turned up
+  `src/lib/engine/frontmatter.ts:153` — a DIFFERENT `splitFrontmatter`, same
+  name, different module, different return shape (`{fmText, delim, body}` vs
+  this module's). Two consequences, one worse than the other:
+    1. **Name collision.** Two exported `splitFrontmatter`s with different
+       contracts is the "two spellings of one path" hazard `artifacts.ts`
+       documents. An autocomplete or a hand-resolved conflict picking the
+       wrong import either fails to compile or silently behaves differently.
+    2. **The engine one is CRLF-tolerant and mine was not.**
+       `/^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/` vs my `/^---\n…\n---/`. On a
+       CRLF spec my version found NO frontmatter and returned null — which
+       `updateSpecForClaim` surfaces as "spec missing frontmatter block"
+       (throw) and `ownerOf` surfaces as a silent "no owner". So for the
+       `m`-flag readers this story set out to fix, the replacement was
+       *worse* than what it replaced on CRLF input. AC 5 asked me to audit
+       readers for a regex defect and I introduced one.
+  Fixed by delegating the fence parse to `engine/frontmatter.ts` instead of
+  re-deriving it: one parser, two views. `FrontmatterBlock` now carries
+  `{lines, delim, body}`, mirroring the engine split, and `renderFrontmatter`
+  reproduces its `joinFrontmatter` delim rule so a spec ending at the closing
+  fence gets its trailing newline back. Four regression tests added (CRLF
+  find / bare-key read / upsert-without-splice / end-at-fence round-trip).
+  Worth recording how this was caught: not by self-review, which had already
+  passed over this module twice, but by verifying a claim a peer made in
+  passing. The review looked at what the code does; the claim made me look at
+  what else in the repo shares its name.
+- 2026-09-20T20:40-06:00 — renamed this module's view to
+  `splitFrontmatterLines`; `engine/frontmatter.ts` keeps the bare
+  `splitFrontmatter`. The unqualified name belongs to the thing that does
+  the work, and this is a view over it. Decided jointly with cc's `shrule`
+  (its AC 6) and recorded there, specifically so a hand-resolved conflict
+  between #162 and #163 never has to pick between two same-named exports
+  with different return contracts — which is the `artifacts.ts` "two
+  spellings of one path" hazard landing in the one place it does most
+  damage. Full suite after the rename: 3319 passing, the only failure the
+  inherited `wsmig1` red.
+- 2026-09-20T20:40-06:00 — cc measured the CRLF divergence beyond this
+  module: four readers on `main` carry the non-tolerant fence regex
+  (`merge-gate.ts`, `split.ts` ×3). The sharpest is
+  `src/commands/merge-gate.ts:135` — on a CRLF spec `readFrontmatter`
+  returns `{}`, so `fm.pr` is undefined and the gate falls through to its
+  `gh pr list` lookup. The comment at :367 documents `pr:` as priority-1,
+  so the one mechanism a spec has for pinning its PR number does not
+  survive a line ending. Filed under `shrule` AC 5 with this story's
+  delegate-to-engine remedy rather than four regexes taught to agree.
+  Related, and worth its own note because I met it firsthand: that gate's
+  `{"merge":false,"reason":"no PR yet"}` covers at least three distinct
+  states — no PR exists; the spec named a branch that is not real (what
+  palateful's `lgort1` hit, via the sentinel `branch: unassigned`); and the
+  spec was never parsed at all (the CRLF case). It reports a fact about
+  GitHub when the cause may be entirely local. `shrule` AC 7, sequenced
+  BEHIND the parser fix — cc's constraint, and correct: today a CRLF spec
+  is usually right by accident, because `{}` means the gate derives a
+  branch that is normally the right one, so a "could not read" verdict
+  landing first would turn working runs into loud failures.
