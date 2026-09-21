@@ -123,7 +123,15 @@ Instances 1–3 are the helper path *skipping* a step; instance 4 is the
 
 **Measured population, 2026-09-21:** 41 `debug/` specs, 29 `status: done`,
 **7 done with no `phase 4:` line** — `7c1e93`, `7d96be`, `9f24c7`, `b365ac`,
-`e3f1c2`, `f4149e`, `wsmig1`. The other 22 already carry one, so the
+`e3f1c2`, `f4149e`, `wsmig1`.
+
+**Re-measured after #172 merged (12e8e9e): still 7, but a different 7.**
+`7d96be` dropped off (#172 gave it an honest retroactive line); `1dfbdd`
+joined — it was closed via `mark-done` at `be5c782`, after instance 5 was
+verified, and closed **without** a `phase 4:` line. Current list: `1dfbdd`,
+`7c1e93`, `9f24c7`, `b365ac`, `e3f1c2`, `f4149e`, `wsmig1`. **Treat this count
+as a moving target:** every debug spec closed through the helper path while
+this spec is open can add to it, so AC 8 must re-measure at fix time. The other 22 already carry one, so the
 convention is mostly followed by hand; extending the check turns 7 specs red,
 not a large batch. Two of the 7 are this filer's (`f4149e`, `7d96be`); they
 were deliberately **not** backfilled here, because grandfather-vs-retroactive
@@ -136,7 +144,7 @@ Found by devx-b6, measured by the coordinator, re-verified here
 2026-09-21. `debug-1dfbdd` merged as PR #163 at 16:29Z via `gh pr merge`.
 Because `finalize` never ran, its tail never ran either: the spec still reads
 `status: in-progress`, its DEBUG.md row is still `[/]`, and
-`.devx-cache/locks/spec-1dfbdd.lock` is still held. `devx doctor --json`
+`.devx-cache/locks/spec-1dfbdd.lock` is still held (all as of the 2026-09-21 verification; `1dfbdd` was closed afterwards at `be5c782`, so this state is now the historical fixture, not current). `devx doctor --json`
 reports **zero** `stale-lock` findings and never mentions `1dfbdd` — because
 the status never flipped, the held lock looks like a live claim, which is
 exactly what `stale-lock` is designed *not* to flag.
@@ -250,3 +258,7 @@ happened. The line is a claim, and its honesty is the writer's. That is
   the check must bite in PR CI. Added instance 5 (hand-merge skips
   `finalize`'s tail; `1dfbdd` merged-but-in-progress with its lock held, and
   `doctor` reports nothing — verified). Five instances.
+- 2026-09-21T13:40 — AC 8 re-measured after #172: still 7, composition
+  changed (`7d96be` off, `1dfbdd` on — closed without a `phase 4:` line
+  shortly after being cited here as instance 5's specimen). Recorded as a
+  moving target.
