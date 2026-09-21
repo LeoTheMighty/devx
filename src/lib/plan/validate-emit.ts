@@ -49,7 +49,8 @@ import {
 } from "node:fs";
 import { join, posix } from "node:path";
 import {
-  duplicateFrontmatterKeys,
+  findFrontmatterKeys,
+  specFrontmatterIssues,
   splitFrontmatterLines,
 } from "../frontmatter-keys.js";
 
@@ -470,6 +471,14 @@ export function validateEmit(
     const specRel = `dev/${specFn}`;
     const specBody = fs.readFile(join(inputs.repoRoot, specRel));
     const branch = parseFrontmatterValue(specBody, "branch");
+    // A PRESENT-but-bare `branch:` is reported once, as
+    // `spec-bare-frontmatter-key` below. Reporting it here too said the
+    // spec "has no `branch:` frontmatter line", which is false (review
+    // round 2).
+    const branchFm = splitFrontmatterLines(specBody);
+    const branchDeclared =
+      branchFm !== null && findFrontmatterKeys(branchFm.lines, "branch").length > 0;
+    if (branch === null && branchDeclared) continue;
     if (branch === null) {
       // Missing branch: frontmatter is a pln101-class regression. Flag.
       issues.push({
@@ -502,30 +511,38 @@ export function validateEmit(
   // level up: the next key to acquire a writer re-opens the hole, because
   // nothing reminds its author the check exists.
   //
-  // BARE keys are deliberately NOT flagged. A bare key is valid YAML and is
-  // load-bearing in devx's own templates — `gate_status:`, `outcome:` and
-  // `gate_verdicts:` head nested mappings in 14 of 25 plan specs, `spawned:`
-  // bare is an empty list. The 828385 splice was never caused by bareness
-  // being invalid; it was a writer using a detector stricter than the YAML
-  // it edited. That half is fixed at the writer (AC 7a,
-  // `upsertFrontmatterKey`), not by outlawing the data.
+  // Bare keys IN GENERAL are not flagged — `gate_status:`, `outcome:` and
+  // `gate_verdicts:` head nested mappings in 14 of 25 plan specs. Only a
+  // bare `owner:`/`branch:`, the scalars devx reads, is; the rule set and
+  // its reasoning live in `specFrontmatterIssues`, shared with `devx
+  // doctor` so the hand-authored debug/ specs are checked too.
   for (const { hash } of storyHashes) {
     const specFn = specByHash.get(hash);
     if (!specFn) continue; // already flagged in check #1
     const specRel = `dev/${specFn}`;
     const fm = splitFrontmatterLines(fs.readFile(join(inputs.repoRoot, specRel)));
     if (!fm) continue;
-    const dupes = duplicateFrontmatterKeys(fm.lines);
-    if (dupes.length > 0) {
-      issues.push({
-        severity: "error",
-        check: "spec-duplicate-frontmatter-key",
-        message:
-          `spec for '${hash}' declares duplicate frontmatter ` +
-          `${dupes.length === 1 ? "key" : "keys"}: ` +
-          dupes.map((k) => `\`${k}:\``).join(", "),
-        location: specRel,
-      });
+    for (const issue of specFrontmatterIssues(fm.lines)) {
+      const keys = issue.keys.map((k) => `\`${k}:\``).join(", ");
+      issues.push(
+        issue.kind === "duplicate"
+          ? {
+              severity: "error",
+              check: "spec-duplicate-frontmatter-key",
+              message:
+                `spec for '${hash}' declares duplicate frontmatter ` +
+                `${issue.keys.length === 1 ? "key" : "keys"}: ${keys}`,
+              location: specRel,
+            }
+          : {
+              severity: "error",
+              check: "spec-bare-frontmatter-key",
+              message:
+                `spec for '${hash}' leaves ${keys} bare — write \`null\` for an ` +
+                `unset value (debug-108c57)`,
+              location: specRel,
+            },
+      );
     }
   }
 
@@ -853,7 +870,11 @@ export function parseFrontmatterValue(
   const m = specBody.match(/^---\r?\n([\s\S]*?)\r?\n?---/);
   if (!m) return null;
   const fm = m[1];
-  const re = new RegExp(`^${escapeRe(key)}:\\s*(.*)$`, "m");
+  // `[ \\t]*`, not `\\s*` (debug-108c57 item 4). With the `m` flag, `\\s*`
+  // crosses the newline after a BARE key and `(.*)` then captures the NEXT
+  // line: bare `owner:` read as "branch: feat/x". That reached `devx next`
+  // (next/gather.ts) and this validator's own branch/from/workstream checks.
+  const re = new RegExp(`^${escapeRe(key)}:[ \\t]*(.*)$`, "m");
   const v = fm.match(re);
   if (!v) return null;
   let raw = v[1];

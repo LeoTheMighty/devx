@@ -248,6 +248,32 @@ describe("validateEmit — clean fixture", () => {
   });
 });
 
+describe("validateEmit — frontmatter rule set (debug-108c57 items 14, review round 2)", () => {
+  const SPEC = `${REPO_ROOT}/dev/dev-fix101-2026-04-28T19:30-first.md`;
+  const run = (edit: (s: string) => string) => {
+    const { fs, repoRoot } = cleanFixture();
+    fs.put(SPEC, edit(fs.readFile(SPEC)));
+    return validateEmit({ repoRoot, epicSlug: "fixture-epic", config: SINGLE_BRANCH_CONFIG }, fs);
+  };
+
+  it("reports a duplicated key", () => {
+    const r = run((s) => s.replace(/^(status: .*)$/m, "$1\nstatus: done"));
+    expect(findIssue(r.issues, "spec-duplicate-frontmatter-key")?.message).toContain("`status:`");
+  });
+
+  it("reports a bare `branch:` once, as bare — not also as missing", () => {
+    const r = run((s) => s.replace(/^branch: .*$/m, "branch:"));
+    expect(findIssue(r.issues, "spec-bare-frontmatter-key")?.message).toContain("`branch:`");
+    expect(findIssue(r.issues, "spec-missing-branch-frontmatter")).toBeUndefined();
+  });
+
+  it("still reports a genuinely absent `branch:` as missing", () => {
+    const r = run((s) => s.replace(/^branch: .*\n/m, ""));
+    expect(findIssue(r.issues, "spec-missing-branch-frontmatter")).toBeDefined();
+    expect(findIssue(r.issues, "spec-bare-frontmatter-key")).toBeUndefined();
+  });
+});
+
 describe("validateEmit — epic not found", () => {
   it("returns epicFound:false and exits cleanly (caller maps to exit 2)", () => {
     const fs = newMemoryFs();

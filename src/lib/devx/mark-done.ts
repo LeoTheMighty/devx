@@ -73,6 +73,7 @@ import {
 import { releaseSpecLockForClosedSpec, specLockPath } from "./spec-lock.js";
 import {
   findFrontmatterKeys,
+  frontmatterKeyValue,
   renderFrontmatter,
   splitFrontmatterLines,
   upsertFrontmatterKey,
@@ -262,8 +263,14 @@ export function updateSpecForDone(
   if (statusIdxs.length === 0) {
     throw new MarkDoneError("compose", "frontmatter missing `status:` line");
   }
-  const statusIdx = statusIdxs[0];
-  const current = fmLines[statusIdx].replace(/^status:\s*/, "").trim();
+  // Read through the shared value reader, not a local `/^status:\s*/`
+  // strip: the key matcher accepts `"status":` and `status :`, and a local
+  // strip that doesn't produced "spec says `status: "status": …`" (review
+  // round 2). Trailing comments and surrounding quotes are not the value.
+  const current = (frontmatterKeyValue(fmLines, "status") ?? "")
+    .trim()
+    .replace(/\s+#.*$/, "")
+    .replace(/^(["'])(.*)\1$/, "$2");
   if (current !== "in-progress") {
     throw new MarkDoneError(
       "state",

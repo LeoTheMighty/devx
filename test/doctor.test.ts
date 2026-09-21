@@ -418,6 +418,25 @@ describe("applyFixes — the boundary is the design's spine", () => {
     expect(spec.indexOf("devx doctor --fix")).toBeLessThan(spec.indexOf("## Links"));
   });
 
+  it("debug-108c57 item 7: a lock already gone is recorded as already gone, not as removed", async () => {
+    const root = fixture({
+      specs: { qqq778: { status: "done" } },
+      locks: { qqq778: { session: "/devx-old" } },
+    });
+    const findings = detectStaleLocks({ repoRoot: root, pidAlive: deadPid });
+    // The lock vanishes between the scan and the repair.
+    rmSync(join(root, ".devx-cache", "locks", "spec-qqq778.lock"));
+    const fixed = await applyFixes(findings, {
+      repoRoot: root,
+      lock: (<T,>(_l: string, fn: () => T): T => fn()) as never,
+    });
+    expect(fixed[0].ok).toBe(true);
+    expect(fixed[0].action).toBe("found the stale lock already gone");
+    const spec = readFileSync(join(root, "dev", "dev-qqq778-2026-08-21T10:00-fixture.md"), "utf8");
+    expect(spec).toMatch(/stale spec lock was already gone/);
+    expect(spec).not.toMatch(/removed stale spec lock/);
+  });
+
   it("reconciles a drifted row to the frontmatter", async () => {
     const root = fixture({
       specs: { rrr888: { status: "in-progress", box: "x", rowStatus: "done" } },

@@ -311,9 +311,24 @@ export async function runClaim(
   }
 }
 
+/**
+ * Print a spec's duplicate frontmatter keys on stderr (debug-108c57 item
+ * 12). verify-claim computed `specDuplicateKeys` and never emitted it, so
+ * 828385's "surfaced rather than swallowed" held one layer in and failed at
+ * the layer anyone reads. stderr, like the drift WARNs beside it, so the
+ * exit code and the stdout JSON contract are unchanged.
+ */
+function warnDuplicateKeys(keys: readonly string[], err: (s: string) => void): void {
+  if (keys.length === 0) return;
+  err(
+    `devx devx-helper verify-claim: WARN — spec frontmatter declares ${keys.map((k) => `'${k}'`).join(", ")} more than once; verify-claim used the first non-empty one — dedupe the spec\n`,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // session id
 // ---------------------------------------------------------------------------
+
 
 /**
  * Default session id when the caller doesn't override. Goal: enough to
@@ -552,6 +567,7 @@ export async function runVerifyClaim(
             `devx devx-helper verify-claim: WARN — lock held but spec status is not 'in-progress'; reconcile the spec frontmatter\n`,
           );
         }
+        warnDuplicateKeys(result.specDuplicateKeys, err);
         out(
           `${JSON.stringify({
             hash: result.hash,
@@ -576,6 +592,7 @@ export async function runVerifyClaim(
         return 3;
       }
       case "in-progress-without-lock": {
+        warnDuplicateKeys(result.specDuplicateKeys, err);
         out(
           `${JSON.stringify({
             error: "in-progress-without-lock",
