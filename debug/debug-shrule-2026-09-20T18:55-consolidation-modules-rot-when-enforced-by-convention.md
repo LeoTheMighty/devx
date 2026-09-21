@@ -107,6 +107,56 @@ supersedes the minimal nullish fix carried in #163. Verified 2026-09-20 that
 guard, so the merge resolution "take #162's version" keeps that guard green;
 the two PRs are compatible in either merge order.
 
+### Third instance, measured: the fence parser has the same divergence
+
+`palateful-2d` found, while checking a passing remark of mine, that its new
+`splitFrontmatter` was **not** CRLF-tolerant while the engine's function of
+the same name is. The same divergence is live in the readers this spec
+already names. Measured 2026-09-20 on this branch:
+
+```
+LF    readFrontmatter        -> branch="feat/debug-crlf01" pr=27 status="in-progress"
+LF    parseFrontmatterBranch -> "feat/debug-crlf01"
+LF    engine splitFrontmatter -> parsed OK
+
+CRLF  readFrontmatter        -> branch=undefined pr=undefined status=undefined
+CRLF  parseFrontmatterBranch -> null
+CRLF  engine splitFrontmatter -> parsed OK
+```
+
+`engine/frontmatter.ts:156` uses `/^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/`.
+Four other sites use `/^---\n([\s\S]*?)\n---/`:
+`merge-gate.ts:138`, `split.ts:459`, `split.ts:520`, `split.ts:902`.
+
+The merge-gate consequence is the worst of them and is not about branches at
+all: on a CRLF spec `readFrontmatter` returns **every** key undefined, so an
+explicit `pr: 27` in frontmatter is silently ignored and the gate falls
+through to the `gh pr list` lookup. The one mechanism a spec has for pinning
+its PR number — the priority-1 source the code's own comment documents —
+does not survive a line ending.
+
+**This is the same class as the null rule, one layer down.** The engine module
+parses the fence correctly; four readers reimplemented it more narrowly. The
+remedy 2d applied is the one this spec should generalize: delegate the fence
+parse to the engine module — **one parser, two views** — rather than fixing
+four regexes to agree.
+
+### And a name collision, which is the hazard `artifacts.ts` warns about
+
+There are now **two exported `splitFrontmatter` functions** with different
+contracts: `engine/frontmatter.ts` returning `{fmText, delim, body}` and
+2d's returning `{before, lines, after}`. Two spellings of one concept is
+precisely what `artifacts.ts` privatized its constants to prevent, and it is
+the kind of thing a hand-resolved merge conflict silently gets wrong. Worth
+resolving to one name before both land.
+
+Note how this was found, because it bears on AC 4: **not by review.** 2d's
+self-review had passed over that module twice. It surfaced because I remarked
+in passing that `splitFrontmatter` already existed on main, and 2d checked the
+claim. Review asks what the code does; the remark made it ask what *else in
+the repo shares this name* — a question review does not naturally generate.
+Three findings now, none of them produced by reading the code under review.
+
 ## Acceptance criteria
 
 1. `debug-7b3e2a`'s Status log records that its fix was incomplete, which
@@ -130,7 +180,17 @@ the two PRs are compatible in either merge order.
    offenders verbatim — a guard that cannot fail reports clean forever and
    trains people to trust it (see `f83b04` for what a detector nobody believes
    costs, and note that cost outlives the fix).
-5. Consider whether "consolidation module with unmigrated callers" is a
+5. The frontmatter **fence** parse is delegated to `engine/frontmatter.ts`
+   at all four narrow sites (`merge-gate.ts:138`, `split.ts:459`,
+   `split.ts:520`, `split.ts:902`) rather than fixed four times to agree —
+   one parser, two views. Regression test covers a CRLF spec round-tripping
+   `branch:`, `pr:` and `status:`; the `pr:` case is the load-bearing one,
+   since today a CRLF spec silently loses its pinned PR number.
+6. Exactly one exported `splitFrontmatter` exists in the tree. Two functions
+   sharing a name with different return contracts is the hazard
+   `artifacts.ts` privatized its constants to prevent, and a hand-resolved
+   conflict between them is how it gets shipped.
+7. Consider whether "consolidation module with unmigrated callers" is a
    `devx doctor` finding or a lint rule. **Weigh it against current detector
    noise before adding it** — `f83b04` has already trained multiple sessions
    to ignore dead-owner findings, and a new class landing into a detector
