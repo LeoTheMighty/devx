@@ -70,7 +70,7 @@ mechanism.
       sleeps or real spawns that could be seamed instead, prefer the seam
       over the cap — a 30s cap on work that should have been 300ms is a cap
       hiding a design problem.
-- [~] AC 5: Full suite green; note the total blocking-pass wall-clock before
+- [x] AC 5: Full suite green; note the total blocking-pass wall-clock before
       and after, so a future reader can tell whether the sweep made the gate
       slower.
 
@@ -148,6 +148,17 @@ test that passes with a duration over its own cap cannot have a live cap.**
 `scripts/timeout-headroom.mjs` carries this sweep as its new LAST SWEEP
 record, with every number above.
 
+### Correction: the false greens were a LOCAL symptom of a GLOBAL fault
+
+The 12–24s-per-test numbers above are from this 12-core macOS host's
+blocking pass. On CI (main @ 87040e9) the whole `engine-layout-scaffold`
+file — all 12 tests — took 14.7s (macOS) / 15.6s (Ubuntu) in the blocking
+pass, so CI was not running those three tests over their caps. What was true
+everywhere is the fault: a `spawnSync`-held loop means the cap cannot fire,
+as the 50ms negative control shows on any machine. What was local is the
+visible consequence. The fix is right on both counts; the "passed at 23.6s"
+evidence should not be read as a CI observation.
+
 ### AC 5 — wall-clock, honestly
 
 - **Before** (quiet machine): parallel 26s, blocking 180s.
@@ -155,6 +166,12 @@ record, with every number above.
   average 105 with three other sessions' review suites contending, and the
   blocking pass took 391s for reasons unrelated to this change. Those
   numbers are not evidence either way.
+- **CI, like-for-like (one sample each, main @ 87040e9 vs this branch):**
+  macOS parallel 45.4s → 51.0s, blocking 110.0s → 82.4s (net −22s);
+  Ubuntu parallel 27.9s → 36.8s, blocking 48.5s → 46.1s (net +6.5s).
+  main's own two runners differ ~2×, so single samples are inside runner
+  noise: **no wall-clock claim either way.** The change is for enforcement;
+  on this evidence it neither meaningfully slows nor speeds the gate.
 - **Structural effect**, which does not depend on load: 12 tests and
   **64.5s of summed test time** moved out of the `maxForks: 2` blocking
   pass; in the parallel pass the same file sums to ~8s. The blocking pass
