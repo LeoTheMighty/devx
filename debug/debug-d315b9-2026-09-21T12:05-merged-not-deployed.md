@@ -52,6 +52,25 @@ changed nothing, for two different reasons, and the second is the sharper:
 A signal that shares its channel and its prefix with noise will be filtered
 with the noise. That is a design property, not an operator failing.
 
+3. **It cries wolf.** (Found by the coordinator session, verified here.)
+   `isBuildStale` (`src/lib/devx/finalize.ts:307-327`) returns stale when
+   `HEAD`'s sha does not start with the built sha — i.e. after **any**
+   commit, including docs, specs and tests, which land dozens of times a day
+   in this repo. Measured 2026-09-21: build-info `7994779`, `main` four
+   commits ahead, `git log 7994779..origin/main -- src/` **empty** — the
+   compiled output is byte-for-byte what a rebuild would produce, and the
+   warning fires anyway. So when it was *true* earlier that day (#163/#167/
+   #168 merged, not deployed), it had already been firing falsely all
+   session, and was read past. Noisy **and** strippable by the same filter
+   as chatter: each half defeats the signal on its own.
+
+   A design tension to decide rather than inherit: the function deliberately
+   avoids a subprocess (its docstring: ~150ms of spawn per invocation on a
+   CLI whose value is being cheap to call), and "last commit touching the
+   build inputs" needs `git log` or equivalent. Precision is not free on
+   every invocation — which argues for evaluating staleness precisely only
+   where it matters (mutating subcommands, per AC 2), not cheaply everywhere.
+
 ## Two more instances of the same defect (added 2026-09-21)
 
 The rebuild gap is one of **three** steps the `/devx` skill performs that
@@ -182,6 +201,11 @@ happened. The line is a claim, and its honesty is the writer's. That is
       finalize, split), or staleness is carried **in the structured
       output** — a field in the JSON every caller already parses — so a
       pipeline that keeps the JSON keeps the signal.
+- [ ] AC 2b: Staleness is **precise**: it compares against the last commit
+      that changed the build inputs (`src/`, build config), not `HEAD`. A
+      docs/spec/test-only commit after a build must not report stale. Both
+      halves are required — precision alone leaves the signal strippable,
+      structure (AC 2) alone leaves it crying wolf.
 - [ ] AC 3: Regression test: a build older than HEAD running a mutating
       subcommand either refuses or reports staleness in the JSON payload;
       and `grep -v "^devx: "` applied to its output does NOT remove the
@@ -262,3 +286,10 @@ happened. The line is a claim, and its honesty is the writer's. That is
   changed (`7d96be` off, `1dfbdd` on — closed without a `phase 4:` line
   shortly after being cited here as instance 5's specimen). Recorded as a
   moving target.
+- 2026-09-21T14:20 — instance 1 refined (from the coordinator, verified):
+  the stale-build warning is also imprecise — `isBuildStale` compares to
+  `HEAD`, so it fires after any docs/spec commit. Measured a live false
+  positive (4 commits since build, 0 under `src/`). AC 2b added. A
+  correction to this spec's own earlier claim: the filer said `src/` merges
+  landed after "the 11:35 swap"; there was a later swap at `7994779`, and
+  nothing under `src/` has changed since.
