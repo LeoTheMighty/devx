@@ -275,14 +275,18 @@ Full contract: `.claude/commands/devx.md`.
   verbatim. An ask that fails the askable-question test routes to
   `devx.config.yaml`, to a `CLAUDE.md` agreement, or to a refusal naming the
   clause. Set yours with `/devx-personalize`.
-- **Fix the code, not the eval.** Once Gate 4 passes, each eval's step body is
-  locked by a sha stamped in `gate_status.red_eval_shas`. Its result of record
-  (Status / Last run / Runs rows) stays writable; its *steps* do not. An eval
-  softened during implementation turns a green run into a tautology and
-  destroys the only evidence the expectation was ever real. If the
-  expectation genuinely changed, say so and re-run `devx gate evals <hash>` —
-  that re-stamps it, and it is the only sanctioned way for a locked eval to
-  move.
+- **Fix the code, not the eval.** When Gate 4 passes, it locks the evals it
+  ran: a sha of each in `gate_status.red_eval_shas`, plus the set of evals
+  and the files they point at. The lock is detection, not enforcement —
+  nothing refuses the edit — but `devx gate evals <hash> --verify` exits 1 if
+  a locked eval was edited, deleted, re-pointed at another file, removed, or
+  reclassified so it no longer runs, or if an eval was added after the lock;
+  `/devx` Phase 5 instructs a hard stop on that exit (the stop is enforced by
+  the skill body, not by code). An eval softened during implementation turns
+  a green run into a tautology and destroys the only evidence the expectation
+  was ever real. If the expectation genuinely changed, that is a revision:
+  run `devx revise`, which reopens the red stage and clears the lock.
+  Re-running Gate 4 cannot re-lock an eval that now passes.
 - **Outline files are human-only — in every layout.** `outline.md` in any
   workstream stage folder, the repo-root `OUTLINE.md`, and (under
   `engine.docs_layout: project-level`) the `<stage>-outline.md` root files are typed
