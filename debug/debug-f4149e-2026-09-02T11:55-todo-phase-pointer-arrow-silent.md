@@ -3,7 +3,7 @@ hash: f4149e
 type: debug
 created: 2026-09-02T11:55:00-06:00
 title: "An ASCII `->` in a todo.md phase pointer silently disables truing and drift for the whole workstream"
-status: in-progress
+status: done
 owner: palateful-fb (session_01CRtBZrqLympjpdFnUonhZy)
 branch: fix/f4149e-phase-pointer-loud
 from: dev/dev-dlr103-2026-09-02T09:14-workstream-resolution-flat-guard.md
@@ -256,3 +256,4 @@ file. No separate eval artifact is needed.
   rather than leaving them in this one: `inert1` (computed-and-never-read as
   a testable class, from the dead `unparsedTopLevel`) and `wsmig1` (the
   hardcoded workstream floor the archival invalidated).
+- 2026-09-21T10:23:21-06:00 — merged via PR #161 (squash → b1339dd)

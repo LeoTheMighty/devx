@@ -4,7 +4,7 @@
 
 # Story graph
 
-240 specs across 25 groups — 12 blocked · 163 done · 7 in-progress · 58 ready; 451 edges.
+241 specs across 25 groups — 12 blocked · 164 done · 7 in-progress · 58 ready; 452 edges.
 
 ## Legend
 
@@ -224,6 +224,7 @@ flowchart TD
     lay101["lay101 Enforce project-level's one-doc-set rule…"]
     lpf101["lpf101 Loop preflight main-health check"]
     roc101["roc101 /devx Phase 1 resume-detection — verify c…"]
+    shrule["shrule a consolidation module enforced only by c…"]
     tur101["tur101 Retire the review tour — rip out `devx to…"]
     v2d101["v2d101 V2.4 — universal /devx dispatcher + debug…"]
     v2e101["v2e101 V2.1-A — engine CLI primitives (workstrea…"]
@@ -235,6 +236,7 @@ flowchart TD
     v2x101["v2x101 V2.2 — execute re-home + BMAD ejection"]
     wsmig1["wsmig1 workstream-migration-integrity pins a har…"]
   end
+  1dfbdd -.-> shrule
   28b267 -.-> ebf8c4
   28b267 -.-> ecdcda
   4d1a9c -.-> 67a7e8
@@ -617,12 +619,13 @@ flowchart TD
   class f01000 blocked
   class f02000 blocked
   class f1d6b2 blocked
-  class f4149e ready
+  class f4149e done
   class f83b04 ready
   class inert1 ready
   class lay101 ready
   class lpf101 done
   class roc101 done
+  class shrule ready
   class tur101 done
   class v2d101 done
   class v2e101 done
