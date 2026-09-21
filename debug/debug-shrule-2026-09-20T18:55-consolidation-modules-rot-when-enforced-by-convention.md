@@ -75,6 +75,38 @@ This also makes four separate things today that **read as done and were not**:
 an assertion pinned to a cron string rather than the interval it protected,
 and a fix whose own acceptance test was never re-run.
 
+### `ownerOf` had two more defects, found independently — which strengthens the thesis
+
+`palateful-2d` reached the same function from the opposite direction:
+`debug-828385`'s AC 5 asked it to audit the hand-rolled frontmatter readers,
+and it fixed `ownerOf` as one of six sites (devx PR #162) before this spec was
+filed. Its version is a **strict superset** of the nullish fix, because the
+function carried three stacked defects, not one:
+
+1. the narrow nullish rule (found here, via the tree-wide guard);
+2. `/^owner:\s*(.+?)\s*$/` — `.+?` requires a character, so a bare `owner:`
+   read as **absent** rather than **empty**;
+3. the `m` flag anchored to any line in the file rather than to the
+   frontmatter block, so an `owner:` line in a spec's *body* could answer for
+   its frontmatter.
+
+`detect.ts:712`'s `branch:` read carries the identical `.+?`-and-unscoped-`m`
+pair and is also fixed in #162.
+
+Two independent audits, from different specs, converging on one function that
+had been wrong three ways since it was written. Neither audit would have found
+all three alone: 828385's found the shape defects by reading the readers,
+1dfbdd's found the rule defect by checking the whole tree for a pattern. That
+is the argument for AC 4 preferring structural controls over either — both
+audits were competent, both were partial, and the function stayed broken until
+they happened to collide on the same day.
+
+Ownership: `ownerOf` and the `branch:` read belong to **#162**, whose version
+supersedes the minimal nullish fix carried in #163. Verified 2026-09-20 that
+#162's `ownerOf` produces zero hits against `nullish-rule-single-source`'s
+guard, so the merge resolution "take #162's version" keeps that guard green;
+the two PRs are compatible in either merge order.
+
 ## Acceptance criteria
 
 1. `debug-7b3e2a`'s Status log records that its fix was incomplete, which
