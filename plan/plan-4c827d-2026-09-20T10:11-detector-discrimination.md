@@ -519,6 +519,26 @@ shrink silently, because a missing iteration registers as nothing rather
 than as a failure. Any option chosen here should say how it treats
 loop-generated tests.
 
+### A rule about this item's own evidence: a re-check must be able to disagree
+
+On 2026-09-21 palateful-fb corrected `debug-inert1`: `proseBudgetKb` is
+not unread. Its consumer is the S-1 prose-budget check in `test/`. The
+original claim came from a search scoped to `src/`. fb did not take it on
+trust; fb re-ran it, but with the same `src/` scope, so the re-run
+reproduced the error and was counted as confirmation.
+
+**Two checks that share a method are not independent witnesses.** A
+re-check counts as corroboration only if it *could have disagreed*. Who
+ran it doesn't matter. Several specimens in this item were "confirmed" by
+a second session, and that confirmation is worth only as much as the
+difference in method behind it.
+
+This also constrains Option E's review step. A register entry reviewed by
+someone using the same lookup as its author gets a second run of the same
+blind spot, not a review. The reviewer has to check the claim by a
+different route: a different scope, the call graph instead of a
+directory, or the running system instead of the source.
+
 ### Still uncovered: detected but unreadable
 
 The `devx next` half of the `rsh102` failure is not addressed by any
