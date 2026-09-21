@@ -5,8 +5,8 @@ created: 2026-09-20T10:06:00-06:00
 title: "Claim splices a duplicate owner: key into a bare-owner spec, and verify-claim then reads the empty one"
 from: null
 spawned: []
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-09-20T1808-45652
 branch: null
 ---
 
@@ -228,6 +228,7 @@ the splice.
 The ACs rest on source, not on testimony, so the corrected provenance
 changes nothing about the fix — but a spec that miscredits its witness
 invites someone to "verify" against a file that was never affected.
+- 2026-09-20T18:08:12-06:00 — claimed by /devx in session /devx-2026-09-20T1808-45652
 
 ## Links
 
