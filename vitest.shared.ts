@@ -151,7 +151,6 @@ export const SYNC_BLOCKING_TESTS = [
   "test/engine-layout-migrate-refusals.test.ts",
   "test/engine-layout-migrate.test.ts",
   "test/engine-layout-no-hand-joins.test.ts",
-  "test/engine-layout-scaffold.test.ts",
   "test/engine-workstream.test.ts",
   "test/exec-async-seam.test.ts",
   "test/graph-cli.test.ts",
