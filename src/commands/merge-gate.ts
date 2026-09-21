@@ -67,6 +67,13 @@ export interface ExecResult {
   exitCode: number;
 }
 
+/** Shell-out seam shared by runMergeGate and its helpers. */
+export type ExecFn = (
+  cmd: string,
+  args: string[],
+  o?: { cwd?: string },
+) => ExecResult;
+
 export interface RunMergeGateOpts {
   /** Test seam: route stdout off process.stdout. */
   out?: (s: string) => void;
@@ -74,12 +81,8 @@ export interface RunMergeGateOpts {
   err?: (s: string) => void;
   /** Test seam: explicit project config path (skip findProjectConfig walk). */
   projectPath?: string;
-  /** Test seam: shell-out replacement for `gh ...`. */
-  exec?: (
-    cmd: string,
-    args: string[],
-    o?: { cwd?: string },
-  ) => ExecResult;
+  /** Test seam: shell-out replacement for `gh ...` / `git ...`. */
+  exec?: ExecFn;
   /**
    * Transient-failure retry tuning (debug-d7e8e5). The seam — injected or
    * real — is always retry-wrapped; `false` opts out.
@@ -290,6 +293,69 @@ function safeFailureExit(
   return emitDecision({ merge: false, reason }, 2, out);
 }
 
+/**
+ * Explain an empty `gh pr list --head <branch>` result (debug-1dfbdd).
+ *
+ * `[]` is three states wearing one answer: the branch is wrong, no PR exists
+ * yet, or `branch:` holds a sentinel this reader does not recognize. The only
+ * thing that separates them is whether the branch actually exists, so ask —
+ * but ask HERE, after the query, never as a precondition.
+ *
+ * Why not a precondition: the query above is `--state all`, which matches
+ * merged and closed PRs. The documented flow squash-merges with
+ * `--delete-branch`, so a spec that completed successfully has a real merged
+ * PR and NO remote ref. Gating the lookup on branch existence would suppress
+ * it and accuse exactly those specs of naming a dead branch — a loud, wrong
+ * failure in place of a quiet one. Query first; explain only the empty case.
+ *
+ * Returns the reason string, or `null` when existence could not be
+ * determined. THAT DISTINCTION IS LOAD-BEARING — do not collapse it into a
+ * boolean. Only an ls-remote that SUCCEEDED and returned no refs is evidence
+ * of absence; a non-zero exit, an offline box, a missing `origin` or an auth
+ * failure means we do not know, and "we do not know" must reach the caller as
+ * a safe-default failure rather than a verdict. Treating could-not-verify as
+ * absent would build a fourth indistinguishable state into the very command
+ * whose defect is three states sharing one answer.
+ */
+export function explainEmptyPrList(
+  exec: ExecFn,
+  cwd: string,
+  queried: string,
+  authoredBranch: string | null,
+  derivedBranch: string,
+): string | null {
+  // Local first: cheap, offline, and true for a branch that exists but has
+  // never been pushed. A hit here is proof of existence on its own.
+  const local = exec("git", ["rev-parse", "--verify", "--quiet", `refs/heads/${queried}`], {
+    cwd,
+  });
+  const existsLocally = local.exitCode === 0 && local.stdout.trim().length > 0;
+
+  let exists = existsLocally;
+  if (!existsLocally) {
+    const remote = exec("git", ["ls-remote", "--heads", "origin", queried], { cwd });
+    if (remote.exitCode !== 0) return null; // could not verify ≠ absent
+    exists = remote.stdout.trim().length > 0;
+  }
+
+  if (exists) return `no PR yet (queried --head '${queried}')`;
+
+  // An authored value that names nothing is the debug-1dfbdd shape: a
+  // sentinel or a typo. Say so, and say what the branch would have been, so
+  // the reader can see the mismatch without opening the spec.
+  if (authoredBranch !== null) {
+    return (
+      `spec branch '${authoredBranch}' does not exist (from frontmatter); ` +
+      `derived branch would be '${derivedBranch}'`
+    );
+  }
+
+  // A DERIVED name that does not exist yet is the ordinary pre-PR state, not
+  // a defect — the branch gets created when the work starts. Keep the plain
+  // verdict, still naming what was queried.
+  return `no PR yet (queried --head '${queried}')`;
+}
+
 export function runMergeGate(
   args: string[],
   flags: { coverage?: number | null },
@@ -370,10 +436,25 @@ export function runMergeGate(
   //   2. `gh pr list --head <branch>` lookup using the spec's branch field
   // The branch field is authored by /devx-plan and stable across the lifetime
   // of the spec, so the gh lookup is robust to spec-frontmatter drift.
-  const branch =
-    typeof fm.branch === "string" && fm.branch.length > 0
-      ? fm.branch
-      : deriveBranch(merged, resolved.type, hash);
+  //
+  // debug-1dfbdd: "is this value non-null" is the WRONG PREDICATE. Any
+  // non-null string passed this guard and went straight to `gh pr list
+  // --head <it>`; palateful's `lgort1` carried the sentinel `branch:
+  // unassigned`, so the gate queried `--head unassigned`, got `[]`, and
+  // reported "no PR yet" with a green PR open on the derived branch. That is
+  // debug-7b3e2a one sentinel later, and no null-spelling enumeration can
+  // catch it: `unassigned` genuinely is not null, and devx cannot enumerate
+  // sentinels other authoring paths never told it about. NULLISH_SCALARS
+  // stays exactly as written — it is YAML's null rule and correct; extending
+  // it would break fidelity and lose to the next sentinel (AC 4).
+  //
+  // The validation happens AFTER the PR query, not before it — see the
+  // explainEmptyPrList call below for why a precondition would be worse
+  // than the bug.
+  const authoredBranch =
+    typeof fm.branch === "string" && fm.branch.length > 0 ? fm.branch : null;
+  const derivedBranch = deriveBranch(merged, resolved.type, hash);
+  const branch = authoredBranch ?? derivedBranch;
 
   let prNumber: number | undefined = fm.pr;
   if (prNumber === undefined) {
@@ -413,7 +494,28 @@ export function runMergeGate(
       );
     }
     if (parsed.length === 0) {
-      return emitDecision({ merge: false, reason: "no PR yet" }, 2, out);
+      // Three states used to share this one answer (debug-1dfbdd AC 3):
+      // the branch is wrong, no PR exists yet, or `branch:` holds a sentinel
+      // this reader does not recognize. At minimum the reason now names the
+      // branch actually queried, which is what turns the next occurrence
+      // into a one-line diagnosis instead of a cross-session hunt.
+      const explained = explainEmptyPrList(
+        exec,
+        projectDir,
+        branch,
+        authoredBranch,
+        derivedBranch,
+      );
+      if (explained === null) {
+        return safeFailureExit(
+          "gh signal collection failed",
+          out,
+          err,
+          `branch existence for '${branch}' could not be determined, so an empty ` +
+            `PR list cannot be explained (git ls-remote failed)`,
+        );
+      }
+      return emitDecision({ merge: false, reason: explained }, 2, out);
     }
     prNumber = parsed[0].number;
   }

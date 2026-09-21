@@ -904,8 +904,13 @@ export function parseFrontmatterBranch(content: string): string | null {
   for (const line of fmMatch[1].split("\n")) {
     const m = /^branch:\s*(.*)$/.exec(line);
     if (m) {
+      // debug-1dfbdd AC 5: this used to hand-roll `v === "" || v === "null"`,
+      // which is narrower than YAML's null rule — it missed `Null`, `NULL`
+      // and `~`, i.e. debug-7b3e2a's original bug still live in this reader.
+      // One rule, one implementation: isNullishScalar.
       const v = m[1].trim();
-      return v === "" || v === "null" ? null : v;
+      if (isNullishScalar(v)) return null;
+      return v === "" ? null : v;
     }
   }
   return null;

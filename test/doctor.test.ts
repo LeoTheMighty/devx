@@ -941,6 +941,60 @@ describe("the destructive path re-checks at apply time (MED)", () => {
     expect(fixed[0].paths).toContain("DEV.md");
   });
 
+  it("does not hand a YAML null spelling to `git branch -D` (debug-1dfbdd AC 5)", async () => {
+    // detect.ts hand-rolled `"" | "null" | "~"` when reading `branch:`, which
+    // is narrower than YAML's null rule: `Null` and `NULL` are nulls too, and
+    // they slipped through as branch NAMES. The observable consequence is
+    // here — doctor would carry "NULL" into the finding and applyFixes would
+    // run `git branch -D NULL`, deleting (or erroring on) a branch the spec
+    // never named. Same defect as debug-7b3e2a, still live in this reader
+    // long after merge-gate was fixed.
+    for (const spelling of ["NULL", "Null", "~"]) {
+      const hash = `nul${spelling.length}${spelling === "Null" ? "b" : spelling === "~" ? "c" : "a"}1`;
+      const root = fixture({ specs: { [hash]: { status: "blocked" } }, worktrees: [`dev-${hash}`] });
+      const spec = join(root, "dev", `dev-${hash}-2026-08-21T10:00-fixture.md`);
+      writeFileSync(
+        spec,
+        readFileSync(spec, "utf8").replace("status: blocked", `status: blocked\nbranch: ${spelling}`),
+      );
+      const findings = await detectWorktrees({
+        repoRoot: root,
+        exec: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+        bookkeepingOnly: async () => true,
+      });
+      expect(findings.length).toBeGreaterThan(0);
+      expect(findings[0].branch).toBeUndefined();
+
+      const calls: string[][] = [];
+      await applyFixes(findings, {
+        repoRoot: root,
+        lock: (<T,>(_l: string, fn: () => T): T => fn()) as never,
+        exec: async (_c, args) => {
+          calls.push(args);
+          return { stdout: "", stderr: "", exitCode: 0 };
+        },
+      });
+      expect(calls.some((c) => c[0] === "branch" && c.includes(spelling))).toBe(false);
+    }
+  });
+
+  it("still carries a real branch name through to the fix", async () => {
+    // The mirror of the above: folding onto isNullishScalar must not start
+    // swallowing legitimate branches.
+    const root = fixture({ specs: { real01: { status: "blocked" } }, worktrees: ["dev-real01"] });
+    const spec = join(root, "dev", "dev-real01-2026-08-21T10:00-fixture.md");
+    writeFileSync(
+      spec,
+      readFileSync(spec, "utf8").replace("status: blocked", "status: blocked\nbranch: feat/dev-real01"),
+    );
+    const findings = await detectWorktrees({
+      repoRoot: root,
+      exec: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+      bookkeepingOnly: async () => true,
+    });
+    expect(findings[0].branch).toBe("feat/dev-real01");
+  });
+
   it("refuses an unsafe branch name instead of handing it to `git branch -D`", async () => {
     const root = fixture({ specs: { unsafe1: { status: "blocked" } }, worktrees: ["dev-unsafe1"] });
     const spec = join(root, "dev", "dev-unsafe1-2026-08-21T10:00-fixture.md");

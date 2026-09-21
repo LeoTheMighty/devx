@@ -355,13 +355,29 @@ describe("runMergeGate — PR resolution", () => {
     // augmentation here: a transient "PR not opened yet by Phase 7" or "gh rate
     // limit" should not write a MANUAL.md row. The skill body's exit-2 column
     // dispatches on reason (re-check Phase 7 / re-run gh) rather than advice.
+    //
+    // debug-1dfbdd: the reason now carries the branch actually queried. `[]`
+    // used to mean wrong-branch OR no-PR OR unrecognized-sentinel — three
+    // states, one answer — and naming the branch is what lets a reader tell
+    // them apart at first contact. The gate asks git whether that branch
+    // exists in order to say which of the three this is; here it does, so
+    // this stays the ordinary "no PR yet" case.
     const script: ExecScript = {
-      responses: [{ match: "pr list", result: prListEmpty }],
+      responses: [
+        { match: "pr list", result: prListEmpty },
+        {
+          match: "rev-parse",
+          result: { exitCode: 0, stdout: `${"a".repeat(40)}\n`, stderr: "" },
+        },
+      ],
       calls: [],
     };
     const r = run(fx, "test01", makeExec(script));
     expect(r.code).toBe(2);
-    expect(r.decision).toEqual({ merge: false, reason: "no PR yet" });
+    expect(r.decision).toEqual({
+      merge: false,
+      reason: "no PR yet (queried --head 'feat/dev-test01')",
+    });
     expect(r.decision).not.toHaveProperty("advice");
   });
 

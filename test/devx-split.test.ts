@@ -1269,3 +1269,41 @@ describe("performSplit — branch-handoff `branch` override (mss103)", () => {
     ).toThrow(/branch-handoff needs the recorded WIP branch/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// debug-1dfbdd AC 5 — one null rule, one implementation
+// ---------------------------------------------------------------------------
+
+describe("parseFrontmatterBranch uses YAML's null rule, not a hand-rolled subset (debug-1dfbdd)", () => {
+  // This reader used to test `v === "" || v === "null"`, which is narrower
+  // than YAML: `Null`, `NULL` and `~` all slipped through and became branch
+  // NAMES. That is debug-7b3e2a's original defect, still live in this reader
+  // long after merge-gate was fixed — three spellings of one rule in one
+  // tree. AC 5 folds them all onto isNullishScalar.
+  const nulls = [
+    ["bare null", "branch: null"],
+    ["capitalized Null", "branch: Null"],
+    ["screaming NULL", "branch: NULL"],
+    ["tilde", "branch: ~"],
+    ["empty value", "branch:"],
+  ] as const;
+
+  for (const [label, line] of nulls) {
+    it(`reads ${label} as null`, () => {
+      const content = ["---", "hash: zz0001", line, "---", "", "body", ""].join("\n");
+      expect(parseFrontmatterBranch(content)).toBeNull();
+    });
+  }
+
+  it("keeps a real branch name", () => {
+    const content = ["---", "hash: zz0002", "branch: feat/dev-zz0002", "---", "", "b", ""].join("\n");
+    expect(parseFrontmatterBranch(content)).toBe("feat/dev-zz0002");
+  });
+
+  it("does NOT treat an unrecognized sentinel as null — that is the reader's job, not this set's", () => {
+    // `unassigned` is an ordinary YAML string. Collapsing it here would be
+    // the same wrong fix AC 4 pins against in frontmatter-scalar.test.ts.
+    const content = ["---", "hash: zz0003", "branch: unassigned", "---", "", "b", ""].join("\n");
+    expect(parseFrontmatterBranch(content)).toBe("unassigned");
+  });
+});
