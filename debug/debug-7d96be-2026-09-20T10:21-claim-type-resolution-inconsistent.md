@@ -5,8 +5,8 @@ created: 2026-09-20T10:21:00-06:00
 title: "claim requires --type while merge-gate auto-resolves: two type conventions in one loop"
 from: null
 spawned: []
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-09-21T1024-41522
 branch: null
 ---
 
@@ -154,6 +154,7 @@ CLI" problem is `dev-pin101`'s territory.
   and the diagnostic is recorded above rather than guessed at. Item 3
   (`devx tour`) **inverted** — tour was retired at tur101, so the CLI is
   current and the skill body is stale.
+- 2026-09-21T10:24:00-06:00 — claimed by /devx in session /devx-2026-09-21T1024-41522
 
 ## Links
 
