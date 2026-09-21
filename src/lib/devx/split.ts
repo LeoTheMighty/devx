@@ -726,7 +726,8 @@ export interface PerformSplitOpts {
   payload: SplitPayload;
   /** Default: "merge-first". */
   shape?: SplitShape;
-  /** Parent spec type (default "dev"). The follow-up always inherits it. */
+  /** Parent spec type; omit to resolve from the hash (7d96be). The
+   *  follow-up always inherits it. */
   type?: string;
   /** Parent WIP branch override for the branch-handoff shape — for callers
    *  that know the claim's branch authoritatively (the loop driver, whose

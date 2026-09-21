@@ -78,6 +78,13 @@ export function phaseDoneFor(
 }
 
 function devSpecDone(fs: TodoReadFs, repoRoot: string, hash: string): boolean {
+  // Resolves under `dev/` only — NOT converged onto 7d96be's any-type
+  // lookup, and recorded here because that story's AC 3 asks every hash
+  // consumer to converge or say why not. A workstream phase pointer names a
+  // dev story, so `dev/` is the dir it lives in. A non-dev hash reads
+  // "not done", which is the safe direction for this advisory-only probe:
+  // it can under-report progress, never claim work that isn't finished.
+  //
   // The whole probe is inside the try — findSpecForHashInFs readdirs dev/,
   // and an unreadable dir (permissions, exists→readdir race) must read
   // "not done", not throw out of an advisory-only computation.

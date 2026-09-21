@@ -5,8 +5,8 @@
 // contract roc101 establishes:
 //
 //   • The branch fires when the resolved spec is `status: in-progress` AND
-//     `.worktrees/dev-<hash>/` exists — and it runs BEFORE any worktree edit
-//     (and before the step-4 fresh claim).
+//     `.worktrees/<type>-<hash>/` exists — and it runs BEFORE any worktree
+//     edit (and before the step-4 fresh claim).
 //   • The verify-claim invocation appears verbatim:
 //     `devx devx-helper verify-claim <hash> --session-token "$SESSION_TOKEN"`.
 //   • All four exit codes are dispatched: 0 → resume; 3 → halt + surface
@@ -60,10 +60,19 @@ describe("devx skill — Phase 1 resume-detection discipline (roc101)", () => {
     expect(body).toMatch(/\*\*Resume-detection branch \(roc101\)\.\*\*/);
   });
 
-  it("branch condition is `status: in-progress` + existing `.worktrees/dev-<hash>/` (AC)", () => {
+  it("branch condition is `status: in-progress` + existing `.worktrees/<type>-<hash>/` (AC)", () => {
     const block = resumeBlock(phase1Body(loadSkill()));
     expect(block).toMatch(/`status: in-progress`/);
-    expect(block).toMatch(/\.worktrees\/dev-<hash>\//);
+    expect(block).toMatch(/\.worktrees\/<type>-<hash>\//);
+    // This assertion used to pin `.worktrees/dev-<hash>/` — correct when
+    // roc101 wrote it, before v2d101 added debug specs. Left pinned, it did
+    // the opposite of its job: a debug claim lives in `.worktrees/debug-
+    // <hash>`, so the resume branch never matched, the ownership check was
+    // skipped, and the flow fell through to a fresh claim — the E13
+    // resume-collision this test exists to prevent. And it turned red on the
+    // edit that fixed it, so it protected the gap (7d96be review). Assert
+    // the dev-only form is gone so it cannot quietly come back.
+    expect(block).not.toMatch(/\.worktrees\/dev-<hash>\//);
   });
 
   it("invokes verify-claim verbatim, with the --session-token flag (AC)", () => {
