@@ -22,7 +22,7 @@ import {
 } from "../src/commands/gate.js";
 import { runNext } from "../src/commands/next.js";
 import { runRevise } from "../src/commands/revise.js";
-import { readEngineState } from "../src/lib/engine/frontmatter.js";
+import { applyEnginePatch, readEngineState } from "../src/lib/engine/frontmatter.js";
 import {
   type EngineRepo,
   captureIo,
@@ -228,7 +228,7 @@ function seedEvals(flags: { plan_verified?: boolean } = {}): void {
   repo.write("test/perf.test.mjs", "process.exit(1);\n");
 }
 
-function gateEvals(flags: { dryRun?: boolean } = {}, exitCode = 1) {
+function gateEvals(flags: { dryRun?: boolean; verify?: boolean } = {}, exitCode = 1) {
   const io = captureIo();
   const code = runGateEvalsCli(["abc123"], flags, {
     ...io,
@@ -288,6 +288,169 @@ describe("gate evals — verdict persistence", () => {
     const before = repo.read(SPEC_REL);
     expect(gateEvals({ dryRun: true }).code).toBe(0);
     expect(repo.read(SPEC_REL)).toBe(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// debug-75563d — the RED step-body lock is actually armed
+//
+// `stampEvalShas()` shipped with zero callers in src/, so `red_eval_shas`
+// was never written, `verifyStepBodies()` had nothing to verify, and the
+// lock's grandfathering rule read every workstream as "predates the stamp".
+// An inert producer did not fail loudly — it read as permission.
+//
+// AC 1: these must FAIL against main before the fix.
+// ---------------------------------------------------------------------------
+
+describe("gate evals — RED step-body stamp (debug-75563d)", () => {
+  it("PASS stamps the evals that actually RAN — deduped, deferred excluded", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    const shas = state().redEvalShas;
+    // validPlan(): E-1 (P0) and E-2 (P1) both cite test/demo.test.mjs, so
+    // the stamp is keyed by ARTIFACT and carries one entry, not two.
+    // E-3 is `human` → deferred → never observed RED → deliberately NOT
+    // stamped: the lock's whole claim is "watched failing for the right
+    // reason", and an eval nobody ran has no such observation to lock.
+    expect(Object.keys(shas)).toEqual(["test/demo.test.mjs"]);
+    expect(shas["test/demo.test.mjs"]).toMatch(/^[0-9a-f]{64}$/);
+    expect(shas["evals/E-3_perf.md"]).toBeUndefined();
+  });
+
+  it("the stamp is the artifact's real content, not a placeholder", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    const before = state().redEvalShas["test/demo.test.mjs"];
+    // Same file, different body → different sha. A stamp that ignored
+    // content would pass every other assertion here.
+    repo.write("test/demo.test.mjs", "process.exit(2); // softened\n");
+    expect(gateEvals().code).toBe(0);
+    expect(state().redEvalShas["test/demo.test.mjs"]).not.toBe(before);
+  });
+
+  it("CONCERNS stamps too — a non-PASS verdict is not a lock bypass", () => {
+    // Same seed as the CONCERNS case above: no plan/agent.md, E-3's
+    // artifact absent. `evals_red` flips and execution begins, so the
+    // evals that DID run must come under the lock. Leaving them unstamped
+    // would let any non-PASS verdict silently drop immutability.
+    seedSpec({
+      stage: "red",
+      prd_validated: true,
+      design_verified: true,
+      plan_verified: true,
+    });
+    repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
+    repo.write("test/demo.test.mjs", "process.exit(1);\n");
+    expect(gateEvals().code).toBe(0);
+    const s = state();
+    expect(s.gateVerdicts.evals).toBe("CONCERNS");
+    expect(s.gateStatus.evals_red).toBe(true);
+    expect(Object.keys(s.redEvalShas)).toContain("test/demo.test.mjs");
+    // The absent artifact is skipped, never stamped empty — an empty sha
+    // would lock it to "absent" and read the real file as `moved` later.
+    expect(s.redEvalShas["test/perf.test.mjs"]).toBeUndefined();
+  });
+
+  it("FAIL stamps nothing — the lock arms only when the gate clears", () => {
+    seedEvals();
+    expect(gateEvals({}, 0).code).toBe(1);
+    expect(state().redEvalShas).toEqual({});
+  });
+
+  it("AC 5: an unstamped workstream stays grandfathered", () => {
+    // A spec whose Gate 4 predates the fix has no `red_eval_shas` key at
+    // all. Reading it must yield {} rather than throwing or inventing
+    // entries — {} is what `verifyStepBodies` reports as advisory
+    // `unstamped`, which never blocks.
+    seedSpec({ stage: "executing", prd_validated: true });
+    expect(state().redEvalShas).toEqual({});
+  });
+
+  it("--verify PASSes a stamped workstream whose evals are untouched", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    const { code, io: vio } = gateEvals({ verify: true }, 1);
+    expect(code).toBe(0);
+    const out = JSON.parse(vio.stdout());
+    expect(out.verify).toBe("PASS");
+    expect(out.stamped).toBe(1);
+    expect(out.findings).toEqual([]);
+  });
+
+  it("--verify FAILs (exit 1) on a body that moved under its stamp", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    // The eval softened during implementation — the exact move the lock
+    // exists to catch. Before this story nothing could detect it, because
+    // nothing was ever stamped.
+    repo.write("test/demo.test.mjs", "process.exit(0); // softened\n");
+    const { code, io: vio } = gateEvals({ verify: true }, 1);
+    expect(code).toBe(1);
+    const out = JSON.parse(vio.stdout());
+    expect(out.verify).toBe("FAIL");
+    expect(out.findings.map((f: { kind: string }) => f.kind)).toEqual(["moved"]);
+  });
+
+  it("--verify FAILs on a stamped eval that vanished", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    rmSync(join(repo.root, "test", "demo.test.mjs"));
+    const { code, io: vio } = gateEvals({ verify: true }, 1);
+    expect(code).toBe(1);
+    expect(JSON.parse(vio.stdout()).findings[0].kind).toBe("missing");
+  });
+
+  it("AC 5: --verify PASSes an unstamped (grandfathered) workstream", () => {
+    // Nothing stamped → no findings → exit 0. Failing here would
+    // retroactively block every workstream whose Gate 4 predates the fix,
+    // which is exactly what AC 5 forbids.
+    seedEvals();
+    const { code, io: vio } = gateEvals({ verify: true }, 1);
+    expect(code).toBe(0);
+    const out = JSON.parse(vio.stdout());
+    expect(out.verify).toBe("PASS");
+    expect(out.stamped).toBe(0);
+  });
+
+  it("--verify writes nothing to the spec", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    const before = repo.read(SPEC_REL);
+    expect(gateEvals({ verify: true }, 1).code).toBe(0);
+    expect(repo.read(SPEC_REL)).toBe(before);
+  });
+
+  it("--verify refuses to combine with --dry-run or --waive", () => {
+    seedEvals();
+    expect(gateEvals({ verify: true, dryRun: true }, 1).code).toBe(2);
+  });
+
+  it("a re-stamp REPLACES the map rather than merging into it", () => {
+    // Exercised at the patch seam rather than through the CLI: producing
+    // two different run-sets from one fixture means deleting a P0
+    // artifact, which FAILs the gate before it can re-stamp. The
+    // semantics under test are the writer's, not the gate's.
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    const stamped = state().redEvalShas;
+    expect(Object.keys(stamped)).toEqual(["test/demo.test.mjs"]);
+
+    const withStale = applyEnginePatch(repo.read(SPEC_REL), {
+      redEvalShas: { ...stamped, "evals/E-gone.md": "f".repeat(64) },
+    });
+    repo.write(SPEC_REL, withStale);
+    expect(Object.keys(readEngineState(repo.read(SPEC_REL)).redEvalShas).sort()).toEqual([
+      "evals/E-gone.md",
+      "test/demo.test.mjs",
+    ]);
+
+    // Re-stamping without it must DROP it. Merging would leave the sha
+    // behind forever, where verifyStepBodies reads it as `missing` and
+    // blocks the workstream on an eval nobody deleted improperly.
+    repo.write(SPEC_REL, applyEnginePatch(repo.read(SPEC_REL), { redEvalShas: stamped }));
+    expect(Object.keys(readEngineState(repo.read(SPEC_REL)).redEvalShas)).toEqual([
+      "test/demo.test.mjs",
+    ]);
   });
 });
 

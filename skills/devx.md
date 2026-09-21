@@ -266,13 +266,12 @@ frozen under the shas Gate 4 stamped. Verify them (`verifyStepBodies()` in
 **hard stop** — not a warning to note and continue past.
 
 **Fix the code, not the eval.** A failing eval means the implementation is
-not done; an eval quietly adjusted to match what the code happens to do turns
-this green run into a tautology and destroys the only evidence that the
-expectation was ever real. If the expectation itself genuinely changed, say
-so explicitly and re-run `devx gate evals <hash>` — that re-stamps the bodies
-and is the only sanctioned way for a locked eval to move. Result-of-record
-stamps (Status / Last run / Runs rows) are writable throughout and need none
-of this.
+not done; softening one turns this green run into a tautology. Run
+`devx gate evals <plan-hash> --verify` before calling the story green —
+exit 1 is a **hard stop**: a body moved or vanished under its stamp. Don't
+re-stamp to pass it; restore the eval, or say the expectation genuinely
+changed and re-run the gate without `--verify`. Result-of-record rows
+(Status / Last run / Runs) stay writable throughout.
 
 Gates come from `devx.config.yaml`. Two supported shapes:
 
