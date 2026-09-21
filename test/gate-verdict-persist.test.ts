@@ -474,8 +474,10 @@ describe("gate evals — RED step-body stamp (debug-75563d)", () => {
 function verifyOut(io: ReturnType<typeof captureIo>) {
   return JSON.parse(io.stdout().trim().split("\n").pop() as string) as {
     verify: string;
+    locked: boolean;
+    coverage: boolean;
     stamped: number;
-    findings: { kind: string }[];
+    findings: { kind: string; evalPath: string }[];
   };
 }
 
@@ -611,6 +613,375 @@ describe("RED eval lock — review of #164", () => {
     // (mutation M20 / M1 survived).
     seedEvals();
     expect(gateEvals({ verify: true, waive: ["E-1"], reason: "x", approver: "a" }).code).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// debug-evlk01 B/C — the lock covers the eval SET, not just stamped files
+// (Leo's decision 2026-09-21: block in locked workstreams, advisory in
+// never-locked ones). Each "blocks" test FAILS on the pre-evlk01 code.
+// ---------------------------------------------------------------------------
+
+const TWO_RUNNING_PLAN = () =>
+  validPlan().replace(
+    "| E-2 | P1 | 2 | tests-after | test/demo.test.mjs |",
+    "| E-2 | P1 | 2 | tests-first | test/perf.test.mjs |",
+  );
+
+describe("RED eval lock — eval-set coverage (debug-evlk01)", () => {
+  it("stamping records the lock marker and every E-id it knew", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    const st = state();
+    expect(st.evalsLocked).toBe(true);
+    // E-1 ran and was stamped; E-2 (tests-after) and E-3 (human) were
+    // known but deferred, so they map to null.
+    expect(st.redEvalIds).toEqual({
+      "E-1": "test/demo.test.mjs",
+      "E-2": null,
+      "E-3": null,
+    });
+  });
+
+  it("B: an eval ADDED after the lock blocks", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    repo.write("test/new.test.mjs", "process.exit(0);\n");
+    repo.write(`${WS}/plan/agent.md`, `${validPlan()}| E-4 | P0 | 1 | tests-first | test/new.test.mjs | full |\n`);
+    repo.write(`${WS}/expectations.md`, `${validExpectations()}\n## E-4: added\n\n- **Priority:** P0\n- **Covers:** G-1\n- **Trigger:** t\n- **Expectation (EARS):** e\n- **Threshold:** th\n- **Verified by:** test/new.test.mjs\n`);
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(1);
+    expect(verifyOut(v.io).findings.map((f) => f.kind)).toContain("unstamped");
+  });
+
+  it("B: an expectation RE-POINTED at a softened copy blocks", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    repo.write("test/demo2.test.mjs", "process.exit(0); // softened copy\n");
+    repo.write(`${WS}/plan/agent.md`, validPlan().replace(
+      "| E-1 | P0 | 1 | tests-first | test/demo.test.mjs |",
+      "| E-1 | P0 | 1 | tests-first | test/demo2.test.mjs |",
+    ));
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(1);
+    expect(verifyOut(v.io).findings.map((f) => f.kind)).toEqual(["repointed"]);
+  });
+
+  it("B: re-pointing at ANOTHER already-stamped eval still blocks", () => {
+    // The case an "unstamped file" rule alone misses: every file involved
+    // IS stamped, but E-1 now runs E-2's eval instead of its own.
+    seedEvals();
+    repo.write(`${WS}/plan/agent.md`, TWO_RUNNING_PLAN());
+    expect(gateEvals().code).toBe(0);
+    expect(Object.keys(state().redEvalShas).sort()).toEqual(["test/demo.test.mjs", "test/perf.test.mjs"]);
+    repo.write(`${WS}/plan/agent.md`, TWO_RUNNING_PLAN().replace(
+      "| E-1 | P0 | 1 | tests-first | test/demo.test.mjs |",
+      "| E-1 | P0 | 1 | tests-first | test/perf.test.mjs |",
+    ));
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(1);
+    expect(verifyOut(v.io).findings.map((f) => f.kind)).toEqual(["repointed"]);
+  });
+
+  it("B: a new file dropped into a stamped directory blocks", () => {
+    seedEvals();
+    repo.write(`${WS}/plan/agent.md`, validPlan().replace(
+      "| E-1 | P0 | 1 | tests-first | test/demo.test.mjs |",
+      "| E-1 | P0 | 1 | tests-first | test/e2e |",
+    ));
+    repo.mkdir("test/e2e");
+    repo.write("test/e2e/a.test.mjs", "process.exit(1);\n");
+    expect(gateEvals().code).toBe(0);
+    repo.write("test/e2e/b.test.mjs", "process.exit(0); // added later\n");
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(1);
+    expect(verifyOut(v.io).findings.map((f) => f.evalPath)).toContain("test/e2e/b.test.mjs");
+  });
+
+  it("C: a stamp emptied by hand no longer reads as grandfathered — it blocks", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    repo.write(SPEC_REL, applyEnginePatch(repo.read(SPEC_REL), { redEvalShas: {} }));
+    repo.write("test/demo.test.mjs", "process.exit(0); // softened\n");
+    const v = gateEvals({ verify: true });
+    // The bypass assertion comes FIRST, so on pre-evlk01 code this test fails
+    // on the bypass itself (verify exit 0) — not on a field that did not exist
+    // yet. (Phase 4 of evlk01: the earlier ordering was a correct test but
+    // not a true repro.)
+    expect(v.code).toBe(1);
+    expect(verifyOut(v.io).locked).toBe(true);
+    expect(state().evalsLocked).toBe(true);
+  });
+
+  it("does NOT falsely block an eval that was WAIVED at gate time", () => {
+    // --verify re-resolves without the gate's --waive, so the waived eval
+    // reappears as runnable. Recorded as known-but-unstamped (null), it
+    // must not block.
+    seedEvals();
+    repo.write(`${WS}/plan/agent.md`, TWO_RUNNING_PLAN());
+    expect(gateEvals({ waive: ["E-2"], reason: "x", approver: "a" }).code).toBe(0);
+    expect(state().redEvalIds["E-2"]).toBeNull();
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(0);
+    expect(verifyOut(v.io).findings).toEqual([]);
+  });
+
+  it("does NOT block a P1 whose artifact was written AFTER the gate (it was a known CONCERNS gap)", () => {
+    // Otherwise the lock would be stricter than the gate that created it.
+    seedEvals();
+    repo.write(`${WS}/plan/agent.md`, validPlan().replace(
+      "| E-2 | P1 | 2 | tests-after | test/demo.test.mjs |",
+      "| E-2 | P1 | 2 | tests-first | test/later.test.mjs |",
+    ));
+    expect(gateEvals().code).toBe(0);
+    expect(state().gateVerdicts.evals).toBe("CONCERNS");
+    expect(state().redEvalIds["E-2"]).toBeNull();
+    repo.write("test/later.test.mjs", "process.exit(1);\n");
+    expect(gateEvals({ verify: true }).code).toBe(0);
+  });
+
+  it("a clean locked workstream verifies clean", () => {
+    seedEvals();
+    repo.write(`${WS}/plan/agent.md`, TWO_RUNNING_PLAN());
+    expect(gateEvals().code).toBe(0);
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(0);
+    expect(verifyOut(v.io).findings).toEqual([]);
+  });
+
+  it("a NEVER-locked workstream stays advisory: findings reported, exit 0", () => {
+    // Grandfathering (75563d AC 5): no marker, no stamp. The current evals
+    // are reported as unstamped — the "unstamped evals report" the skill
+    // prose once promised and the code never did — but nothing blocks.
+    seedEvals();
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(0);
+    const out = verifyOut(v.io);
+    expect(out.locked).toBe(false);
+    expect(out.findings.map((f) => f.kind)).toEqual(["unstamped"]);
+  });
+
+  it("revise clears the marker and the E-id map along with the stamp", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    expect(revise("plan/agent.md").code).toBe(0);
+    const st = state();
+    expect(st.evalsLocked).toBe(false);
+    expect(st.redEvalIds).toEqual({});
+    expect(st.redEvalShas).toEqual({});
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 4 review of debug-evlk01 — regression suite. Each test pins one
+// finding of the 3-agent review of the evlk01 diff itself.
+// ---------------------------------------------------------------------------
+
+/** Mark plan phase `phase` as shipped: a `status: done` dev spec for it. */
+function shipPhase(phase: number): void {
+  repo.write(
+    `dev/dev-ship0${phase}-2026-09-21T12:00-shipped.md`,
+    ["---", `hash: ship0${phase}`, "type: dev", "status: done", `phase: ${phase}`, `plan: ${WS}`, "---", "", "done", ""].join("\n"),
+  );
+}
+
+describe("RED eval lock — Phase 4 of evlk01", () => {
+  it("H1: re-pointing AND reclassifying in one edit is caught (it used to verify clean)", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    repo.write("test/soft.test.mjs", "process.exit(0); // softened\n");
+    repo.write(`${WS}/plan/agent.md`, validPlan().replace(
+      "| E-1 | P0 | 1 | tests-first | test/demo.test.mjs |",
+      "| E-1 | P0 | 1 | tests-after | test/soft.test.mjs |",
+    ));
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(1);
+    expect(verifyOut(v.io).findings.map((f) => f.kind)).toContain("dropped");
+  });
+
+  it("H1: reclassifying a locked P0 to `human` is caught", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    repo.write(`${WS}/plan/agent.md`, validPlan().replace(
+      "| E-1 | P0 | 1 | tests-first |",
+      "| E-1 | P0 | 1 | human |",
+    ));
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(1);
+    expect(verifyOut(v.io).findings.map((f) => f.kind)).toEqual(["dropped"]);
+  });
+
+  it("H1: removing a locked expectation is caught", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    repo.write(`${WS}/expectations.md`, validExpectations().replace(/## E-1:[\s\S]*?(?=## E-2)/, ""));
+    repo.write(`${WS}/plan/agent.md`, validPlan().replace(/\| E-1 \|[^\n]*\n/, ""));
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(1);
+    expect(verifyOut(v.io).findings.map((f) => f.kind)).toEqual(["dropped"]);
+  });
+
+  it("H1: re-pointing an eval AFTER its phase ships is still caught", () => {
+    // Shipped-green is a legitimate way to leave the run set, so --verify
+    // resolves with no shipped deferral and still sees where E-1 points.
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    shipPhase(1);
+    repo.write("test/soft.test.mjs", "process.exit(0);\n");
+    repo.write(`${WS}/plan/agent.md`, validPlan().replace(
+      "| E-1 | P0 | 1 | tests-first | test/demo.test.mjs |",
+      "| E-1 | P0 | 1 | tests-first | test/soft.test.mjs |",
+    ));
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(1);
+    expect(verifyOut(v.io).findings.map((f) => f.kind)).toEqual(["repointed"]);
+  });
+
+  it("H1: a shipped phase does NOT itself read as a dropped eval (no false block)", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    shipPhase(1);
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(0);
+    expect(verifyOut(v.io).findings).toEqual([]);
+  });
+
+  it("H2: deleting expectations.md in a locked workstream blocks instead of skipping the check", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    rmSync(join(repo.root, WS, "expectations.md"));
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(1);
+    expect(verifyOut(v.io).findings.map((f) => f.kind)).toEqual(["unverifiable"]);
+  });
+
+  it("H2: deleting the plan in a locked workstream blocks too", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    rmSync(join(repo.root, WS, "plan", "agent.md"));
+    expect(gateEvals({ verify: true }).code).toBe(1);
+  });
+
+  it("H3: tool-written files under a stamped directory neither get stamped nor block", () => {
+    seedEvals();
+    repo.write(`${WS}/plan/agent.md`, validPlan().replace(
+      "| E-1 | P0 | 1 | tests-first | test/demo.test.mjs |",
+      "| E-1 | P0 | 1 | tests-first | test/e2e |",
+    ));
+    repo.mkdir("test/e2e");
+    repo.write("test/e2e/a.test.mjs", "process.exit(1);\n");
+    repo.write("test/e2e/.DS_Store", "junk\n");
+    expect(gateEvals().code).toBe(0);
+    expect(Object.keys(state().redEvalShas)).toEqual(["test/e2e/a.test.mjs"]);
+    // The first green run writes a snapshot; an editor drops a dotfile.
+    repo.mkdir("test/e2e/__snapshots__");
+    repo.write("test/e2e/__snapshots__/a.test.mjs.snap", "exports[`x`] = 1;\n");
+    repo.write("test/e2e/.DS_Store", "changed junk\n");
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(0);
+    expect(verifyOut(v.io).findings).toEqual([]);
+  });
+
+  it("M3: deleting the marker AND the stamp still leaves the workstream locked by its E-id map", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    repo.write(SPEC_REL, applyEnginePatch(repo.read(SPEC_REL), { evalsLocked: false, redEvalShas: {} }));
+    expect(Object.keys(state().redEvalIds).length).toBeGreaterThan(0);
+    repo.write("test/demo2.test.mjs", "process.exit(0);\n");
+    repo.write(`${WS}/plan/agent.md`, validPlan().replace(
+      "| E-1 | P0 | 1 | tests-first | test/demo.test.mjs |",
+      "| E-1 | P0 | 1 | tests-first | test/demo2.test.mjs |",
+    ));
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(1);
+    expect(verifyOut(v.io).coverage).toBe(true);
+  });
+
+  it("M3: a marker with its E-id map emptied is unverifiable and blocks", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    repo.write(SPEC_REL, applyEnginePatch(repo.read(SPEC_REL), { redEvalIds: {} }));
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(1);
+    expect(verifyOut(v.io).findings.map((f) => f.kind)).toContain("unverifiable");
+  });
+
+  it("M4: a workstream stamped BEFORE evlk01 (shas, no marker, no map) is not falsely blocked", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    repo.write(SPEC_REL, applyEnginePatch(repo.read(SPEC_REL), { evalsLocked: false, redEvalIds: {} }));
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(0);
+    const out = verifyOut(v.io);
+    expect(out.locked).toBe(true);
+    expect(out.coverage).toBe(false);
+  });
+
+  it("M4: …but its stamped files are still re-hashed, so a softened eval still blocks", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    repo.write(SPEC_REL, applyEnginePatch(repo.read(SPEC_REL), { evalsLocked: false, redEvalIds: {} }));
+    repo.write("test/demo.test.mjs", "process.exit(0); // softened\n");
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(1);
+    expect(verifyOut(v.io).findings.map((f) => f.kind)).toEqual(["moved"]);
+  });
+
+  it("M5: an EMPTY directory artifact at gate time still guards tests added under it later", () => {
+    seedEvals();
+    repo.write(`${WS}/plan/agent.md`, validPlan().replace(
+      "| E-1 | P0 | 1 | tests-first | test/demo.test.mjs |",
+      "| E-1 | P0 | 1 | tests-first | test/e2e |",
+    ));
+    repo.mkdir("test/e2e");
+    expect(gateEvals().code).toBe(0);
+    expect(state().redEvalIds["E-1"]).toBe("test/e2e");
+    repo.write("test/e2e/late.test.mjs", "process.exit(0); // never watched failing\n");
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(1);
+    expect(verifyOut(v.io).findings.map((f) => f.evalPath)).toContain("test/e2e/late.test.mjs");
+  });
+
+  it("carry-forward: a later --waive never erases an earlier artifact from the E-id map", () => {
+    seedEvals();
+    repo.write(`${WS}/plan/agent.md`, TWO_RUNNING_PLAN());
+    expect(gateEvals().code).toBe(0);
+    expect(state().redEvalIds["E-2"]).toBe("test/perf.test.mjs");
+    expect(gateEvals({ waive: ["E-2"], reason: "x", approver: "a" }).code).toBe(0);
+    expect(state().redEvalIds["E-2"]).toBe("test/perf.test.mjs");
+    // …so re-pointing it afterwards is still caught.
+    repo.write("test/soft.test.mjs", "process.exit(0);\n");
+    repo.write(`${WS}/plan/agent.md`, TWO_RUNNING_PLAN().replace(
+      "| E-2 | P1 | 2 | tests-first | test/perf.test.mjs |",
+      "| E-2 | P1 | 2 | tests-first | test/soft.test.mjs |",
+    ));
+    expect(gateEvals({ verify: true }).code).toBe(1);
+  });
+
+  it("carry-forward: a locked eval deleted then re-gated keeps its artifact, so re-creating it softened is caught", () => {
+    // A P1 that WAS watched failing is then deleted; the gate allows the
+    // re-run (a missing P1 is only CONCERNS). Keeping its artifact in the map
+    // is what stops "delete, re-gate, re-create softened" from laundering it.
+    // Contrast a P1 that was missing at its FIRST gate: never watched, so it
+    // maps to null and writing it later is allowed.
+    seedEvals();
+    repo.write(`${WS}/plan/agent.md`, TWO_RUNNING_PLAN());
+    expect(gateEvals().code).toBe(0);
+    expect(state().redEvalIds["E-2"]).toBe("test/perf.test.mjs");
+    rmSync(join(repo.root, "test", "perf.test.mjs"));
+    expect(gateEvals().code).toBe(0);
+    expect(state().gateVerdicts.evals).toBe("CONCERNS");
+    expect(state().redEvalIds["E-2"]).toBe("test/perf.test.mjs");
+    repo.write("test/perf.test.mjs", "process.exit(0); // re-created, softened\n");
+    expect(gateEvals({ verify: true }).code).toBe(1);
+  });
+
+  it("carry-forward: E-ids known to an earlier gate run are kept on a re-run", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    const before = state().redEvalIds;
+    expect(gateEvals().code).toBe(0);
+    expect(state().redEvalIds).toEqual(before);
   });
 });
 

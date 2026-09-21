@@ -34,23 +34,60 @@ import { createHash } from "node:crypto";
 // Step body vs result of record
 // ---------------------------------------------------------------------------
 
-/** Field names an eval carries as its result of record — writable while the
- *  eval is locked, because they are how a run gets recorded. Matched on the
- *  line's leading `**Field:**` / `Field:` marker, case-insensitively. */
-const RESULT_FIELDS = ["status", "last run", "last-run", "run", "runs", "result", "verdict"];
+/**
+ * The result-of-record CONVENTION for a markdown eval (debug-evlk01 H).
+ * Result-of-record lines are left out of the lock's hash so recording a run
+ * never reads as editing the eval; everything else is a step and is locked.
+ *
+ * Result of record (writable, NOT hashed):
+ *   - `Status:`, `Last run:` / `Last-run:`, `Verdict:` — outcome of a run.
+ *   - `Result:` — the OBSERVED result of a run.
+ *   - table rows inside a section headed `Runs` (`## Runs`, `### Runs (…)`).
+ *
+ * Step (locked, hashed):
+ *   - `Run:` — the command. It defines what the eval does; changing
+ *     `--lines 10000` to `--lines 10` weakens the eval and must read `moved`.
+ *   - `Expected:` / `Threshold:` — the bar the eval asserts. **To lock an
+ *     expected result, write it as `Expected:` or `Threshold:`, never as
+ *     `Result:`** — `Result:` is reserved for what a run observed.
+ *   - every table row outside a `Runs` section — a steps table or a
+ *     thresholds table is part of the eval.
+ *
+ * Before evlk01, `Run:` and `Result:` were both stripped and EVERY `|` line
+ * was treated as a Runs row, so an eval's command, its bar and any tabular
+ * steps could all be weakened with an identical sha. Resolved at a point
+ * where no workstream in devx or palateful carried a stamp, so tightening
+ * what is hashed invalidated nothing.
+ */
+const RESULT_FIELDS = ["status", "last run", "last-run", "runs", "result", "verdict"];
 
 const RESULT_LINE_RE = new RegExp(
   `^\\s*(?:[-*+]\\s*)?\\**\\s*(${RESULT_FIELDS.join("|")})\\s*\\**\\s*:`,
   "i",
 );
 
-/** A row of the Runs table (`| 2026-08-31 | RED | … |`) — result of record. */
-const RUNS_ROW_RE = /^\s*\|/;
+/** A markdown table row. Result of record ONLY inside a Runs section. */
+const TABLE_ROW_RE = /^\s*\|/;
+/** An ATX heading, CommonMark-style: at most 3 spaces of indent (4+ is a code
+ *  block, so an indented `    # Runs x` is NOT a heading), optional closing
+ *  `#`s. Group 1 is the `#`s, group 2 the text. */
+const ATX_HEADING_RE = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*#*[ \t]*$/;
+/** A setext underline (`Runs` over `----` or `====`). */
+const SETEXT_UNDERLINE_RE = /^ {0,3}(=+|-+)[ \t]*$/;
+/** A fenced code block opener or closer. */
+const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
+/** A heading that opens a Runs section: exactly `Runs`, optionally with a
+ *  parenthetical (`Runs (2026)`) or a trailing colon. Anchored at BOTH ends —
+ *  `Runs per worker` or `Runs-per-second thresholds` name a steps/threshold
+ *  table, and treating them as Runs sections left those tables unhashed
+ *  (review of evlk01, M2). */
+const RUNS_HEADING_RE = /^runs(?:\s*\(.*\))?\s*:?$/i;
 
-/** True when a line records the outcome of a run rather than defining the
- *  eval's steps. */
+/** True when a field line records the outcome of a run rather than defining
+ *  the eval's steps. Table rows are decided by `stepBody`, which knows
+ *  which section a row sits in. */
 export function isResultOfRecordLine(line: string): boolean {
-  return RESULT_LINE_RE.test(line) || RUNS_ROW_RE.test(line);
+  return RESULT_LINE_RE.test(line);
 }
 
 /**
@@ -60,9 +97,74 @@ export function isResultOfRecordLine(line: string): boolean {
  * change (which would make the lock cry wolf and get switched off).
  */
 export function stepBody(md: string): string {
-  return md
-    .split(/\r?\n/)
-    .filter((l) => !isResultOfRecordLine(l))
+  const lines = md.split(/\r?\n/);
+  const kept: string[] = [];
+  // Inside a fenced code block everything is code, so it is step content:
+  // hashed verbatim, never read as a heading or a result-of-record line. A
+  // shell comment like `# Runs the bench` inside a fence used to OPEN a Runs
+  // section and un-hash every table after it (review of evlk01, M1).
+  let fence: string | null = null;
+  // A Runs section lasts until the next heading at the same or a higher
+  // level; a deeper sub-heading stays inside it.
+  let runsLevel: number | null = null;
+
+  const openHeading = (level: number, text: string): void => {
+    if (runsLevel !== null && level <= runsLevel) runsLevel = null;
+    if (runsLevel === null && RUNS_HEADING_RE.test(text.trim())) runsLevel = level;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (fence !== null) {
+      kept.push(line);
+      const close = FENCE_RE.exec(line);
+      if (
+        close &&
+        close[1][0] === fence[0] &&
+        close[1].length >= fence.length &&
+        line.trim() === close[1]
+      ) {
+        fence = null;
+      }
+      continue;
+    }
+    const open = FENCE_RE.exec(line);
+    if (open) {
+      fence = open[1];
+      kept.push(line);
+      continue;
+    }
+
+    const atx = ATX_HEADING_RE.exec(line);
+    if (atx) {
+      openHeading(atx[1].length, atx[2] ?? "");
+      kept.push(line);
+      continue;
+    }
+    // Setext: a text line followed by `===` (level 1) or `---` (level 2).
+    // Neither a table row nor a result-of-record line is ever taken as its
+    // text: `Status: RED` over a `---` rule would otherwise become a heading,
+    // be kept, and make recording a run read as `moved`.
+    const next = lines[i + 1];
+    const underline = next === undefined ? null : SETEXT_UNDERLINE_RE.exec(next);
+    if (
+      underline &&
+      line.trim() !== "" &&
+      !TABLE_ROW_RE.test(line) &&
+      !isResultOfRecordLine(line)
+    ) {
+      openHeading(underline[1][0] === "=" ? 1 : 2, line);
+      kept.push(line, next as string);
+      i++;
+      continue;
+    }
+
+    if (isResultOfRecordLine(line)) continue;
+    if (runsLevel !== null && TABLE_ROW_RE.test(line)) continue;
+    kept.push(line);
+  }
+  return kept
     .map((l) => l.replace(/\s+$/, ""))
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
@@ -135,7 +237,7 @@ export function stampEvalShas(evals: Record<string, string>): RedEvalShas {
 }
 
 export interface StepBodyFinding {
-  kind: "moved" | "missing" | "unstamped";
+  kind: "moved" | "missing" | "unstamped" | "repointed" | "dropped" | "unverifiable";
   evalPath: string;
   message: string;
 }
@@ -170,7 +272,7 @@ export function verifyStepBodies(
       findings.push({
         kind: "moved",
         evalPath: rel,
-        message: `${rel} step body changed under a RED stamp (${sha.slice(0, 12)} → ${now.slice(0, 12)}) — fix the code, not the eval; re-run \`devx gate evals\` if the expectation genuinely changed`,
+        message: `${rel} step body changed under a RED stamp (${sha.slice(0, 12)} → ${now.slice(0, 12)}) — fix the code, not the eval; if the expectation genuinely changed, \`devx revise\` re-opens the red stage and clears the stamp`,
       });
     }
   }
@@ -179,16 +281,38 @@ export function verifyStepBodies(
       findings.push({
         kind: "unstamped",
         evalPath: rel,
-        message: `${rel} carries no RED stamp — re-run \`devx gate evals\` to bring it under the lock`,
+        message: `${rel} carries no RED stamp — in a locked workstream, \`devx revise\` re-opens the red stage so it can be gated`,
       });
     }
   }
   return findings;
 }
 
-/** True when findings should fail a verification. `unstamped` never blocks. */
-export const blocksVerification = (f: readonly StepBodyFinding[]): boolean =>
-  f.some((x) => x.kind === "moved" || x.kind === "missing");
+/**
+ * True when findings should fail a verification.
+ *
+ * `moved` and `missing` always block. The eval-SET findings block only in a
+ * coverage-locked workstream (debug-evlk01 B/C): `unstamped` (an eval added
+ * after the lock), `repointed` (an expectation pointed at a different file),
+ * `dropped` (a locked eval removed, or reclassified so it no longer runs) and
+ * `unverifiable` (the inputs needed to check the set are gone). Each is a way
+ * to run — or stop running — code nobody watched fail. Elsewhere they are
+ * advisory, which is what keeps grandfathering intact.
+ */
+export const blocksVerification = (
+  f: readonly StepBodyFinding[],
+  opts: { locked?: boolean } = {},
+): boolean =>
+  f.some(
+    (x) =>
+      x.kind === "moved" ||
+      x.kind === "missing" ||
+      (opts.locked === true &&
+        (x.kind === "unstamped" ||
+          x.kind === "repointed" ||
+          x.kind === "dropped" ||
+          x.kind === "unverifiable")),
+  );
 
 // ---------------------------------------------------------------------------
 // L1 — the write-time guard
@@ -233,7 +357,9 @@ export interface EvalsGuardInput {
  * NOTE the deliberate asymmetry with the outline guard — this one is scoped
  * by STATE (`evals_red`), not by path alone. An eval is fully writable while
  * it is being authored; it locks only once a gate has certified it failing
- * for the right reason, and unlocks when that gate is legitimately re-run.
+ * for the right reason, and unlocks when the red stage is re-opened by
+ * `devx revise` (which clears the stamp) — not by re-running the gate, which
+ * cannot re-stamp an eval that now passes (debug-evlk01 D).
  */
 export function evalsGuardDecision(input: EvalsGuardInput): EvalsGuardDecision {
   if (!input.evalsRed) return { deny: false };
@@ -261,9 +387,11 @@ export function evalsGuardDecision(input: EvalsGuardInput): EvalsGuardDecision {
       `${tool} on '${target}' denied: this eval is RED-locked. The gate ` +
       "certified it failing for the right reason, and an eval edited during " +
       "implementation turns a green run into a tautology. Fix the code, not " +
-      "the eval. If the expectation itself genuinely changed, say so and " +
-      "re-run `devx gate evals <hash>` — that is the sanctioned path, and it " +
-      "re-stamps the body. Result-of-record stamps (Status / Last run / Runs " +
-      "rows) stay writable and do not need this.",
+      "the eval. If the expectation itself genuinely changed, that is a " +
+      "revision: `devx revise` re-opens the red stage and clears the stamp " +
+      "(re-running the gate cannot re-stamp an eval that now passes — it " +
+      "requires P0 evals to be RED). Result of record stays writable and does " +
+      "not need this: Status / Last run / Verdict / Result lines, and the " +
+      "table under a `Runs` heading.",
   };
 }

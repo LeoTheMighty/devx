@@ -299,19 +299,31 @@ free-nested sub-items (contract in Stage: PRD).
    existed to pass it.
 
    The stamp is detection, not enforcement: nothing refuses the edit.
-   `devx gate evals <hash> --verify` FAILs (exit 1) a stamped eval whose body
-   moved or that was deleted. It checks only the files it stamped, so an eval
-   added later, or an expectation re-pointed at another file, is not caught.
-   For a markdown eval, `Status` / `Last run` / `Run` / `Result` lines and
-   every table row are left out of the hash, so a run can be recorded; a
-   non-markdown eval is hashed whole, ignoring line endings and trailing
-   whitespace.
+   Gate 4 also records `gate_status.evals_locked: true` and every E-id it
+   knew, so `devx gate evals <hash> --verify` FAILs (exit 1) when a stamped
+   eval moved or was deleted; when an eval was added after the lock or a new
+   file appeared in a locked eval directory; when an expectation was
+   re-pointed at a different file; or when a locked eval was removed or
+   reclassified so it no longer runs. An eval waived at the gate, or a P1
+   whose file did not exist yet, was never locked, so changing it later does
+   not block.
+
+   What stays writable in a markdown eval, so a run can be recorded: `Status`,
+   `Last run` and `Verdict` lines, `Result` (the result a run *observed*), and
+   the table under a `Runs` heading. Everything else is locked, including the
+   `Run:` command and any `Expected:` / `Threshold:` bar. To lock an expected
+   result, write it as `Expected:` or `Threshold:`, never as `Result:` — and
+   keep `Result:` to one line. Anything inside a fenced code block is locked.
+   A non-markdown eval is hashed whole, ignoring line endings and trailing
+   whitespace; in a directory eval, tool-written files (dotfiles,
+   `__snapshots__`, `__pycache__`) are ignored.
 
    Once the evals pass, re-running Gate 4 cannot re-stamp them — it requires
    P0 evals to be RED. If the expectation genuinely changed, run
-   `devx revise`: it reopens the red stage and clears the stamp. Workstreams
-   whose RED gate predates the stamp carry no `red_eval_shas`; `--verify`
-   passes them with `stamped: 0` and reports nothing.
+   `devx revise`: it reopens the red stage and clears the stamp. A workstream
+   with no `evals_locked` marker and no E-id map is grandfathered: `--verify`
+   re-hashes anything it stamped, but only reports its eval set as
+   `unstamped` and never blocks on it.
 
 3. On PASS (flips `evals_red` + `stage: executing`): **emit the dev specs**
    — one per plan phase, v1 contract unchanged: spec file under `dev/`
