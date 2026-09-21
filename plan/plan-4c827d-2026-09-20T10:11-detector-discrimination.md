@@ -105,7 +105,7 @@ unscoped matches discriminates between nothing.
 
 ## Evidence (units matter more than counts)
 
-Ten specimens as of 2026-09-20, nine of them in devx itself. **Read the
+Eleven specimens as of 2026-09-21, ten of them in devx itself. **Read the
 unit on each one** — a count of symptoms over-weights a bug that fired
 once.
 
@@ -120,6 +120,7 @@ once.
 | devx packaged-skills guard | passes CI correctly while palateful runs skill bodies 146/161/184 lines behind HEAD, incl. 16 `tour` refs to a command retired 6 weeks ago | per-repo — **population stops one hop short** |
 | devx `doctor` dead-blocker | fired correctly for `bqa102`; **structurally could not fire** for `rsh102`, whose blocker was itself stale and therefore looked alive | per-row — **input is the same class of stale data it detects** |
 | devx `next` drift on `rsh102` | reported the status mismatch correctly, as a `drift[]` field beside a routing decision pointing at a different item — ignored 7 weeks | per-report — **detected and unreadable in context** |
+| devx `workstream-migration-integrity` floor | asserted ≥9 workstreams; archival left 1, so it went red — and was **correct**: the suite generates 3 `it()` per slug, so 27 tests silently became 3 with no failure and no skip. Nearly "fixed" by lowering the floor | per-test-population — **looked broken, was working** (opposite sign) |
 | devx `doctor` `replaceFrontmatterStatus` | `fix.ts:79`'s `/^status:[ \t]*\S.*$/m` misses a bare `status:`, so the replace is a no-op, the function returns content unchanged — and the caller reports the fix as **applied** | per-repair — **wrong about its own ACTION, not about the world** |
 
 The last row is the one that changes conclusions. All ten palateful PRs
@@ -478,6 +479,45 @@ discriminate?" does not cover it. The question that does is **"did the
 action this thing claims it took actually happen?"** — which none of the
 other nine specimens require, and which any chosen option now has to
 answer for repair paths as well as detection paths.
+
+### The opposite sign: a guard that looked broken and was working
+
+Every other specimen here looked alive and wasn't. `wsmig1` (#165) is the
+reverse, and it is the one most likely to be destroyed by the fix.
+
+`test/workstream-migration-integrity.test.ts` asserted
+`slugs.length >= 9`. Archival moved 8 of 9 workstreams into
+`_devx/archive/`, the assertion went red on every branch, and three
+sessions read it as a stale literal needing to be lowered. It was not
+stale. The suite loops `for (const slug of slugs)` generating three
+`it()` blocks per slug, so archival shrank **27 tests to 3** — and the
+missing 24 were never registered at all. No failure, no skip, just a
+smaller total. **The floor was the only thing in the repo that noticed.**
+
+Two of the proposed repairs had the original defect one level up.
+Deriving the expected set from disk is circular — the guard would then
+agree with whatever the disk says, including an empty disk. Shape-based
+guards stay true while the population empties. The landed fix keeps a
+literal floor over the union of workstreams + archive, so archival
+cannot trip it and only a genuine deletion lowers it: 4 tests → 33, and
+the 8 archived workstreams that went unchecked during the outage came
+back clean.
+
+**What this does to the register (Option E).** Asked "under what
+conditions do proxy and claim diverge?", the honest answer here is
+*they didn't — the world changed and the guard noticed.* So E needs a
+third reading rule alongside the other two: **a red is evidence about the
+world until proven evidence about the guard.** The reflex to repair a
+red detector is how a working one gets deleted — the mirror image of the
+habituation cost on `dev-f83b04`, where the reflex to ignore a noisy
+finding is how a working one gets ignored. Both are the same failure: a
+reader's prior about the detector overriding what it reported.
+
+It also names a population shape none of the other specimens have: a
+suite whose test count is **derived from the data under test** can
+shrink silently, because a missing iteration registers as nothing rather
+than as a failure. Any option chosen here should say how it treats
+loop-generated tests.
 
 ### Still uncovered: detected but unreadable
 
