@@ -285,11 +285,12 @@ free-nested sub-items (contract in Stage: PRD).
    feature, not an import/wiring error. Read the failure quotes in
    `evals/RED-report.md` and confirm each one; wrong-reason failures are
    yours to fix before the gate counts.
-2b. **The step bodies lock on PASS.** Gate 4 stamps each eval's step-body
-   sha256 into `gate_status.red_eval_shas` (`stampEvalShas()` in
-   `src/lib/engine/evals-lock.ts`). From that moment the eval's *steps* are
-   frozen and its *result of record* — Status / Last run / Runs rows — stays
-   writable, because that is how a run gets recorded at all.
+2b. **Gate 4 stamps the evals it ran.** On every non-FAIL verdict (PASS,
+   CONCERNS, WAIVED), Gate 4 stamps a sha256 of each eval artifact it ran
+   into `gate_status.red_eval_shas` (`stampEvalShas()` in
+   `src/lib/engine/evals-lock.ts`); a directory artifact is stamped file by
+   file. A later re-run keeps the original sha of any stamped eval that still
+   exists, so `--waive` cannot drop a lock.
 
    The rule this enforces is **fix the code, not the eval**. An eval softened
    during implementation turns a green run into a tautology, and nothing
@@ -297,12 +298,20 @@ free-nested sub-items (contract in Stage: PRD).
    this artifact was watched failing for the right reason *before* code
    existed to pass it.
 
-   If the expectation genuinely changed, the sanctioned path is to say so and
-   re-run `devx gate evals <hash>`, which re-stamps the bodies.
-   `devx gate evals <hash> --verify` FAILs a body that moved — including an
-   eval deleted out from under its own stamp. Workstreams whose RED gate
-   predates the stamp are grandfathered: unstamped evals report, never
-   block.
+   The stamp is detection, not enforcement: nothing refuses the edit.
+   `devx gate evals <hash> --verify` FAILs (exit 1) a stamped eval whose body
+   moved or that was deleted. It checks only the files it stamped, so an eval
+   added later, or an expectation re-pointed at another file, is not caught.
+   For a markdown eval, `Status` / `Last run` / `Run` / `Result` lines and
+   every table row are left out of the hash, so a run can be recorded; a
+   non-markdown eval is hashed whole, ignoring line endings and trailing
+   whitespace.
+
+   Once the evals pass, re-running Gate 4 cannot re-stamp them — it requires
+   P0 evals to be RED. If the expectation genuinely changed, run
+   `devx revise`: it reopens the red stage and clears the stamp. Workstreams
+   whose RED gate predates the stamp carry no `red_eval_shas`; `--verify`
+   passes them with `stamped: 0` and reports nothing.
 
 3. On PASS (flips `evals_red` + `stage: executing`): **emit the dev specs**
    — one per plan phase, v1 contract unchanged: spec file under `dev/`

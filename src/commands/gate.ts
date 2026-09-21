@@ -534,15 +534,95 @@ function collectEvalBodies(
     if (rel === null || rel in out) continue;
     const abs = join(repoRoot, ...rel.split("/"));
     if (!io.fs.exists(abs)) continue;
-    let raw: string;
-    try {
-      raw = io.fs.readFile(abs);
-    } catch {
-      continue;
-    }
-    out[rel] = raw;
+    readArtifactInto(io, abs, rel, out);
   }
   return out;
+}
+
+/**
+ * Read one artifact into `out`, expanding a directory into its files.
+ *
+ * This used to be `try { readFile } catch { continue }`, which dropped
+ * anything it could not read as a single file WITHOUT A WORD. A directory
+ * artifact (`vitest run test/e2e` is a perfectly good runner target) threw
+ * EISDIR, was skipped, and the gate still PASSed and flipped `evals_red`
+ * with an EMPTY stamp — so every file under it could be softened and
+ * `--verify` would report clean forever. An inert producer reading as
+ * permission, which is the exact defect debug-75563d existed to remove
+ * (review of #164).
+ *
+ * Directories are expanded and each file is locked under its own
+ * repo-relative path, so `--verify` needs no change to check them. Anything
+ * else that cannot be read is WARNED about by name — the gate still runs,
+ * but it never again claims a lock it does not hold.
+ */
+function readArtifactInto(
+  io: GateIo,
+  abs: string,
+  rel: string,
+  out: Record<string, string>,
+): void {
+  try {
+    out[rel] = io.fs.readFile(abs);
+    return;
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException | undefined)?.code;
+    if (code !== "EISDIR") {
+      io.err(
+        `devx gate evals: warning: eval artifact '${rel}' could not be read (${code ?? "unknown error"}) — it is NOT locked\n`,
+      );
+      return;
+    }
+  }
+  let entries: string[];
+  try {
+    entries = io.fs.readdir(abs);
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException | undefined)?.code;
+    io.err(
+      `devx gate evals: warning: eval artifact directory '${rel}' could not be listed (${code ?? "unknown error"}) — it is NOT locked\n`,
+    );
+    return;
+  }
+  // Sorted so the stamp is identical across filesystems with different
+  // readdir order.
+  for (const name of [...entries].sort()) {
+    readArtifactInto(io, join(abs, name), `${rel.replace(/\/+$/, "")}/${name}`, out);
+  }
+}
+
+/**
+ * Merge a fresh stamp with the previous one (review of #164, finding A).
+ *
+ * The map used to be replaced wholesale with only the evals that RAN this
+ * time. An eval deferred on a re-run — `--waive`, or shipped-green after a
+ * revise replay — was therefore DROPPED from the stamp, so waiving an eval
+ * deleted its lock and `--verify` then reported `stamped: 0`, PASS: exactly
+ * the "`--waive` as a silent lock bypass" the comment at the write site
+ * says stamping on WAIVED prevents. The approver defaults to $USER, so an
+ * agent could do it unaided.
+ *
+ * Now a previously stamped eval whose file STILL EXISTS keeps its ORIGINAL
+ * sha. Keeping the old sha is the point: re-hashing would lock in whatever
+ * the file says now, which launders exactly the edit a waiver might have
+ * been covering. A key is dropped only when its file is gone — so the
+ * "replace, don't merge" guarantee for deleted evals still holds.
+ *
+ * The one sanctioned way to discard a live stamp is re-opening the red
+ * stage (`devx revise`), and applyEnginePatch clears the stamp there.
+ */
+function carryForwardStamps(
+  prior: Readonly<Record<string, string>>,
+  fresh: Record<string, string>,
+  repoRoot: string,
+  io: GateIo,
+): Record<string, string> {
+  const carried: Record<string, string> = {};
+  for (const [rel, sha] of Object.entries(prior)) {
+    if (rel in fresh) continue;
+    if (io.fs.exists(join(repoRoot, ...rel.split("/")))) carried[rel] = sha;
+  }
+  return { ...carried, ...fresh };
 }
 
 export function runGateEvalsCli(
@@ -760,7 +840,12 @@ export function runGateEvalsCli(
     // either unstamped would make `--waive` a silent lock bypass — the
     // gate would record an operator override AND quietly drop the
     // immutability the override was never asked to waive.
-    const redEvalShas = stampEvalShas(collectEvalBodies(r.repoRoot, io, result.runs));
+    const redEvalShas = carryForwardStamps(
+      ws.state.redEvalShas,
+      stampEvalShas(collectEvalBodies(r.repoRoot, io, result.runs)),
+      r.repoRoot,
+      io,
+    );
     try {
       const updated = applyEnginePatch(ws.content, {
         gateStatus: { evals_red: true },

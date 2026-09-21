@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 // RED step-body locking — "fix the code, not the eval."
 // Port of mycase/8am-harness #59 play 1.
 import { describe, expect, it } from "vitest";
@@ -181,5 +182,44 @@ describe("evalsGuardDecision", () => {
     expect(
       evalsGuardDecision({ payload: { tool_name: "Edit" }, evalsRed: true }).deny,
     ).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review of #164 — AC 4 and the non-md normalization (both were untested:
+// reverting either passed the whole suite, mutations M9 / M2).
+// ---------------------------------------------------------------------------
+
+describe("lockableBody — non-markdown evals (review of #164)", () => {
+  const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
+
+  it("AC 4: a .ts eval is hashed WHOLE — a `| … |` line is step body, not result of record", () => {
+    // stepBody() strips table rows as Runs-table results. Applied to source
+    // that would silently drop a real line from the eval's own hash.
+    const src = "const rows = `\n| date | RED |\n`;\nexpect(run()).toBe(1);\n";
+    const edited = src.replace("| date | RED |", "| date | GREEN |");
+    expect(stepBodySha("test/e.test.ts", edited)).not.toBe(stepBodySha("test/e.test.ts", src));
+    // …whereas in markdown the same line IS a Runs row and is stripped.
+    expect(stepBodySha("evals/E-1.md", edited)).toBe(stepBodySha("evals/E-1.md", src));
+  });
+
+  it("F: CRLF and trailing whitespace do not change a non-md eval's sha", () => {
+    const lf = "process.exit(1);\nconst x = 1;\n";
+    expect(stepBodySha("test/e.test.mjs", "process.exit(1);\r\nconst x = 1;  \r\n")).toBe(
+      stepBodySha("test/e.test.mjs", lf),
+    );
+  });
+
+  it("F: normalization is the IDENTITY on a clean LF file — every existing stamp still verifies", () => {
+    // The guarantee that makes the normalization safe to ship: a stamp taken
+    // before it (sha256 of the raw bytes) is unchanged for any file that was
+    // already LF with no trailing whitespace.
+    const clean = "import { run } from './x';\n\nexpect(run()).toBe(1);\n";
+    expect(stepBodySha("test/e.test.ts", clean)).toBe(sha(clean));
+  });
+
+  it("F: a real edit to a non-md eval still changes its sha", () => {
+    const a = "process.exit(1);\n";
+    expect(stepBodySha("test/e.test.mjs", "process.exit(0);\n")).not.toBe(stepBodySha("test/e.test.mjs", a));
   });
 });
