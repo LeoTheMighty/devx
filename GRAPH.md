@@ -4,7 +4,7 @@
 
 # Story graph
 
-238 specs across 25 groups — 12 blocked · 162 done · 6 in-progress · 58 ready; 449 edges.
+240 specs across 25 groups — 12 blocked · 162 done · 7 in-progress · 59 ready; 451 edges.
 
 ## Legend
 
@@ -220,6 +220,7 @@ flowchart TD
     f1d6b2["f1d6b2 Vision-gap Track 4 — Fleet layer: thin mu…"]
     f4149e["f4149e An ASCII `-` in a todo.md phase pointer s…"]
     f83b04["f83b04 Spec-lock liveness: record the holder, no…"]
+    inert1["inert1 'Computed and never read' — a mechanicall…"]
     lay101["lay101 Enforce project-level's one-doc-set rule…"]
     lpf101["lpf101 Loop preflight main-health check"]
     roc101["roc101 /devx Phase 1 resume-detection — verify c…"]
@@ -232,6 +233,7 @@ flowchart TD
     v2s101["v2s101 V2.0-b/c — engine template scaffold + bac…"]
     v2t101["v2t101 V2.3 — static HTML review tour on every PR"]
     v2x101["v2x101 V2.2 — execute re-home + BMAD ejection"]
+    wsmig1["wsmig1 workstream-migration-integrity pins a har…"]
   end
   28b267 -.-> ebf8c4
   28b267 -.-> ecdcda
@@ -382,6 +384,8 @@ flowchart TD
   f02000 --> a01000
   f1d6b2 --> b3f7a1
   f1d6b2 --> c8e2d4
+  f4149e -.-> inert1
+  f4149e -.-> wsmig1
   grp_harness_fold_in -.-> cf65aa
   grp_harness_fold_in -.-> 494590
   grp_harness_fold_in -.-> lpf101
@@ -466,7 +470,7 @@ flowchart TD
   classDef unknownStatus fill:#fff,stroke:#777,color:#222
   classDef collapsed fill:#eee,stroke:#777,color:#222
   class grp_blocker_push_interim collapsed
-  class 75563d ready
+  class 75563d wip
   class a494be done
   class dlr101 done
   class dlr102 done
@@ -615,6 +619,7 @@ flowchart TD
   class f1d6b2 blocked
   class f4149e ready
   class f83b04 ready
+  class inert1 ready
   class lay101 ready
   class lpf101 done
   class roc101 done
@@ -627,6 +632,7 @@ flowchart TD
   class v2s101 done
   class v2t101 done
   class v2x101 done
+  class wsmig1 ready
 ```
 
 ## Warnings

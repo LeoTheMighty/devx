@@ -3,11 +3,11 @@ hash: 75563d
 type: debug
 created: 2026-09-02T09:20:00-06:00
 title: "RED eval sha lock is unwired — Gate 4 never calls stampEvalShas()"
-status: ready
+status: in-progress
 from: plan/plan-a494be-2026-09-01T14:31-docs-layout-resolution.md
 blocked_by: []
 branch: null
-owner: null
+owner: /devx-2026-09-20T1822-39853
 ---
 ## Goal
 
@@ -67,3 +67,4 @@ CLAUDE.md § "Fix the code, not the eval" also states the lock as fact.
   (`src/lib/engine/evals-lock.ts:85`), no caller. Gate 4 PASS on `a494be`
   wrote `gate_verdicts.evals: PASS` and `evals_red: true` but no
   `red_eval_shas`. Out of scope for the RED stage that found it.
+- 2026-09-20T18:22:49-06:00 — claimed by /devx in session /devx-2026-09-20T1822-39853
