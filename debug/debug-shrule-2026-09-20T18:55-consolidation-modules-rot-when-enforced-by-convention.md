@@ -157,6 +157,40 @@ claim. Review asks what the code does; the remark made it ask what *else in
 the repo shares this name* — a question review does not naturally generate.
 Three findings now, none of them produced by reading the code under review.
 
+### `"no PR yet"` is a catch-all for at least three unrelated causes
+
+`palateful-2d` hit the CRLF failure's twin this morning from a different
+direction, and the gate gave the same answer both times. Collected:
+
+| Cause | How `fm.branch` ends up wrong | Gate output |
+|---|---|---|
+| No PR has been opened | correct branch, genuinely no PR | `no PR yet` |
+| Authoring sentinel (`branch: unassigned`) | non-empty string, so the guard passed | `no PR yet` |
+| CRLF spec | `readFrontmatter` returned `{}`; **nothing was read at all** | `no PR yet` |
+
+The third is the worst because it reports a fact about **GitHub** when the
+cause is entirely **local** — the spec was never read. `debug-1dfbdd` fixes
+the first two (the reason now names the branch queried, and a non-existent
+authored branch gets its own verdict). The third is untouched, because it is
+caused by the fence parser above and not by the branch guard.
+
+**The gate must distinguish "read the spec, found no PR" from "could not read
+the spec."** Those want opposite responses: the first is "wait for Phase 7",
+the second is "your spec file is unparseable." 2d's cost was a wrong
+diagnosis until devx-b6 traced it; the CRLF variant's cost is a silent
+fallback nobody knows happened.
+
+**Sequencing constraint — this AC must land WITH AC 5, not before it.**
+Today a CRLF spec is often still *correct by accident*: `readFrontmatter`
+returns `{}`, so `authoredBranch` is null, so the gate derives the branch —
+and if the PR is on the derived name, which is the normal case, it resolves
+fine. Adding a hard "could not read the spec" verdict on its own would
+convert those working-by-luck runs into loud failures. The detection is only
+safe once the fence parse actually works, at which point `{}` genuinely means
+"unparseable" instead of "CRLF". Landing them in the wrong order trades a
+silent right answer for a loud wrong one — the same trap that killed the
+precondition design in `debug-1dfbdd`.
+
 ## Acceptance criteria
 
 1. `debug-7b3e2a`'s Status log records that its fix was incomplete, which
@@ -190,7 +224,17 @@ Three findings now, none of them produced by reading the code under review.
    sharing a name with different return contracts is the hazard
    `artifacts.ts` privatized its constants to prevent, and a hand-resolved
    conflict between them is how it gets shipped.
-7. Consider whether "consolidation module with unmigrated callers" is a
+   **Decided:** `engine/frontmatter.ts` keeps the bare name — it is the real
+   parser — and the `frontmatter-keys.ts` view is renamed
+   `splitFrontmatterLines`. 2d proposed this and it is right: the name
+   without a qualifier should belong to the thing that does the parsing, not
+   to a view over it. Renaming happens on #162 rather than being left for a
+   conflict resolution to guess at.
+7. `merge-gate` distinguishes "read the spec, found no PR" from "could not
+   read the spec". **Must land with AC 5, not before it** — see the
+   sequencing constraint above; on its own it converts CRLF specs that
+   currently resolve correctly by derivation into loud failures.
+8. Consider whether "consolidation module with unmigrated callers" is a
    `devx doctor` finding or a lint rule. **Weigh it against current detector
    noise before adding it** — `f83b04` has already trained multiple sessions
    to ignore dead-owner findings, and a new class landing into a detector
