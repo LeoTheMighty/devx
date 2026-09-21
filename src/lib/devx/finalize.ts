@@ -84,9 +84,14 @@ import {
 import {
   type Exec,
   type ClaimableType,
+  type SpecLookup,
   BACKLOG_BY_TYPE,
+  CLAIMABLE_TYPES,
+  isClaimableType,
   isRejectedPush,
+  lookupSpecForHash,
   realExec,
+  realFs,
 } from "./claim.js";
 import { type DeriveBranchConfig, deriveBranch } from "../plan/derive-branch.js";
 import { releaseSpecLockGuarded, specLockPath } from "./spec-lock.js";
@@ -102,6 +107,7 @@ export type FinalizeStage =
   | "verify-checkout"
   | "pull"
   | "verify-merge"
+  | "resolve"
   | "mark-done"
   | "commit"
   | "push"
@@ -147,8 +153,15 @@ export interface FinalizeOpts {
   /** Project repo root — the MAIN checkout. Finalize refuses to run from a
    *  linked worktree (see assertMainWorktree). */
   repoRoot: string;
-  /** Spec type: picks the spec dir, the backlog file and the worktree stem. */
-  type: ClaimableType;
+  /** Spec type: picks the spec dir, the backlog file and the worktree stem.
+   *  Omit it and finalize resolves the type from the hash itself — but only
+   *  AFTER stage 0 has verified the checkout and stage 1 has pulled (7d96be
+   *  review). Resolving earlier reads a tree finalize itself treats as
+   *  untrusted: parked on a feature branch, or behind origin with the spec in
+   *  the unpulled commits, it reported "no spec file for hash …" and sent the
+   *  operator hunting for a typo when the real fix was `git checkout main` or
+   *  a pull. An explicit `type` skips resolution entirely, as before. */
+  type?: ClaimableType;
   /** Merged devx.config.yaml. `git:` drives branch derivation and the
    *  default-branch guard; forwarded to nothing else (mark-done loads its
    *  own). Branch names are NOT re-derived by hand here — `deriveBranch`
@@ -190,9 +203,14 @@ export interface FinalizeOpts {
   /** Test seam — replaces the cross-process backlog lock (the guarded
    *  release must run under it; see releaseSpecLockGuarded's contract). */
   lock?: BacklogLockFn;
-  /** Test seam — the mark-done call. Returns what runMarkDone's JSON
-   *  carries, or throws. Defaults to an in-process markDone(). */
-  markDone?: () => { paths: string[]; todoSynced: boolean };
+  /** Test seam — the mark-done call. Receives the resolved spec type, so
+   *  mark-done and the worktree stage can never disagree about it. Returns
+   *  what runMarkDone's JSON carries, or throws. Defaults to an in-process
+   *  markDone(). */
+  markDone?: (type: ClaimableType) => { paths: string[]; todoSynced: boolean };
+  /** Test seam — hash → spec lookup, consulted only when `type` is omitted.
+   *  Defaults to `lookupSpecForHash` over the real filesystem. */
+  lookupSpec?: () => SpecLookup;
   /** Test seam — path existence probe (worktree presence). */
   exists?: (p: string) => boolean;
   /** Test seam — stdout/stderr sinks for progress detail. */
@@ -554,6 +572,40 @@ export function finalize(hash: string, opts: FinalizeOpts): FinalizeResult {
     }
   }
 
+  // ---- stage 1c: resolve the spec type (only when not passed) ------------
+  // Deliberately here and not in the CLI: after stage 0 (right checkout) and
+  // stage 1 (pulled), and inside finalize's own abort tier, so a miss is an
+  // exit-2 `resolve` with nothing written rather than an uncaught throw. The
+  // lookup reads every spec dir, so a non-directory where one is expected
+  // (ENOTDIR) or a permissions error used to escape `runFinalize` as a bare
+  // stack trace and exit 1 — which finalize's contract reserves for
+  // "retryable, nothing written". Those now report as `resolve` too.
+  let type: ClaimableType;
+  if (opts.type !== undefined) {
+    type = opts.type;
+  } else {
+    let lookup: SpecLookup;
+    try {
+      lookup = (opts.lookupSpec ?? (() => lookupSpecForHash(realFs, repoRoot, hash)))();
+    } catch (e) {
+      throw new FinalizeAbort(
+        "resolve",
+        `could not read the spec dirs to resolve hash '${hash}': ${e instanceof Error ? e.message : String(e)}. Nothing was written.`,
+      );
+    }
+    if (lookup.kind !== "found") {
+      throw new FinalizeAbort("resolve", `${lookup.message}. Nothing was written.`);
+    }
+    if (!isClaimableType(lookup.type)) {
+      throw new FinalizeAbort(
+        "resolve",
+        `hash '${hash}' resolves to a ${lookup.type} spec (${lookup.path}) — only ${CLAIMABLE_TYPES.join(", ")} specs are finalizable. Nothing was written.`,
+      );
+    }
+    type = lookup.type;
+    steps.push({ stage: "resolve", ok: true, detail: `${type} (${lookup.path})` });
+  }
+
   // ---- stage 2: mark-done ------------------------------------------------
   // The write boundary. Everything above aborts; everything below reports.
   let paths: string[];
@@ -561,13 +613,13 @@ export function finalize(hash: string, opts: FinalizeOpts): FinalizeResult {
   {
     const run =
       opts.markDone ??
-      (() => {
+      ((): never => {
         throw new FinalizeAbort(
           "mark-done",
           "no markDone implementation supplied (the CLI wires the real one)",
         );
       });
-    const res = run();
+    const res = run(type);
     paths = stageablePaths(res.paths);
     todoSynced = res.todoSynced;
     const dropped = res.paths.length - paths.length;
@@ -671,7 +723,7 @@ export function finalize(hash: string, opts: FinalizeOpts): FinalizeResult {
 
   // ---- stage 5: worktree + branch ----------------------------------------
   {
-    const worktree = join(repoRoot, ".worktrees", `${opts.type}-${hash}`);
+    const worktree = join(repoRoot, ".worktrees", `${type}-${hash}`);
     // deriveBranch (pln101), NOT a hand-rolled `feat/<type>-<hash>`. On a
     // split-branch project the real branch is `<integration>/feat/…`, and a
     // hardcoded name makes `git branch -D` fail with "not found" — which the
@@ -679,7 +731,7 @@ export function finalize(hash: string, opts: FinalizeOpts): FinalizeResult {
     // real branch survived. That is the exact cross-epic regression class
     // deriveBranch exists to kill; re-deriving it by hand here would have
     // reintroduced it in a new place.
-    const branch = opts.branch ?? deriveBranch(opts.config, opts.type, hash);
+    const branch = opts.branch ?? deriveBranch(opts.config, type, hash);
     const details: string[] = [];
     let ok = true;
     let worktreeGone = true;

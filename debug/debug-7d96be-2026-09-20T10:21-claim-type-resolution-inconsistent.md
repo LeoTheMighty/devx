@@ -194,8 +194,12 @@ any direct caller of the library did not. Same command, both conventions.
 - **An explicit `--type` is still validated up front**, so a bad flag costs
   nothing, and an explicit type that names the wrong dir fails with the
   pre-7d96be message byte-for-byte.
-- A hash resolving to an unclaimable type (e.g. `plan`) is refused at
-  `validate`, naming the type and path.
+- A hash resolving to an unclaimable type (e.g. `plan`) is refused before
+  any write, naming the type and path — at `validate` in claim, mark-done,
+  split and verify-claim, and at `resolve` in finalize, which has no
+  `validate` stage. (As merged in #167 this said `validate` for all five;
+  verify-claim did not refuse at all and finalize refused at `resolve`.
+  Corrected in the 7d96be review fix-forward.)
 
 ### AC 4 — skill body
 
@@ -287,3 +291,56 @@ override test correctly stays green.
   reproduced first on the current post-828385 binary (exit 2 at `resolve`,
   nothing written). Nine new tests plus one inverted test that had pinned the
   bug, all mutation-verified.
+- 2026-09-21T13:45-06:00 — phase 4: **retroactive, post-merge** three-agent
+  parallel adversarial review, run by palateful-2d at the coordinator's
+  request after Leo asked for the day's highest-blast-radius PRs to get the
+  Phase 4 they skipped. This PR merged without one: it was driven by hand
+  through the helpers, which never spawn review agents. Shape: Blind Hunter
+  (diff only, deliberately given none of the suspected problem areas),
+  Edge Case Hunter (fixtures against old and new `src/`), Acceptance Auditor
+  (every AC, with mutation checks). All three read-only against `8e05e055`.
+  Deduplicated: **0 HIGH, 3 MED, 9 LOW.** All three MEDs were re-verified
+  against the source by hand before any fix was written.
+  - MED — `.claude/commands/devx.md` still hard-coded `dev` at the exact steps
+    this spec's Goal names (:136 look up `dev/dev-<hash>`, :143 resume
+    detection on `.worktrees/dev-<hash>/`, :174 worktree + branch) and in the
+    Phase 6/7 templates (:364, :382, :396 — the last an executable
+    `pr-body --spec dev/…`, which fails outright on a debug spec). Found by
+    **all three reviewers independently.** On a debug item's resume, :143
+    never matched, so roc101's ownership check was skipped and the flow fell
+    through to a fresh claim. The rule at :159 was right; an agent reads :136
+    first. FIXED (+52 B; 8,220 B of full-run budget headroom after #168).
+  - MED — finalize resolved the spec type in the CLI, *before* its own
+    verify-checkout and pull stages. Parked on the wrong branch, or behind
+    origin with the spec only in unpulled commits, it reported "no spec file
+    for hash …" instead of "check out main" / "pull". FIXED: resolution moved
+    into `finalize()` after stage 1b; an explicit `--type` still skips it.
+  - MED — verify-claim had no claimability check, so an in-progress `plan`
+    spec got exit 4 "orphaned claim — file INTERVIEW.md", contradicting this
+    spec's own :197 ("refused at `validate`"). FIXED.
+  - LOW — the same finalize lookup sat outside any try/catch, so a spec-dir
+    read error (ENOTDIR) escaped as a bare stack trace and exit 1, which the
+    contract reserves for "retryable". Fixed by the same move.
+  - LOW ×4 — stale "default dev" doc comments (verify-claim, claim,
+    mark-done, split) and `claim --help`'s "DEBUG.md with --type debug":
+    FIXED. `devx next`'s generated `verify-claim … --type debug`: comment
+    FIXED, flag deliberately KEPT — the command is run verbatim and a stale
+    pre-7d96be `dist/` defaults to `dev` (debug-d315b9).
+  - LOW — AC 3 audit missed `engine/todo-truth.ts devSpecDone` (hard-coded
+    `dev`, uncommented). AC 3 says converge or comment: COMMENTED, with why
+    `dev/`-only is the safe direction for that probe.
+  - LOW — same-dir duplicate hash: three resolvers disagree (oldest / newest
+    / ambiguous), including `manage/loop.ts:503 resolveSpecPath`, the sixth
+    resolver. FILED as `debug-ed8f8d`, not fixed here, per the coordinator.
+  - LOW — AC 5 is met by three layered tests, not one claim → verify →
+    finalize run through the CLI; ambiguity is tested through claim only.
+    Noted, not fixed.
+  Questions the coordinator asked, answered: (1) the removed resolver's
+  "mirrors merge-gate" comment was false (unsorted vs sorted), already
+  corrected in this PR; nothing relied on the old order. (2) The inverted
+  verify-claim test is **right, not merely green** — the Auditor put the
+  `?? "dev"` default back at each of six sites and every mutation was caught.
+  (3) The sixth consumer: see ed8f8d above — a resolver, not a dev default.
+  Also noted: this spec's claim that the mutation run "fails all nine new
+  cases" while "the override test stays green" cannot both be literal — the
+  nine are eight new tests plus the inverted one.

@@ -532,8 +532,11 @@ const row5: RowFn = (s) => {
     // consumers run `command` as-is): without --session-token the CLI
     // auto-derives the CURRENT session's token, which is exactly the
     // roc101 semantics — exit 0 only if this session took the claim.
-    // Debug claims need --type debug (verify-claim resolves dev/ by
-    // default).
+    // verify-claim resolves a hash's type on its own since 7d96be, so the
+    // flag is not needed by a current binary. It is kept on purpose: the
+    // command is executed verbatim, and a stale pre-7d96be `dist/` defaults
+    // to `dev` and would report a live debug claim as unresolvable
+    // (debug-d315b9). An explicit, correct type is right on every build.
     const typeFlag =
       unverified.backlog === "DEBUG.md" ? " --type debug" : "";
     return {

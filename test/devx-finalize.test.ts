@@ -895,10 +895,21 @@ describe("runFinalize — no --type (7d96be)", () => {
     const before = readFileSync(join(root, "DEBUG.md"), "utf8");
     const r = runCli(root, ["nope99", "--pr", "42", "--merge-sha", "abc1234def"]);
     expect(r.code).toBe(2);
-    expect(JSON.parse(r.stdout)).toEqual({ error: "finalize-failed", stage: "resolve" });
+    // `finalize-aborted`, like every other pre-write stage. This used to be
+    // `finalize-failed` because the lookup ran in the CLI, ahead of
+    // finalize(); nothing parses either string for this stage.
+    expect(JSON.parse(r.stdout)).toEqual({ error: "finalize-aborted", stage: "resolve" });
     expect(r.stderr).toMatch(/under any spec dir/);
     expect(readFileSync(join(root, "DEBUG.md"), "utf8")).toBe(before);
-    expect(r.calls).toHaveLength(0);
+    // This assertion was `r.calls` empty — i.e. "resolve fails before any git
+    // runs", which is the bug the 7d96be review found, not a property to
+    // keep: a spec that exists only in unpulled commits was reported as a
+    // bad hash. The pull now runs FIRST; the write boundary is what must
+    // hold, so assert on writes instead.
+    expect(r.calls.some((c) => c.cmd === "git" && c.args[0] === "pull")).toBe(true);
+    for (const sub of ["add", "commit", "push", "branch"]) {
+      expect(r.calls.some((c) => c.cmd === "git" && c.args[0] === sub)).toBe(false);
+    }
   });
 });
 
@@ -915,6 +926,9 @@ describe("runFinalize — exit-code contract", () => {
       "verify-checkout",
       "pull",
       "verify-merge",
+      // No --type, so finalize resolved the spec itself, after the pull
+      // (7d96be review). With --type this step is absent.
+      "resolve",
       "mark-done",
       "commit",
       "push",
@@ -1164,6 +1178,128 @@ describe("finalize — the session-token guard (all three reviewers, HIGH)", () 
       "utf8",
     );
     expect(lockBody).toContain((parsed.sessionToken as string).replace(/^\/devx-/, ""));
+  });
+});
+
+describe("finalize — type resolved AFTER checkout + pull (7d96be review)", () => {
+  // With no `type`, the lookup used to run in the CLI, before finalize() had
+  // verified the checkout or pulled — reading a tree finalize itself treats
+  // as untrusted, and outside its abort tier.
+  const noType = (over: Partial<FinalizeOpts> = {}): FinalizeOpts => {
+    const o = baseOpts(over);
+    delete (o as { type?: unknown }).type;
+    return o;
+  };
+
+  it("a wrong-branch checkout reports verify-checkout, never a bad-hash `resolve`", () => {
+    // THE finding. Parked on a feature branch that lacks the spec, the old
+    // order said "no spec file for hash …" and sent the operator hunting for
+    // a typo; the real fix was `git checkout main`.
+    let lookedUp = false;
+    try {
+      finalize("b931a1", noType({
+        readFile: stubReadFile({ HEAD: "ref: refs/heads/chore/learn-x\n" }),
+        lookupSpec: () => {
+          lookedUp = true;
+          return { kind: "missing", message: "no spec file for hash 'b931a1' under any spec dir" };
+        },
+      }));
+      throw new Error("expected an abort");
+    } catch (e) {
+      expect(e).toBeInstanceOf(FinalizeAbort);
+      expect((e as FinalizeAbort).stage).toBe("verify-checkout");
+    }
+    expect(lookedUp).toBe(false);
+  });
+
+  it("pulls before resolving, so a spec only in unpulled commits is found", () => {
+    const { exec, calls } = scriptedExec();
+    const order: string[] = [];
+    const res = finalize("b931a1", noType({
+      exec: (cmd, args, o) => {
+        if (cmd === "git" && args[0] === "pull") order.push("pull");
+        return exec(cmd, args, o);
+      },
+      lookupSpec: () => {
+        order.push("resolve");
+        return { kind: "found", path: "/repo/debug/debug-b931a1-x.md", type: "debug" };
+      },
+    }));
+    expect(res.ok).toBe(true);
+    expect(order.indexOf("pull")).toBeLessThan(order.indexOf("resolve"));
+    expect(gitCalls(calls, "pull").length).toBeGreaterThan(0);
+  });
+
+  it("hands the RESOLVED type to mark-done and the worktree stage", () => {
+    let markDoneType: string | undefined;
+    const res = finalize("b931a1", noType({
+      exec: scriptedExec().exec,
+      lookupSpec: () => ({ kind: "found", path: "/repo/debug/debug-b931a1-x.md", type: "debug" }),
+      markDone: (t) => {
+        markDoneType = t;
+        return { paths: ["DEBUG.md"], todoSynced: false };
+      },
+    }));
+    expect(markDoneType).toBe("debug");
+    expect(res.steps.find((st) => st.stage === "resolve")?.detail).toMatch(/^debug /);
+  });
+
+  it("a spec-dir read error aborts at `resolve` instead of escaping uncaught", () => {
+    // The lookup reads every spec dir. A regular file where a dir is
+    // expected (ENOTDIR) used to escape runFinalize as a bare stack trace and
+    // exit 1 — which the contract reserves for "retryable, nothing written".
+    let markDoneRan = false;
+    try {
+      finalize("b931a1", noType({
+        exec: scriptedExec().exec,
+        lookupSpec: () => {
+          throw Object.assign(new Error("ENOTDIR: not a directory, scandir '/repo/plan'"), {
+            code: "ENOTDIR",
+          });
+        },
+        markDone: () => {
+          markDoneRan = true;
+          return { paths: [], todoSynced: false };
+        },
+      }));
+      throw new Error("expected an abort");
+    } catch (e) {
+      expect(e).toBeInstanceOf(FinalizeAbort);
+      expect((e as FinalizeAbort).stage).toBe("resolve");
+      expect((e as Error).message).toMatch(/ENOTDIR/);
+    }
+    expect(markDoneRan).toBe(false);
+  });
+
+  it("refuses an unclaimable resolved type before writing", () => {
+    let markDoneRan = false;
+    try {
+      finalize("b931a1", noType({
+        exec: scriptedExec().exec,
+        lookupSpec: () => ({ kind: "found", path: "/repo/plan/plan-b931a1-x.md", type: "plan" }),
+        markDone: () => {
+          markDoneRan = true;
+          return { paths: [], todoSynced: false };
+        },
+      }));
+      throw new Error("expected an abort");
+    } catch (e) {
+      expect((e as FinalizeAbort).stage).toBe("resolve");
+      expect((e as Error).message).toMatch(/only dev, debug specs are finalizable/);
+    }
+    expect(markDoneRan).toBe(false);
+  });
+
+  it("an explicit type skips resolution entirely", () => {
+    const res = finalize("b931a1", baseOpts({
+      exec: scriptedExec().exec,
+      type: "dev",
+      lookupSpec: () => {
+        throw new Error("lookup must not run when type is explicit");
+      },
+    }));
+    expect(res.ok).toBe(true);
+    expect(res.steps.some((st) => st.stage === "resolve")).toBe(false);
   });
 });
 

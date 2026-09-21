@@ -748,6 +748,31 @@ describe("devx devx-helper verify-claim — exit 64 (usage)", () => {
 // v2d101 — debug-type verify-claim (the debug resume path)
 // ---------------------------------------------------------------------------
 
+describe("verifyClaim — unclaimable resolved type (7d96be review)", () => {
+  // claim, mark-done, split and finalize all refuse a hash that resolves to a
+  // type /devx never claims. verify-claim did not: an in-progress `plan`
+  // spec was parsed and answered exit 4 "orphaned claim — file INTERVIEW.md
+  // and halt", advice for a claim that cannot exist. 7d96be's own spec said
+  // unclaimable types were refused at `validate`.
+  it("refuses a `plan` spec at `validate`, with no --type", () => {
+    const dir = mkdtempSync(join(tmpdir(), "devx-verify-claim-plan-"));
+    mkdirSync(join(dir, "plan"), { recursive: true });
+    writeFileSync(
+      join(dir, "plan", "plan-pln999-2026-09-21T10:00-thing.md"),
+      ["---", "hash: pln999", "type: plan", "status: in-progress", "---", ""].join("\n"),
+    );
+    try {
+      verifyClaim("pln999", { repoRoot: dir, sessionToken: OWNER_SID });
+      throw new Error("expected a refusal");
+    } catch (e) {
+      expect(e).toBeInstanceOf(VerifyClaimError);
+      expect((e as VerifyClaimError).stage).toBe("validate");
+      expect((e as Error).message).toMatch(/resolves to a plan spec/);
+      expect((e as Error).message).toMatch(/only dev, debug specs are claimable/);
+    }
+  });
+});
+
 describe("verifyClaim — debug type (v2d101)", () => {
   function makeDebugFixture(lockBody?: string): Fixture {
     const dir = mkdtempSync(join(tmpdir(), "devx-verify-claim-debug-"));

@@ -254,7 +254,8 @@ export interface ClaimSpecOpts {
   fs?: Partial<ClaimFs>;
   /** Test seam — replacement for the real `git` shell-out. */
   exec?: Exec;
-  /** Spec type (default "dev"). v2d101 extends the claim primitive to
+  /** Spec type. Omit it to resolve from the hash (7d96be). v2d101 extends
+   *  the claim primitive to
    *  debug/* specs (DEBUG.md row flip, `.worktrees/debug-<hash>` stem);
    *  any other type throws ClaimError("validate"). */
   type?: string;

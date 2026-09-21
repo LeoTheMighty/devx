@@ -121,8 +121,9 @@ export interface MarkDoneOpts {
   /** Squash-merge commit sha (abbreviated is fine — it is re-abbreviated
    *  to 7 for the row and the log line). */
   mergeSha: string;
-  /** Spec type: `dev` (default) or `debug`. Picks the spec dir and the
-   *  backlog file, exactly as the claim's `--type` does. */
+  /** Spec type: `dev` or `debug`; omit to resolve from the hash (7d96be).
+   *  Picks the spec dir and the backlog file, exactly as the claim's
+   *  `--type` does. */
   type?: string;
   /** Test seam — defaults to wall clock. */
   now?: () => Date;

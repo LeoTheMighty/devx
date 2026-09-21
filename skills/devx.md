@@ -133,14 +133,14 @@ Repeat per item, respecting `stop_after`:
 ### Phase 1: Claim and Prepare
 
 1. **Resolve the item**:
-   - If `item` is a hash → look up the matching `dev/dev-<hash>-*.md` spec file.
+   - If `item` is a hash → look up `<type>/<type>-<hash>-*.md` across the spec dirs (`dev/`, `debug/`, …).
    - If `item` is a path → read that spec file.
    - If `item` is `next` → pick the top entry in `DEV.md` whose status is `ready` and has no unresolved blockers (blockers listed under `blocked-by:` frontmatter).
    - If no runnable item exists → report and stop.
 2. **Read the spec file** — frontmatter + goal + ACs + status log.
 3. **Read cross-references** — `from:` (parent plan/epic), `blocked-by:`, `spawned:`.
 
-   **Resume-detection branch (roc101).** When the resolved spec already has `status: in-progress` in its frontmatter AND a `.worktrees/dev-<hash>/` directory exists, this is a potential resume — the claim may belong to another live session, and a fresh post-`/clear` invocation is NOT entitled to it (LEARN.md § epic-devx-skill E13: the 2026-05-07 resume-collision incident). BEFORE any worktree edit — and INSTEAD of the fresh claim in step 4 — verify ownership:
+   **Resume-detection branch (roc101).** When the resolved spec already has `status: in-progress` in its frontmatter AND a `.worktrees/<type>-<hash>/` directory exists, this is a potential resume — the claim may belong to another live session, and a fresh post-`/clear` invocation is NOT entitled to it (LEARN.md § epic-devx-skill E13: the 2026-05-07 resume-collision incident). BEFORE any worktree edit — and INSTEAD of the fresh claim in step 4 — verify ownership:
 
    ```
    devx devx-helper verify-claim <hash> --session-token "$SESSION_TOKEN"
@@ -171,7 +171,7 @@ Repeat per item, respecting `stop_after`:
    **Why the helper instead of inlining git commands?** The locked decision is "claim commit pushed to `origin/main` BEFORE any subsequent `gh pr create`" (closes `feedback_devx_push_claim_before_pr.md`). Inlining the order in the skill body has been the regression vector across all 25 Phase 0 stories; the CLI wrapper makes the order non-skippable. Same pattern as `devx merge-gate` (mrg102) and `devx plan-helper derive-branch` (pln101).
 
    Checkbox conventions per [DESIGN.md §Checkbox conventions](../../docs/DESIGN.md#checkbox-conventions): `[ ]` ready · `[/]` in-progress · `[-]` blocked · `[x]` done. Status field is the source of truth; the checkbox mirrors it.
-5. **Enter the worktree**. The helper created `.worktrees/dev-<hash>` on the derived branch (`branch` field of the JSON result — same primitive as pln101's `deriveBranch`, single-branch projects produce `feat/dev-<hash>`). All subsequent edits happen there. Backlog-file updates still target the main worktree (use absolute paths).
+5. **Enter the worktree**. The helper created `.worktrees/<type>-<hash>` on the derived branch (`branch` field of the JSON result — same primitive as pln101's `deriveBranch`, single-branch projects produce `feat/<type>-<hash>`). All subsequent edits happen there. Backlog-file updates still target the main worktree (use absolute paths).
 
    If `devx devx-helper claim` exited 2 with stage `worktree`, the claim itself succeeded (commit pushed; lock released) but worktree create failed — re-run `git worktree add .worktrees/<type>-<hash> -b <branch> <base>` by hand, then resume from Phase 2.
 
@@ -370,7 +370,7 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
 
    <1-2 sentence summary of what was built>
 
-   Spec: dev/dev-<hash>-<ts>-<slug>.md
+   Spec: <type>/<type>-<hash>-<ts>-<slug>.md
    Co-Authored-By: Claude <noreply@anthropic.com>
    ```
    Where `<type>` is the conventional-commit prefix inferred from the spec (`feat`, `fix`, `refactor`, etc.); default `feat` if unclear.
@@ -388,7 +388,7 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
    ```
    git push -u origin <branch-name>
    ```
-   where `<branch-name>` is the worktree's branch (`<branch_prefix>dev-<hash>`).
+   where `<branch-name>` is the worktree's branch (`<branch_prefix><type>-<hash>`).
 2. **If `git.pr_strategy == direct-to-main`** (single-branch YOLO only): skip the PR; the push to a feature branch is followed by a fast-forward merge into `main` once Phase 8 gates clear. Otherwise:
    Phase 7 explicitly reads `.github/pull_request_template.md` (or falls back to the built-in canonical template baked into the CLI when the on-disk file is absent — older repos that predate prt101 or haven't run `/devx-init` upgrade since) by invoking the **`devx pr-body`** CLI (prt102). Never re-implement the substitution in the skill body — the CLI is the single source of truth. It substitutes the active mode + spec path + AC checklist (line-anchored to the canonical positions per locked decision #4 in `epic-pr-template.md` — placeholders inside code blocks must NOT substitute). Optional flags fill the free-text sections; omitted ones leave the placeholder visible AND emit `unresolved-placeholder: <name>` to stderr per locked decision #5.
 
@@ -402,7 +402,7 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
    # next `devx loop` start.
    SCRATCH=".devx-cache/scratch/${DEVX_SESSION:-$(git branch --show-current)}"
    mkdir -p "$SCRATCH"   # fresh worktrees have no .devx-cache (gitignored; claim doesn't create it) — the stderr redirect below fails the whole command without it
-   BODY=$(devx pr-body --spec dev/dev-<hash>-<ts>-<slug>.md \
+   BODY=$(devx pr-body --spec <type>/<type>-<hash>-<ts>-<slug>.md \
      --summary "<1–3 bullets on what changed>" \
      --test-plan "<bulleted list of what local CI gates covered + any manual steps>" \
      --notes "<surprises, deviations, follow-ups>" \

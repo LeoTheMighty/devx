@@ -38,7 +38,13 @@ import {
 
 import { isNullishScalar } from "../frontmatter-scalar.js";
 
-import { type ClaimFs, lookupSpecForHash, realFs } from "./claim.js";
+import {
+  type ClaimFs,
+  CLAIMABLE_TYPES,
+  isClaimableType,
+  lookupSpecForHash,
+  realFs,
+} from "./claim.js";
 import { specLockOwner } from "./spec-lock.js";
 
 const HASH_RE = /^[a-z0-9]{3,12}$/i;
@@ -57,7 +63,8 @@ export interface VerifyClaimOpts {
   sessionToken: string;
   /** Project repo root — where `.devx-cache/` and `dev/` live. */
   repoRoot: string;
-  /** Spec type (default "dev"). v2d101: debug specs resolve under
+  /** Spec type. Omit it to resolve from the hash (7d96be); pass it only to
+   *  pick between two dirs sharing a hash. Debug specs resolve under
    *  `debug/` — same lock path, same ownership semantics. */
   type?: string;
   /** Test seam — partial fs override (real fs for unspecified keys). */
@@ -325,6 +332,18 @@ export function verifyClaim(
   const lookup = lookupSpecForHash(fs, opts.repoRoot, hash, opts.type);
   if (lookup.kind !== "found") {
     throw new VerifyClaimError("resolve", lookup.message);
+  }
+  // Refuse a hash that resolves to a type /devx never claims (`plan`, `test`,
+  // …) — the same check claim, mark-done, split and finalize make. Without it
+  // verify-claim went on to parse the spec and, for an in-progress `plan`,
+  // answered exit 4 "orphaned claim — file INTERVIEW.md and halt": advice for
+  // a claim that cannot exist. 7d96be's spec already said unclaimable types
+  // were refused at `validate`; for this consumer it was not true (review).
+  if (!isClaimableType(lookup.type)) {
+    throw new VerifyClaimError(
+      "validate",
+      `hash '${hash}' resolves to a ${lookup.type} spec (${lookup.path}) — only ${CLAIMABLE_TYPES.join(", ")} specs are claimable`,
+    );
   }
   const specPath = lookup.path;
   let specContent: string;
