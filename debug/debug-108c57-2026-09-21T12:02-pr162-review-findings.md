@@ -5,8 +5,8 @@ created: 2026-09-21T12:02:00-06:00
 title: "Fix forward the retroactive review of PR #162 (828385's frontmatter primitive)"
 from: debug/debug-828385-2026-09-20T10:06-claim-splices-duplicate-owner-key.md
 spawned: []
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-09-21T1203-41728
 branch: null
 ---
 
@@ -178,6 +178,7 @@ story's surface:
   11; about 16 unique after overlap. The four MED findings in items 1, 4,
   5 and 6 were re-reproduced with fresh scripts; items 7, 12 and the two
   828385 corrections were re-confirmed by reading the code.
+- 2026-09-21T12:03:23-06:00 — claimed by /devx in session /devx-2026-09-21T1203-41728
 
 ## Links
 

@@ -4,7 +4,7 @@
 
 # Story graph
 
-242 specs across 25 groups — 12 blocked · 167 done · 7 in-progress · 56 ready; 452 edges.
+244 specs across 25 groups — 12 blocked · 167 done · 8 in-progress · 57 ready; 454 edges.
 
 ## Legend
 
@@ -147,6 +147,7 @@ flowchart TD
   end
   subgraph sg_standalone["standalone — no workstream or epic"]
     00b4d3["00b4d3 A layout-migration commit is blocked by d…"]
+    108c57["108c57 Fix forward the retroactive review of PR…"]
     135dc9["135dc9 project-level artifact names collide with…"]
     1dfbdd["1dfbdd merge-gate accepts any non-null string as…"]
     28b267["28b267 learn.auto_allow — the retro watcher stop…"]
@@ -204,6 +205,7 @@ flowchart TD
     cf65aa["cf65aa loop merge tail never emits the dvx103 ph…"]
     d01000["d01000 Phase 3 — Parallelism & coordination: loc…"]
     d02000["d02000 Phase 9 — Modes & full gate cascade"]
+    d315b9["d315b9 A merge through `gh pr merge` leaves the…"]
     d7e8e5["d7e8e5 Merge-tail helpers treat transient gh Gra…"]
     d982ea["d982ea Warn at filing time when a new spec subst…"]
     db36af["db36af devx doctor — mechanical state reconcilia…"]
@@ -240,6 +242,7 @@ flowchart TD
   1dfbdd -.-> shrule
   28b267 -.-> ebf8c4
   28b267 -.-> ecdcda
+  2e1174 -.-> d315b9
   4d1a9c -.-> 67a7e8
   4d1a9c -.-> 7b3e2a
   5c8b21 -.-> 5e1a77
@@ -254,6 +257,7 @@ flowchart TD
   7a2d1f -.-> b20ret
   7a2d1f -.-> c30ret
   7a2d1f -.-> d40ret
+  828385 -.-> 108c57
   9946f9 --> rtl104
   9c4e21 -.-> 6a913f
   a01000 -.-> grp_bmad_audit
@@ -549,6 +553,7 @@ flowchart TD
   class d40007 ready
   class d40ret ready
   class 00b4d3 ready
+  class 108c57 wip
   class 135dc9 wip
   class 1dfbdd wip
   class 28b267 done
@@ -606,6 +611,7 @@ flowchart TD
   class cf65aa done
   class d01000 blocked
   class d02000 blocked
+  class d315b9 ready
   class d7e8e5 done
   class d982ea ready
   class db36af done
