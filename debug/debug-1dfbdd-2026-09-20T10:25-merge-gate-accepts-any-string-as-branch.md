@@ -5,7 +5,7 @@ created: 2026-09-20T10:25:00-06:00
 title: "merge-gate accepts any non-null string as a branch name, so an unrecognized sentinel gates as 'no PR yet' forever"
 from: null
 spawned: []
-status: in-progress
+status: done
 owner: /devx-2026-09-20T1806-39763
 branch: null
 ---
@@ -193,6 +193,7 @@ it (a branch-name mismatch); its status log now carries the correction.
   branch-mismatch hypothesis recorded in `debug-7d96be`, which was
   wrong. Confirmed `unassigned` appears nowhere in devx's own tree.
 - 2026-09-20T18:06:29-06:00 — claimed by /devx in session /devx-2026-09-20T1806-39763
+- 2026-09-21T12:36:36-06:00 — merged via PR #163 (squash → c0de19f)
 
 ## Links
 
