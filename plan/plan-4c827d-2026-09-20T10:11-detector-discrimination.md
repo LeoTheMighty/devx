@@ -121,7 +121,7 @@ once.
 | devx `doctor` dead-blocker | fired correctly for `bqa102`; **structurally could not fire** for `rsh102`, whose blocker was itself stale and therefore looked alive | per-row — **input is the same class of stale data it detects** |
 | devx `next` drift on `rsh102` | reported the status mismatch correctly, as a `drift[]` field beside a routing decision pointing at a different item — ignored 7 weeks | per-report — **detected and unreadable in context** |
 | devx `workstream-migration-integrity` floor | asserted ≥9 workstreams; archival left 1, so it went red — and was **correct**: the suite generates 3 `it()` per slug, so 27 tests silently became 3 with no failure and no skip. Nearly "fixed" by lowering the floor | per-test-population — **looked broken, was working** (opposite sign) |
-| devx `doctor` `replaceFrontmatterStatus` | `fix.ts:79`'s `/^status:[ \t]*\S.*$/m` misses a bare `status:`, so the replace is a no-op, the function returns content unchanged — and the caller reports the fix as **applied** | per-repair — **wrong about its own ACTION, not about the world** |
+| devx `doctor` stale-lock repair | when the lock was **already gone** (`reason === "missing"`), writes "removed the stale lock" into the spec's append-only audit line — right outcome, false permanent record (`debug-108c57` item 7) | per-repair — **wrong about its own ACTION, not about the world** |
 
 The last row is the one that changes conclusions. All ten palateful PRs
 merged on 2026-07-31 inside a single 24-minute window (15:59:45Z #4 →
@@ -446,39 +446,38 @@ offered as one.
 
 ### A fifth shape: wrong about its own action
 
-`doctor/fix.ts:79` (found by palateful-2d while implementing
-`debug-828385`) is not a detector misreading the world — it is a repair
-reporting a state change **it did not make**. `replaceFrontmatterStatus`
-matches `/^status:[ \t]*\S.*$/m`; the `\S` requires a non-space
-character, so against a bare `status:` the replace matches nothing,
-`next === m[1]`, and the function returns the content unchanged while
-doctor's caller records the fix as applied.
+**Corrected 2026-09-21.** This section first rested on `doctor/fix.ts:79`
+`replaceFrontmatterStatus`, described as a no-op on a bare `status:` that
+doctor then reported as applied. That was wrong. The pre-#162 code
+(`6b8684bd^:fix.ts:~366`) pushed "reset the spec" **only when the text
+changed**, so on a bare `status:` it silently *omitted* the step — an
+omitted step, not a false claim. The retroactive review of PR #162 caught
+it (`debug-108c57`), and palateful-2d, who supplied the original claim,
+re-checked it against the source and withdrew it.
 
-Every other specimen here produces a wrong answer that something
-downstream eventually disagrees with — which is precisely why they were
-all findable. **This one leaves nothing to disagree with.** The claim
-splice that filed `828385` at least deposited a visible duplicate key in
-a file someone would open; a no-op repair reported as a repair deposits
-nothing at all. The wrong answer is terminal rather than propagated.
+The shape is real, and the review found a genuine instance:
+`debug-108c57` item 7. doctor's stale-lock repair, when the lock was
+already gone (`reason === "missing"`), still records "removed the stale
+lock" in the spec's **append-only audit line**. The outcome is correct —
+the lock is gone either way — but the permanent record claims an action
+that never happened, and because the audit trail is append-only, it is
+never revisited. A detector wrong about the world usually leaves
+something downstream to disagree with. A record wrong about its own
+action leaves only itself.
 
-It also reads as careful, which is what makes it durable: someone wrote
-an explicit `if (next === m[1]) return content;` guard against the no-op
-case, and then returned unchanged content without telling the caller.
-The case was considered and the reporting was not.
+The property it adds still stands: "did this detector ever discriminate?"
+does not cover it. The question that does is **"did the action this thing
+claims it took actually happen?"**, asked of repair paths as well as
+detection paths.
 
-**This is a second independent argument for Option E over Option B**,
-arriving from a different direction than the pin101 population case. A
-negative control (B) feeds a detector an input and checks the
-classification — and this detector classifies nothing, so there is no
-classification to check. A register entry (E) reads *proxy: the replace
-returned* against *claim: the file now says `status: done`*, which are
-visibly different sentences. B is blind here by construction; E is not.
-
-It also sharpens the property itself. "Did this detector ever
-discriminate?" does not cover it. The question that does is **"did the
-action this thing claims it took actually happen?"** — which none of the
-other nine specimens require, and which any chosen option now has to
-answer for repair paths as well as detection paths.
+**What no longer stands: this as a second argument for Option E over B.**
+The withdrawn version argued that B was blind "by construction" because
+the fixer classified nothing. Item 7 does not support that. Its inputs —
+lock released vs lock already missing — are distinguishable, so a negative
+control covering the missing-lock case would catch it. B catches item 7
+exactly when the author thinks of that case, which is the ordinary
+limitation every option shares. The E-over-B argument rests on the pin101
+population case alone.
 
 ### The opposite sign: a guard that looked broken and was working
 
