@@ -75,6 +75,15 @@ stop a fresh session stomping a live peer, fires against the legitimate
 owner instead. The hand-dedupe in palateful repaired the symptom before
 this surfaced.
 
+**The severity is compositional, and that decides where to fix it.** A
+bare key on its own is valid YAML that every reader handles. An
+appending writer on its own is harmless against well-formed frontmatter.
+Only together do they produce the duplicate key, the last-wins `""`, and
+the HALT. Either half alone is survivable — which is why the fix belongs
+on the **writer** (AC 7a): making the append impossible removes the
+lethality regardless of what anyone types, whereas policing the data
+only holds until the next bare key is typed by hand.
+
 This is the `debug-9f24c7` / `debug-7b3e2a` family — a hand-rolled
 frontmatter parser disagreeing with YAML about a degenerate value — and
 it has the same eventual hazard: duplicate keys parse one way under the
@@ -138,10 +147,22 @@ so a dependency bump can silently flip which owner wins.
    of re-opening the hole — which is the anti-enumeration property this
    AC was reaching for, sited where it actually holds.
 
-   **7b — the validator rejects DUPLICATE keys only.** A duplicate
-   frontmatter key is unambiguously wrong in any YAML. Natural home:
-   `plan/validate-emit.ts`, which already owns
-   `spec-missing-branch-frontmatter`.
+   **7b — the validator.** Two rules, both narrow enough to survive the
+   bare-key objection below:
+   - **Duplicate keys** — unambiguously wrong in any YAML, reject
+     always.
+   - **`owner:` and `branch:` specifically must be YAML `null` or a
+     valid value of their type** — never bare, never an unrecognized
+     sentinel. Deliberately keyed to two fields rather than applied to
+     frontmatter generally, which is what lets it coexist with bare
+     `gate_status:` / `outcome:` / `gate_verdicts:`. It also catches
+     `debug-1dfbdd`'s `unassigned` from the value side, so one rule
+     closes both stories' data halves.
+
+   Natural home: `plan/validate-emit.ts`, which already owns
+   `spec-missing-branch-frontmatter`. 7b is **complementary to 7a, not
+   an alternative** — 7a makes the class impossible going forward, 7b
+   catches data before it reaches any writer that predates 7a.
 
    **A bare key is NOT a defect and must stay legal.** `key:` with
    nothing after it is conventional YAML for a nested mapping or an
@@ -213,10 +234,27 @@ one-line correction behind a design decision.
   Also from 2d: **AC 3's live population is zero** — `imptb1` was
   repaired at `65d4d75a` (PR #26), traced per-revision
   (`0aff93a7`=1 → `36a2372b` claim =2 → `65d4d75a`=1), so the wild
-  instance is historical and AC 3 needs a synthetic fixture. And the
-  re-seed path is a **template**, not ad-hoc typing: pre-claim `imptb1`
-  had `owner:` and `branch:` both bare, so whatever authored it writes
-  every optional key bare. That is what 7a has to survive.
+  instance is historical and AC 3 needs a synthetic fixture. (An
+  entry here claiming the re-seed path was a **template/emitter** is
+  **retracted** — see the 11:20 line below. It never reached the ACs.)
+- 2026-09-20T11:20-06:00 — **emitter claim retracted.** palateful-0e
+  audited every spec in that repo's `dev/` and `debug/`: six carried
+  bare keys (`fxfuse`, `fltpin1`, `xcstart1`, `tfship1`, `iosdt1`,
+  `iosbump1` — all repaired at `248e939e`, re-audit clean), and **all
+  six were hand-authored by one session today**. 0e copied `imptb1`'s
+  pre-claim frontmatter when filing `fxfuse`, then reused its own file
+  five more times. Every other spec in that repo uses `owner: null` or
+  omits the key. So there is no emitter and no propagating template —
+  one author, one bad copy. This story's ORIGINAL scoping ("the exposed
+  population is hand-authored specs", AC 7) was correct and stands;
+  7a's write-path siting rests on the anti-enumeration property and the
+  composition argument, never on a population, so nothing relocates.
+- 2026-09-20T11:20-06:00 — **severity is compositional** (same audit,
+  now in §Goal): a bare key alone is valid YAML every reader handles,
+  an appending writer alone is harmless against well-formed
+  frontmatter. Only together do they produce the duplicate key, the
+  last-wins `""`, and the HALT. Better argument for 7a's siting than
+  anti-enumeration, because it names which half makes the other lethal.
 - 2026-09-20T10:45-06:00 — two corrections from palateful-2d, who read
   the source independently. (a) "Nothing in the claim path branches on
   type" is **false** — it branches in six places; only
