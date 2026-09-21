@@ -4,8 +4,8 @@ type: dev
 created: 2026-09-21T12:10:00-06:00
 title: "S-1: give the full-run prose surface its own deliberate budget"
 from: INTERVIEW.md Q#9
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-09-21T1051-42433
 branch: null
 ---
 
@@ -51,3 +51,4 @@ bodies true and replaced existing prose to fit (−354 net); 7d96be needed
 - 2026-09-21T12:10 — filed at the coordinator's request after Leo chose to
   raise the budget deliberately (INTERVIEW Q#9). Filed by the session that
   tripped the tripwire on 7d96be.
+- 2026-09-21T10:51:22-06:00 — claimed by /devx in session /devx-2026-09-21T1051-42433

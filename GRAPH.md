@@ -4,7 +4,7 @@
 
 # Story graph
 
-241 specs across 25 groups — 12 blocked · 166 done · 6 in-progress · 57 ready; 452 edges.
+242 specs across 25 groups — 12 blocked · 166 done · 7 in-progress · 57 ready; 452 edges.
 
 ## Legend
 
@@ -163,6 +163,7 @@ flowchart TD
     4d9c1a["4d9c1a QA walkthrough — sgr104 regen hooks (clai…"]
     5284ae["5284ae Phase-4 discipline check escapes the feat…"]
     53bf7b["53bf7b QA walkthrough — skill bodies name the fo…"]
+    5c215e["5c215e S-1: give the full-run prose surface its…"]
     5c8b21["5c8b21 loop-concurrency G-1 test sits ~1.3x unde…"]
     5e1a77["5e1a77 16 tests run past their own timeout and s…"]
     62dd91["62dd91 QA walkthrough — consumer sweep and layou…"]
@@ -564,6 +565,7 @@ flowchart TD
   class 4d9c1a ready
   class 5284ae ready
   class 53bf7b ready
+  class 5c215e wip
   class 5c8b21 done
   class 5e1a77 done
   class 62dd91 ready
