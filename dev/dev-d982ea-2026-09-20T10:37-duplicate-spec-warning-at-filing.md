@@ -24,6 +24,20 @@ against it on 2026-09-20 and had to be stood down.
 The signal was already in hand. Both rows were in the same backlog file
 three minutes apart; nothing compared them.
 
+**It recurred the same day, and the second instance is the real
+argument.** On 2026-09-20 palateful-fb and palateful-2d independently
+filed the identical bug — `wsmig1` and `debug-09451f`, for one
+pre-existing red in `workstream-migration-integrity` — **within the
+hour**. The coordinator had asked fb to file it and never told 2d it was
+taken. 2d folded the duplicate on discovery.
+
+So the case does not rest on a seven-week lapse in a quiet backlog. It
+recurred **under a coordinator actively watching for exactly this class
+of failure**, on the day the class was being catalogued. Attention was
+present, engaged, and specifically primed — and still did not catch it.
+That is the argument that the control has to fire mechanically at filing
+time: this is not a vigilance problem that more vigilance fixes.
+
 `devx next` already parses every backlog row and its spec. A warning at
 filing time — when a new spec's title, or a test path it cites,
 substantially overlaps an open row — costs one comparison against data

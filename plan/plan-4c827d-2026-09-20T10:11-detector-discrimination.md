@@ -105,7 +105,7 @@ unscoped matches discriminates between nothing.
 
 ## Evidence (units matter more than counts)
 
-Nine specimens as of 2026-09-20, eight of them in devx itself. **Read the
+Ten specimens as of 2026-09-20, nine of them in devx itself. **Read the
 unit on each one** — a count of symptoms over-weights a bug that fired
 once.
 
@@ -120,6 +120,7 @@ once.
 | devx packaged-skills guard | passes CI correctly while palateful runs skill bodies 146/161/184 lines behind HEAD, incl. 16 `tour` refs to a command retired 6 weeks ago | per-repo — **population stops one hop short** |
 | devx `doctor` dead-blocker | fired correctly for `bqa102`; **structurally could not fire** for `rsh102`, whose blocker was itself stale and therefore looked alive | per-row — **input is the same class of stale data it detects** |
 | devx `next` drift on `rsh102` | reported the status mismatch correctly, as a `drift[]` field beside a routing decision pointing at a different item — ignored 7 weeks | per-report — **detected and unreadable in context** |
+| devx `doctor` `replaceFrontmatterStatus` | `fix.ts:79`'s `/^status:[ \t]*\S.*$/m` misses a bare `status:`, so the replace is a no-op, the function returns content unchanged — and the caller reports the fix as **applied** | per-repair — **wrong about its own ACTION, not about the world** |
 
 The last row is the one that changes conclusions. All ten palateful PRs
 merged on 2026-07-31 inside a single 24-minute window (15:59:45Z #4 →
@@ -441,6 +442,42 @@ implication: if the error is cognitive rather than technical, a register
 that forces someone to write the mapping down (E) is better targeted
 than runtime instrumentation (A). That is a modest argument, and it is
 offered as one.
+
+### A fifth shape: wrong about its own action
+
+`doctor/fix.ts:79` (found by palateful-2d while implementing
+`debug-828385`) is not a detector misreading the world — it is a repair
+reporting a state change **it did not make**. `replaceFrontmatterStatus`
+matches `/^status:[ \t]*\S.*$/m`; the `\S` requires a non-space
+character, so against a bare `status:` the replace matches nothing,
+`next === m[1]`, and the function returns the content unchanged while
+doctor's caller records the fix as applied.
+
+Every other specimen here produces a wrong answer that something
+downstream eventually disagrees with — which is precisely why they were
+all findable. **This one leaves nothing to disagree with.** The claim
+splice that filed `828385` at least deposited a visible duplicate key in
+a file someone would open; a no-op repair reported as a repair deposits
+nothing at all. The wrong answer is terminal rather than propagated.
+
+It also reads as careful, which is what makes it durable: someone wrote
+an explicit `if (next === m[1]) return content;` guard against the no-op
+case, and then returned unchanged content without telling the caller.
+The case was considered and the reporting was not.
+
+**This is a second independent argument for Option E over Option B**,
+arriving from a different direction than the pin101 population case. A
+negative control (B) feeds a detector an input and checks the
+classification — and this detector classifies nothing, so there is no
+classification to check. A register entry (E) reads *proxy: the replace
+returned* against *claim: the file now says `status: done`*, which are
+visibly different sentences. B is blind here by construction; E is not.
+
+It also sharpens the property itself. "Did this detector ever
+discriminate?" does not cover it. The question that does is **"did the
+action this thing claims it took actually happen?"** — which none of the
+other nine specimens require, and which any chosen option now has to
+answer for repair paths as well as detection paths.
 
 ### Still uncovered: detected but unreadable
 
