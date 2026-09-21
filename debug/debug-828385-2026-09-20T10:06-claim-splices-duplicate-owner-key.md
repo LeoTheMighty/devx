@@ -398,3 +398,21 @@ invites someone to "verify" against a file that was never affected.
   assertions silently dropped from 9 workstreams to 1) and 09451f deleted
   along with its DEBUG.md row. Two sessions, same pre-existing red, neither
   able to see the other: a same-day second instance of `d982ea`.
+- 2026-09-20T19:45-06:00 — **`detect.ts` overlaps with `shrule` (#166); four
+  fixes here must not revert with the hunk.** cc's shrule independently found
+  that `ownerOf()` carries the narrow hand-rolled nullish rule, and traced the
+  consequence further than this story did: `owner:` feeds the dead-owner
+  detector, so `owner: NULL` made an *ownerless* spec read as owned and the
+  detector silently skipped the exact case it exists for. If the split lands
+  all three shrule readers in #166 and this branch reverts its `ownerOf` hunk,
+  these four are independent of the nullish rule and would revert with it:
+    1. `ownerOf` — `.+?` requires a character, so a BARE `owner:` read as
+       *absent* rather than *empty*; the reader could not tell the two apart.
+    2. `ownerOf` — the `m` flag anchors to any line in the FILE, not to the
+       frontmatter block, so an `owner:` line in a spec's BODY could answer
+       for its frontmatter. 828385's own body has one, by construction.
+    3. `detect.ts:712` `branch:` — identical `.+?` defect.
+    4. `detect.ts:712` `branch:` — identical unscoped-`m` defect.
+  Whichever PR ends up carrying `detect.ts`, it must carry all four. A
+  reviewer reading only the shrule framing (which is about the nullish rule)
+  would not think to look for them.
