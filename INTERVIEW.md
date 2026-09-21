@@ -482,3 +482,11 @@ picks the spec back up.
 
   Option (c) is the status quo and costs a recurring false-positive on an
   advisory channel whose whole failure mode is being ignored.
+
+### Should an archived workstream's outlines stay human-only? (from debug-1ab833, 2026-09-21)
+
+Today `devx archive` moves a workstream's human-typed outlines to `<archive_root>/<slug>/<stage>/`, and nothing protects them there: the PreToolUse hook and `devx outline check` both key protection on a `workstreams` path segment. An agent may edit an archived outline freely. `debug-00b4d3` keeps `devx archive --restore` blocked so such edits cannot be laundered back into a live outline, but the archived copies themselves are open.
+
+- **Option A (recommended): protect them.** Treat `<archive_root>/**/<stage>/` outlines as human-only in all three layers. An archive is a record of what the human wrote; there is no workflow that needs an agent to edit it. Restore could then be exempt again as an exact move.
+- **Option B: leave them open.** Archived means closed; nothing reads them, so their integrity does not matter. Restore stays blocked (human runs `devx outline commit`).
+- **Option C: freeze them.** Refuse every edit to anything under the archive root, outline or not.
