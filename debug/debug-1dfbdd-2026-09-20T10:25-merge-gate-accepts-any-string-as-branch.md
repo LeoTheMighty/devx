@@ -121,7 +121,22 @@ derived — and adding a write-back to `claim` would mask the sentinel
 rather than fix the reader, while changing behavior for every spec in
 every repo. The reader fix (ACs 1-3) is the correct and sufficient one.
 
-### The write side is still real, but it belongs to the validator
+### The write side is still real — and it is now a SHARED control
+
+⚠️ **`debug-828385` AC 7b carries the rule that closes this story's data
+half.** It requires `owner:` and `branch:` to be YAML `null` or a valid
+value of their type — never bare, never an unrecognized sentinel — which
+catches `unassigned` here and the bare `owner:` there with one check.
+Narrowing it, re-keying it to different fields, or relaxing which values
+count as valid weakens BOTH stories. Check 828385 before changing it,
+and say so in the PR body.
+
+That control does **not** replace this story's ACs 1-3. The reader must
+still stop trusting any non-null string as a branch name: 7b governs
+what devx itself writes and validates, and a sentinel can always arrive
+from a repo or an author devx does not control.
+
+
 
 `unassigned` reaching a spec at all is a write/read contract gap: an
 authoring path emitted a value devx's readers were never told about.

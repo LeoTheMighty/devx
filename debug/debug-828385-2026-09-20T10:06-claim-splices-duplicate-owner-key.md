@@ -164,6 +164,12 @@ so a dependency bump can silently flip which owner wins.
    an alternative** — 7a makes the class impossible going forward, 7b
    catches data before it reaches any writer that predates 7a.
 
+   ⚠️ **7b is a SHARED control with `debug-1dfbdd`.** The same rule
+   closes this story's bare-`owner:` half and 1dfbdd's `unassigned`
+   half. Narrowing it, re-keying it to different fields, or relaxing
+   which values count as valid weakens BOTH stories — check 1dfbdd
+   before changing it, and say so in the PR body.
+
    **A bare key is NOT a defect and must stay legal.** `key:` with
    nothing after it is conventional YAML for a nested mapping or an
    empty value, and devx's own plan-spec template depends on it:
@@ -249,6 +255,11 @@ one-line correction behind a design decision.
   population is hand-authored specs", AC 7) was correct and stands;
   7a's write-path siting rests on the anti-enumeration property and the
   composition argument, never on a population, so nothing relocates.
+  **Recorded as a near-miss, not a clean outcome:** the claim stayed to
+  one line because 7a's justification had already been written before it
+  arrived, not because it was handled well. Had it landed an hour
+  earlier it would have become the AC's rationale. Nothing else in this
+  artifact would show that, which is why it is here.
 - 2026-09-20T11:20-06:00 — **severity is compositional** (same audit,
   now in §Goal): a bare key alone is valid YAML every reader handles,
   an appending writer alone is harmless against well-formed
