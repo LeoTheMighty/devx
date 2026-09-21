@@ -16,7 +16,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import {
   frontmatterKeyValue,
-  splitFrontmatter,
+  splitFrontmatterLines,
 } from "../frontmatter-keys.js";
 import { isNullishScalar } from "../frontmatter-scalar.js";
 import { join } from "node:path";
@@ -125,7 +125,7 @@ interface RowFacts {
  * Block-scoping is the control; anchoring alone is not enough.
  */
 function ownerOf(content: string): string | null {
-  const fm = splitFrontmatter(content);
+  const fm = splitFrontmatterLines(content);
   if (!fm) return null;
   const raw = frontmatterKeyValue(fm.lines, "owner");
   if (raw === null) return null;
@@ -736,7 +736,7 @@ export async function detectWorktrees(opts: WorktreeDetectOpts): Promise<Finding
         // produces, and deleting the derived name would silently miss it.
         // Block-scoped + bare-tolerant, same two defects as ownerOf above
         // (828385 AC 5).
-        const bfm = splitFrontmatter(content);
+        const bfm = splitFrontmatterLines(content);
         const braw = bfm ? frontmatterKeyValue(bfm.lines, "branch") : null;
         if (braw !== null && !isNullishScalar(braw.trim())) {
           const cleaned = braw.trim().replace(/^["']|["']$/g, "").trim();

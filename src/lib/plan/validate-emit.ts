@@ -50,7 +50,7 @@ import {
 import { join, posix } from "node:path";
 import {
   duplicateFrontmatterKeys,
-  splitFrontmatter,
+  splitFrontmatterLines,
 } from "../frontmatter-keys.js";
 
 import { blankFencedLines } from "../backlog/parse.js";
@@ -513,7 +513,7 @@ export function validateEmit(
     const specFn = specByHash.get(hash);
     if (!specFn) continue; // already flagged in check #1
     const specRel = `dev/${specFn}`;
-    const fm = splitFrontmatter(fs.readFile(join(inputs.repoRoot, specRel)));
+    const fm = splitFrontmatterLines(fs.readFile(join(inputs.repoRoot, specRel)));
     if (!fm) continue;
     const dupes = duplicateFrontmatterKeys(fm.lines);
     if (dupes.length > 0) {

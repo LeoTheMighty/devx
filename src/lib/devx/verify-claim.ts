@@ -33,7 +33,7 @@ import { join } from "node:path";
 import {
   duplicateFrontmatterKeys,
   frontmatterKeyValue,
-  splitFrontmatter,
+  splitFrontmatterLines,
 } from "../frontmatter-keys.js";
 
 import { isNullishScalar } from "../frontmatter-scalar.js";
@@ -247,7 +247,7 @@ export interface SpecClaimFields {
  * corrupt spec usefully is not the same as pretending it is clean.
  */
 export function parseSpecClaimFields(content: string): SpecClaimFields {
-  const fm = splitFrontmatter(content);
+  const fm = splitFrontmatterLines(content);
   if (!fm) {
     throw new VerifyClaimError("spec-parse", "spec missing frontmatter block");
   }

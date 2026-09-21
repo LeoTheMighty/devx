@@ -59,12 +59,20 @@ export interface FrontmatterBlock {
  * Two parsers for one format is the `debug-9f24c7` class; one parser, two
  * views, is not.
  *
+ * Named `…Lines` rather than sharing the bare `splitFrontmatter`: the
+ * unqualified name belongs to the thing that does the work, and this is a
+ * view over it. Two same-named exports with different return contracts is
+ * the `artifacts.ts` "two spellings of one path" hazard, and it is worst
+ * exactly where it would bite — a hand-resolved merge conflict picking
+ * whichever import the editor offered. Decided with shrule (AC 6) rather
+ * than left for a resolution to guess.
+ *
  * Line endings inside the block normalize to LF on write. The engine parse
  * keeps `\r` on interior lines, so they are stripped here and re-joined with
  * `\n` — a spec whose frontmatter round-trips through an edit comes back LF,
  * which is what every authoring site already emits.
  */
-export function splitFrontmatter(content: string): FrontmatterBlock | null {
+export function splitFrontmatterLines(content: string): FrontmatterBlock | null {
   const raw = splitFrontmatterRaw(content);
   if (raw === null) return null;
   return {

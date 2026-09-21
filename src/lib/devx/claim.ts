@@ -88,7 +88,7 @@ import {
 import {
   findFrontmatterKeys,
   renderFrontmatter,
-  splitFrontmatter,
+  splitFrontmatterLines,
   upsertFrontmatterKey,
 } from "../frontmatter-keys.js";
 import { appendStatusLogLine } from "./status-log.js";
@@ -477,7 +477,7 @@ export function updateSpecForClaim(
   sessionId: string,
   isoTimestamp: string,
 ): string {
-  const fm = splitFrontmatter(content);
+  const fm = splitFrontmatterLines(content);
   if (!fm) {
     throw new Error("updateSpecForClaim: spec missing frontmatter block");
   }

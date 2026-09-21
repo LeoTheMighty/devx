@@ -73,7 +73,7 @@ import { releaseSpecLockForClosedSpec, specLockPath } from "./spec-lock.js";
 import {
   findFrontmatterKeys,
   renderFrontmatter,
-  splitFrontmatter,
+  splitFrontmatterLines,
   upsertFrontmatterKey,
 } from "../frontmatter-keys.js";
 import { appendStatusLogLine } from "./status-log.js";
@@ -253,7 +253,7 @@ export function updateSpecForDone(
   isoTimestamp: string,
   logLine: string,
 ): string {
-  const fm = splitFrontmatter(content);
+  const fm = splitFrontmatterLines(content);
   if (!fm) {
     throw new MarkDoneError("compose", "spec missing frontmatter block");
   }

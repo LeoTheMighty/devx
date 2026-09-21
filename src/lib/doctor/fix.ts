@@ -19,7 +19,7 @@ import { unlinkSync } from "node:fs";
 import {
   findFrontmatterKeys,
   renderFrontmatter,
-  splitFrontmatter,
+  splitFrontmatterLines,
   upsertFrontmatterKey,
 } from "../frontmatter-keys.js";
 import { join } from "node:path";
@@ -80,7 +80,7 @@ export function isSafeBranchName(name: string): boolean {
 
 /** Rewrite `status:` INSIDE the leading `---` frontmatter block only. */
 export function replaceFrontmatterStatus(content: string, status: string): string {
-  const fm = splitFrontmatter(content);
+  const fm = splitFrontmatterLines(content);
   if (!fm) return content;
   // 828385 AC 5: the old pattern was `/^status:[ \t]*\S.*$/m` — the `\S`
   // requires a non-space character after the colon, so a BARE `status:` was

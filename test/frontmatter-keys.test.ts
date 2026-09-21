@@ -17,12 +17,12 @@ import {
   findFrontmatterKeys,
   frontmatterKeyValue,
   renderFrontmatter,
-  splitFrontmatter,
+  splitFrontmatterLines,
   upsertFrontmatterKey,
 } from "../src/lib/frontmatter-keys.js";
 
 function block(fm: string): string[] {
-  const parsed = splitFrontmatter(`---\n${fm}\n---\n\n## Goal\nbody\n`);
+  const parsed = splitFrontmatterLines(`---\n${fm}\n---\n\n## Goal\nbody\n`);
   if (!parsed) throw new Error("fixture has no frontmatter");
   return parsed.lines;
 }
@@ -139,7 +139,7 @@ describe("upsertFrontmatterKey — insert path", () => {
 // AC 6 — block-scoping is the control; anchoring alone is not
 // ---------------------------------------------------------------------------
 
-describe("splitFrontmatter — block scoping", () => {
+describe("splitFrontmatterLines — block scoping", () => {
   it("ignores a bare key inside a fenced body block", () => {
     // This is 828385's own shape. A correctly line-anchored whole-file scan
     // (`grep '^owner:$'`) matches the sample in the body and reports the
@@ -162,7 +162,7 @@ describe("splitFrontmatter — block scoping", () => {
       "",
     ].join("\n");
 
-    const fm = splitFrontmatter(content);
+    const fm = splitFrontmatterLines(content);
     expect(fm).not.toBeNull();
     expect(findFrontmatterKeys(fm!.lines, "owner")).toHaveLength(1);
     expect(frontmatterKeyValue(fm!.lines, "owner")).toBe(" null");
@@ -206,7 +206,7 @@ describe("splitFrontmatter — block scoping", () => {
   });
 
   it("returns null for content with no frontmatter", () => {
-    expect(splitFrontmatter("# Just a doc\n")).toBeNull();
+    expect(splitFrontmatterLines("# Just a doc\n")).toBeNull();
   });
 });
 
@@ -260,19 +260,19 @@ describe("CRLF specs", () => {
   const CRLF = "---\r\nhash: abc\r\nstatus: ready\r\nowner:\r\n---\r\n\r\n## Goal\r\nx\r\n";
 
   it("finds the frontmatter block", () => {
-    const fm = splitFrontmatter(CRLF);
+    const fm = splitFrontmatterLines(CRLF);
     expect(fm).not.toBeNull();
     expect(findFrontmatterKeys(fm!.lines, "owner")).toHaveLength(1);
   });
 
   it("reads a bare key despite the carriage return", () => {
-    const fm = splitFrontmatter(CRLF)!;
+    const fm = splitFrontmatterLines(CRLF)!;
     expect(frontmatterKeyValue(fm.lines, "status")?.trim()).toBe("ready");
     expect(frontmatterKeyValue(fm.lines, "owner")).toBe("");
   });
 
   it("upserts without splicing a duplicate", () => {
-    const fm = splitFrontmatter(CRLF)!;
+    const fm = splitFrontmatterLines(CRLF)!;
     upsertFrontmatterKey(fm.lines, "owner", "/devx-1");
     expect(findFrontmatterKeys(fm.lines, "owner")).toHaveLength(1);
     const out = renderFrontmatter(fm);
@@ -284,7 +284,7 @@ describe("CRLF specs", () => {
 
   it("round-trips a spec that ends at the closing fence", () => {
     const noBody = "---\nhash: abc\nstatus: ready\n---";
-    const fm = splitFrontmatter(noBody)!;
+    const fm = splitFrontmatterLines(noBody)!;
     // joinFrontmatter's rule: a block that ended the file with no trailing
     // newline gets one back rather than producing a newline-less spec.
     expect(renderFrontmatter(fm)).toBe("---\nhash: abc\nstatus: ready\n---\n");
@@ -294,13 +294,13 @@ describe("CRLF specs", () => {
 describe("renderFrontmatter", () => {
   it("round-trips an untouched spec byte-for-byte", () => {
     const content = "---\nhash: abc\nstatus: ready\nowner:\n---\n\n## Goal\nx\n";
-    const fm = splitFrontmatter(content)!;
+    const fm = splitFrontmatterLines(content)!;
     expect(renderFrontmatter(fm)).toBe(content);
   });
 
   it("preserves body content around an edit", () => {
     const content = "---\nhash: abc\nstatus: ready\nowner:\n---\n\n## Goal\nx\n";
-    const fm = splitFrontmatter(content)!;
+    const fm = splitFrontmatterLines(content)!;
     upsertFrontmatterKey(fm.lines, "owner", "/devx-1");
     expect(renderFrontmatter(fm)).toBe(
       "---\nhash: abc\nstatus: ready\nowner: /devx-1\n---\n\n## Goal\nx\n",

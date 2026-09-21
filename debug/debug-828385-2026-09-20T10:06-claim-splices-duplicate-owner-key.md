@@ -445,3 +445,32 @@ invites someone to "verify" against a file that was never affected.
   passed over this module twice, but by verifying a claim a peer made in
   passing. The review looked at what the code does; the claim made me look at
   what else in the repo shares its name.
+- 2026-09-20T20:40-06:00 — renamed this module's view to
+  `splitFrontmatterLines`; `engine/frontmatter.ts` keeps the bare
+  `splitFrontmatter`. The unqualified name belongs to the thing that does
+  the work, and this is a view over it. Decided jointly with cc's `shrule`
+  (its AC 6) and recorded there, specifically so a hand-resolved conflict
+  between #162 and #163 never has to pick between two same-named exports
+  with different return contracts — which is the `artifacts.ts` "two
+  spellings of one path" hazard landing in the one place it does most
+  damage. Full suite after the rename: 3319 passing, the only failure the
+  inherited `wsmig1` red.
+- 2026-09-20T20:40-06:00 — cc measured the CRLF divergence beyond this
+  module: four readers on `main` carry the non-tolerant fence regex
+  (`merge-gate.ts`, `split.ts` ×3). The sharpest is
+  `src/commands/merge-gate.ts:135` — on a CRLF spec `readFrontmatter`
+  returns `{}`, so `fm.pr` is undefined and the gate falls through to its
+  `gh pr list` lookup. The comment at :367 documents `pr:` as priority-1,
+  so the one mechanism a spec has for pinning its PR number does not
+  survive a line ending. Filed under `shrule` AC 5 with this story's
+  delegate-to-engine remedy rather than four regexes taught to agree.
+  Related, and worth its own note because I met it firsthand: that gate's
+  `{"merge":false,"reason":"no PR yet"}` covers at least three distinct
+  states — no PR exists; the spec named a branch that is not real (what
+  palateful's `lgort1` hit, via the sentinel `branch: unassigned`); and the
+  spec was never parsed at all (the CRLF case). It reports a fact about
+  GitHub when the cause may be entirely local. `shrule` AC 7, sequenced
+  BEHIND the parser fix — cc's constraint, and correct: today a CRLF spec
+  is usually right by accident, because `{}` means the gate derives a
+  branch that is normally the right one, so a "could not read" verdict
+  landing first would turn working runs into loud failures.
