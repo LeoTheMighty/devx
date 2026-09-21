@@ -259,19 +259,28 @@ Steps:
 
 ### Phase 5: Local CI Validation
 
-**Before the gates: the RED evals are locked.** If this spec belongs to a
-workstream whose `gate_status.evals_red` is true, its eval step bodies are
-frozen under the shas Gate 4 stamped. Verify them (`verifyStepBodies()` in
-`src/lib/engine/evals-lock.ts`) and treat a `moved` or `missing` finding as a
-**hard stop** — not a warning to note and continue past.
+**Before the gates: verify the RED evals.** If this spec belongs to a
+workstream whose `gate_status.evals_red` is true, Gate 4 stamped a sha of each
+eval it ran into `gate_status.red_eval_shas`. Run
+`devx gate evals <plan-hash> --verify` before calling the story green. Exit 1
+is a **hard stop** — a stamped eval moved or vanished — not a warning to note
+and continue past. Nothing enforces this stop but you: no gate or loop runs
+`--verify` for you, and nothing refuses the edit itself.
 
 **Fix the code, not the eval.** A failing eval means the implementation is
-not done; softening one turns this green run into a tautology. Run
-`devx gate evals <plan-hash> --verify` before calling the story green —
-exit 1 is a **hard stop**: a body moved or vanished under its stamp. Don't
-re-stamp to pass it; restore the eval, or say the expectation genuinely
-changed and re-run the gate without `--verify`. Result-of-record rows
-(Status / Last run / Runs) stay writable throughout.
+not done; softening one turns this green run into a tautology. Restore the
+eval. If the expectation genuinely changed, that is a revision, not a
+re-stamp: re-running Gate 4 cannot re-stamp an eval that now passes (the gate
+requires P0 evals to be RED), and `--waive` keeps the original stamp. Run
+`devx revise` — it reopens the red stage and clears the stamp, so the evals
+can be re-authored and re-gated.
+
+What `--verify` does not catch: an eval added after the stamp, or an
+expectation re-pointed at a different file — it checks only the files it
+stamped. For a markdown eval, `Status` / `Last run` / `Run` / `Result` lines
+and every table row are left out of the hash and stay writable; a
+non-markdown eval is hashed whole, ignoring line endings and trailing
+whitespace.
 
 Gates come from `devx.config.yaml`. Two supported shapes:
 

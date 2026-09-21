@@ -403,6 +403,17 @@ export function applyEnginePatch(content: string, patch: EnginePatch): string {
       if (v !== undefined) doc.setIn(["gate_status", flag], v);
     }
   }
+  // A stamp only means something while the red stage is closed. Any patch
+  // that re-opens it (evals_red → false: `devx revise`, `outcome tune`)
+  // must drop the stamp too, or the sanctioned path for re-authoring an
+  // eval reads as `moved` under `--verify` and blocks the very edit the
+  // re-open exists to allow. Enforced HERE, at the one writer every such
+  // path goes through, rather than at each caller: two callers clearing the
+  // flag and forgetting the stamp is how this was found (review of #164).
+  // An explicit `redEvalShas` in the same patch still wins.
+  if (patch.gateStatus?.evals_red === false && patch.redEvalShas === undefined) {
+    doc.deleteIn(["gate_status", "red_eval_shas"]);
+  }
   if (patch.redEvalShas !== undefined) {
     // Replace wholesale rather than merging: a re-stamp must be able to
     // DROP an eval that no longer exists, and merging would leave its sha

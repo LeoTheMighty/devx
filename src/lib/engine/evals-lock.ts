@@ -86,7 +86,28 @@ export function stepBody(md: string): string {
  * disagree about what a given artifact's lockable content is.
  */
 export function lockableBody(evalPath: string, raw: string): string {
-  return evalPath.toLowerCase().endsWith(".md") ? stepBody(raw) : raw;
+  return evalPath.toLowerCase().endsWith(".md") ? stepBody(raw) : normalizeSource(raw);
+}
+
+/**
+ * Whitespace-normalize a non-markdown eval WITHOUT dropping any line.
+ *
+ * Hashing raw bytes made a CRLF checkout (git `core.autocrlf`) or an editor
+ * that strips trailing spaces read as `moved` — "fix the code, not the eval"
+ * on an eval nobody changed. That is the cry-wolf failure `stepBody()`
+ * already guards markdown against, and a lock that cries wolf gets switched
+ * off. Only line endings and trailing whitespace are normalized; unlike
+ * `stepBody()` no line is ever stripped, so AC 4's "a non-md eval is all
+ * step body" still holds.
+ *
+ * On a file that is already LF with no trailing whitespace this is the
+ * identity, so every stamp taken before this change still verifies.
+ */
+function normalizeSource(raw: string): string {
+  return raw
+    .split(/\r?\n/)
+    .map((l) => l.replace(/[ \t]+$/, ""))
+    .join("\n");
 }
 
 /** sha256 of an eval's lockable body — the value Gate 4 stamps. */
@@ -98,10 +119,15 @@ export function stepBodySha(evalPath: string, raw: string): string {
 // Stamping and verification
 // ---------------------------------------------------------------------------
 
-/** `gate_status.red_eval_shas` — eval path (workstream-relative) → sha256. */
+/** `gate_status.red_eval_shas` — eval path (REPO-relative) → sha256 of its
+ *  lockable body (see `lockableBody`). */
 export type RedEvalShas = Record<string, string>;
 
-/** Stamp every eval's step body. Called by Gate 4 on a PASS. */
+/** Hash each eval artifact's lockable body. Called by Gate 4 on every
+ *  non-FAIL verdict (PASS, CONCERNS, WAIVED) with the artifacts that RAN —
+ *  which includes markdown eval-specs and P1+ evals that exited 0, not only
+ *  those observed RED. The gate then carries forward earlier stamps for
+ *  evals that still exist (see `carryForwardStamps` in commands/gate.ts). */
 export function stampEvalShas(evals: Record<string, string>): RedEvalShas {
   const out: RedEvalShas = {};
   for (const [rel, md] of Object.entries(evals)) out[rel] = stepBodySha(rel, md);

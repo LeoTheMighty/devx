@@ -228,13 +228,24 @@ function seedEvals(flags: { plan_verified?: boolean } = {}): void {
   repo.write("test/perf.test.mjs", "process.exit(1);\n");
 }
 
-function gateEvals(flags: { dryRun?: boolean; verify?: boolean } = {}, exitCode = 1) {
+function gateEvals(
+  flags: {
+    dryRun?: boolean;
+    verify?: boolean;
+    waive?: string[];
+    reason?: string;
+    approver?: string;
+  } = {},
+  exitCode = 1,
+  fsOverride?: { readFile?: (p: string) => string },
+) {
   const io = captureIo();
   const code = runGateEvalsCli(["abc123"], flags, {
     ...io,
     projectPath: repo.configPath,
     now: () => new Date(2026, 6, 24, 13, 0, 0),
     exec: () => ({ stdout: "", stderr: "not implemented", exitCode }),
+    ...(fsOverride ? { fs: fsOverride as never } : {}),
   });
   return { code, io };
 }
@@ -451,6 +462,155 @@ describe("gate evals — RED step-body stamp (debug-75563d)", () => {
     expect(Object.keys(readEngineState(repo.read(SPEC_REL)).redEvalShas)).toEqual([
       "test/demo.test.mjs",
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Retroactive adversarial review of #164 (debug-75563d) — regression suite.
+// Each test FAILS on the pre-fix code; each names the finding it pins.
+// ---------------------------------------------------------------------------
+
+/** The --verify JSON line (last line of stdout). */
+function verifyOut(io: ReturnType<typeof captureIo>) {
+  return JSON.parse(io.stdout().trim().split("\n").pop() as string) as {
+    verify: string;
+    stamped: number;
+    findings: { kind: string }[];
+  };
+}
+
+describe("RED eval lock — review of #164", () => {
+  it("A: a --waive re-run keeps the ORIGINAL lock, so the waived eval's softening is still caught", () => {
+    // Pre-fix: the re-stamp REPLACED the map with only the evals that ran,
+    // so waiving E-1 dropped its sha and --verify reported stamped:0, PASS.
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    const original = state().redEvalShas["test/demo.test.mjs"];
+    repo.write("test/demo.test.mjs", "process.exit(0); // softened\n");
+    gateEvals({ waive: ["E-1"], reason: "flaky in CI", approver: "agent" }, 0);
+    // The ORIGINAL sha survives — not re-hashed to the softened body, which
+    // would launder the edit the waiver might be covering.
+    expect(state().redEvalShas["test/demo.test.mjs"]).toBe(original);
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(1);
+    expect(verifyOut(v.io).findings.map((f) => f.kind)).toEqual(["moved"]);
+  });
+
+  it("A: a carried-forward key is still dropped once its file is actually gone", () => {
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    const withGone = applyEnginePatch(repo.read(SPEC_REL), {
+      redEvalShas: { ...state().redEvalShas, "test/deleted.test.mjs": "f".repeat(64) },
+    });
+    repo.write(SPEC_REL, withGone);
+    expect(gateEvals().code).toBe(0);
+    expect(Object.keys(state().redEvalShas)).toEqual(["test/demo.test.mjs"]);
+  });
+
+  it("E: a directory artifact is locked file by file, not silently skipped", () => {
+    // Pre-fix: readFile threw EISDIR, the catch swallowed it, the gate PASSed
+    // with an EMPTY stamp, and every file under the directory was unlocked.
+    seedEvals();
+    repo.write(`${WS}/plan/agent.md`, validPlan().replace(
+      "| E-1 | P0 | 1 | tests-first | test/demo.test.mjs |",
+      "| E-1 | P0 | 1 | tests-first | test/e2e |",
+    ));
+    repo.write(`${WS}/expectations.md`, validExpectations().replace(
+      "- **Verified by:** test/demo.test.mjs\n\n## E-2",
+      "- **Verified by:** test/e2e\n\n## E-2",
+    ));
+    repo.mkdir("test/e2e");
+    repo.write("test/e2e/b.test.mjs", "process.exit(1);\n");
+    repo.write("test/e2e/a.test.mjs", "process.exit(1);\n");
+    expect(gateEvals().code).toBe(0);
+    // E-1 now points at the directory and E-2 is tests-after (deferred), so
+    // exactly the directory's files are locked — each under its own path,
+    // in sorted order so the stamp is stable across filesystems.
+    expect(Object.keys(state().redEvalShas)).toEqual([
+      "test/e2e/a.test.mjs",
+      "test/e2e/b.test.mjs",
+    ]);
+    repo.write("test/e2e/a.test.mjs", "process.exit(0); // softened\n");
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(1);
+    expect(verifyOut(v.io).findings.map((f) => f.kind)).toEqual(["moved"]);
+  });
+
+  it("E: an unreadable artifact is WARNED about by name, never silently dropped", () => {
+    seedEvals();
+    const denied = (p: string) => {
+      if (p.endsWith("demo.test.mjs")) {
+        throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+      }
+      return repo.read(p.slice(repo.root.length + 1));
+    };
+    const g = gateEvals({}, 1, { readFile: denied });
+    expect(g.io.stderr()).toMatch(/test\/demo\.test\.mjs.*EACCES.*NOT locked/);
+  });
+
+  it("F: CRLF or trailing whitespace on a .ts/.mjs eval does NOT read as moved", () => {
+    // Pre-fix: non-md evals were hashed as raw bytes, so a core.autocrlf
+    // checkout flagged `moved` — "fix the code, not the eval" on an eval
+    // nobody changed. That is the cry-wolf failure that gets a lock disabled.
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    repo.write("test/demo.test.mjs", "process.exit(1);   \r\n");
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(0);
+    expect(verifyOut(v.io).findings).toEqual([]);
+  });
+
+  it("G: revise clears the stamp with evals_red, so re-authoring an eval is not flagged", () => {
+    // Pre-fix: revise cleared evals_red but left red_eval_shas, so the
+    // sanctioned re-authoring path read as `moved` under --verify.
+    seedEvals();
+    expect(gateEvals().code).toBe(0);
+    expect(revise("plan/agent.md").code).toBe(0);
+    expect(state().gateStatus.evals_red).toBe(false);
+    expect(state().redEvalShas).toEqual({});
+    repo.write("test/demo.test.mjs", "process.exit(3); // re-authored\n");
+    const v = gateEvals({ verify: true });
+    expect(v.code).toBe(0);
+  });
+
+  it("test gap: EVERY run artifact is stamped, not just the first", () => {
+    // Pre-fix no fixture ran more than one artifact, so a collector that
+    // locked only the first eval passed the whole suite (mutation M21).
+    seedEvals();
+    repo.write(`${WS}/plan/agent.md`, validPlan().replace(
+      "| E-2 | P1 | 2 | tests-after | test/demo.test.mjs |",
+      "| E-2 | P1 | 2 | tests-first | test/perf.test.mjs |",
+    ));
+    repo.write(`${WS}/expectations.md`, validExpectations().replace(
+      "## E-2: scope fence\n\n- **Priority:** P1\n- **Covers:** G-2, CAP-1\n- **Trigger:** a diff with extras\n- **Expectation (EARS):** When extras appear, the system SHALL flag them.\n- **Threshold:** at least 1 extras row per undeclared surface\n- **Verified by:** test/demo.test.mjs",
+      "## E-2: scope fence\n\n- **Priority:** P1\n- **Covers:** G-2, CAP-1\n- **Trigger:** a diff with extras\n- **Expectation (EARS):** When extras appear, the system SHALL flag them.\n- **Threshold:** at least 1 extras row per undeclared surface\n- **Verified by:** test/perf.test.mjs",
+    ));
+    expect(gateEvals().code).toBe(0);
+    expect(Object.keys(state().redEvalShas).sort()).toEqual([
+      "test/demo.test.mjs",
+      "test/perf.test.mjs",
+    ]);
+  });
+
+  it("test gap: WAIVED stamps the evals that ran (a waiver is not a lock bypass)", () => {
+    // Pre-fix nothing covered this: removing the WAIVED stamp passed every
+    // test (mutation M8), though the write site calls it load-bearing.
+    seedEvals();
+    repo.write(`${WS}/plan/agent.md`, validPlan().replace(
+      "| E-2 | P1 | 2 | tests-after | test/demo.test.mjs |",
+      "| E-2 | P1 | 2 | tests-first | test/perf.test.mjs |",
+    ));
+    const g = gateEvals({ waive: ["E-2"], reason: "x", approver: "agent" }, 1);
+    expect(g.code).toBe(0);
+    expect(state().gateVerdicts.evals).toBe("WAIVED");
+    expect(Object.keys(state().redEvalShas)).toContain("test/demo.test.mjs");
+  });
+
+  it("test gap: --verify refuses to combine with --waive, not only --dry-run", () => {
+    // The existing test is titled "…or --waive" but only exercised --dry-run
+    // (mutation M20 / M1 survived).
+    seedEvals();
+    expect(gateEvals({ verify: true, waive: ["E-1"], reason: "x", approver: "a" }).code).toBe(2);
   });
 });
 
