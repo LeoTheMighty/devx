@@ -383,3 +383,18 @@ invites someone to "verify" against a file that was never affected.
   row rather than fixed here — it is an archiving-drift guard, not a
   frontmatter defect, and folding it in would put a one-line correction
   behind an unrelated judgment about what the floor should be.
+- 2026-09-20T18:55-06:00 — phase 7: PR
+  https://github.com/LeoTheMighty/devx/pull/162. CI **failure**, and it is
+  the pre-existing red, not this branch: both runners report `1 failed |
+  3315 passed` with `workstream-migration-integrity` >
+  "found the real workstreams" as the only failure
+  (`expected 1 to be greater than or equal to 9`), identical to a clean
+  `main`. Tracked by `debug-wsmig1`, which now blocks every devx PR — see
+  its status log.
+  Gap-filing correction: the `debug-09451f` spec filed here at 18:25 was a
+  duplicate of `debug-wsmig1`, filed ~20 minutes earlier by palateful-fb
+  off its own full-suite run. Folded into wsmig1 (its AC 4 is the one thing
+  09451f carried that wsmig1 did not — whether the file's looping
+  assertions silently dropped from 9 workstreams to 1) and 09451f deleted
+  along with its DEBUG.md row. Two sessions, same pre-existing red, neither
+  able to see the other: a same-day second instance of `d982ea`.
