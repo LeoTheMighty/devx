@@ -1825,6 +1825,17 @@ describe("E-3: budget-rail split (mss103)", () => {
     expect(events).not.toContain("item:split-fallback");
   });
 
+  // Explicit cap (2e1174 AC 2). Measured 2026-09-21: 3,168 / 3,208 / 3,385ms
+  // in isolation and 3,365ms inside the full blocking pass — so this is
+  // intrinsic work (four items through real git fixtures with spawned
+  // workers), not load amplification. Against vitest's 5,000ms default that
+  // is 1.5x headroom locally; applying MED-4's measured macOS-CI slowdown
+  // (5,519 / 4,373 = 1.26x) puts it near 4.3s on CI, the margin MED-4 failed
+  // on twice. The cap fires here (the driver runs on the async exec seam,
+  // debug-5e1a77), so raising it is enforcement, not the anti-pattern. 30s is
+  // MED-4's value — the same scenario family and fixture shape, one cap for
+  // the family — and is ~7x the CI estimate. Not seamed (AC 4): the real git
+  // round-trip is what this scenario exists to exercise.
   it("a split resets the abandonment streak (afterItemCompleted) — 2 abandons + split + abandon does NOT trip the 3-stop", async () => {
     // Order in DEV.md: bbb, ccc abandon progress-less (streak 2), aaa
     // splits (streak → 0), ddd abandons (streak 1). If split failed to
@@ -1865,7 +1876,7 @@ describe("E-3: budget-rail split (mss103)", () => {
     ]);
     expect(r.exitCode).toBe(0);
     expect(r.summary!.abortReason).toBeNull();
-  });
+  }, 30_000);
 
   it("split failure falls back to abandonItem verbatim (status-quo floor): thrown push rejects the split transaction before any main mutation", async () => {
     fixture = makeFixture([{ hash: "eee555", title: "Fallback thing" }]);

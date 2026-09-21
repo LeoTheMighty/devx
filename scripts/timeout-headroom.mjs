@@ -54,7 +54,51 @@
 //   - A test whose location is missing (DEVX_HEADROOM_OUT unset when the run
 //     started) is counted separately and skipped from the ranking.
 //
-// LAST SWEEP — 2026-08-20 (evening), 12-core macOS, two-pass gate
+// LAST SWEEP — 2026-09-21, 12-core macOS, two-pass gate, 4,286 distinct
+// tests (debug-2e1174). Parallel 143 files green in 26s; blocking 39 files /
+// 890 tests green in 180s — a quiet machine, measured after the host had
+// been plugged back in (a hibernate earlier that day had inflated one
+// loop-driver test 370x; that was the machine, not a cap, and is NOT what
+// this sweep measures).
+//
+//   THE HEADLINE: the false greens came back. The 2026-08-20 sweep below
+//   recorded ZERO accidental over-cap tests. This one found three, all new
+//   since then (dlr104):
+//     0.2x  23,613ms/5,000  engine-layout-scaffold.test.ts:326
+//     0.2x  21,454ms/5,000  engine-layout-scaffold.test.ts:400
+//     0.4x  12,042ms/5,000  engine-layout-scaffold.test.ts:366
+//   All three PASSED. Their `runCli` spawned the CLI through tsx with
+//   `spawnSync`, so the event loop was held and the cap never ran —
+//   debug-5e1a77's fault, reintroduced one month after it was closed.
+//   Negative-controlled: with a 50ms cap on :326 the spawnSync version
+//   PASSED and the async version reported "Test timed out in 50ms".
+//
+//   FIXED BY THE SEAM, NOT A CAP (2e1174 AC 4). `runCli` is now an awaited
+//   `spawn`; the file carries no sync call site, so the partition pin moved
+//   it to the parallel pass. Result, measured under ~9x oversubscription
+//   (load average 105, 28 vitest processes from concurrent sessions): the
+//   three ran 1.1s / 1.2s / 2.2s; file max 2.2s against the 5s default,
+//   2.3x headroom with the cap enforceable. In isolation they are
+//   0.6-0.9s. The 12-24s was blocking-pass amplification of a victim, not
+//   intrinsic cost — the partition doctrine in vitest.shared.ts, again.
+//   64.5s of summed test time left the maxForks-2 blocking pass.
+//
+//   ONE REAL THIN-HEADROOM ROW, now capped: loop-driver.test.ts:1828
+//   (split resets the abandonment streak) at 3,365ms/5,000 (1.5x) — the same
+//   row the 2026-08-20 sweep listed at :1812, unaddressed since. Intrinsic,
+//   not load (3.2-3.4s isolated vs 3.4s in-pass); explicit 30s cap, MED-4's
+//   family value, derivation in place.
+//
+//   ONE LATENT ROW, recorded not converted: engine-layout-migrate.test.ts:403
+//   at 2,587ms/5,000 (1.9x). Same tsx `spawnSync` runCli plus a `spawnSync`
+//   git helper, so its cap cannot fire — but it is still UNDER its cap, so it
+//   is one slow day from being a false green rather than one already. Same
+//   seam fix applies; it touches every git() call in that file.
+//
+//   Deliberate rows unchanged: exec-async-seam.test.ts:136 (the pinned
+//   false green), :114, loop-driver-timeout-enforcement.test.ts:102.
+//
+// PREVIOUS SWEEP — 2026-08-20 (evening), 12-core macOS, two-pass gate
 // (`test:parallel` then `test:blocking`), 117 files / 2,631 tests parallel
 // (25.3s) + 29 files / 759 tests blocking (159.1s), all green. 3,389 distinct
 // tests analyzed. Taken after debug-5e1a77 iteration 4 — the ADOPTION cut.

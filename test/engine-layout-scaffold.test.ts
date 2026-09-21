@@ -15,7 +15,7 @@
 // Spec: dev/dev-dlr104-2026-09-02T09:14-consumer-sweep-scaffolding.md
 // Design: _devx/workstreams/docs-layout-resolution/design/agent.md §"The slug"
 
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import {
   cpSync,
@@ -54,23 +54,40 @@ interface CliResult {
  *  silently assert against a stale `dist/`. tsx is resolved through Node's
  *  module walk rather than a constructed `node_modules/.bin` path: a linked
  *  worktree has no `node_modules` of its own, and a spawn failure there
- *  produces empty output that reads exactly like a legitimate refusal. */
-function runCli(args: string[], cwd: string): CliResult {
-  // spawnSync, not execFileSync: the latter returns only stdout and DROPS
-  // stderr on a zero exit, which is exactly where the idempotent-rerun notice
-  // ("already scaffolded") is written. A test that cannot see it asserts on an
-  // empty string and reads as a missing feature.
-  const r = spawnSync(process.execPath, [tsxCliEntry, cliPath, ...args], {
-    cwd,
-    encoding: "utf8",
-    timeout: 120_000,
-    stdio: ["ignore", "pipe", "pipe"],
+ *  produces empty output that reads exactly like a legitimate refusal.
+ *
+ *  ASYNC on purpose (2e1174). This was `spawnSync`, which holds the event
+ *  loop for the whole child, so vitest's per-test timer could not fire and
+ *  these tests' caps were not enforced at all. Measured 2026-09-21 in the full
+ *  blocking pass: three dlr104 tests PASSED at 12.0s / 21.5s / 23.6s against a
+ *  5,000ms cap — false greens, the fault debug-5e1a77 closed and dlr104
+ *  reintroduced. With an awaited spawn the cap fires again. Both streams are
+ *  still captured: execFileSync-style stdout-only capture would drop the
+ *  "already scaffolded" notice, which is written to stderr on a zero exit. */
+function runCli(args: string[], cwd: string): Promise<CliResult> {
+  return new Promise((settle) => {
+    const child = spawn(process.execPath, [tsxCliEntry, cliPath, ...args], {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (d: string) => (stdout += d));
+    child.stderr.on("data", (d: string) => (stderr += d));
+    // spawnSync carried a 120s kill; keep it so a wedged child is reaped
+    // even if a test's own cap is set past it.
+    const kill = setTimeout(() => child.kill("SIGKILL"), 120_000);
+    child.on("error", (e) => {
+      clearTimeout(kill);
+      settle({ status: -1, stdout, stderr: stderr + String(e) });
+    });
+    child.on("close", (code) => {
+      clearTimeout(kill);
+      settle({ status: code ?? -1, stdout, stderr });
+    });
   });
-  return {
-    status: r.status ?? -1,
-    stdout: r.stdout ?? "",
-    stderr: r.stderr ?? "",
-  };
 }
 
 /** A spawn that produced nothing on EITHER stream never ran the CLI. That is a
@@ -131,9 +148,9 @@ afterEach(() => {
 });
 
 describe("dlr104 — layout-aware scaffolding", () => {
-  it("[project-level, no slug] writes the complete root doc set (UC-1)", () => {
+  it("[project-level, no slug] writes the complete root doc set (UC-1)", async () => {
     const root = bareRepo("project-level");
-    const res = runCli(["workstream", "new"], root);
+    const res = (await runCli(["workstream", "new"], root));
     assertRan(res, "devx workstream new");
     expect(res.status, `${res.stderr}${res.stdout}`).toBe(0);
 
@@ -161,9 +178,9 @@ describe("dlr104 — layout-aware scaffolding", () => {
     expect(existsSync(join(root, "_devx", "workstreams"))).toBe(false);
   });
 
-  it("[workstream, no slug] refuses with exit 1, naming the layout", () => {
+  it("[workstream, no slug] refuses with exit 1, naming the layout", async () => {
     const root = bareRepo("workstream");
-    const res = runCli(["workstream", "new"], root);
+    const res = (await runCli(["workstream", "new"], root));
     assertRan(res, "devx workstream new");
 
     // 1, not 2: a missing slug here is a valid request the engine says no to,
@@ -174,9 +191,9 @@ describe("dlr104 — layout-aware scaffolding", () => {
     expect(`${res.stdout}${res.stderr}`).toContain("engine.docs_layout: workstream");
   });
 
-  it("[project-level, with slug] names the plan spec and no directory", () => {
+  it("[project-level, with slug] names the plan spec and no directory", async () => {
     const root = bareRepo("project-level");
-    const res = runCli(["workstream", "new", "scene-engine"], root);
+    const res = (await runCli(["workstream", "new", "scene-engine"], root));
     assertRan(res, "devx workstream new scene-engine");
     expect(res.status, `${res.stderr}${res.stdout}`).toBe(0);
 
@@ -187,11 +204,11 @@ describe("dlr104 — layout-aware scaffolding", () => {
     expect(readFileSync(spec as string, "utf8")).toContain("Scene Engine");
   });
 
-  it("[workstream, with slug] still produces the folder-per-artifact tree", () => {
+  it("[workstream, with slug] still produces the folder-per-artifact tree", async () => {
     // The control. Everything above is new behavior; this is devx's own
     // scaffolding path, which must not move an inch.
     const root = bareRepo("workstream");
-    const res = runCli(["workstream", "new", "scene-engine"], root);
+    const res = (await runCli(["workstream", "new", "scene-engine"], root));
     assertRan(res, "devx workstream new scene-engine");
     expect(res.status, `${res.stderr}${res.stdout}`).toBe(0);
 
@@ -209,29 +226,29 @@ describe("dlr104 — layout-aware scaffolding", () => {
     expect(existsSync(join(root, "prd.md"))).toBe(false);
   });
 
-  it("[project-level] a second workstream is refused, not silently adopted", () => {
+  it("[project-level] a second workstream is refused, not silently adopted", async () => {
     // `wsRel` is `.` for EVERY workstream under this layout, so the adoption
     // walk matches any spec claiming the root. Adopting it would return the
     // FIRST workstream's hash under the second one's name and report
     // "already scaffolded" for something that never was.
     const root = bareRepo("project-level");
-    expect(runCli(["workstream", "new", "first-thing"], root).status).toBe(0);
+    expect((await runCli(["workstream", "new", "first-thing"], root)).status).toBe(0);
 
-    const second = runCli(["workstream", "new", "second-thing"], root);
+    const second = (await runCli(["workstream", "new", "second-thing"], root));
     assertRan(second, "devx workstream new second-thing");
     expect(second.status).toBe(1);
     expect(second.stderr).toContain("first-thing");
     expect(second.stderr).toContain("exactly one doc set");
   });
 
-  it("[project-level] re-running is a no-op, not a refusal", () => {
+  it("[project-level] re-running is a no-op, not a refusal", async () => {
     // The doc-set probe's real job. The old probe asked "does the directory
     // exist", which under this layout asks about the repo root — always true,
     // so UC-1 threw on every invocation including the first.
     const root = bareRepo("project-level");
-    expect(runCli(["workstream", "new"], root).status).toBe(0);
+    expect((await runCli(["workstream", "new"], root)).status).toBe(0);
 
-    const second = runCli(["workstream", "new"], root);
+    const second = (await runCli(["workstream", "new"], root));
     assertRan(second, "devx workstream new (second run)");
     expect(second.status).toBe(0);
     expect(second.stderr).toContain("already scaffolded");
@@ -249,9 +266,9 @@ describe("dlr104 — layout-aware scaffolding", () => {
 // ---------------------------------------------------------------------------
 
 /** Scaffold a flat repo and return its root + the plan spec's hash. */
-function flatRepoWithDocSet(): { root: string; hash: string } {
+async function flatRepoWithDocSet(): Promise<{ root: string; hash: string }> {
   const root = bareRepo("project-level");
-  const res = runCli(["workstream", "new", "scene-engine"], root);
+  const res = (await runCli(["workstream", "new", "scene-engine"], root));
   assertRan(res, "devx workstream new scene-engine");
   expect(res.status, `${res.stderr}${res.stdout}`).toBe(0);
   const spec = planSpec(root);
@@ -262,9 +279,9 @@ function flatRepoWithDocSet(): { root: string; hash: string } {
 }
 
 describe("dlr104 — consumers resolve real paths under project-level", () => {
-  it("devx next selects a stage row and names the flat spellings", () => {
-    const { root, hash } = flatRepoWithDocSet();
-    const res = runCli(["next", hash], root);
+  it("devx next selects a stage row and names the flat spellings", async () => {
+    const { root, hash } = (await flatRepoWithDocSet());
+    const res = (await runCli(["next", hash], root));
     assertRan(res, `devx next ${hash}`);
     expect(res.status, `${res.stderr}${res.stdout}`).toBe(0);
 
@@ -285,11 +302,11 @@ describe("dlr104 — consumers resolve real paths under project-level", () => {
     expect(out.focus).not.toBeNull();
   });
 
-  it("devx next reports row 8 until plan.md exists, then row 9", () => {
+  it("devx next reports row 8 until plan.md exists, then row 9", async () => {
     // The `plan.md` / `PLAN.md` case collision (debug-135dc9) makes a
     // case-blind probe answer TRUE here on macOS, skipping row 8 entirely.
     // bareRepo() writes a PLAN.md backlog, so this pins the exact-name probe.
-    const { root, hash } = flatRepoWithDocSet();
+    const { root, hash } = (await flatRepoWithDocSet());
     // Exact-name, not existsSync: on a case-INSENSITIVE filesystem (macOS,
     // Windows) `existsSync("plan.md")` answers TRUE for `PLAN.md`, which is
     // the hazard itself — asserting on it would fail here and pass on Linux
@@ -308,7 +325,7 @@ describe("dlr104 — consumers resolve real paths under project-level", () => {
         .replace("design_verified: false", "design_verified: true"),
     );
 
-    const before = JSON.parse(runCli(["next", hash], root).stdout) as {
+    const before = JSON.parse((await runCli(["next", hash], root)).stdout) as {
       row: number;
       reason: string;
     };
@@ -323,8 +340,8 @@ describe("dlr104 — consumers resolve real paths under project-level", () => {
     // exercise in passing. The transition is covered on a clean fixture below.
   });
 
-  it("devx next advances to row 9 once plan.md is authored", () => {
-    const { root, hash } = flatRepoWithDocSet();
+  it("devx next advances to row 9 once plan.md is authored", async () => {
+    const { root, hash } = (await flatRepoWithDocSet());
     // No `PLAN.md` in this fixture, so `plan.md` is writable as itself.
     rmSync(join(root, "PLAN.md"), { force: true });
     writeFileSync(join(root, "design.md"), "# Design\n");
@@ -336,7 +353,7 @@ describe("dlr104 — consumers resolve real paths under project-level", () => {
         .replace("design_verified: false", "design_verified: true"),
     );
 
-    const before = JSON.parse(runCli(["next", hash], root).stdout) as {
+    const before = JSON.parse((await runCli(["next", hash], root)).stdout) as {
       row: number;
       reason: string;
     };
@@ -344,7 +361,7 @@ describe("dlr104 — consumers resolve real paths under project-level", () => {
 
     writeFileSync(join(root, "plan.md"), "# Plan\n");
     expect(readdirSync(root)).toContain("plan.md");
-    const after = JSON.parse(runCli(["next", hash], root).stdout) as {
+    const after = JSON.parse((await runCli(["next", hash], root)).stdout) as {
       row: number;
       reason: string;
     };
@@ -352,9 +369,9 @@ describe("dlr104 — consumers resolve real paths under project-level", () => {
     expect(after.reason).toContain("plan.md");
   });
 
-  it("devx status renders the slug and resolves the doc set", () => {
-    const { root } = flatRepoWithDocSet();
-    const res = runCli(["status"], root);
+  it("devx status renders the slug and resolves the doc set", async () => {
+    const { root } = (await flatRepoWithDocSet());
+    const res = (await runCli(["status"], root));
     assertRan(res, "devx status");
     expect(res.status, `${res.stderr}${res.stdout}`).toBe(0);
     // The slug lives in the plan spec's filename under this layout; the tail
@@ -363,11 +380,11 @@ describe("dlr104 — consumers resolve real paths under project-level", () => {
     expect(res.stdout).not.toMatch(/^\. \(/m);
   });
 
-  it("devx graph derives phase ordering from the root plan.md", () => {
+  it("devx graph derives phase ordering from the root plan.md", async () => {
     // The defect was the ENUMERATION, one level above the resolver calls:
     // `readdir(<workstreams_root>)` yields nothing in a flat repo, so every
     // phase edge silently vanished — no error, just a board missing its edges.
-    const { root } = flatRepoWithDocSet();
+    const { root } = (await flatRepoWithDocSet());
     writeFileSync(
       join(root, "plan.md"),
       "# Plan\n\n- [ ] Phase 1: first (dev spec: aaa111)\n- [ ] Phase 2: second (dev spec: bbb222)\n",
@@ -388,7 +405,7 @@ describe("dlr104 — consumers resolve real paths under project-level", () => {
         "- [ ] `dev/dev-bbb222-2026-09-02T10:00-second.md` — second. Status: ready.\n",
     );
 
-    const res = runCli(["graph", "backfill", "--dry-run"], root);
+    const res = (await runCli(["graph", "backfill", "--dry-run"], root));
     assertRan(res, "devx graph backfill --dry-run");
     expect(res.status, `${res.stderr}${res.stdout}`).toBe(0);
     // Non-empty, and attributed to the workstream the plan spec names.
@@ -397,9 +414,9 @@ describe("dlr104 — consumers resolve real paths under project-level", () => {
     expect(res.stdout).toContain("workstream scene-engine");
   });
 
-  it("devx outcome resolves real paths rather than failing on a missing dir", () => {
-    const { root, hash } = flatRepoWithDocSet();
-    const res = runCli(["outcome", "arm", hash], root);
+  it("devx outcome resolves real paths rather than failing on a missing dir", async () => {
+    const { root, hash } = (await flatRepoWithDocSet());
+    const res = (await runCli(["outcome", "arm", hash], root));
     assertRan(res, `devx outcome arm ${hash}`);
     // Refused on STAGE — the workstream is at `prd`, not `done`. The point is
     // that it got far enough to have an opinion about the stage: a layout-blind
