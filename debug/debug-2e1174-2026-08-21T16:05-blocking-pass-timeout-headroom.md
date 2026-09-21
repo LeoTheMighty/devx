@@ -201,3 +201,4 @@ evidence should not be read as a CI observation.
   partition move, negative-controlled; one thin-headroom row capped; one
   latent false green recorded. AC 5's after-number deferred — the machine
   was 9× oversubscribed.
+- 2026-09-21T13:55 — phase 4: single-pass self-review by the implementing session, NOT a parallel adversarial review (run by hand through the devx helpers, not the /devx skill, so no review agents were spawned — see debug-d315b9 instance 3). Verification was mechanical: negative-controlled (a 50ms cap on each of the three converted dlr104 tests PASSED on the spawnSync version and timed out on the async one), re-run on all three after rebasing onto 16 new commits; the partition pin forced the file move; remote CI green on both runners at the merged tip. One finding was self-caught and corrected in-PR: the 12-24s false greens were a local-host symptom, not a CI observation. Written before close so this spec does not join d315b9's AC 8 list.
