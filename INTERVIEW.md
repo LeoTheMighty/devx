@@ -162,7 +162,7 @@ loop can read.
 
 ---
 
-- [ ] **Q#9 — S-1 prose budget: the full-run surface measures 64.2 KB against the 60 KB end-to-end target.** (from /devx on dev-v2o101)
+- [x] **Q#9 — S-1 prose budget: the full-run surface measures 64.2 KB against the 60 KB end-to-end target.** (from /devx on dev-v2o101)
   - Context: v2o101's migration retro measured the prose actually loadable
     for one full PRD→merge run: planning surface (engine templates +
     `.claude/commands/devx-plan.md`) = 24,426 B — comfortably inside the
@@ -200,7 +200,18 @@ loop can read.
     absorbing six arms into one file; each per-stage §6 target is
     individually met, and (b) trades a real regression class (arm drift
     across files) for a symbolic 4 KB. Cheap, honest, enforced.
-  → Answer:
+  → Answer: **Raise it — deliberately, as its own reviewed change.** The
+    direction is **Leo's decision** (2026-09-21, relayed by the coordinator
+    session), made instead of letting whoever next tripped the tripwire
+    decide by accident. The number and structure are proposed in
+    `dev/dev-5c215e` and recorded as **D-14** in `v2/07-decisions.md`
+    (`[user]` pending his sign-off on the number): the full run gets its own
+    knob, `engine.full_run_prose_budget_kb: 128`, gated directly; the
+    planning surface stays at `prose_budget_kb: 60`.
+    None of options (a)–(c) as written: they were priced against a 64.2 KB
+    surface, and it measured 122,852 B on 2026-09-21. (a)'s "raise to 70"
+    could not hold today's surface at all; (b)'s saving is now tens of KB
+    per run, not "a symbolic 4KB" — D-14 names it as the next lever.
 
 ---
 

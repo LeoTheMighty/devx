@@ -122,6 +122,66 @@ file; supersessions are appended, never rewritten.
   Note the mask is not a safety net going forward: the graph and the gates
   read frontmatter, not the row prose.
 
+- **D-14 [user] (2026-09-21, 5c215e)** — *The S-1 full-run prose surface
+  gets its own budget, `engine.full_run_prose_budget_kb: 128`, separate from
+  the planning budget (`prose_budget_kb: 60`, unchanged).* Supersedes, in
+  part, `02-engine.md` §6's "full feature end-to-end ≤ 60KB"; §6's row is
+  kept as written and annotated. **Direction is Leo's** (raise it
+  deliberately, as its own reviewed change, rather than let whoever next
+  trips the tripwire decide); **the number and structure are proposed here**
+  and need his sign-off, hence `[user]`. Answers INTERVIEW Q#9.
+
+  *Why two knobs.* One knob used to set both thresholds: planning gated at
+  1×, full run tripwired at 2×. So the 2× multiplier, documented as "drift
+  tripwire only", was the full-run budget by accident — and raising it for
+  the full run would silently have loosened a planning budget nobody is
+  hitting (55,260 B of 61,440 on 2026-09-21). Loosening a limit nobody
+  decided to loosen is the exact failure this decision exists to avoid.
+
+  *What S-1 protects.* §6 calls token budget "the point of all this": v2
+  exists to kill BMAD's ~550KB-per-feature prose load, because an agent
+  that loads that much prose per run behaves worse. The original target
+  (≤ 60KB, ~11% of BMAD) was a policy line, not a measured degradation
+  threshold. **Nobody has measured where agent behaviour degrades against
+  skill-body size in this repo**, so 128 is a policy line too, and this
+  entry does not pretend otherwise. It is anchored to S-1's purpose rather
+  than to current size: **128KB keeps a full run at ≤ ~23% of the BMAD
+  baseline — still a >4× reduction** — and accepts, explicitly, roughly 2×
+  the original end-to-end target.
+
+  *Where the line is drawn, and why there.* A budget should force a
+  correctness change to *pay for itself*; it should never force one *out*.
+  The two correctness changes that hit the wall on 2026-09-21 show both
+  halves: devx-b6's ~900 B addition replaced stale prose to fit (−354 net)
+  and my own +515 B trimmed to +142 losing nothing true — the budget working
+  as designed. The failure mode is headroom *smaller than one correctness
+  edit* (28 B that day), where even a true change must cut elsewhere and
+  someone may cut true prose to fit. 128KB gives ~8.2KB of headroom, i.e.
+  roughly 9–16 correctness-sized edits at the sizes measured that day, so no
+  correctness fix has to cut elsewhere for the foreseeable queue.
+
+  *And why not more.* The dispatcher grew 37.6KB → 67.6KB between
+  2026-07-05 and 2026-09-21 (+80% in 11 weeks, ~2.7KB/week). At that rate
+  8.2KB lasts about three weeks. **That is intended.** A budget sized to
+  absorb the trend (~160KB would last a quarter) is margin, not a budget.
+  When this binds again, the growth *rate* is what needs deciding.
+
+  *Where the overrun actually lives.* Not spread thin: `devx.md` carries six
+  arms (dispatch/execute/debug/address/retro/loop) in one file and every run
+  loads all of them, against §6's "Execute per story ≤ 10KB" — the
+  dispatcher alone is ~6.7× that stage target. INTERVIEW Q#9's option (b),
+  load only the arm a run needs, was rejected on 2026-07-05 as trading "a
+  real regression class (arm drift across files) for a symbolic 4KB". **That
+  price has changed: at today's size the saving per run is tens of KB, not
+  4.** Not reopened here — Leo chose to raise — but it is the lever to pull
+  next time, rather than another raise.
+
+  Enforced by `test/engine-prose-budget.test.ts`, which now gates the full
+  run directly at this knob (the 2× assertion is gone) and pins that the two
+  knobs stay independent. Deliberately **not** written into new projects'
+  configs by `devx init`: the canary lives only in this repo's suite, so
+  downstream the key would be written and never read.
+
 ## Open questions (non-blocking, tracked)
 
 - ~~**O-1** — Mermaid in tours~~ **CLOSED 2026-08-04 (tur101)** — moot; the

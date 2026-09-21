@@ -955,6 +955,12 @@
           "minimum": 1
         },
         "prose_budget_kb": {
+          "description": "S-1 planning-surface budget in KB: engine templates + the /devx-plan skill body.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "full_run_prose_budget_kb": {
+          "description": "S-1 full-run budget in KB: the planning surface plus the /devx dispatcher body — the prose one PRD-to-merge run can load. Separate from prose_budget_kb so raising one never silently loosens the other (D-14).",
           "type": "number",
           "exclusiveMinimum": 0
         },

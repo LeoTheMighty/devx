@@ -6,8 +6,9 @@
 // total regresses past `engine.prose_budget_kb` (default 60KB).
 //
 // If this test fails you have two honest options: cut prose, or raise the
-// budget in devx.config.yaml → engine.prose_budget_kb with a PR that says
-// why. Do not add exclusions here.
+// budget in devx.config.yaml → engine.prose_budget_kb (planning surface) or
+// engine.full_run_prose_budget_kb (full run, D-14) with a PR that says why.
+// Do not add exclusions here.
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -45,9 +46,9 @@ function listTemplateMdFiles(): string[] {
   return out.sort();
 }
 
-function budgetBytes(): number {
-  // engine.prose_budget_kb read defensively from the real project config
-  // (the `engine:` block doesn't exist until v2x101 — defaults apply).
+function repoEngineConfig(): ReturnType<typeof engineConfigFrom> {
+  // engine.* read defensively from the real project config (the `engine:`
+  // block doesn't exist until v2x101 — defaults apply).
   let merged: unknown = null;
   try {
     merged = loadMerged({
@@ -56,7 +57,15 @@ function budgetBytes(): number {
   } catch {
     merged = null;
   }
-  return engineConfigFrom(merged).proseBudgetKb * 1024;
+  return engineConfigFrom(merged);
+}
+
+function budgetBytes(): number {
+  return repoEngineConfig().proseBudgetKb * 1024;
+}
+
+function fullRunBudgetBytes(): number {
+  return repoEngineConfig().fullRunProseBudgetKb * 1024;
 }
 
 describe("engine prose-budget canary (S-1)", () => {
@@ -100,38 +109,59 @@ describe("engine prose-budget canary (S-1)", () => {
     expect(found).toContain("evals/outline.md");
   });
 
-  // S-1 full-run measurement (v2o101, migration retro): the prose actually
-  // loadable across one full PRD→merge run is the planning surface above
-  // PLUS the /devx dispatcher body (.claude/commands/devx.md), which
-  // carries the execute arm — a surface the BMAD era also paid
-  // (~48KB/story dev-story + code-review) inside its ~550KB total.
+  // S-1 full-run budget (D-14, 5c215e). The prose actually loadable across
+  // one full PRD→merge run is the planning surface above PLUS the /devx
+  // dispatcher body (.claude/commands/devx.md), which carries the execute
+  // arm and five others — a surface the BMAD era also paid (~48KB/story
+  // dev-story + code-review) inside its ~550KB total.
   //
-  // Measured at v2o101 (2026-07-05): planning surface 24,426 B (~23.9KB);
-  // full run incl. devx.md 65,767 B (~64.2KB). Re-measured at the
-  // outline-folders restructure (2026-08-23): planning surface ~37.5KB
-  // (nested stage templates + the outline/human rules in devx-plan.md —
-  // still well inside the 60KB budget, no raise needed); full run incl.
-  // devx.md ~96.6KB — a real jump this change knowingly paid for the
-  // outline discipline prose, still under the 2× tripwire. INTERVIEW Q#9
-  // (the full-surface budget question) remains the open product call:
-  // trim devx.md (six arms: execute/debug/address/retro/loop/dispatch) or
-  // raise the budget — not a test's decision. This assertion is a drift
-  // tripwire only — 2× budget — so unnoticed growth still fails CI
-  // without this test quietly re-deciding the budget question.
-  it("S-1 full-run surface (+ devx.md execute arm) stays under the 2x drift tripwire", () => {
-    let total = 0;
+  // History, so the next reader does not re-derive it: measured 65,767 B at
+  // v2o101 (2026-07-05), ~96.6KB at the outline-folders restructure
+  // (2026-08-23), 122,852 B on 2026-09-21. Until D-14 this surface was
+  // gated only by a 2× `prose_budget_kb` "drift tripwire", so the multiplier
+  // WAS the budget by accident, and raising it would have loosened the
+  // planning gate above as well. It now has its own knob and is gated
+  // directly: the number that binds is the number that was chosen.
+  //
+  // If this fails: cut prose, or change `engine.full_run_prose_budget_kb`
+  // in a PR that says why (D-14 records the reasoning for the current
+  // value). The durable lever, if growth continues, is loading only the
+  // dispatcher arm a run needs rather than all six — see D-14.
+  it("S-1 full-run surface (planning + devx.md) fits engine.full_run_prose_budget_kb", () => {
+    const surfaces: Array<{ path: string; bytes: number }> = [];
     for (const name of listTemplateMdFiles()) {
-      total += statSync(join(ENGINE_TEMPLATES_DIR, ...name.split("/"))).size;
+      surfaces.push({
+        path: `_devx/templates/engine/${name}`,
+        bytes: statSync(join(ENGINE_TEMPLATES_DIR, ...name.split("/"))).size,
+      });
     }
     for (const rel of [...STAGE_SKILL_SECTIONS, ".claude/commands/devx.md"]) {
-      total += Buffer.byteLength(
-        readFileSync(join(REAL_REPO_ROOT, ...rel.split("/"))),
-      );
+      surfaces.push({
+        path: rel,
+        bytes: Buffer.byteLength(readFileSync(join(REAL_REPO_ROOT, ...rel.split("/")))),
+      });
     }
+    const total = surfaces.reduce((sum, s) => sum + s.bytes, 0);
+    const budget = fullRunBudgetBytes();
     expect(
       total,
-      `S-1 full-run prose is ${total} bytes — past the 2x-budget drift tripwire; re-measure and re-record the retro verdict`,
-    ).toBeLessThanOrEqual(budgetBytes() * 2);
+      [
+        `S-1 full-run prose is ${total} bytes — over the ${budget}-byte budget (engine.full_run_prose_budget_kb).`,
+        "Per-surface breakdown:",
+        ...surfaces.map((s) => `  ${s.bytes}\t${s.path}`),
+        "Cut prose or change the budget in devx.config.yaml with an explanation (see D-14).",
+      ].join("\n"),
+    ).toBeLessThanOrEqual(budget);
+  });
+
+  // The two knobs must stay independent: the whole point of D-14 is that
+  // moving one never silently moves the other.
+  it("the full-run budget is its own knob, not derived from the planning budget", () => {
+    const planningOnly = engineConfigFrom({ engine: { prose_budget_kb: 999 } });
+    expect(planningOnly.fullRunProseBudgetKb).toBe(ENGINE_DEFAULTS.fullRunProseBudgetKb);
+    const fullOnly = engineConfigFrom({ engine: { full_run_prose_budget_kb: 999 } });
+    expect(fullOnly.proseBudgetKb).toBe(ENGINE_DEFAULTS.proseBudgetKb);
+    expect(fullOnly.fullRunProseBudgetKb).toBe(999);
   });
 });
 
@@ -150,6 +180,9 @@ describe("engineConfigFrom — defensive engine.* reads (AC #12)", () => {
       archiveRoot: "_devx/archive",
       expectationsMin: 3,
       proseBudgetKb: 60,
+      // D-14 (5c215e): the full-run surface's own budget, split from the
+      // planning knob so moving one never moves the other.
+      fullRunProseBudgetKb: 128,
       // §31 Reading Guide columns — defaults to the plan-stage critique
       // lenses so a repo has one reviewer vocabulary, not two.
       readingGuideRoles: ["pm", "architect", "dev", "qa"],
@@ -173,6 +206,7 @@ describe("engineConfigFrom — defensive engine.* reads (AC #12)", () => {
         workstreams_root: 42,
         expectations_min: -1,
         prose_budget_kb: "sixty",
+        full_run_prose_budget_kb: 0,
       },
     });
     expect(cfg).toEqual(ENGINE_DEFAULTS);
