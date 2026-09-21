@@ -381,16 +381,36 @@ describe("round 1: checkStoryPlanScope against a repo", () => {
   const run = (wt: string, story: string) =>
     checkStoryPlanScope({ repoRoot: wt, base: "main", head: "HEAD", story, exec: realExec });
 
-  it("a split follow-up inherits its parent's phase through `from:`", () => {
+  it("a split follow-up — one its parent's `spawned:` names — inherits the parent's phase", () => {
     const { root, plan } = repoWith({
       "dev/dev-bbb202-2026-09-02T09:00-f.md":
         "---\nhash: bbb202\nstatus: in-progress\nfrom: dev/dev-aaa102-2026-09-02T09:00-x.md\n---\n",
+      "dev/dev-aaa102-2026-09-02T09:00-x.md":
+        "---\nhash: aaa102\nstatus: in-progress\nphase: 2\nplan: _devx/workstreams/demo\nspawned: [bbb202]\n---\n\n## Status log\n",
     });
     const wt = branchEdit(root, "bbb202", plan, "- [ ] T1.1", "- [x] T1.1");
     const r = run(wt, "bbb202");
     expect(r.ownPhase).toBe(2);
     expect(r.files).toHaveLength(1);
   });
+  it("a spec merely FILED from a phase story does not inherit its phase — the 2d6fc1 case", () => {
+    // `from:` records provenance of every kind. #175's own CI run scoped
+    // 2d6fc1 (filed from dlr103) to phase 3 before this was fixed.
+    const { root, plan } = repoWith({
+      "debug/debug-fff606-2026-09-02T09:00-f.md":
+        "---\nhash: fff606\nstatus: in-progress\nfrom: dev/dev-aaa101-2026-09-02T09:00-x.md\n---\n",
+    });
+    const wt = join(root, ".worktrees", "debug-fff606");
+    git(root, "worktree", "add", "-q", "-b", "feat/debug-fff606", wt, "main");
+    const p = join(wt, plan);
+    writeFileSync(p, edit(readFileSync(p, "utf8"), "- [ ] T2.1", "- [x] T2.1"));
+    git(wt, "commit", "-q", "-am", "x");
+    const r = run(wt, "fff606");
+    expect(r.ownPhase).toBeNull();
+    expect(r.skipped).toMatch(/not a workstream-phase story/);
+    expect(r.unscoped).toEqual([plan]);
+  });
+
   it("a story with no phase and no lineage reports the plan edit instead of passing silently", () => {
     const { root, plan } = repoWith({
       "dev/dev-ccc303-2026-09-02T09:00-f.md": "---\nhash: ccc303\nstatus: in-progress\n---\n",

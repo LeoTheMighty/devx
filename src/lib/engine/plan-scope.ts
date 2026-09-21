@@ -30,7 +30,12 @@
 // Spec: debug/debug-2d6fc1-2026-09-02T11:20-peer-commit-swept-uncommitted-artifact.md
 
 import type { Exec } from "../exec.js";
-import { frontmatterKeyValue, splitFrontmatterLines } from "../frontmatter-keys.js";
+import {
+  findFrontmatterKeys,
+  frontmatterKeyValue,
+  keyBlockEnd,
+  splitFrontmatterLines,
+} from "../frontmatter-keys.js";
 import { isNullishScalar } from "../frontmatter-scalar.js";
 
 /**
@@ -347,10 +352,25 @@ export function checkStoryPlanScope(opts: {
   let f = fields(own);
   // A split follow-up carries no `phase:` of its own; it continues its
   // parent's phase (review round 1 — `devx split` emits neither key).
+  //
+  // `from:` alone does NOT make a follow-up: it records every kind of
+  // provenance, and a debug spec merely FILED from a phase story has it
+  // too. This PR's own CI run proved it — 2d6fc1, filed from dlr103, was
+  // scoped to dlr103's phase 3. What `devx split` does that filing does not
+  // is record the follow-up in the parent's `spawned:` list (appendSpawned),
+  // so inheritance requires the parent to name this story there.
   if ((f.phase === null || f.plan === null) && f.from !== null) {
     const parentHash = /(?:dev|debug)-([A-Za-z0-9]+)-/.exec(f.from)?.[1];
-    const parent = parentHash ? fields(findSpec(opts.head, parentHash)) : null;
-    if (parent && parent.phase !== null && parent.plan !== null) {
+    const parentText = parentHash ? findSpec(opts.head, parentHash) : null;
+    const parent = fields(parentText);
+    const pfm = parentText ? splitFrontmatterLines(parentText) : null;
+    const spawnedAt = pfm ? findFrontmatterKeys(pfm.lines, "spawned")[0] : undefined;
+    const spawned =
+      pfm && spawnedAt !== undefined
+        ? pfm.lines.slice(spawnedAt, keyBlockEnd(pfm.lines, spawnedAt)).join("\n")
+        : "";
+    const namesUs = new RegExp(`(^|[^A-Za-z0-9])${opts.story}([^A-Za-z0-9]|$)`).test(spawned);
+    if (namesUs && parent.phase !== null && parent.plan !== null) {
       f = { ...f, phase: f.phase ?? parent.phase, plan: f.plan ?? parent.plan };
     }
   }
