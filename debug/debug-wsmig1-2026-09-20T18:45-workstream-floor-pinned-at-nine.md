@@ -4,8 +4,8 @@ type: debug
 created: 2026-09-20T18:45:00-06:00
 title: "workstream-migration-integrity pins a hardcoded floor of 9 that the archival invalidated"
 from: debug/debug-f4149e-2026-09-02T11:55-todo-phase-pointer-arrow-silent.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-09-20T1831-10025
 branch: null
 ---
 
@@ -87,3 +87,4 @@ a real decision about what the invariant protects — hence: not made here.
 - 2026-09-20T18:45 — filed from `f4149e`'s full-suite run. Confirmed
   pre-existing by reproducing on a clean unmodified `main`, so it belongs to
   the archival, not to any in-flight branch.
+- 2026-09-20T18:31:30-06:00 — claimed by /devx in session /devx-2026-09-20T1831-10025
