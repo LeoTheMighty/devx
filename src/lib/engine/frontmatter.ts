@@ -541,6 +541,24 @@ export function ensureEngineFrontmatter(
 export const HASH_RE = /^[a-z0-9]{3,12}$/i;
 
 /**
+ * The two directory reads spec resolution needs. Injectable so callers that
+ * run against a fake filesystem (the claim/verify/mark-done/split family,
+ * via `ClaimFs`, which satisfies this structurally) resolve through the SAME
+ * function as the real-fs callers instead of keeping a private copy — the
+ * private copy is how `dev` became a silent default in one half of the loop
+ * while the other half resolved every type (7d96be).
+ */
+export interface SpecDirReader {
+  exists(path: string): boolean;
+  readdir(path: string): string[];
+}
+
+const nodeSpecDirReader: SpecDirReader = {
+  exists: existsSync,
+  readdir: (path) => readdirSync(path),
+};
+
+/**
  * Locate a spec by hash under `<repoRoot>/<specDir>/`. Mirrors
  * merge-gate.ts findSpecForHash but parameterized on the spec dir —
  * workstream specs are `plan/plan-<hash>-*.md`, not `dev/dev-<hash>-*.md`.
@@ -549,10 +567,11 @@ export function findSpecForHashIn(
   repoRoot: string,
   specDir: string,
   hash: string,
+  reader: SpecDirReader = nodeSpecDirReader,
 ): string | null {
   const dir = join(repoRoot, specDir);
-  if (!existsSync(dir)) return null;
-  for (const name of readdirSync(dir).sort()) {
+  if (!reader.exists(dir)) return null;
+  for (const name of [...reader.readdir(dir)].sort()) {
     if (name.startsWith(`${specDir}-${hash}-`) && name.endsWith(".md")) {
       return join(dir, name);
     }
@@ -607,10 +626,11 @@ export class AmbiguousSpecHashError extends Error {
 export function findSpecForHashAnyType(
   repoRoot: string,
   hash: string,
+  reader: SpecDirReader = nodeSpecDirReader,
 ): SpecResolution | null {
   const matches: SpecResolution[] = [];
   for (const type of SPEC_TYPE_DIRS) {
-    const path = findSpecForHashIn(repoRoot, type, hash);
+    const path = findSpecForHashIn(repoRoot, type, hash, reader);
     if (path !== null) matches.push({ path, type });
   }
   if (matches.length === 0) return null;

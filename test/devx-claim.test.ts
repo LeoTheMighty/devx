@@ -1195,6 +1195,66 @@ describe("claimSpec — debug type (v2d101)", () => {
     ).rejects.toMatchObject({ name: "ClaimError", stage: "validate" });
   });
 
+  // ---- 7d96be: one resolution rule across the loop. `claim` used to default
+  //      to `dev` and die on a debug item unless given `--type debug`, while
+  //      `merge-gate` resolved every type from the hash alone.
+
+  it("claims a DEBUG.md item with NO type — resolved from the hash (7d96be AC 1)", async () => {
+    const { fs, state, baseOpts } = makeDebugFixture();
+    const { exec, calls } = makeFakeExec();
+    const result = await claimSpec("bug001", { ...baseOpts, fs, exec });
+    expect(result.branch).toBe("feat/debug-bug001");
+    expect(state.files.get(`${REPO}/DEBUG.md`) as string).toContain(
+      "- [/] `debug/debug-bug001-2026-07-05T12:00-broken-thing.md`",
+    );
+    // The resolved type drives the worktree stem, not a `dev` default.
+    const wtCall = calls.find(
+      (c) => c.cmd === "git" && c.args[0] === "worktree" && c.args[1] === "add",
+    );
+    expect(wtCall?.args[2]).toBe("/repo/.worktrees/debug-bug001");
+  });
+
+  it("refuses a hash present under two spec dirs, naming both, and mutates nothing (7d96be AC 2)", async () => {
+    const { fs, state, baseOpts } = makeDebugFixture();
+    const devDup = `${REPO}/dev/dev-bug001-2026-07-05T12:00-collision.md`;
+    state.files.set(devDup, SAMPLE_DEBUG_SPEC.replace("type: debug", "type: dev"));
+    state.dirs.add(`${REPO}/dev`); // the fake fs indexes dirs at construction
+    const debugMdBefore = state.files.get(`${REPO}/DEBUG.md`);
+    const { exec, calls } = makeFakeExec();
+
+    const err = await claimSpec("bug001", { ...baseOpts, fs, exec }).catch((e) => e);
+    expect(err).toMatchObject({ name: "ClaimError", stage: "resolve" });
+    expect(err.message).toContain(devDup);
+    expect(err.message).toContain(`${REPO}/debug/debug-bug001-2026-07-05T12:00-broken-thing.md`);
+    expect(err.message).toContain("--type");
+    // It must not silently pick one: nothing flipped, nothing committed.
+    expect(state.files.get(`${REPO}/DEBUG.md`)).toBe(debugMdBefore);
+    expect(calls.some((c) => c.cmd === "git" && c.args[0] === "commit")).toBe(false);
+
+    // --type is the disambiguator: naming a dir claims from that dir.
+    const ok = await claimSpec("bug001", { ...baseOpts, fs, exec, type: "debug" });
+    expect(ok.branch).toBe("feat/debug-bug001");
+  });
+
+  it("a hash that resolves to a plan spec is refused as unclaimable, naming the type (7d96be)", async () => {
+    const { fs, state, baseOpts } = makeDebugFixture();
+    state.files.set(`${REPO}/plan/plan-pln001-2026-07-05T12:00-a-plan.md`, "---\nhash: pln001\ntype: plan\n---\n");
+    state.dirs.add(`${REPO}/plan`); // the fake fs indexes dirs at construction
+    const { exec } = makeFakeExec();
+    const err = await claimSpec("pln001", { ...baseOpts, fs, exec }).catch((e) => e);
+    expect(err).toMatchObject({ name: "ClaimError", stage: "validate" });
+    expect(err.message).toMatch(/resolves to a plan spec/);
+  });
+
+  it("a hash in no spec dir names every dir it searched, not just dev/ (7d96be)", async () => {
+    const { fs, baseOpts } = makeDebugFixture();
+    const { exec } = makeFakeExec();
+    const err = await claimSpec("zzz999", { ...baseOpts, fs, exec }).catch((e) => e);
+    expect(err).toMatchObject({ name: "ClaimError", stage: "resolve" });
+    expect(err.message).toMatch(/under any spec dir \(dev, plan, test, debug/);
+    expect(err.message).not.toMatch(/dev\/dev-zzz999-\*\.md/);
+  });
+
   it("resolve failure names the debug path when the debug spec is missing", async () => {
     const { fs, baseOpts } = makeDebugFixture();
     const { exec } = makeFakeExec();

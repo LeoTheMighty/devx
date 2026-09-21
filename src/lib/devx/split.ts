@@ -56,7 +56,7 @@ import {
   CLAIMABLE_TYPES,
   type ClaimFs,
   type ClaimableType,
-  findSpecForHash,
+  lookupSpecForHash,
   realFs,
 } from "./claim.js";
 import { specLockOwner, specLockPath } from "./spec-lock.js";
@@ -789,11 +789,13 @@ export function performSplit(
   if (shape !== "merge-first" && shape !== "branch-handoff") {
     throw new SplitError("validate", `invalid shape '${String(shape)}'`);
   }
-  const type = opts.type ?? "dev";
-  if (!(CLAIMABLE_TYPES as readonly string[]).includes(type)) {
+  if (
+    opts.type !== undefined &&
+    !(CLAIMABLE_TYPES as readonly string[]).includes(opts.type)
+  ) {
     throw new SplitError(
       "validate",
-      `unsplittable spec type '${type}' (expected one of: ${CLAIMABLE_TYPES.join(", ")})`,
+      `unsplittable spec type '${opts.type}' (expected one of: ${CLAIMABLE_TYPES.join(", ")})`,
     );
   }
   const payload = validateSplitPayload(opts.payload);
@@ -828,11 +830,17 @@ export function performSplit(
     }
 
     // ---- Resolve parent + backlog.
-    const parentSpecAbs = findSpecForHash(fs, opts.repoRoot, hash, type);
-    if (!parentSpecAbs) {
+    // One resolution rule with claim/merge-gate (7d96be): no `dev` default.
+    const lookup = lookupSpecForHash(fs, opts.repoRoot, hash, opts.type);
+    if (lookup.kind !== "found") {
+      throw new SplitError("resolve", lookup.message);
+    }
+    const parentSpecAbs = lookup.path;
+    const type = lookup.type;
+    if (!(CLAIMABLE_TYPES as readonly string[]).includes(type)) {
       throw new SplitError(
-        "resolve",
-        `no spec file found at ${join(opts.repoRoot, type)}/${type}-${hash}-*.md`,
+        "validate",
+        `hash '${hash}' resolves to a ${type} spec (${parentSpecAbs}) — only ${CLAIMABLE_TYPES.join(", ")} specs are splittable`,
       );
     }
     const backlogAbs = join(opts.repoRoot, BACKLOG_BY_TYPE[type as ClaimableType]);

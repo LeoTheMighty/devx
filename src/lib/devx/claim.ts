@@ -75,6 +75,13 @@ import {
 } from "../backlog/mutate.js";
 import { engineConfigFrom } from "../engine/config.js";
 import {
+  AmbiguousSpecHashError,
+  SPEC_TYPE_DIRS,
+  type SpecResolution,
+  findSpecForHashAnyType,
+  findSpecForHashIn,
+} from "../engine/frontmatter.js";
+import {
   GRAPH_FILENAME,
   type RegenFn,
   regenerateGraph,
@@ -385,7 +392,7 @@ export const BACKLOG_BY_TYPE: Record<ClaimableType, string> = {
   debug: "DEBUG.md",
 };
 
-function isClaimableType(t: string): t is ClaimableType {
+export function isClaimableType(t: string): t is ClaimableType {
   return (CLAIMABLE_TYPES as readonly string[]).includes(t);
 }
 
@@ -508,9 +515,14 @@ export function updateSpecForClaim(
 
 /**
  * Locate a spec file by hash under <repoRoot>/<type>/. Returns absolute
- * path or null. Mirrors merge-gate.ts's resolver — same shape, same
- * boundary. `type` defaults to "dev" so every pre-v2d101 caller keeps its
- * behavior byte-identical.
+ * path or null.
+ *
+ * Delegates to the shared engine resolver rather than keeping its own copy
+ * (7d96be). This function's comment used to say it "mirrors merge-gate.ts's
+ * resolver — same shape, same boundary"; by the time that was checked it no
+ * longer did (the shared one sorts its readdir, this one did not), which is
+ * what private mirrors do. New callers should prefer `lookupSpecForHash`,
+ * which does not need a type at all.
  */
 export function findSpecForHash(
   fs: ClaimFs,
@@ -518,14 +530,68 @@ export function findSpecForHash(
   hash: string,
   type: string = "dev",
 ): string | null {
-  const dir = join(repoRoot, type);
-  if (!fs.exists(dir)) return null;
-  for (const name of fs.readdir(dir)) {
-    if (name.startsWith(`${type}-${hash}-`) && name.endsWith(".md")) {
-      return join(dir, name);
-    }
+  return findSpecForHashIn(repoRoot, type, hash, fs);
+}
+
+/** Outcome of `lookupSpecForHash`. `missing` and `ambiguous` carry a
+ *  ready-to-throw message so every caller reports the same words. */
+export type SpecLookup =
+  | { kind: "found"; path: string; type: string }
+  | { kind: "missing"; message: string }
+  | { kind: "ambiguous"; message: string; paths: ReadonlyArray<string> };
+
+/**
+ * The ONE hash-resolution rule for every hash-taking step of the /devx loop
+ * (7d96be): claim, verify-claim, mark-done, split and finalize resolve a
+ * bare hash exactly the way `devx merge-gate` does (`findSpecForHashAnyType`,
+ * debug-6a913f), so a debug item goes through the loop with no `--type` at
+ * any step.
+ *
+ * Before this, merge-gate resolved every type while the other five defaulted
+ * to `dev`, so a debug item run through /devx as documented died at its
+ * first command with "no spec file found at dev/dev-<hash>-*.md" — a message
+ * that names the wrong directory and never mentions the right one.
+ *
+ * `explicitType` stays an override and a disambiguator: when given, only
+ * that dir is searched, and the not-found message is byte-identical to the
+ * pre-7d96be one. Claimability is NOT decided here — callers keep their own
+ * type validation, applied to the resolved `type`.
+ */
+export function lookupSpecForHash(
+  fs: ClaimFs,
+  repoRoot: string,
+  hash: string,
+  explicitType?: string,
+): SpecLookup {
+  if (explicitType !== undefined) {
+    const path = findSpecForHashIn(repoRoot, explicitType, hash, fs);
+    return path !== null
+      ? { kind: "found", path, type: explicitType }
+      : {
+          kind: "missing",
+          message: `no spec file found at ${join(repoRoot, explicitType)}/${explicitType}-${hash}-*.md`,
+        };
   }
-  return null;
+  let resolved: SpecResolution | null;
+  try {
+    resolved = findSpecForHashAnyType(repoRoot, hash, fs);
+  } catch (e) {
+    if (e instanceof AmbiguousSpecHashError) {
+      return {
+        kind: "ambiguous",
+        paths: e.paths,
+        message: `${e.message} — refusing to pick one; pass --type <type> to choose`,
+      };
+    }
+    throw e;
+  }
+  if (resolved === null) {
+    return {
+      kind: "missing",
+      message: `no spec file for hash '${hash}' under any spec dir (${SPEC_TYPE_DIRS.join(", ")}) in ${repoRoot}`,
+    };
+  }
+  return { kind: "found", path: resolved.path, type: resolved.type };
 }
 
 // ---------------------------------------------------------------------------
@@ -562,14 +628,17 @@ export async function claimSpec(
   const exec = opts.exec ?? realExec;
   const regen: RegenFn = opts.regen ?? regenerateGraph;
   const now = (opts.now ?? (() => new Date()))();
-  const type = opts.type ?? "dev";
-  if (!isClaimableType(type)) {
+  // An explicit --type is still validated up front, so a bad flag costs
+  // nothing. With no --type the spec's type is RESOLVED below (7d96be) — no
+  // `dev` default — and the type-dependent values (backlog file, derived
+  // branch) are computed after that lookup, which stays where it always was
+  // so the canonical-root and branch-posture guards keep running first.
+  if (opts.type !== undefined && !isClaimableType(opts.type)) {
     throw new ClaimError(
       "validate",
-      `unclaimable spec type '${type}' (expected one of: ${CLAIMABLE_TYPES.join(", ")})`,
+      `unclaimable spec type '${opts.type}' (expected one of: ${CLAIMABLE_TYPES.join(", ")})`,
     );
   }
-  const backlogName = BACKLOG_BY_TYPE[type];
   const isoTimestamp = formatIsoLocal(now);
 
   // Canonical-root assertion (mlc101, defense in depth for R1): a claim
@@ -600,7 +669,6 @@ export async function claimSpec(
     }
   }
 
-  const derivedBranch = deriveBranch(opts.config, type, hash);
   // Push target vs worktree base — the two are the same on single-branch
   // projects (this repo) and DIFFER on split-branch:
   //
@@ -675,14 +743,21 @@ export async function claimSpec(
     "locks",
     `spec-${hash}.lock`,
   );
-  const devMdAbs = join(opts.repoRoot, backlogName);
-  const specPath = findSpecForHash(fs, opts.repoRoot, hash, type);
-  if (!specPath) {
+  const lookup = lookupSpecForHash(fs, opts.repoRoot, hash, opts.type);
+  if (lookup.kind !== "found") {
+    throw new ClaimError("resolve", lookup.message);
+  }
+  const specPath = lookup.path;
+  const type = lookup.type;
+  if (!isClaimableType(type)) {
     throw new ClaimError(
-      "resolve",
-      `no spec file found at ${join(opts.repoRoot, type)}/${type}-${hash}-*.md`,
+      "validate",
+      `hash '${hash}' resolves to a ${type} spec (${specPath}) — only ${CLAIMABLE_TYPES.join(", ")} specs are claimable`,
     );
   }
+  const backlogName = BACKLOG_BY_TYPE[type];
+  const derivedBranch = deriveBranch(opts.config, type, hash);
+  const devMdAbs = join(opts.repoRoot, backlogName);
   if (!fs.exists(devMdAbs)) {
     throw new ClaimError("resolve", `${backlogName} not found at ${devMdAbs}`);
   }

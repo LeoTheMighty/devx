@@ -63,8 +63,9 @@ import {
   type ClaimableType,
   type Exec,
   escapeRegex,
-  findSpecForHash,
   formatIsoLocal,
+  isClaimableType,
+  lookupSpecForHash,
   realExec,
   realFs,
   relativeFromRepo,
@@ -151,10 +152,6 @@ export interface MarkDoneResult {
   /** Warnings from the derived-artifact tier (todo sync, board regen).
    *  Already written to stderr; returned so callers can surface them too. */
   warnings: string[];
-}
-
-function isClaimableType(t: string): t is ClaimableType {
-  return (CLAIMABLE_TYPES as readonly string[]).includes(t);
 }
 
 function errMessage(e: unknown): string {
@@ -357,11 +354,10 @@ export function markDone(hash: string, opts: MarkDoneOpts): MarkDoneResult {
       `invalid merge sha '${opts.mergeSha}' (expected 4-64 hex chars)`,
     );
   }
-  const type = opts.type ?? "dev";
-  if (!isClaimableType(type)) {
+  if (opts.type !== undefined && !isClaimableType(opts.type)) {
     throw new MarkDoneError(
       "validate",
-      `type '${type}' is not markable (expected one of: ${CLAIMABLE_TYPES.join(", ")})`,
+      `type '${opts.type}' is not markable (expected one of: ${CLAIMABLE_TYPES.join(", ")})`,
     );
   }
 
@@ -376,11 +372,22 @@ export function markDone(hash: string, opts: MarkDoneOpts): MarkDoneResult {
     process.stderr.write(`devx mark-done: WARN — ${msg}\n`);
   };
 
-  const specPath = findSpecForHash(fs, opts.repoRoot, hash, type);
-  if (specPath === null) {
+  // One resolution rule with claim/merge-gate (7d96be): no `dev` default.
+  const lookup = lookupSpecForHash(fs, opts.repoRoot, hash, opts.type);
+  if (lookup.kind !== "found") {
     throw new MarkDoneError(
       "resolve",
-      `no ${type} spec found for hash '${hash}' under ${opts.repoRoot}/${type}/`,
+      opts.type !== undefined
+        ? `no ${opts.type} spec found for hash '${hash}' under ${opts.repoRoot}/${opts.type}/`
+        : lookup.message,
+    );
+  }
+  const specPath = lookup.path;
+  const type = lookup.type;
+  if (!isClaimableType(type)) {
+    throw new MarkDoneError(
+      "validate",
+      `hash '${hash}' resolves to a ${type} spec (${specPath}) — only ${CLAIMABLE_TYPES.join(", ")} specs are markable`,
     );
   }
   const mainRoot = linkedWorktreeRoot(exec, opts.repoRoot);

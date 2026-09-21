@@ -760,12 +760,28 @@ describe("verifyClaim — debug type (v2d101)", () => {
     }
   });
 
-  it("default type ('dev') does NOT resolve a debug spec (resolve error, exit-2 class)", () => {
+  // 7d96be: this test used to pin the bug — it asserted that omitting the
+  // type made a debug spec UNRESOLVABLE ("no spec file found at dev/…").
+  // The loop now has one resolution rule, merge-gate's: the hash alone finds
+  // the spec under whichever dir holds it.
+  it("no type resolves a debug spec from the hash alone (7d96be)", () => {
+    const fx = makeDebugFixture(lockBodyFor(OWNER_SID));
+    try {
+      const r = verifyClaim("bug001", { sessionToken: OWNER_SID, repoRoot: fx.dir });
+      expect(r).toMatchObject({ hash: "bug001", status: "owned" });
+    } finally {
+      destroy(fx);
+    }
+  });
+
+  // --type is still an override: naming the WRONG dir searches only that dir
+  // and fails with the pre-7d96be message, byte-for-byte.
+  it("explicit type 'dev' still does NOT resolve a debug spec (override honoured)", () => {
     const fx = makeDebugFixture(lockBodyFor(OWNER_SID));
     try {
       expect(() =>
-        verifyClaim("bug001", { sessionToken: OWNER_SID, repoRoot: fx.dir }),
-      ).toThrow(/no spec file found at .*dev\/dev-bug001/);
+        verifyClaim("bug001", { sessionToken: OWNER_SID, repoRoot: fx.dir, type: "dev" }),
+      ).toThrow(/no spec file found at .*dev\/dev-bug001-\*\.md/);
     } finally {
       destroy(fx);
     }

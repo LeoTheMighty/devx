@@ -186,6 +186,34 @@ function splitOpts(run: SplitRun, extra: Record<string, unknown> = {}) {
 // E-1 case group — marker "E-1:" pinned by the eval wrapper.
 // ---------------------------------------------------------------------------
 
+// 7d96be: the split library defaulted its type to `dev`, so a debug parent
+// split through the library without a type failed at resolve even though
+// `devx split`'s own CLI already resolved the type from the hash.
+describe("performSplit — resolves the parent's type from the hash (7d96be)", () => {
+  it("splits a debug parent with NO type: follow-up is a debug spec on DEBUG.md", () => {
+    const debugParent = PARENT_SPEC.replace("type: dev", "type: debug").replace(
+      "branch: feat/dev-abc123",
+      "branch: feat/debug-abc123",
+    );
+    const files = new Map<string, string>([
+      [
+        `${REPO}/DEBUG.md`,
+        DEV_MD.replace("# DEV — backlog", "# DEBUG").replace(
+          /`dev\/dev-/g,
+          "`debug/debug-",
+        ),
+      ],
+      [`${REPO}/debug/debug-abc123-2026-07-01T10:00-parent-item.md`, debugParent],
+      [LOCK_PATH, LOCK_BODY],
+    ]);
+    const fs = makeFakeFs(files);
+    const result = performSplit("abc123", splitOpts({ files, fs }));
+    expect(result.followUpSpecPath).toMatch(/^debug\/debug-[0-9a-f]{6}-/);
+    expect(files.has(DEV_MD_ABS)).toBe(false); // never invented a DEV.md
+    expect(files.get(`${REPO}/DEBUG.md`)).toContain(`debug/debug-${result.followUpHash}-`);
+  });
+});
+
 describe("E-1: split primitive round-trip (mss101)", () => {
   it("merge-first round-trip: follow-up row wired Blocked-by parent, spliced directly after the parent row", () => {
     const files = makeFiles();

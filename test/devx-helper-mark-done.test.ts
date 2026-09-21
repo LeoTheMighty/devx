@@ -539,6 +539,21 @@ describe("markDone — happy path", () => {
   });
 });
 
+describe("markDone — resolves the spec type from the hash (7d96be)", () => {
+  it("closes a debug spec with NO type — the same rule claim and merge-gate use", () => {
+    const debugSpec =
+      "---\nhash: c81f04\ntype: debug\nstatus: in-progress\n---\n\n## Status log\n\n- claimed.\n";
+    const { fs, state } = makeFakeFs({
+      "/repo/DEBUG.md":
+        "- [/] `debug/debug-c81f04-2026-08-04T15:19-attach.md` — Attach. Status: in-progress.\n",
+      "/repo/debug/debug-c81f04-2026-08-04T15:19-attach.md": debugSpec,
+    });
+    const result = markDone("c81f04", driverOpts(fs));
+    expect(result.paths[0]).toBe("DEBUG.md");
+    expect(state.files.get("/repo/DEBUG.md")).toContain("- [x] `debug/debug-c81f04");
+  });
+});
+
 describe("markDone — state mismatch writes nothing (exit-1 family)", () => {
   it("refuses a row that is still [ ] and leaves both files untouched", () => {
     const { fs, state } = makeFakeFs({
