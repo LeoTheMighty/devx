@@ -4,7 +4,7 @@
 
 # Story graph
 
-244 specs across 25 groups — 12 blocked · 167 done · 8 in-progress · 57 ready; 454 edges.
+247 specs across 25 groups — 12 blocked · 169 done · 6 in-progress · 60 ready; 457 edges.
 
 ## Legend
 
@@ -205,7 +205,7 @@ flowchart TD
     cf65aa["cf65aa loop merge tail never emits the dvx103 ph…"]
     d01000["d01000 Phase 3 — Parallelism & coordination: loc…"]
     d02000["d02000 Phase 9 — Modes & full gate cascade"]
-    d315b9["d315b9 A merge through `gh pr merge` leaves the…"]
+    d315b9["d315b9 The helper path skips three steps the /de…"]
     d7e8e5["d7e8e5 Merge-tail helpers treat transient gh Gra…"]
     d982ea["d982ea Warn at filing time when a new spec subst…"]
     db36af["db36af devx doctor — mechanical state reconcilia…"]
@@ -218,6 +218,9 @@ flowchart TD
     ebf8c4["ebf8c4 QA walkthrough — learn.auto_allow unatten…"]
     ecdcda["ecdcda manage-spawn / manage-spawn-integration t…"]
     ef5059["ef5059 QA walkthrough — identity re-key and priv…"]
+    evlk01["evlk01 RED eval lock only guards files it alread…"]
+    evlk02["evlk02 RED eval lock is detection-only — the wri…"]
+    evlk03["evlk03 red_eval_shas keys are repo-relative, so…"]
     f01000["f01000 Phase 5 — Test, debug, retro, learn"]
     f02000["f02000 Cross-cutting — thoroughness axis wiring"]
     f1d6b2["f1d6b2 Vision-gap Track 4 — Fleet layer: thin mu…"]
@@ -253,6 +256,9 @@ flowchart TD
   620c74 -.-> rtl105
   620c74 -.-> rtl106
   620c74 -.-> rtlret
+  75563d -.-> evlk01
+  75563d -.-> evlk02
+  75563d -.-> evlk03
   7a2d1f -.-> a10ret
   7a2d1f -.-> b20ret
   7a2d1f -.-> c30ret
@@ -477,7 +483,7 @@ flowchart TD
   classDef unknownStatus fill:#fff,stroke:#777,color:#222
   classDef collapsed fill:#eee,stroke:#777,color:#222
   class grp_blocker_push_interim collapsed
-  class 75563d wip
+  class 75563d done
   class a494be done
   class dlr101 done
   class dlr102 done
@@ -553,7 +559,7 @@ flowchart TD
   class d40007 ready
   class d40ret ready
   class 00b4d3 ready
-  class 108c57 wip
+  class 108c57 done
   class 135dc9 wip
   class 1dfbdd wip
   class 28b267 done
@@ -624,6 +630,9 @@ flowchart TD
   class ebf8c4 ready
   class ecdcda done
   class ef5059 ready
+  class evlk01 ready
+  class evlk02 ready
+  class evlk03 ready
   class f01000 blocked
   class f02000 blocked
   class f1d6b2 blocked
