@@ -62,7 +62,10 @@ export interface TodoGroundTruth {
   phaseDone: Record<string, boolean>;
 }
 
-export type TodoDriftClass = "gate-flag" | "phase-pointer";
+export type TodoDriftClass =
+  | "gate-flag"
+  | "phase-pointer"
+  | "phase-pointer-malformed";
 
 export interface TodoDrift {
   class: TodoDriftClass;
@@ -112,6 +115,18 @@ const STAGE_TO_SECTION: Readonly<Record<Stage, string | null>> = {
 };
 
 const CHECKBOX_RE = /^( *)- \[( |x)\] (.*)$/;
+/**
+ * The phase-pointer separator is the Unicode arrow, canonically — the shipped
+ * template documents `→` (`_devx/templates/engine/todo.md`) and nothing in the
+ * codebase emits a phase line, so every one of them is hand-authored.
+ *
+ * Deliberately NOT widened to accept an ASCII `->` (f4149e). Accepting both
+ * would fix the one typo observed and leave the CLASS intact: `=>`, `-->`, a
+ * non-breaking space around the arrow, or any other near-miss would still
+ * yield `pointer: null` and still vanish. The fix is to make the miss loud
+ * (see `computeTodoDrift`'s `phase-pointer-malformed`), which covers every
+ * near-miss including the ones nobody has typed yet.
+ */
 const POINTER_RE = /\s+→\s+(\S+)\s*$/;
 
 // ---------------------------------------------------------------------------
@@ -250,7 +265,12 @@ export function currentFocus(doc: TodoDoc, stage: Stage): string | null {
  * Both contradiction classes, either direction, with 1-indexed lines:
  * (a) gate-flag — a `Gate: <g>` checkbox vs its `gate_status` flag;
  * (b) phase-pointer — a phase pointer checkbox vs the linked dev spec's
- * done-state. Advisory only: pure computation, no verdict, no mutation.
+ * done-state;
+ * (c) phase-pointer-malformed — a `Phase <n>:` line under a `Stage:` parent
+ * that yields no pointer at all (f4149e). Classes (a) and (b) compare two
+ * live values; (c) reports that one of them could never be read, which is
+ * why it has no `checked`/`actual` pair in its message.
+ * Advisory only: pure computation, no verdict, no mutation.
  */
 export function computeTodoDrift(
   doc: TodoDoc,
@@ -272,6 +292,23 @@ export function computeTodoDrift(
             `${flag} is ${actual}`,
         });
       }
+    } else if (item.kind === "phase" && item.pointer === null) {
+      // A `Phase <n>:` line under a `Stage:` parent that yields no pointer is
+      // not free text — it matched the derived vocabulary's shape and then
+      // failed its pointer contract. Before f4149e this branch did not exist:
+      // the line parsed as `kind: "phase"`, passed every structural check, and
+      // was then skipped by both `phaseDoneFor()` and this function because
+      // `pointer === null`. It was inert, and nothing said so — for the life
+      // of a whole workstream, in the observed case.
+      drift.push({
+        class: "phase-pointer-malformed",
+        line: item.line,
+        message:
+          `todo line ${item.line}: 'Phase ${item.label}' has no dev-spec ` +
+          `pointer — sync and drift both skip it. Derived phase lines end ` +
+          `with ' → <dev-hash>' (Unicode arrow U+2192); an ASCII '->' or any ` +
+          `other separator is not recognised.`,
+      });
     } else if (item.kind === "phase" && item.pointer !== null) {
       const done = truth.phaseDone?.[item.pointer] === true;
       if (item.checked !== done) {

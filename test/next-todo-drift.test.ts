@@ -131,6 +131,58 @@ describe("E-4 — repo-level `devx next` advisory todo-drift rows", () => {
     expect(clean.io.stderr()).not.toContain("todo-drift");
   });
 
+  // f4149e — an ASCII `->` separator made POINTER_RE miss, pointer came back
+  // null, and BOTH phaseDoneFor() and computeTodoDrift() skipped the line on
+  // `pointer !== null` guards. The line still parsed as kind "phase" and
+  // passed every structural check, so nothing anywhere said the mechanism was
+  // dead. Observed in the wild for the life of a workstream: its `focus:`
+  // named a phase that had already shipped.
+  it("reports a phase line with an ASCII '->' separator as malformed, not silence", () => {
+    seedWorkstream();
+    seedDoneDevSpec();
+    const asciiTodo = DRIFTED_TODO.replace(
+      "  - [ ] Phase 1: phase one \u2192 abc999",
+      "  - [ ] Phase 1: phase one -> abc999",
+    ).replace("- [x] Gate: prd", "- [ ] Gate: prd");
+    // Guard the fixture itself: if the replace above silently no-ops, the test
+    // would pass against the canonical arrow and prove nothing.
+    expect(asciiTodo).toContain("Phase 1: phase one -> abc999");
+    expect(asciiTodo).not.toContain("\u2192");
+    repo.write(TODO_REL, asciiTodo);
+    const before = repo.read(TODO_REL);
+
+    const { code, io } = repoNext();
+    expect(code).toBe(0);
+    const json = io.json() as { todo_drift: DriftRow[] };
+
+    // The regression: before the fix this array was EMPTY for this fixture.
+    const malformed = json.todo_drift.filter((d) => d.class === "phase-pointer-malformed");
+    expect(malformed).toHaveLength(1);
+    expect(malformed[0].line).toBe(10);
+    expect(malformed[0].message).toContain("no dev-spec pointer");
+    expect(io.stderr()).toContain("todo-drift (phase-pointer-malformed)");
+
+    // It is reported as malformed, NOT as an ordinary phase-pointer
+    // contradiction — the pointer could never be read, so there is no
+    // done-state to contradict.
+    expect(json.todo_drift.some((d) => d.class === "phase-pointer")).toBe(false);
+
+    // Still advisory: nothing written.
+    expect(repo.read(TODO_REL)).toBe(before);
+  });
+
+  // The canonical arrow must NOT be reported as malformed — otherwise the new
+  // class fires on every healthy phase line in the repo and is ignored within
+  // a day, which is the failure mode this whole bug is an instance of.
+  it("does not report the canonical Unicode arrow as malformed", () => {
+    seedWorkstream();
+    seedDoneDevSpec();
+    repo.write(TODO_REL, DRIFTED_TODO);
+    const { io } = repoNext();
+    const json = io.json() as { todo_drift: DriftRow[] };
+    expect(json.todo_drift.some((d) => d.class === "phase-pointer-malformed")).toBe(false);
+  });
+
   it("absent todo.md (grandfathered workstream) reports empty drift", () => {
     seedWorkstream();
     const { code, io } = repoNext();
