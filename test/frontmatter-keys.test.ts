@@ -246,6 +246,51 @@ describe("bare keys are valid, not defects", () => {
 // Round-tripping
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// CRLF — the reason this module delegates its fence parse to engine/
+// ---------------------------------------------------------------------------
+
+describe("CRLF specs", () => {
+  // A fresh hand-rolled /^---\n…\n---/ finds NO frontmatter in a CRLF file
+  // and returns null, which surfaces as "spec missing frontmatter block"
+  // from the claim and as a silent "no owner" from doctor — i.e. strictly
+  // worse than the `m`-flag readers it replaced. engine/frontmatter.ts
+  // already owned a CRLF-tolerant fence regex, so this delegates rather
+  // than keeping a second parser for one format.
+  const CRLF = "---\r\nhash: abc\r\nstatus: ready\r\nowner:\r\n---\r\n\r\n## Goal\r\nx\r\n";
+
+  it("finds the frontmatter block", () => {
+    const fm = splitFrontmatter(CRLF);
+    expect(fm).not.toBeNull();
+    expect(findFrontmatterKeys(fm!.lines, "owner")).toHaveLength(1);
+  });
+
+  it("reads a bare key despite the carriage return", () => {
+    const fm = splitFrontmatter(CRLF)!;
+    expect(frontmatterKeyValue(fm.lines, "status")?.trim()).toBe("ready");
+    expect(frontmatterKeyValue(fm.lines, "owner")).toBe("");
+  });
+
+  it("upserts without splicing a duplicate", () => {
+    const fm = splitFrontmatter(CRLF)!;
+    upsertFrontmatterKey(fm.lines, "owner", "/devx-1");
+    expect(findFrontmatterKeys(fm.lines, "owner")).toHaveLength(1);
+    const out = renderFrontmatter(fm);
+    expect(out).toContain("owner: /devx-1");
+    // Body is preserved verbatim, CRLF and all; only the frontmatter
+    // block normalizes to LF.
+    expect(out).toContain("## Goal\r\nx\r\n");
+  });
+
+  it("round-trips a spec that ends at the closing fence", () => {
+    const noBody = "---\nhash: abc\nstatus: ready\n---";
+    const fm = splitFrontmatter(noBody)!;
+    // joinFrontmatter's rule: a block that ended the file with no trailing
+    // newline gets one back rather than producing a newline-less spec.
+    expect(renderFrontmatter(fm)).toBe("---\nhash: abc\nstatus: ready\n---\n");
+  });
+});
+
 describe("renderFrontmatter", () => {
   it("round-trips an untouched spec byte-for-byte", () => {
     const content = "---\nhash: abc\nstatus: ready\nowner:\n---\n\n## Goal\nx\n";

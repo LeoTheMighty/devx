@@ -27,19 +27,21 @@
 //
 // Spec: debug/debug-828385-2026-09-20T10:06-claim-splices-duplicate-owner-key.md
 
+import { splitFrontmatter as splitFrontmatterRaw } from "./engine/frontmatter.js";
+
 /** A spec's `---` block, split from the text around it. */
 export interface FrontmatterBlock {
-  /** Everything before the opening `---`, inclusive of nothing else. */
-  before: string;
   /** The block's lines, WITHOUT the `---` fences. Mutate, then `render`. */
   lines: string[];
-  /** Everything after the closing `---`, starting at that line's newline. */
-  after: string;
+  /** The newline that followed the closing `---` ("" at end-of-file). */
+  delim: string;
+  /** Everything after that newline. */
+  body: string;
 }
 
 /**
- * Split `content` into the frontmatter block and its surroundings, or
- * `null` when there is no block.
+ * Split `content` into the frontmatter block as LINES, or `null` when there
+ * is no block.
  *
  * Block-scoping is the load-bearing half of reading a spec correctly, and
  * it is the half that is easy to skip: a spec *about* frontmatter keys
@@ -47,20 +49,39 @@ export interface FrontmatterBlock {
  * body holds a bare `owner:` inside a fenced ```yaml sample, and a correctly
  * line-anchored `grep '^owner:$'` over the whole file reports the spec as
  * carrying the bug it documents. Anchoring does not save you; scoping does.
+ *
+ * Delegates the actual `---` parse to `engine/frontmatter.ts`'s
+ * `splitFrontmatter` rather than re-deriving it. That module owns the fence
+ * regex, and it is CRLF-tolerant (`/^---\r?\n…\r?\n---(\r?\n|$)/`) where a
+ * fresh hand-rolled `/^---\n…\n---/` is not: on a CRLF-normalized spec the
+ * naive version finds NO frontmatter, which surfaces as "spec missing
+ * frontmatter block" from the claim and as a silent "no owner" from doctor.
+ * Two parsers for one format is the `debug-9f24c7` class; one parser, two
+ * views, is not.
+ *
+ * Line endings inside the block normalize to LF on write. The engine parse
+ * keeps `\r` on interior lines, so they are stripped here and re-joined with
+ * `\n` — a spec whose frontmatter round-trips through an edit comes back LF,
+ * which is what every authoring site already emits.
  */
 export function splitFrontmatter(content: string): FrontmatterBlock | null {
-  const m = /^---\n([\s\S]*?)\n---/.exec(content);
-  if (!m) return null;
+  const raw = splitFrontmatterRaw(content);
+  if (raw === null) return null;
   return {
-    before: content.slice(0, m.index),
-    lines: m[1].split("\n"),
-    after: content.slice(m.index + m[0].length),
+    lines: raw.fmText.split(/\r?\n/),
+    delim: raw.delim,
+    body: raw.body,
   };
 }
 
 /** Re-join a (possibly mutated) block with its surroundings. */
 export function renderFrontmatter(block: FrontmatterBlock): string {
-  return `${block.before}---\n${block.lines.join("\n")}\n---${block.after}`;
+  // Mirrors engine/frontmatter.ts's (module-private) joinFrontmatter: a
+  // block that ended the file with no trailing newline gets one back, so a
+  // rendered spec is never missing its final newline.
+  const delim =
+    block.delim === "" && block.body === "" ? "\n" : block.delim;
+  return `---\n${block.lines.join("\n")}\n---${delim}${block.body}`;
 }
 
 function keyPattern(key: string): RegExp {

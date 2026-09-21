@@ -416,3 +416,32 @@ invites someone to "verify" against a file that was never affected.
   Whichever PR ends up carrying `detect.ts`, it must carry all four. A
   reviewer reading only the shrule framing (which is about the nullish rule)
   would not think to look for them.
+- 2026-09-20T20:10-06:00 — **the new primitive had a CRLF regression; found by
+  checking a peer's claim rather than by review.** palateful-cc, coordinating
+  the `detect.ts` overlap, said "`splitFrontmatter` already exists on main, so
+  only `frontmatterKeyValue` arrives with you". Verifying that turned up
+  `src/lib/engine/frontmatter.ts:153` — a DIFFERENT `splitFrontmatter`, same
+  name, different module, different return shape (`{fmText, delim, body}` vs
+  this module's). Two consequences, one worse than the other:
+    1. **Name collision.** Two exported `splitFrontmatter`s with different
+       contracts is the "two spellings of one path" hazard `artifacts.ts`
+       documents. An autocomplete or a hand-resolved conflict picking the
+       wrong import either fails to compile or silently behaves differently.
+    2. **The engine one is CRLF-tolerant and mine was not.**
+       `/^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/` vs my `/^---\n…\n---/`. On a
+       CRLF spec my version found NO frontmatter and returned null — which
+       `updateSpecForClaim` surfaces as "spec missing frontmatter block"
+       (throw) and `ownerOf` surfaces as a silent "no owner". So for the
+       `m`-flag readers this story set out to fix, the replacement was
+       *worse* than what it replaced on CRLF input. AC 5 asked me to audit
+       readers for a regex defect and I introduced one.
+  Fixed by delegating the fence parse to `engine/frontmatter.ts` instead of
+  re-deriving it: one parser, two views. `FrontmatterBlock` now carries
+  `{lines, delim, body}`, mirroring the engine split, and `renderFrontmatter`
+  reproduces its `joinFrontmatter` delim rule so a spec ending at the closing
+  fence gets its trailing newline back. Four regression tests added (CRLF
+  find / bare-key read / upsert-without-splice / end-at-fence round-trip).
+  Worth recording how this was caught: not by self-review, which had already
+  passed over this module twice, but by verifying a claim a peer made in
+  passing. The review looked at what the code does; the claim made me look at
+  what else in the repo shares its name.
