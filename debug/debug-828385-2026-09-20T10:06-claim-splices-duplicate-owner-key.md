@@ -20,7 +20,20 @@ splices a *second* `owner:` key in beside the first.
 
 The trigger is the frontmatter **shape**, not the spec type. It was
 reported as a `--type debug` bug (palateful-0e hit it claiming `imptb1`
-and deduped by hand), but nothing in the claim path branches on type.
+and deduped by hand).
+
+Precisely: **`updateSpecForClaim` does not branch on type.** The owner
+splice is type-blind, so frontmatter shape decides it, not `debug/` vs
+`dev/`.
+
+(An earlier draft said "nothing in the claim path branches on type."
+That is **false** and was corrected 2026-09-20 — the claim path branches
+on type in at least six places: `claim.ts:566` `opts.type ?? "dev"`,
+`:567` the claimable-type check, `:573` `BACKLOG_BY_TYPE`, `:604`
+`deriveBranch`, `:684` the resolve glob, and `flipDevMdRow`'s row
+pattern at `:417`. Only the frontmatter rewrite is type-blind, and that
+is the narrower claim this story actually needs.)
+
 Every `owner:` in this repo's own `debug/` specs is `owner: null`, which
 matches `\s` and replaces correctly — which is exactly why devx has never
 seen it fire on itself. Any spec of any type authored with a bare
@@ -169,6 +182,16 @@ one-line correction behind a design decision.
   the reader audit is for. AC 7 added from the same exchange (the
   re-seed path), with the scan of authoring sites showing every machine
   emitter already writes `owner: null`.
+- 2026-09-20T10:45-06:00 — two corrections from palateful-2d, who read
+  the source independently. (a) "Nothing in the claim path branches on
+  type" is **false** — it branches in six places; only
+  `updateSpecForClaim` is type-blind, and that is the claim this story
+  needs. Narrowed in §Goal. (b) 2d is **not** the witness and `lgort1`
+  is **not** an instance (it carries `owner: unassigned`, whitespace
+  present, so it replaced rather than spliced); 2d hit the
+  `stage: resolve` failure, which is `debug-7d96be`. The witnessed
+  instance remains `imptb1` via palateful-0e. Recorded under §Provenance
+  so nobody verifies against an unaffected file.
 - 2026-09-20T10:20-06:00 — **the 10:12 diagnosis above was wrong in its
   mechanism**, corrected by the reporting session. The scan was
   `grep -rl '^owner:$'`: correctly line-anchored, and it matched line 49
@@ -185,6 +208,26 @@ one-line correction behind a design decision.
   and hand-deduped in PR #26; `main` carries both keys until it merges.
   The spec was authored ~7 weeks before this story existed. AC 7
   generalized from that spec's bare `branch:` key.
+
+### Provenance of the in-the-wild instance
+
+The witnessed instance is **`imptb1`** (palateful-0e), measured by the
+coordinator session with a block-scoped count: 2 line-anchored `owner:`
+keys in its frontmatter, real owner at `statusIdx + 1`, stale bare key
+below it, in exactly the layout this story predicts.
+
+**`lgort1` is NOT an instance**, and palateful-2d is not the witness —
+both were asserted in a dispatch and both are wrong. `lgort1` carries
+`owner: unassigned` (whitespace present), so it took the *replace*
+branch and never spliced; 2d's actual encounter was a `stage: resolve`
+rollback ("no spec file found at dev/dev-lgort1-*.md"), which is
+`debug-7d96be`, a different bug at a different stage. Two separate
+defects were merged into one narrative upstream; this story owns only
+the splice.
+
+The ACs rest on source, not on testimony, so the corrected provenance
+changes nothing about the fix — but a spec that miscredits its witness
+invites someone to "verify" against a file that was never affected.
 
 ## Links
 
