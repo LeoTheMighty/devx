@@ -115,9 +115,13 @@ import {
   ClaimContendedError,
   ClaimError,
   type ClaimSpecOpts,
+  CLAIMABLE_TYPES,
   type ClaimableType,
   LockHeldError,
   claimSpec,
+  isClaimableType,
+  lookupSpecForHash,
+  realFs,
 } from "../lib/devx/claim.js";
 import { BacklogLockTimeoutError } from "../lib/backlog/mutate.js";
 import {
@@ -954,14 +958,13 @@ export function runFinalize(
     );
     return 64;
   }
-  const rawType = flags["--type"] ?? "dev";
-  if (rawType !== "dev" && rawType !== "debug") {
+  const rawType = flags["--type"];
+  if (rawType !== undefined && rawType !== "dev" && rawType !== "debug") {
     err(
       `devx devx-helper finalize: invalid --type '${rawType}' (expected 'dev' or 'debug')\n`,
     );
     return 64;
   }
-  const type: ClaimableType = rawType;
 
   const projectConfigPath = opts.projectPath ?? findProjectConfig();
   if (!projectConfigPath) {
@@ -1008,6 +1011,29 @@ export function runFinalize(
     return 64;
   }
   const sessionToken = rawToken ?? null;
+
+  // No `dev` default (7d96be): with no --type, resolve the spec's type the
+  // way claim, verify-claim, mark-done, split and merge-gate all do, so a
+  // debug item finalizes with no flag. Exit 2 — aborted before any write.
+  let type: ClaimableType;
+  if (rawType !== undefined) {
+    type = rawType;
+  } else {
+    const lookup = lookupSpecForHash(realFs, repoRoot, hash);
+    if (lookup.kind !== "found") {
+      out(`${JSON.stringify({ error: "finalize-failed", stage: "resolve" })}\n`);
+      err(`devx devx-helper finalize: ${lookup.message}\n`);
+      return 2;
+    }
+    if (!isClaimableType(lookup.type)) {
+      out(`${JSON.stringify({ error: "finalize-failed", stage: "resolve" })}\n`);
+      err(
+        `devx devx-helper finalize: hash '${hash}' resolves to a ${lookup.type} spec (${lookup.path}) — only ${CLAIMABLE_TYPES.join(", ")} specs are finalizable\n`,
+      );
+      return 2;
+    }
+    type = lookup.type;
+  }
 
   // markDone's exceptions are the retryable/abort tier, so they are caught
   // here (outside finalize) and mapped to 1/2 exactly as runMarkDone maps
@@ -1235,7 +1261,7 @@ export function register(program: Command): void {
       "Atomically claim a backlog spec for /devx: lock + backlog-row flip (DEV.md, or DEBUG.md with --type debug) + spec frontmatter + status log + claim commit + push + worktree. Closes feedback_devx_push_claim_before_pr.md structurally.",
     )
     .argument("<hash>", "spec hash (e.g. 'dvx101')")
-    .option("--type <type>", "spec type: 'dev' (default) or 'debug' (v2d101 debug loop)")
+    .option("--type <type>", "spec type: 'dev' or 'debug' — optional; resolved from the hash when omitted (7d96be)")
     .action(async (hash: string, options: { type?: string }) => {
       const args =
         options.type !== undefined ? [hash, "--type", options.type] : [hash];
@@ -1270,7 +1296,7 @@ export function register(program: Command): void {
       "--session-token <token>",
       "current session's token (raw sessionId or /devx-<sessionId> owner shape); auto-derived when omitted",
     )
-    .option("--type <type>", "spec type: 'dev' (default) or 'debug' (v2d101 debug loop)")
+    .option("--type <type>", "spec type: 'dev' or 'debug' — optional; resolved from the hash when omitted (7d96be)")
     .action(
       async (hash: string, options: { sessionToken?: string; type?: string }) => {
         const args = [hash];
@@ -1300,7 +1326,7 @@ export function register(program: Command): void {
     // required-flag check and answers 64, like every other usage error here.
     .option("--pr <number>", "merged PR number (required)")
     .option("--merge-sha <sha>", "squash-merge commit sha (required)")
-    .option("--type <type>", "spec type: 'dev' (default) or 'debug'")
+    .option("--type <type>", "spec type: 'dev' or 'debug' — optional; resolved from the hash when omitted (7d96be)")
     .action(
       (
         hash: string,
@@ -1327,7 +1353,7 @@ export function register(program: Command): void {
     .argument("<hash>", "spec hash (e.g. 'b931a1')")
     .option("--pr <number>", "merged PR number (required)")
     .option("--merge-sha <sha>", "squash-merge commit sha (required)")
-    .option("--type <type>", "spec type: 'dev' (default) or 'debug'")
+    .option("--type <type>", "spec type: 'dev' or 'debug' — optional; resolved from the hash when omitted (7d96be)")
     .option(
       "--session-token <token>",
       "session whose claim this is; guards the spec-lock release. NEVER pass a token copied from the spec's owner: or the lock body — that always matches and defeats the guard.",

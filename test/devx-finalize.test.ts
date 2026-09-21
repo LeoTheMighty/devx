@@ -853,6 +853,55 @@ function runCli(
   return { code, stdout, stderr, calls };
 }
 
+// 7d96be: finalize used to default `--type` to `dev`, so a debug item needed
+// `[--type debug]` at Phase 8 while merge-gate, one step earlier, needed none.
+function makeTmpDebugRepo(): string {
+  const root = mkdtempSync(join(tmpdir(), "7d96be-cli-"));
+  tmpRoots.push(root);
+  mkdirSync(join(root, "debug"), { recursive: true });
+  mkdirSync(join(root, ".git"), { recursive: true });
+  writeFileSync(join(root, "devx.config.yaml"), "mode: yolo\n", "utf8");
+  writeFileSync(
+    join(root, "DEBUG.md"),
+    "# DEBUG\n\n- [/] `debug/debug-bug7d9-2026-09-21T10:00-thing.md` — Thing. Status: in-progress.\n",
+    "utf8",
+  );
+  writeFileSync(
+    join(root, "debug", "debug-bug7d9-2026-09-21T10:00-thing.md"),
+    "---\nhash: bug7d9\ntype: debug\nstatus: in-progress\n---\n\n## Status log\n\n- claimed.\n",
+    "utf8",
+  );
+  return root;
+}
+
+describe("runFinalize — no --type (7d96be)", () => {
+  it("finalizes a debug item with no --type: resolved from the hash, DEBUG.md flipped", () => {
+    const root = makeTmpDebugRepo();
+    const r = runCli(root, ["bug7d9", "--pr", "42", "--merge-sha", "abc1234def"]);
+    expect(r.code).toBe(0);
+    // The RESOLVED type reached the worktree stage — a `dev` default would
+    // have targeted feat/dev-bug7d9.
+    expect(r.stderr).toContain("feat/debug-bug7d9");
+    expect(r.stderr).not.toContain("feat/dev-bug7d9");
+    expect(JSON.parse(r.stdout).ok).toBe(true);
+    expect(readFileSync(join(root, "DEBUG.md"), "utf8")).toContain("- [x] `debug/debug-bug7d9");
+    expect(
+      readFileSync(join(root, "debug", "debug-bug7d9-2026-09-21T10:00-thing.md"), "utf8"),
+    ).toContain("status: done");
+  });
+
+  it("exit 2 at stage resolve, nothing written, when the hash is in no spec dir", () => {
+    const root = makeTmpDebugRepo();
+    const before = readFileSync(join(root, "DEBUG.md"), "utf8");
+    const r = runCli(root, ["nope99", "--pr", "42", "--merge-sha", "abc1234def"]);
+    expect(r.code).toBe(2);
+    expect(JSON.parse(r.stdout)).toEqual({ error: "finalize-failed", stage: "resolve" });
+    expect(r.stderr).toMatch(/under any spec dir/);
+    expect(readFileSync(join(root, "DEBUG.md"), "utf8")).toBe(before);
+    expect(r.calls).toHaveLength(0);
+  });
+});
+
 describe("runFinalize — exit-code contract", () => {
   it("exit 0 and one JSON object carrying the per-stage record", () => {
     const root = makeTmpRepo();

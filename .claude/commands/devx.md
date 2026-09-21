@@ -156,7 +156,7 @@ Repeat per item, respecting `stop_after`:
 
    When the spec is NOT in-progress (fresh claim) or no worktree exists, fall through to step 4 as usual.
 
-4. **Atomically claim** via `devx devx-helper claim <hash>` (dvx101). The helper drives the six-step claim — lock + DEV.md flip + spec frontmatter + status log + commit on the base branch + push to `origin/<base>` + worktree create — in fixed order with per-stage rollback. Stdout is JSON `{branch, attached, lockPath, claimSha, sessionToken}` (`attached: true` ⇒ mss102 attach mode — `branch` pre-existed and was inherited from the spec's `branch:` frontmatter, so it may carry a parent run's handed-off commits and must never be force-deleted while unmerged); exit codes encode the outcome:
+4. **Atomically claim** via `devx devx-helper claim <hash>` (dvx101). **The hash alone resolves the spec at every step** (`dev/`, `debug/`, …; 7d96be) — no `--type`; pass it only to pick between two dirs sharing a hash. The helper drives the six-step claim — lock + DEV.md flip + spec frontmatter + status log + commit on the base branch + push to `origin/<base>` + worktree create — in fixed order with per-stage rollback. Stdout is JSON `{branch, attached, lockPath, claimSha, sessionToken}` (`attached: true` ⇒ mss102 attach mode — `branch` pre-existed and was inherited from the spec's `branch:` frontmatter, so it may carry a parent run's handed-off commits and must never be force-deleted while unmerged); exit codes encode the outcome:
    ```
    if ! CLAIM_JSON=$(devx devx-helper claim "$HASH"); then
      case $? in
@@ -173,7 +173,7 @@ Repeat per item, respecting `stop_after`:
    Checkbox conventions per [DESIGN.md §Checkbox conventions](../../docs/DESIGN.md#checkbox-conventions): `[ ]` ready · `[/]` in-progress · `[-]` blocked · `[x]` done. Status field is the source of truth; the checkbox mirrors it.
 5. **Enter the worktree**. The helper created `.worktrees/dev-<hash>` on the derived branch (`branch` field of the JSON result — same primitive as pln101's `deriveBranch`, single-branch projects produce `feat/dev-<hash>`). All subsequent edits happen there. Backlog-file updates still target the main worktree (use absolute paths).
 
-   If `devx devx-helper claim` exited 2 with stage `worktree`, the claim itself succeeded (commit pushed; lock released) but worktree create failed — re-run `git worktree add .worktrees/dev-<hash> -b <branch> <base>` by hand, then resume from Phase 2.
+   If `devx devx-helper claim` exited 2 with stage `worktree`, the claim itself succeeded (commit pushed; lock released) but worktree create failed — re-run `git worktree add .worktrees/<type>-<hash> -b <branch> <base>` by hand, then resume from Phase 2.
 
 ### Phase 2: Working Artifacts (v2 — spec ACs direct)
 
@@ -499,7 +499,7 @@ Expect `state == "MERGED"` and a `mergeCommit.oid`. **`gh pr merge` invoked from
 After merge:
 1. Run the whole after-merge tail as ONE call, from the **main worktree** (b931a1). This step used to be six inline git commands, and it failed three ways at once during multi-loop-concurrency (`LEARN.md § multi-loop-concurrency` E1/E2/E3/E5) — a blanket stage that swept a live peer's files, a spec lock nothing ever released, and a `dist/` that never saw the merge:
    ```
-   devx devx-helper finalize <hash> --pr <n> --merge-sha <merge-sha> --session-token <sessionToken from the Phase 1 claim JSON> [--type debug]
+   devx devx-helper finalize <hash> --pr <n> --merge-sha <merge-sha> --session-token <sessionToken from the Phase 1 claim JSON>
    ```
    In fixed order it:
    - **pulls** the squash-merge commit into local `main` (`git pull --ff-only`, one fetch+retry). This is the only stage that aborts — everything below it writes, and writing to a stale tree is how `main` ends up dirty with an unpushable commit.

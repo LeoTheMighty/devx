@@ -38,7 +38,7 @@ import {
 
 import { isNullishScalar } from "../frontmatter-scalar.js";
 
-import { type ClaimFs, findSpecForHash, realFs } from "./claim.js";
+import { type ClaimFs, lookupSpecForHash, realFs } from "./claim.js";
 import { specLockOwner } from "./spec-lock.js";
 
 const HASH_RE = /^[a-z0-9]{3,12}$/i;
@@ -300,24 +300,22 @@ export function verifyClaim(
 
   const fs: ClaimFs = { ...realFs, ...(opts.fs ?? {}) };
 
-  const type = opts.type ?? "dev";
-  if (!/^[a-z]+$/.test(type)) {
+  if (opts.type !== undefined && !/^[a-z]+$/.test(opts.type)) {
     throw new VerifyClaimError(
       "validate",
-      `invalid spec type '${type}' (expected lowercase letters)`,
+      `invalid spec type '${opts.type}' (expected lowercase letters)`,
     );
   }
 
   // ---- Resolve + parse the spec first: exit-4 vs exit-2 both depend on
   //      the spec's status, and a garbage hash should be "resolve" (exit 2)
   //      regardless of any stray lock file.
-  const specPath = findSpecForHash(fs, opts.repoRoot, hash, type);
-  if (!specPath) {
-    throw new VerifyClaimError(
-      "resolve",
-      `no spec file found at ${join(opts.repoRoot, type)}/${type}-${hash}-*.md`,
-    );
+  // One resolution rule with claim/merge-gate (7d96be): no `dev` default.
+  const lookup = lookupSpecForHash(fs, opts.repoRoot, hash, opts.type);
+  if (lookup.kind !== "found") {
+    throw new VerifyClaimError("resolve", lookup.message);
   }
+  const specPath = lookup.path;
   let specContent: string;
   try {
     specContent = fs.readFile(specPath);
