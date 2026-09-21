@@ -336,6 +336,14 @@ fresh every call, so it can't go stale. This is the spine of the dispatcher
 Enforced culturally + by a `wc -c` canary test over the shipped skill bodies
 and templates (fail CI if the engine's loadable prose regresses past budget).
 
+> **Superseded in part by D-14 (2026-09-21, `07-decisions.md`).** The
+> "≤ 60KB" full-feature row above is the original target and is kept as
+> written. The planning surface is still gated at 60KB; the full run
+> (planning + the `/devx` dispatcher) is gated separately at 128KB. The
+> overrun is concentrated in one row: the dispatcher carries six arms in one
+> file (~67.6KB), so every run loads all of them against the "Execute per
+> story ≤ 10KB" target. D-14 records why that was accepted rather than fixed.
+
 ## 7. Config: `engine:` block (replaces §15 `bmad:`)
 
 ```yaml
@@ -344,7 +352,8 @@ engine:
   archive_root: _devx/archive   # `devx archive` moves a CLOSED doc set here (arc101)
   code_citation_hints: []        # paths design-stage grounds discussion in
   expectations_min: 3
-  prose_budget_kb: 60            # canary threshold for S-1
+  prose_budget_kb: 60            # S-1 planning surface (templates + /devx-plan)
+  full_run_prose_budget_kb: 128  # S-1 full run incl. the /devx dispatcher — see D-14
   reading_guide_roles: [pm, architect, dev, qa]   # §31 Reading Guide columns
   critique:                      # re-homed party-mode
     lenses: [pm, architect, dev, qa]

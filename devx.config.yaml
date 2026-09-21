@@ -333,7 +333,8 @@ engine:
   archive_root: _devx/archive
   code_citation_hints: []        # paths the design stage grounds discussion in
   expectations_min: 3
-  prose_budget_kb: 60            # S-1 canary threshold
+  prose_budget_kb: 60            # S-1 planning surface: engine templates + /devx-plan
+  full_run_prose_budget_kb: 128  # S-1 full run: planning + /devx dispatcher (D-14 — why 128)
   critique:                      # re-homed party-mode (plan-stage critique)
     lenses: [pm, architect, dev, qa]
     min_surfaces: 2              # thoroughness-gated, as party-mode was

@@ -23,7 +23,15 @@ export interface EngineConfig {
    *  nothing read it — a documented knob that did nothing. */
   archiveRoot: string;
   expectationsMin: number;
+  /** S-1 planning-surface budget: engine templates + the /devx-plan skill
+   *  body. Enforced by test/engine-prose-budget.test.ts. */
   proseBudgetKb: number;
+  /** S-1 full-run budget: the planning surface PLUS the /devx dispatcher
+   *  body, i.e. the prose one PRD→merge run can load. Its own knob (D-14,
+   *  5c215e): until 2026-09-21 this surface was gated only by a 2×
+   *  `proseBudgetKb` "drift tripwire", so the multiplier was the budget by
+   *  accident — and raising it meant loosening the planning gate too. */
+  fullRunProseBudgetKb: number;
   /** Column set for the design human render's Reading Guide (§31 port).
    *  Defaults to the plan-stage critique lenses so the document is mapped in
    *  a vocabulary the repo already uses, rather than a parallel one. */
@@ -49,6 +57,7 @@ export const ENGINE_DEFAULTS: EngineConfig = Object.freeze({
   archiveRoot: "_devx/archive",
   expectationsMin: 3,
   proseBudgetKb: 60,
+  fullRunProseBudgetKb: 128,
   readingGuideRoles: Object.freeze(["pm", "architect", "dev", "qa"]) as string[],
   docsLayout: DEFAULT_DOCS_LAYOUT,
   layoutSource: "default",
@@ -104,6 +113,13 @@ export function engineConfigFrom(merged: unknown): EngineConfig {
     e.prose_budget_kb > 0
   ) {
     out.proseBudgetKb = e.prose_budget_kb;
+  }
+  if (
+    typeof e.full_run_prose_budget_kb === "number" &&
+    Number.isFinite(e.full_run_prose_budget_kb) &&
+    e.full_run_prose_budget_kb > 0
+  ) {
+    out.fullRunProseBudgetKb = e.full_run_prose_budget_kb;
   }
   if (Array.isArray(e.reading_guide_roles)) {
     // Non-string / blank entries are dropped rather than rendered as empty

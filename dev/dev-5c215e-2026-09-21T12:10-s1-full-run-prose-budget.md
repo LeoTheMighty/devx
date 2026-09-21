@@ -29,22 +29,22 @@ bodies true and replaced existing prose to fit (−354 net); 7d96be needed
 
 ## Acceptance criteria
 
-- [ ] AC 1: The planning surface and the full-run surface are gated by
+- [x] AC 1: The planning surface and the full-run surface are gated by
       **separate** knobs. Today one knob (`engine.prose_budget_kb`) sets
       both — the planning gate at 1× and the full-run tripwire at 2× — so
       raising it for the full run silently loosens the planning budget too,
       which nobody is hitting (6.2 KB free).
-- [ ] AC 2: The full-run surface is gated **directly** at its own budget,
+- [x] AC 2: The full-run surface is gated **directly** at its own budget,
       replacing the 2× "drift tripwire only" assertion, so the number that
       binds is the number that was chosen.
-- [ ] AC 3: The number is justified from what S-1 protects, not from
+- [x] AC 3: The number is justified from what S-1 protects, not from
       current size plus margin — and the justification says plainly where
       it is a policy line rather than a measured threshold.
-- [ ] AC 4: Recorded as a decision in `v2/07-decisions.md`; `02-engine.md`
+- [x] AC 4: Recorded as a decision in `v2/07-decisions.md`; `02-engine.md`
       §6/§7 point at it rather than being rewritten.
-- [ ] AC 5: INTERVIEW.md Q#9 answered with the decision, a pointer to this
+- [x] AC 5: INTERVIEW.md Q#9 answered with the decision, a pointer to this
       change, and a note that the direction was Leo's.
-- [ ] AC 6: Full suite green; typecheck clean.
+- [x] AC 6: Full suite green; typecheck clean.
 
 ## Status log
 
@@ -52,3 +52,10 @@ bodies true and replaced existing prose to fit (−354 net); 7d96be needed
   raise the budget deliberately (INTERVIEW Q#9). Filed by the session that
   tripped the tripwire on 7d96be.
 - 2026-09-21T10:51:22-06:00 — claimed by /devx in session /devx-2026-09-21T1051-42433
+- 2026-09-21T12:40 — implemented. Two knobs (`prose_budget_kb: 60`
+  unchanged, `full_run_prose_budget_kb: 128` new); the 2× tripwire replaced
+  by a direct gate; an independence test pins that moving one knob never
+  moves the other. Reasoning in D-14. Mutation-checked: a 119 KB budget
+  fails the gate at today's 122,852 B, and re-coupling the knobs fails the
+  independence test. The existing "defaults match 02-engine.md §7" guard
+  caught §7 being stale mid-change — updated both sides.
