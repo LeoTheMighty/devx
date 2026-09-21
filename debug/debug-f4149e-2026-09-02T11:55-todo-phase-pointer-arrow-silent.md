@@ -225,18 +225,12 @@ pass against the canonical arrow and prove nothing.
 
 ## Unrelated red found while running the suite
 
-`test/workstream-migration-integrity.test.ts` > "found the real workstreams
-(scan isn't running on an empty dir)" fails on `main` at
-`expect(slugs.length).toBeGreaterThanOrEqual(9)` — actual 1. Not caused by
-this change: it reproduces on a clean, unmodified `main` checkout.
-
-Cause is visible from the survey above — the archival of 8 of the 9
-workstreams into `_devx/archive/` left the live scan with one slug, against a
-floor the test still pins at 9. Whoever owns that archival should decide
-whether the floor moves, the test scans the archive too, or the assertion
-becomes shape-based rather than count-based. Flagged, not fixed: it is not in
-this spec's scope and the fix is a judgement call about what the invariant is
-meant to protect.
+`test/workstream-migration-integrity.test.ts` fails on clean unmodified
+`main` (`slugs.length >= 9`, actual 1) — the archival moved 8 of 9
+workstreams into `_devx/archive/` and the floor did not move. Not caused by
+this change and **filed separately as `debug/debug-wsmig1-…`** rather than
+carried in this PR: unrelated cause, and the fix is a judgement about what
+the invariant protects.
 
 Rest of the suite: 139 files / 3292 tests pass.
 
@@ -258,3 +252,7 @@ file. No separate eval artifact is needed.
   consumers); the affected population is zero today, so no drain is needed;
   and nothing emits phase lines, so AC 3 closes by inspection rather than by a
   code change.
+- 2026-09-20T18:50 — filed the two out-of-scope findings as their own specs
+  rather than leaving them in this one: `inert1` (computed-and-never-read as
+  a testable class, from the dead `unparsedTopLevel`) and `wsmig1` (the
+  hardcoded workstream floor the archival invalidated).
