@@ -308,6 +308,36 @@ describe("defaultTail", () => {
     expect(calls.some((c) => c.cmd === "gh" && c.args[1] === "merge")).toBe(false);
   });
 
+  it("debug-2d6fc1: when the plan scope check cannot run, the tail hands off and never merges", async () => {
+    withWorkflows();
+    const happy = ghHappyPath();
+    const { exec, calls } = scriptedExec({
+      respond: (cmd, args) =>
+        cmd === "git" && args[0] === "merge-base"
+          ? { exitCode: 1, stderr: "fatal: no merge base" }
+          : happy.respond(cmd, args),
+    });
+    const r = await defaultTail(ITEM, ctx(exec));
+    expect(r.outcome).toBe("handed-off");
+    if (r.outcome === "handed-off") expect(r.detail).toMatch(/plan scope check could not run/);
+    expect(calls.some((c) => c.cmd === "gh" && c.args[1] === "merge")).toBe(false);
+  });
+
+  it("debug-2d6fc1: a git failure inside the scope check hands off (fail closed)", async () => {
+    withWorkflows();
+    const happy = ghHappyPath();
+    const { exec, calls } = scriptedExec({
+      respond: (cmd, args) =>
+        cmd === "git" && args.includes("rev-parse") && args.includes("--verify")
+          ? { exitCode: 128, stderr: "fatal: bad revision" }
+          : happy.respond(cmd, args),
+    });
+    const r = await defaultTail(ITEM, ctx(exec));
+    expect(r.outcome).toBe("handed-off");
+    if (r.outcome === "handed-off") expect(r.detail).toMatch(/plan scope check failed/);
+    expect(calls.some((c) => c.cmd === "gh" && c.args[1] === "merge")).toBe(false);
+  });
+
   it("LOCKDOWN mode never merges even on green (merge-gate refuses)", async () => {
     withWorkflows();
     const { exec, calls } = scriptedExec(ghHappyPath());
