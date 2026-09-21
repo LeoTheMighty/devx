@@ -322,3 +322,64 @@ invites someone to "verify" against a file that was never affected.
   — same class: hand-rolled frontmatter parser vs a degenerate YAML value.
 - `dev/dev-f83b04-2026-09-20T09:58-spec-lock-holder-liveness.md` — same
   claim path, unrelated cause.
+- 2026-09-20T18:05-06:00 — phase 2/3: implemented. New module
+  `src/lib/frontmatter-keys.ts` is the AC 7a primitive —
+  `splitFrontmatter` / `renderFrontmatter` (block scoping),
+  `findFrontmatterKeys` / `frontmatterKeyValue` (shape-agnostic read via
+  `^key:(?=\s|$)`), `upsertFrontmatterKey` (replace-first-and-delete-the-rest,
+  so ACs 1 and 3 are the same code path), `duplicateFrontmatterKeys`.
+  Writers routed through it: `claim.ts` `updateSpecForClaim` (AC 1 + AC 2),
+  `mark-done.ts` `updateSpecForDone`, `doctor/fix.ts`
+  `replaceFrontmatterStatus`. Readers fixed: `doctor/detect.ts` `ownerOf`
+  and the `branch:` read at :712 (AC 5), `verify-claim.ts`
+  `parseSpecClaimFields` (AC 4). Validator added in
+  `plan/validate-emit.ts` as `spec-duplicate-frontmatter-key` (AC 7b).
+  **AC 5 surface was larger than the spec's Files list.** Two more sites
+  carried the identical `:\s`-vs-`:\s*` defect and were not listed:
+  `mark-done.ts:257` (`/^status:\s/` — a bare `status:` made it throw
+  "frontmatter missing `status:` line" on a spec that had one, same shape as
+  AC 2 but in the close path rather than the claim path) and
+  `doctor/fix.ts:79` (`/^status:[ \t]*\S.*$/m` — the `\S` requires a
+  non-space character, so a bare `status:` was silently not replaced and
+  doctor reported a fix it had not made). Both fixed.
+  **AC 4 resolved as first-wins, not refusal.** In every instance of this
+  corruption the authoritative value is the one claim wrote, and claim wrote
+  it ABOVE the stale key — so first-wins reads the corrupted population
+  *correctly*, where refusing would halt a legitimate resume over a stray
+  key and so reintroduce the exact harm the fix removes. The duplication is
+  still surfaced, via `SpecClaimFields.duplicateKeys` and
+  `VerifyClaimResult.specDuplicateKeys` alongside the existing
+  `specOwnerDrift` / `specStatusDrift` signals.
+- 2026-09-20T18:20-06:00 — phase 4: single-pass adversarial review; 2
+  findings (0 HIGH, 2 MED), both fixed in place.
+  (1) `duplicateKeys` was dangling — added to `SpecClaimFields` and tested,
+  but no caller consumed it, so a corrupt spec still reached the operator
+  silently. That is half of AC 4 missing, not a style nit: "resolve
+  deliberately" without surfacing is still an implicit resolution. Wired
+  through to `VerifyClaimResult` as `specDuplicateKeys` on both the `owned`
+  and `in-progress-without-lock` variants, which is where the sibling drift
+  signals already live.
+  (2) `duplicateFrontmatterKeys` used `^([^\s:#][^:]*):(?=\s|$)`, which
+  reads a column-0 YAML list item (`- foo: bar`) as a key named `- foo` —
+  the same reader-disagrees-with-YAML class this story exists to end, newly
+  introduced by the fix for it. Tightened to
+  `^([A-Za-z_][A-Za-z0-9_.-]*):(?=\s|$)` and validated against every
+  top-level frontmatter key in devx + palateful (168 distinct, 0 missed),
+  so the tightening is measured rather than assumed. Regression test added.
+  Also checked and cleared: `afterKey` anchor resolution in claim (status is
+  upserted first and throws if absent, so the anchor always exists);
+  `renderFrontmatter` round-trips an untouched spec byte-for-byte;
+  `ownerOf`'s nullish-before-quote-strip ordering now matches
+  `frontmatter-scalar.ts`'s documented contract, which is a deliberate
+  behaviour change (`owner: "null"` is the string `null` per YAML) and is
+  the whole point of debug-7b3e2a.
+- 2026-09-20T18:30-06:00 — phase 5: `npm test` (which also runs
+  `npm run build` + `tsc --noEmit`) — **3315 passed, 1 failed**. The single
+  failure is `test/workstream-migration-integrity.test.ts` asserting
+  `slugs.length >= 9` against a `_devx/workstreams/` that now holds 1 entry.
+  **Pre-existing and unrelated**: reproduced on a clean `main` worktree with
+  an empty working tree before any of this work was applied. Filed as
+  `debug/debug-09451f-...-workstream-integrity-test-red-on-main.md` + DEBUG.md
+  row rather than fixed here — it is an archiving-drift guard, not a
+  frontmatter defect, and folding it in would put a one-line correction
+  behind an unrelated judgment about what the floor should be.

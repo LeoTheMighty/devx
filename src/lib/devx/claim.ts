@@ -85,6 +85,12 @@ import {
   acquireSpecLock,
   composeSpecLockBody,
 } from "./spec-lock.js";
+import {
+  findFrontmatterKeys,
+  renderFrontmatter,
+  splitFrontmatter,
+  upsertFrontmatterKey,
+} from "../frontmatter-keys.js";
 import { appendStatusLogLine } from "./status-log.js";
 import { VerifyClaimError, parseSpecClaimFields } from "./verify-claim.js";
 
@@ -471,32 +477,25 @@ export function updateSpecForClaim(
   sessionId: string,
   isoTimestamp: string,
 ): string {
-  const fmMatch = /^---\n([\s\S]*?)\n---/.exec(content);
-  if (!fmMatch) {
+  const fm = splitFrontmatter(content);
+  if (!fm) {
     throw new Error("updateSpecForClaim: spec missing frontmatter block");
   }
-  const fmBlock = fmMatch[1];
-  const fmLines = fmBlock.split("\n");
-  let statusIdx = -1;
-  let ownerIdx = -1;
-  for (let i = 0; i < fmLines.length; i++) {
-    if (/^status:\s/.test(fmLines[i])) statusIdx = i;
-    if (/^owner:\s/.test(fmLines[i])) ownerIdx = i;
-  }
-  if (statusIdx === -1) {
+  // Both keys go through the shared upsert. The hand-rolled detectors that
+  // used to live here required whitespace after the colon (`/^status:\s/`,
+  // `/^owner:\s/`), so a spec authored with a BARE key missed: `owner:`
+  // spliced a duplicate, and `status:` threw "frontmatter missing status:
+  // line" on a spec that plainly had one. Both are 828385.
+  if (findFrontmatterKeys(fm.lines, "status").length === 0) {
     throw new Error("updateSpecForClaim: frontmatter missing `status:` line");
   }
-  fmLines[statusIdx] = "status: in-progress";
-  const ownerLine = `owner: /devx-${sessionId}`;
-  if (ownerIdx === -1) {
-    fmLines.splice(statusIdx + 1, 0, ownerLine);
-  } else {
-    fmLines[ownerIdx] = ownerLine;
-  }
-  const newFm = fmLines.join("\n");
-  const before = content.slice(0, fmMatch.index);
-  const after = content.slice(fmMatch.index + fmMatch[0].length);
-  let updated = `${before}---\n${newFm}\n---${after}`;
+  upsertFrontmatterKey(fm.lines, "status", "in-progress");
+  // afterKey keeps a fresh `owner:` in the conventional slot under
+  // `status:`; when one already exists it is replaced where it sits.
+  upsertFrontmatterKey(fm.lines, "owner", `/devx-${sessionId}`, {
+    afterKey: "status",
+  });
+  let updated = renderFrontmatter(fm);
 
   // Status log splice lives in status-log.ts — shared with mark-done's
   // `updateSpecForDone` (sgr105) so the append-only invariant has exactly

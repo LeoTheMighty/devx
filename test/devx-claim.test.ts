@@ -225,6 +225,83 @@ describe("updateSpecForClaim", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// 828385 — bare frontmatter keys
+// ---------------------------------------------------------------------------
+
+describe("updateSpecForClaim — bare frontmatter keys (828385)", () => {
+  function countKeys(out: string, key: string): number {
+    const fm = /^---\n([\s\S]*?)\n---/.exec(out);
+    if (!fm) throw new Error("no frontmatter");
+    return fm[1]
+      .split("\n")
+      .filter((l) => new RegExp(`^${key}:(?=\\s|$)`).test(l)).length;
+  }
+
+  // AC 1. The detector used to be `/^owner:\s/` — whitespace REQUIRED after
+  // the colon — so a bare key missed, ownerIdx stayed -1, and the insert
+  // branch spliced a SECOND owner key in at statusIdx+1. Witnessed on
+  // palateful's imptb1.
+  it("replaces a BARE `owner:` instead of splicing a duplicate", () => {
+    const bare = SAMPLE_SPEC.replace("status: ready\n", "status: ready\nowner:\n");
+    const out = updateSpecForClaim(bare, "s1", "2026-09-20T10:00:00-06:00");
+
+    expect(countKeys(out, "owner")).toBe(1);
+    expect(out).toContain("owner: /devx-s1");
+  });
+
+  // AC 2. The sibling defect on the same two lines: `/^status:\s/` meant a
+  // bare `status:` left statusIdx at -1 and the function threw "frontmatter
+  // missing `status:` line" on a spec that plainly had one. Called out
+  // separately because the failure mode is a THROW, not a splice, and a
+  // reader may not connect the two.
+  it("does not throw on a BARE `status:` key", () => {
+    const bare = SAMPLE_SPEC.replace("status: ready", "status:");
+    expect(() =>
+      updateSpecForClaim(bare, "s1", "2026-09-20T10:00:00-06:00"),
+    ).not.toThrow();
+
+    const out = updateSpecForClaim(bare, "s1", "2026-09-20T10:00:00-06:00");
+    expect(countKeys(out, "status")).toBe(1);
+    expect(out).toContain("status: in-progress");
+  });
+
+  it("still throws when `status:` is genuinely absent", () => {
+    const none = SAMPLE_SPEC.replace("status: ready\n", "");
+    expect(() =>
+      updateSpecForClaim(none, "s1", "2026-09-20T10:00:00-06:00"),
+    ).toThrow(/missing `status:` line/);
+  });
+
+  // AC 3. Convergence on a spec the OLD code already corrupted.
+  it("collapses a pre-existing duplicate owner pair to one key", () => {
+    const corrupt = SAMPLE_SPEC.replace(
+      "status: ready\n",
+      "status: ready\nowner: /devx-prior\nowner:\n",
+    );
+    const out = updateSpecForClaim(corrupt, "s2", "2026-09-20T10:00:00-06:00");
+
+    expect(countKeys(out, "owner")).toBe(1);
+    expect(out).toContain("owner: /devx-s2");
+    expect(out).not.toContain("/devx-prior");
+  });
+
+  // AC 6. A spec ABOUT frontmatter keys carries frontmatter-shaped lines in
+  // its body by construction — 828385 itself does. The write path must not
+  // reach into them.
+  it("leaves frontmatter-shaped lines in the BODY untouched", () => {
+    const withSample = SAMPLE_SPEC.replace(
+      "## Goal",
+      "## Goal\n\n```yaml\nstatus: in-progress\nowner: /devx-example\nowner:\n```\n",
+    );
+    const out = updateSpecForClaim(withSample, "s1", "2026-09-20T10:00:00-06:00");
+
+    expect(countKeys(out, "owner")).toBe(1);
+    // The fenced sample survives verbatim, duplicate and all.
+    expect(out).toContain("owner: /devx-example\nowner:\n```");
+  });
+});
+
 describe("findSpecForHash", () => {
   function fsWith(files: Record<string, string[]>): ClaimFs {
     return {

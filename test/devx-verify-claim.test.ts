@@ -204,6 +204,7 @@ describe("parseSpecClaimFields", () => {
       owner: `/devx-${OWNER_SID}`,
       status: "in-progress",
       branch: null,
+      duplicateKeys: [],
     });
   });
 
@@ -213,6 +214,7 @@ describe("parseSpecClaimFields", () => {
       owner: null,
       status: "ready",
       branch: null,
+      duplicateKeys: [],
     });
   });
 
@@ -228,6 +230,7 @@ describe("parseSpecClaimFields", () => {
       owner: null,
       status: "ready",
       branch: "feat/dev-roc101",
+      duplicateKeys: [],
     });
     // Empty value normalizes to null like owner/status.
     const empty = ["---", "status: ready", "branch:", "---"].join("\n");
@@ -248,6 +251,7 @@ describe("parseSpecClaimFields", () => {
         owner: null,
         status: null,
         branch: null,
+        duplicateKeys: [],
       });
     }
   });
@@ -265,6 +269,7 @@ describe("parseSpecClaimFields", () => {
       owner: '"null"',
       status: '"null"',
       branch: "null",
+      duplicateKeys: [],
     });
   });
 
@@ -292,6 +297,7 @@ describe("parseSpecClaimFields", () => {
       owner: null,
       status: "in-progress",
       branch: null,
+      duplicateKeys: [],
     });
   });
 });
@@ -299,6 +305,74 @@ describe("parseSpecClaimFields", () => {
 // ---------------------------------------------------------------------------
 // Exit 0 — owned
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// 828385 AC 4 — duplicate-key resolution is deliberate, not incidental
+// ---------------------------------------------------------------------------
+
+describe("parseSpecClaimFields — duplicate keys (828385)", () => {
+  // Exactly the in-the-wild layout: claim spliced the real owner at
+  // statusIdx+1, ABOVE a stale bare `owner:`. The old loop reassigned on
+  // every match with no break, so LAST-wins read the trailing empty one as
+  // "" — and /devx Phase 1 then HALTed on an ownership mismatch against the
+  // legitimate owner, i.e. a claim poisoned its own resume path.
+  const CORRUPT = [
+    "---",
+    "hash: imptb1",
+    "status: in-progress",
+    `owner: /devx-${OWNER_SID}`,
+    "owner:",
+    "branch:",
+    "---",
+    "body",
+  ].join("\n");
+
+  it("resolves first-wins, reading the authoritative owner", () => {
+    expect(parseSpecClaimFields(CORRUPT).owner).toBe(`/devx-${OWNER_SID}`);
+  });
+
+  it("reports the duplication rather than pretending the spec is clean", () => {
+    expect(parseSpecClaimFields(CORRUPT).duplicateKeys).toEqual(["owner"]);
+  });
+
+  it("reports no duplicates for a clean spec", () => {
+    const clean = [
+      "---",
+      "hash: roc101",
+      "status: in-progress",
+      `owner: /devx-${OWNER_SID}`,
+      "---",
+    ].join("\n");
+    expect(parseSpecClaimFields(clean).duplicateKeys).toEqual([]);
+  });
+
+  // AC 6 — the reader must be block-scoped, not merely line-anchored.
+  it("ignores frontmatter-shaped lines in the body", () => {
+    const withSample = [
+      "---",
+      "hash: 828385",
+      "status: ready",
+      "owner: null",
+      "---",
+      "",
+      "```yaml",
+      "owner: /devx-example",
+      "owner:",
+      "```",
+    ].join("\n");
+    const parsed = parseSpecClaimFields(withSample);
+    expect(parsed.owner).toBeNull();
+    expect(parsed.duplicateKeys).toEqual([]);
+  });
+
+  // A bare key is valid YAML and must read as null without being corruption.
+  it("reads a bare `owner:` as null without flagging it", () => {
+    const bare = ["---", "status: ready", "owner:", "---"].join("\n");
+    const parsed = parseSpecClaimFields(bare);
+    expect(parsed.owner).toBeNull();
+    expect(parsed.duplicateKeys).toEqual([]);
+  });
+});
 
 describe("devx devx-helper verify-claim — exit 0 (owned)", () => {
   let fx: Fixture;

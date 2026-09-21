@@ -14,6 +14,11 @@
 // Spec: dev/dev-db36af-2026-07-25T08:55-devx-doctor-reconcile.md
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import {
+  frontmatterKeyValue,
+  splitFrontmatter,
+} from "../frontmatter-keys.js";
+import { isNullishScalar } from "../frontmatter-scalar.js";
 import { join } from "node:path";
 
 import { type DevRow, type SpecStatus, parseDevMd } from "../backlog/parse.js";
@@ -102,11 +107,31 @@ interface RowFacts {
   ambiguous: boolean;
 }
 
+/**
+ * The spec's `owner:`, or null when unset.
+ *
+ * 828385 AC 5 fixed two defects here at once. The old pattern was
+ * `/^owner:\s*(.+?)\s*$/m`:
+ *
+ *  - `.+?` requires at least one character, so a BARE `owner:` read as
+ *    *absent* rather than as *empty*. Same answer by luck here, but by luck
+ *    only — the reader could not tell the two apart.
+ *  - the `m` flag anchors to any line in the FILE, not to the frontmatter
+ *    block, so an `owner:` line anywhere in the body could answer for the
+ *    frontmatter. That is not hypothetical: 828385's own body carries a bare
+ *    `owner:` inside a fenced ```yaml sample, and a correctly line-anchored
+ *    whole-file scan reports that spec as carrying the bug it documents.
+ *
+ * Block-scoping is the control; anchoring alone is not enough.
+ */
 function ownerOf(content: string): string | null {
-  const m = /^owner:\s*(.+?)\s*$/m.exec(content);
-  if (!m) return null;
-  const raw = m[1].replace(/^["']|["']$/g, "").trim();
-  return raw === "" || raw === "null" || raw === "~" ? null : raw;
+  const fm = splitFrontmatter(content);
+  if (!fm) return null;
+  const raw = frontmatterKeyValue(fm.lines, "owner");
+  if (raw === null) return null;
+  const trimmed = raw.trim();
+  if (isNullishScalar(trimmed)) return null;
+  return trimmed.replace(/^["']|["']$/g, "").trim() || null;
 }
 
 /**
@@ -709,10 +734,13 @@ export async function detectWorktrees(opts: WorktreeDetectOpts): Promise<Finding
         // The spec's RECORDED branch, not a derived guess: a handed-off
         // follow-up (mss102 attach mode) is on a branch no derivation
         // produces, and deleting the derived name would silently miss it.
-        const bm = /^branch:\s*(.+?)\s*$/m.exec(content);
-        const raw = bm?.[1]?.replace(/^["']|["']$/g, "").trim();
-        if (raw !== undefined && raw !== "" && raw !== "null" && raw !== "~") {
-          branch = raw;
+        // Block-scoped + bare-tolerant, same two defects as ownerOf above
+        // (828385 AC 5).
+        const bfm = splitFrontmatter(content);
+        const braw = bfm ? frontmatterKeyValue(bfm.lines, "branch") : null;
+        if (braw !== null && !isNullishScalar(braw.trim())) {
+          const cleaned = braw.trim().replace(/^["']|["']$/g, "").trim();
+          if (cleaned !== "") branch = cleaned;
         }
       }
     } catch {
