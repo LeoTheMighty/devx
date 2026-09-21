@@ -66,6 +66,16 @@ export type GateStatus = Record<GateFlag, boolean>;
  *  `GATE_FLAGS` by name, so this sibling key is invisible to it. */
 export type RedEvalShas = Record<string, string>;
 
+/** `gate_status.red_eval_ids` — every E-id Gate 4 knew when it locked the
+ *  workstream, mapped to the artifact it ran (repo-relative, as the plan
+ *  names it) or `null` when the E-id was known but NOT stamped (waived,
+ *  deferred, or not runnable). debug-evlk01: `--verify` rebuilds the current
+ *  eval set and needs this to tell three cases apart — an E-id absent here
+ *  was ADDED after the lock (blocks), one mapped to a different artifact was
+ *  RE-POINTED (blocks), one mapped to `null` was known and deliberately left
+ *  unstamped (e.g. waived at gate time; never a false block). */
+export type RedEvalIds = Record<string, string | null>;
+
 /** Gate-name keys for the `gate_verdicts:` sibling map (hfi102). Named after
  *  the gates themselves (the resolved 2026-07-24 design decision), not the
  *  boolean flags — `coverage` runs twice (design/plan mode), so the map keys
@@ -100,6 +110,13 @@ export interface EngineState {
    *  pre-debug-75563d workstream looks, and what `verifyStepBodies`
    *  reports as the advisory `unstamped`. */
   redEvalShas: RedEvalShas;
+  /** `gate_status.evals_locked` — true once Gate 4 has stamped this
+   *  workstream (debug-evlk01). The marker, not the stamp's presence, is
+   *  what distinguishes "stamped, then emptied" (a hole) from "never
+   *  stamped" (grandfathered): an empty `red_eval_shas` alone reads the same
+   *  in both. */
+  evalsLocked: boolean;
+  redEvalIds: RedEvalIds;
   gateVerdicts: GateVerdicts;
   outcome: Outcome;
   /** Repo-relative workstream dir (`_devx/workstreams/<slug>`), if recorded. */
@@ -119,11 +136,18 @@ export interface EnginePatch {
   stage?: Stage;
   enteredAt?: string;
   gateStatus?: Partial<GateStatus>;
-  /** Gate 4's step-body stamp. Replaces the whole map — a re-run of
-   *  `devx gate evals` re-stamps from scratch, which is the only
-   *  sanctioned way for a locked eval to move (CLAUDE.md § "Fix the code,
-   *  not the eval"). */
+  /** Gate 4's step-body stamp. Replaces the whole map; the gate merges
+   *  forward any earlier sha whose eval still exists before writing, so a
+   *  re-run can never drop a live lock. The sanctioned way for a locked
+   *  eval to change is `devx revise`, which re-opens the red stage and
+   *  clears the stamp (debug-evlk01 D) — NOT re-running the gate, which
+   *  requires P0 evals to be RED and so cannot re-stamp one that now
+   *  passes. */
   redEvalShas?: RedEvalShas;
+  /** debug-evlk01: the lock marker. `false` removes the key. */
+  evalsLocked?: boolean;
+  /** debug-evlk01: E-id → artifact map. Replaces the whole map. */
+  redEvalIds?: RedEvalIds;
   /** `null` clears a gate's verdict back to never-evaluated (revise path). */
   gateVerdicts?: Partial<GateVerdicts>;
   outcome?: Partial<Outcome>;
@@ -259,6 +283,8 @@ export function readEngineState(content: string): EngineState {
     enteredAt: null,
     gateStatus: emptyGateStatus(),
     redEvalShas: {},
+    evalsLocked: false,
+    redEvalIds: {},
     gateVerdicts: emptyGateVerdicts(),
     outcome: { status: null, measure_by: null },
     workstream: null,
@@ -320,6 +346,13 @@ export function readEngineState(content: string): EngineState {
     if (shas && typeof shas === "object" && !Array.isArray(shas)) {
       for (const [k, v] of Object.entries(shas as Record<string, unknown>)) {
         if (typeof v === "string" && v !== "") state.redEvalShas[k] = v;
+      }
+    }
+    state.evalsLocked = gs.evals_locked === true;
+    const ids = gs.red_eval_ids;
+    if (ids && typeof ids === "object" && !Array.isArray(ids)) {
+      for (const [k, v] of Object.entries(ids as Record<string, unknown>)) {
+        if (v === null || (typeof v === "string" && v !== "")) state.redEvalIds[k] = v;
       }
     }
   }
@@ -426,8 +459,22 @@ export function applyEnginePatch(content: string, patch: EnginePatch): string {
   // path goes through, rather than at each caller: two callers clearing the
   // flag and forgetting the stamp is how this was found (review of #164).
   // An explicit `redEvalShas` in the same patch still wins.
-  if (patch.gateStatus?.evals_red === false && patch.redEvalShas === undefined) {
-    doc.deleteIn(["gate_status", "red_eval_shas"]);
+  if (patch.gateStatus?.evals_red === false) {
+    // debug-evlk01: the marker and the E-id map belong to the same lock and
+    // go with it. Each is dropped unless the same patch sets it explicitly.
+    if (patch.redEvalShas === undefined) doc.deleteIn(["gate_status", "red_eval_shas"]);
+    if (patch.evalsLocked === undefined) doc.deleteIn(["gate_status", "evals_locked"]);
+    if (patch.redEvalIds === undefined) doc.deleteIn(["gate_status", "red_eval_ids"]);
+  }
+  if (patch.evalsLocked !== undefined) {
+    if (patch.evalsLocked) doc.setIn(["gate_status", "evals_locked"], true);
+    else doc.deleteIn(["gate_status", "evals_locked"]);
+  }
+  if (patch.redEvalIds !== undefined) {
+    doc.deleteIn(["gate_status", "red_eval_ids"]);
+    for (const [k, v] of Object.entries(patch.redEvalIds)) {
+      doc.setIn(["gate_status", "red_eval_ids", k], v);
+    }
   }
   if (patch.redEvalShas !== undefined) {
     // Replace wholesale rather than merging: a re-stamp must be able to

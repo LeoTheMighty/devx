@@ -33,6 +33,8 @@ function state(overrides?: {
       ...(overrides?.gates ?? {}),
     },
     redEvalShas: {},
+    evalsLocked: false,
+    redEvalIds: {},
     gateVerdicts: {
       prd: null,
       design: null,

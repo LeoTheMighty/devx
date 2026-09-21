@@ -263,9 +263,15 @@ Steps:
 workstream whose `gate_status.evals_red` is true, Gate 4 stamped a sha of each
 eval it ran into `gate_status.red_eval_shas`. Run
 `devx gate evals <plan-hash> --verify` before calling the story green. Exit 1
-is a **hard stop** — a stamped eval moved or vanished — not a warning to note
-and continue past. Nothing enforces this stop but you: no gate or loop runs
-`--verify` for you, and nothing refuses the edit itself.
+is a **hard stop** — not a warning to note and continue past. It fires when a
+stamped eval moved or vanished; when an eval was added after the lock or a
+new file appeared in a locked eval directory; when an expectation was
+re-pointed at a different file; or when a locked eval was removed or
+reclassified so it no longer runs. Two exceptions, both deliberate: an eval
+waived at the gate, and a P1 whose file did not exist yet at the gate, were
+never locked, so writing or moving them later does not block. Nothing
+enforces this stop but you: no gate or loop runs `--verify` for you, and
+nothing refuses the edit itself.
 
 **Fix the code, not the eval.** A failing eval means the implementation is
 not done; softening one turns this green run into a tautology. Restore the
@@ -275,12 +281,17 @@ requires P0 evals to be RED), and `--waive` keeps the original stamp. Run
 `devx revise` — it reopens the red stage and clears the stamp, so the evals
 can be re-authored and re-gated.
 
-What `--verify` does not catch: an eval added after the stamp, or an
-expectation re-pointed at a different file — it checks only the files it
-stamped. For a markdown eval, `Status` / `Last run` / `Run` / `Result` lines
-and every table row are left out of the hash and stay writable; a
+What stays writable in a markdown eval, so a run can be recorded: `Status`,
+`Last run` and `Verdict` lines, `Result` (the result a run *observed*), and
+the table under a `Runs` heading. Everything else is locked — including the
+`Run:` command and any `Expected:` / `Threshold:` bar. To lock an expected
+result, write it as `Expected:` or `Threshold:`, never as `Result:` — and keep
+`Result:` to one line. Anything inside a fenced code block is locked. A
 non-markdown eval is hashed whole, ignoring line endings and trailing
-whitespace.
+whitespace; in a directory eval, tool-written files (dotfiles,
+`__snapshots__`, `__pycache__`) are ignored. A workstream with no
+`evals_locked` marker and no E-id map is grandfathered: `--verify` re-hashes
+anything it stamped, but only reports its eval set, never blocks on it.
 
 Gates come from `devx.config.yaml`. Two supported shapes:
 

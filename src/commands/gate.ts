@@ -520,8 +520,9 @@ export function runGateCoverage(
  *
  * A missing or unreadable artifact is SKIPPED rather than stamped empty:
  * an empty-string sha would lock the eval to "absent" and the next run
- * would read the real file as `moved`. Absent from the stamp is what
- * `verifyStepBodies` already calls `unstamped`, which is advisory.
+ * would read the real file as `moved`. Its E-id is then recorded as known
+ * but unstamped (`null` in `red_eval_ids`, see `lockedEvalIds`), so writing
+ * the file later is not treated as an eval added after the lock.
  */
 function collectEvalBodies(
   repoRoot: string,
@@ -585,10 +586,85 @@ function readArtifactInto(
     return;
   }
   // Sorted so the stamp is identical across filesystems with different
-  // readdir order.
+  // readdir order. Tool-written files are skipped (see NOT_AN_EVAL): a
+  // snapshot written by the first green run or a `.DS_Store` is not an eval
+  // anyone authored, and locking it would make `--verify` cry wolf.
   for (const name of [...entries].sort()) {
+    if (isNotAnEval(name)) continue;
     readArtifactInto(io, join(abs, name), `${rel.replace(/\/+$/, "")}/${name}`, out);
   }
+}
+
+/**
+ * Files inside a DIRECTORY artifact that are never part of an eval
+ * (review of evlk01, finding H3). Test tooling writes these as a side effect
+ * of running: vitest/jest `__snapshots__/` on the first green run, pytest
+ * `__pycache__/` and `.pyc`, editor and OS droppings. Without this, a
+ * directory eval's first passing run made `--verify` fail with `unstamped`
+ * on a workflow nobody got wrong — the cry-wolf failure that gets a lock
+ * switched off.
+ *
+ * Applied only while EXPANDING a directory, and in the one function both the
+ * stamp and `--verify` read through, so the two can never disagree. A file
+ * named directly as an artifact is always read, whatever it is called.
+ */
+const NOT_AN_EVAL_DIRS = new Set(["__snapshots__", "__pycache__", "node_modules"]);
+function isNotAnEval(name: string): boolean {
+  return (
+    name.startsWith(".") ||
+    NOT_AN_EVAL_DIRS.has(name) ||
+    name.endsWith(".pyc") ||
+    name.endsWith(".snap")
+  );
+}
+
+/**
+ * The E-id → artifact map Gate 4 locks alongside the shas (debug-evlk01).
+ *
+ * Every E-id the gate evaluated is recorded: ones that RAN map to their
+ * artifact, ones deferred (waived, human, tests-after, shipped-green) map to
+ * `null`. That `null` is load-bearing — `--verify` re-resolves the plan
+ * WITHOUT the gate-time `--waive`, so a waived eval reappears as runnable,
+ * and without a record that it was known and deliberately left unstamped it
+ * would falsely block every waived workstream.
+ *
+ * An E-id maps to its artifact when that artifact EXISTED at gate time, and
+ * to `null` when it did not. The two cases the review of evlk01 separated:
+ *
+ *  - A P1+ eval whose artifact did not exist yet is allowed (the gate
+ *    records CONCERNS) and has nothing to lock. Mapping it to its path would
+ *    make `--verify` block the story the moment that file is written — a
+ *    lock stricter than the gate that created it. → `null`.
+ *  - An artifact that exists but yields nothing to stamp — an EMPTY
+ *    directory a runner accepted as RED — is exactly what must stay guarded:
+ *    mapping it to `null` would leave every test added under it later
+ *    permanently unchecked. → its path, so a file dropped in later reads as
+ *    `unstamped`.
+ *
+ * (Keying on "was stamped" got the first right and the second wrong.)
+ *
+ * Carried forward like the shas: a fresh stamped artifact wins; a fresh
+ * `null` never erases an earlier artifact (a later `--waive` must not drop
+ * the re-point check any more than it may drop the sha); a prior E-id
+ * absent from this run is kept.
+ */
+function lockedEvalIds(
+  prior: Readonly<Record<string, string | null>>,
+  runs: readonly { eId: string; artifact: string | null }[],
+  deferred: readonly { eId: string }[],
+  existed: (artifact: string) => boolean,
+): Record<string, string | null> {
+  const out: Record<string, string | null> = { ...prior };
+  for (const d of deferred) {
+    const id = d.eId.toUpperCase();
+    if (!(id in out)) out[id] = null;
+  }
+  for (const r of runs) {
+    const id = r.eId.toUpperCase();
+    if (r.artifact !== null && existed(r.artifact)) out[id] = r.artifact;
+    else if (!(id in out)) out[id] = null;
+  }
+  return out;
 }
 
 /**
@@ -691,36 +767,164 @@ export function runGateEvalsCli(
   // written above would be computed and never read, which is the very
   // shape this story exists to remove.
   if (flags.verify) {
-    // Self-review: `current` is built FROM the stamped keys, so it is a
-    // subset of `stamped` by construction and `verifyStepBodies`'s third
-    // finding kind — `unstamped`, an eval on disk that Gate 4 never
-    // stamped — can never fire here. That is deliberate, not an
-    // oversight: detecting it means re-resolving expectations + the plan
-    // coverage table, i.e. the whole gate, which is exactly the work
-    // `--verify` exists to avoid. `unstamped` is advisory and never
-    // blocks (`blocksVerification`), so the omission cannot change a
-    // verdict — it only means `--verify` will not TELL you about a newly
-    // added eval. Re-run the gate itself to bring one under the lock.
     const stamped = ws.state.redEvalShas;
+    const ids = ws.state.redEvalIds;
+    const idCount = Object.keys(ids).length;
+    // Two strengths of lock (review of evlk01, M3/M4):
+    //  - COVERAGE-locked: the marker OR a non-empty E-id map. Either proves
+    //    Gate 4 ran under evlk01, so the eval SET is enforced. Keying on the
+    //    marker alone let an agent unlock everything by deleting two lines.
+    //  - SHA-locked only: a stamp with no marker and no map — how a
+    //    workstream stamped before evlk01 looks. There is no E-id map to
+    //    check the set against, so blocking on it would hard-fail every eval
+    //    as "added after the lock". Stamped files are still re-hashed; set
+    //    findings are advisory.
+    const coverageLocked = ws.state.evalsLocked || idCount > 0;
+    const locked = coverageLocked || Object.keys(stamped).length > 0;
+
+    // 1. Every stamped file, re-hashed: `moved` / `missing`. Always blocks.
     const current = collectEvalBodies(
       r.repoRoot,
       io,
       Object.keys(stamped).map((artifact) => ({ artifact })),
     );
-    const findings = verifyStepBodies(stamped, current);
-    const blocking = blocksVerification(findings);
+    const findings = verifyStepBodies(stamped, current).filter(
+      (f) => f.kind !== "unstamped",
+    );
+
+    // 2. The eval SET (debug-evlk01 B). Resolved exactly as Gate 4 resolves
+    //    it — same inputs, dry run, never executed — with two deliberate
+    //    differences: no `--waive` (a gate-time waiver is recorded as `null`
+    //    in the map), and NO shipped-green deferral. With `donePhases` empty,
+    //    an eval in a shipped phase comes back runnable with its real
+    //    artifact, so re-pointing it after its phase ships is still caught,
+    //    while a validation-type change that takes it out of the run set
+    //    shows up as a type-based deferral. (Walking only the evals that run
+    //    NOW let "re-point AND reclassify in one edit" verify clean — review
+    //    of evlk01, H1.)
+    if (coverageLocked && idCount === 0) {
+      findings.push({
+        kind: "unverifiable",
+        evalPath: subjects.expectations.rel,
+        message:
+          "the workstream is marked `evals_locked` but its E-id map is gone — the lock cannot be checked; `devx revise` re-opens the red stage to re-lock it",
+      });
+    }
+    const missingInput = [subjects.expectations, subjects.plan].find(
+      (sub) => !io.fs.exists(sub.abs),
+    );
+    if (missingInput !== undefined) {
+      // A locked workstream always had both (Gate 4 requires Gate 3). One
+      // vanishing afterwards makes the set unverifiable — and silently
+      // skipping the check here is how deleting `expectations.md` turned
+      // the whole of B off (review of evlk01, H2).
+      if (coverageLocked) {
+        findings.push({
+          kind: "unverifiable",
+          evalPath: missingInput.rel,
+          message: `${missingInput.rel} is missing, so the locked eval set cannot be checked`,
+        });
+      }
+    } else {
+      const planned = runGateEvals({
+        repoRoot: r.repoRoot,
+        workstreamAbs: subjects.docSetAbs,
+        expectations: io.fs.readFile(subjects.expectations.abs),
+        plan: io.fs.readFile(subjects.plan.abs),
+        runners: projectRunnersFrom(r.merged),
+        exec: () => ({ stdout: "", stderr: "--verify never executes evals", exitCode: 127 }),
+        exists: (p) => io.fs.exists(p),
+        donePhases: new Set<number>(),
+        waived: new Set<string>(),
+        dryRun: true,
+      });
+      const running = new Map<string, string | null>();
+      for (const run of planned.runs) running.set(run.eId.toUpperCase(), run.artifact);
+      const deferredWhy = new Map<string, string>();
+      for (const d of planned.deferred) deferredWhy.set(d.eId.toUpperCase(), d.redVerdict);
+
+      // (a) Every eval that runs now.
+      for (const [id, artifact] of running) {
+        if (artifact === null) continue;
+        if (!(id in ids)) {
+          if (coverageLocked) {
+            findings.push({
+              kind: "unstamped",
+              evalPath: artifact,
+              message: `${id} (${artifact}) was not part of the RED lock — an eval added after Gate 4 was never watched failing; \`devx revise\` re-opens the red stage so it can be gated`,
+            });
+          } else {
+            // No E-id map (grandfathered, or stamped before evlk01), so
+            // "added after the lock" is unknowable — claiming it would
+            // mislabel an eval that IS stamped. Report only files that
+            // genuinely carry no stamp, neutrally, and never block.
+            for (const rel of Object.keys(collectEvalBodies(r.repoRoot, io, [{ artifact }]))) {
+              if (!(rel in stamped)) {
+                findings.push({
+                  kind: "unstamped",
+                  evalPath: rel,
+                  message: `${rel} (${id}) carries no RED stamp — advisory only: this workstream has no E-id lock to check it against`,
+                });
+              }
+            }
+          }
+          continue;
+        }
+        const was = ids[id];
+        // Known at lock time but deliberately left unstamped (waived, or a
+        // deferred / not-yet-written artifact). Never a false block.
+        if (was === null) continue;
+        if (was !== artifact) {
+          findings.push({
+            kind: "repointed",
+            evalPath: artifact,
+            message: `${id} was locked on ${was} but the plan now points it at ${artifact} — the stamped eval still verifies, but it is no longer the one that runs; \`devx revise\` if the expectation genuinely changed`,
+          });
+          continue;
+        }
+        // Same artifact: any file under it the stamp does not cover (a new
+        // test dropped into a stamped directory) was never watched.
+        const files = collectEvalBodies(r.repoRoot, io, [{ artifact }]);
+        for (const rel of Object.keys(files)) {
+          if (!(rel in stamped)) {
+            findings.push({
+              kind: "unstamped",
+              evalPath: rel,
+              message: `${rel} sits under ${id}'s locked artifact but was never stamped — added after Gate 4, so never watched failing`,
+            });
+          }
+        }
+      }
+
+      // (b) Every LOCKED eval that no longer runs (review of evlk01, H1).
+      for (const [id, was] of Object.entries(ids)) {
+        if (was === null || running.has(id)) continue;
+        const why = deferredWhy.get(id);
+        findings.push({
+          kind: "dropped",
+          evalPath: was,
+          message:
+            why === undefined
+              ? `${id} was locked on ${was} but is no longer an expectation — removing a locked eval takes it out of every check; \`devx revise\` if it genuinely went away`
+              : `${id} was locked on ${was} but is now ${why.replace(/^not-run \(deferred: (.*)\)$/, "deferred as $1")} — it no longer runs, so the lock no longer covers it; \`devx revise\` if the validation type genuinely changed`,
+        });
+      }
+    }
+
+    const blocking = blocksVerification(findings, { locked: coverageLocked });
     io.out(
       `${JSON.stringify({
         verify: blocking ? "FAIL" : "PASS",
         hash: ws.hash,
+        locked,
+        coverage: coverageLocked,
         stamped: Object.keys(stamped).length,
         findings,
       })}\n`,
     );
-    // Exit 1 on a moved/missing body — the hard stop. `unstamped` alone
-    // never blocks: it is how a pre-stamp workstream looks (AC 5), and
-    // failing those would retroactively block every workstream whose
-    // Gate 4 predates this fix.
+    // Exit 1 is the hard stop. `moved`/`missing` always block; the set
+    // findings block only in a coverage-locked workstream, which is what
+    // keeps grandfathered and pre-evlk01 workstreams advisory.
     return blocking ? 1 : 0;
   }
 
@@ -850,6 +1054,15 @@ export function runGateEvalsCli(
       const updated = applyEnginePatch(ws.content, {
         gateStatus: { evals_red: true },
         redEvalShas,
+        // debug-evlk01 C: the marker is what separates "stamped, then
+        // emptied" (a hole) from "never stamped" (grandfathered).
+        evalsLocked: true,
+        redEvalIds: lockedEvalIds(
+          ws.state.redEvalIds,
+          result.runs,
+          result.deferred,
+          (artifact) => io.fs.exists(join(r.repoRoot, ...artifact.split("/"))),
+        ),
         stage: newStage,
         gateVerdicts: { evals: result.verdict },
       });
