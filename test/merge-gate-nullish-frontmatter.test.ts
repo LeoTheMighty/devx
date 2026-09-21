@@ -96,6 +96,13 @@ function run(fx: Fixture, hash: string, prNumber: number | null): RunResult {
       // Outline L2 scan — clean tree in these fixtures.
       return { exitCode: 0, stdout: "", stderr: "" };
     }
+    if (cmd === "git" && args[0] === "rev-parse") {
+      // debug-1dfbdd: on an empty `gh pr list` the gate asks whether the
+      // branch exists, to say WHICH of the three empty-result states this
+      // is. These fixtures are about the nullish read, so report the branch
+      // as existing and keep the verdict on the "no PR yet" path.
+      return { exitCode: 0, stdout: `${"a".repeat(40)}\n`, stderr: "" };
+    }
     throw new Error(`unexpected exec call: ${joined}`);
   };
   const code = runMergeGate([hash], {}, {
@@ -241,7 +248,16 @@ describe("runMergeGate branch fallback (debug-7b3e2a)", () => {
     try {
       const r = run(fx, "bb0004", null);
       expect(r.code).toBe(2);
-      expect(r.decision).toEqual({ merge: false, reason: "no PR yet" });
+      // debug-1dfbdd widened this reason to name the branch queried. The
+      // assertion that carries 7b3e2a's regression is `headArg` — WHICH
+      // branch reached `gh pr list` — and it is unchanged and still the
+      // point of this test. The reason string is checked for the derived
+      // name too, so a regression to `--head null` fails both.
+      expect(r.decision).toEqual({
+        merge: false,
+        reason: "no PR yet (queried --head 'feat/debug-bb0004')",
+      });
+      expect(r.decision?.reason).not.toContain("'null'");
       expect(r.headArg).toBe("feat/debug-bb0004");
     } finally {
       fx.cleanup();

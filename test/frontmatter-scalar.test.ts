@@ -60,3 +60,54 @@ describe("readEngineState — the YAML-backed reader was never affected", () => 
     expect(state.status).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// debug-1dfbdd AC 4 — the set must NOT grow
+// ---------------------------------------------------------------------------
+
+describe("NULLISH_SCALARS is YAML's null rule, not a sentinel registry (debug-1dfbdd)", () => {
+  // READ THIS BEFORE "FIXING" A SENTINEL BUG BY EDITING THE SET BELOW.
+  //
+  // debug-1dfbdd: palateful's `lgort1` carried `branch: unassigned`, and
+  // merge-gate queried `gh pr list --head unassigned`, got [], and reported
+  // "no PR yet" with a green PR open. The tempting one-line fix is to add
+  // "unassigned" here. It is the WRONG FIX, twice over:
+  //
+  //   1. It is factually wrong about YAML. `unassigned` is an ordinary
+  //      string; this set is the 1.2 core schema's null spellings plus the
+  //      empty value, and nothing else belongs in it. Adding to it makes
+  //      devx disagree with every real YAML parser, including the one
+  //      engine/frontmatter.ts already uses.
+  //   2. It does not even solve the problem. The next authoring path emits
+  //      `tbd`, or `TODO`, or `none`, and the gate breaks again — devx
+  //      cannot enumerate sentinels it has never been told about.
+  //
+  // The fix is in the READER: validate that a branch value names a branch
+  // that EXISTS, rather than asking whether it is null. See
+  // merge-gate.ts explainEmptyPrList.
+  const NOT_NULL_IN_YAML = [
+    "unassigned",
+    "tbd",
+    "TODO",
+    "none",
+    "None",
+    "nil",
+    "undefined",
+    "-",
+    "n/a",
+  ];
+
+  for (const v of NOT_NULL_IN_YAML) {
+    it(`treats ${JSON.stringify(v)} as a STRING, not a null`, () => {
+      expect(isNullishScalar(v)).toBe(false);
+      expect(NULLISH_SCALARS.has(v)).toBe(false);
+    });
+  }
+
+  it("contains exactly YAML's five null spellings and nothing more", () => {
+    expect([...NULLISH_SCALARS].sort()).toEqual(
+      ["", "NULL", "Null", "null", "~"].sort(),
+    );
+    expect(NULLISH_SCALARS.size).toBe(5);
+  });
+});

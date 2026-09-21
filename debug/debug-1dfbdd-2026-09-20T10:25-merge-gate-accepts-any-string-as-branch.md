@@ -205,3 +205,58 @@ it (a branch-name mismatch); its status log now carries the correction.
   three-states-one-answer specimen.
 - `debug/debug-828385-…-claim-splices-duplicate-owner-key.md` AC 7 —
   the same enumeration-versus-validation trap on frontmatter keys.
+- 2026-09-20T18:30-06:00 — implemented. ACs 1-5 and 7 met; **AC 6 deliberately NOT implemented — see the argument below, which I think is a correction to the spec.**
+  - **AC 1/2 shape changed on devx-b6's advice, and the change matters.** My first cut validated the branch as a *precondition*, before the PR query. b6 caught the regression: the query is `--state all`, which matches merged and closed PRs, and the documented flow squash-merges with `--delete-branch` — so a spec that completed successfully has a real merged PR and NO remote ref. A precondition would suppress the lookup and accuse exactly those specs of naming a dead branch: the loud-and-wrong failure, in place of the quiet-and-wrong one. Final shape is query-first, with existence used only to *explain* an empty result. Pinned by a test (`cc0003`) that fails if anyone reintroduces the precondition.
+  - **Could-not-verify is not absence.** `explainEmptyPrList` returns `string | null`, and the null routes to the existing `safeFailureExit`. A failed `ls-remote` — offline, no `origin`, auth failure — must never produce a "does not exist" verdict, or the fix builds a *fourth* indistinguishable state into the command whose defect is three states sharing one answer. Mutation-verified: collapsing the null into a boolean fails exactly that one test.
+  - **AC 3** ships in every empty-result path: `no PR yet (queried --head 'X')`. Independent of AC 1 as required.
+  - **AC 4**: `NULLISH_SCALARS` untouched. Test pins the set at exactly YAML's five spellings and asserts nine plausible sentinels (`unassigned`, `tbd`, `TODO`, `none`, `nil`, …) are strings, with a comment explaining why extending the set is wrong twice over — factually about YAML, and ineffective against the next sentinel.
+  - **AC 5 widened, and found live bugs.** `split.ts:907` (`v === "" || v === "null"`) and `detect.ts:714` (`"" | "null" | "~"`) were both narrower than `isNullishScalar` — `Null` and `NULL` were being read as branch NAMES. That is debug-7b3e2a's original defect still live in two readers, seven weeks after merge-gate was fixed. Both folded onto the shared rule. `detect.ts`'s consequence is concrete: doctor carried `"NULL"` into a finding and `applyFixes` would have run `git branch -D NULL`. Both mutation-verified; `detect.ts`'s fix was initially unguarded (all 60 doctor tests passed with the bug reintroduced) until a test was added that pins the `git branch -D` observable.
+  - **AC 7**: `tsc --noEmit` clean. Full suite: 4188 passed, 10 failed — all 10 pre-existing and none in the touched surface. Verified against a baseline worktree at the unmodified claim commit: `loop-worker` (8) and `manage-spawn` (1) pass in isolation and fail only under full-suite parallel load (child-process timing); `workstream-migration-integrity` fails identically at baseline and on main.
+  - **Pre-existing red on devx main, unrelated and worth someone's attention:** `workstream-migration-integrity` asserts `slugs.length >= 9`, but `_devx/workstreams/` holds exactly one directory (`usage-window-governor`); the rest were archived (`837072b archive: blocker-push-interim (retired)`). The floor is stale. Not filed here — it is not this spec's surface — but it is the same family as everything else in this story: an assertion pinned to a number reality moved past.
+
+### AC 6 — declined, with reasons (the spec's premise does not hold)
+
+AC 6 says a doctor finding is "the same predicate as AC 1". **It is not**, and the reason is the one b6 used to correct my precondition design.
+
+AC 1 fires at a narrow, high-signal moment: a spec whose PR query *just came back empty*. Absence of a branch there is genuinely surprising. A doctor finding would evaluate the same predicate on every spec **at rest**, where a missing branch is the normal state in at least three ways:
+
+- `ready` specs authored by `/devx-plan` carry a branch that does not exist yet, because the work has not started.
+- `done` specs squash-merged with `--delete-branch` have no branch by design — the exact case that killed the precondition.
+- attach-mode follow-ups (mss102) sit on branches no derivation produces, which `detect.ts` already comments on.
+
+So the detector's true-positive case is one sentinel among three routinely-absent-and-fine populations. It would fire mostly on healthy specs.
+
+That is not merely low value, it is **negative** value right now, and this story is the reason I am confident about it: `f83b04` currently reports every live claim as a dead owner, four sessions have been told today to ignore dead-owner findings, and the habit outlives the code fix. Adding a second noisy finding class to a detector people are actively being trained to ignore damages the detector for the cases it already gets right.
+
+If the class is still wanted, the version worth building is narrower and does not need git: **flag a `branch:` value that is not a valid git ref name at all** (`git check-ref-format --branch`). `unassigned` passes that, so it would not have caught lgort1 — which is itself the finding: the durable control for a sentinel reaching a spec is the write-side validator (`debug-828385` AC 7), not a read-side detector. The spec's own Technical notes say this. AC 6 is the same enumeration reflex arriving from the detector side.
+
+Recommend AC 6 be struck or re-filed against the validator. Flagged to devx-b6 rather than decided unilaterally.
+
+### The guard found a third offender, in the worst possible place
+
+Writing the single-source guard (`test/nullish-rule-single-source.test.ts`)
+turned up a reader neither the spec nor my own AC 5 audit had named:
+`detect.ts:110 ownerOf()` — `raw === "" || raw === "null" || raw === "~"`.
+
+It is the narrowest copy in the highest-stakes spot. `owner:` is what the
+**dead-owner detector** reads, so `owner: NULL` resolved to the literal owner
+`"NULL"` — a spec with no owner looked owned, and was therefore never
+reported. It also stripped quotes *before* testing nullish, which is the
+mirror-image bug `frontmatter-scalar.ts` documents in its own header: a
+quoted `"null"` is a real string per YAML, and collapsing it there loses the
+distinction the module was built to keep. Fixed both ways round.
+
+That makes **three** hand-rolled copies alive seven weeks after `7b3e2a`
+closed, not the two the spec names. I found two by reading the files the spec
+listed; the third only turned up when I wrote a check that reads the whole
+tree. That is the argument for the guard existing at all: an audit finds what
+it was pointed at, and this class is defined by turning up where nobody
+pointed.
+
+The guard deliberately does **not** flag a bare `~`. In this tree `~` is far
+more often a home-directory prefix (`learn/config.ts:131`,
+`learn/route.ts:101`) than a YAML null, and a guard that cries wolf on path
+handling is a guard someone deletes — the same habituation argument that
+sank AC 6. Every real offender compares against `"null"`, so that is the
+discriminating token. A hypothetical rule testing only `~` would slip
+through; that is an accepted trade for a guard that stays credible.
