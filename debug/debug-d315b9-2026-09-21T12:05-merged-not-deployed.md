@@ -87,6 +87,30 @@ by devx-b6). It surfaced only because the filer, asked to add the missing
 line for instance 2, wrote one saying what did *not* run instead of one
 implying a review.
 
+### Instance 4 — the check that would catch instance 3 cannot see where it happened
+
+Reported by palateful-2d; verified and measured here. dvx103's check reads
+only `dev/` (`DEV_DIR`, `test/devx-status-log-discipline.test.ts:58`,
+`:135`), and its assertion names "dev spec". Most of the eight PRs merged on
+2026-09-21 were **`debug/`** specs (828385, wsmig1, 7d96be, …). So when Phase 4
+was skipped across all eight, CI **structurally could not** have flagged it:
+the guard never looks where the omission was. It is the only mechanism
+behind CLAUDE.md's "Phase 4 is non-skippable", and it is scoped so that
+it cannot enforce that for debug items. Same shape as 108c57's AC 15: a
+rule that does not reach the files it was written for.
+
+Instances 1–3 are the helper path *skipping* a step; instance 4 is the
+*check* for that skip being unable to see it.
+
+**Measured population, 2026-09-21:** 41 `debug/` specs, 29 `status: done`,
+**7 done with no `phase 4:` line** — `7c1e93`, `7d96be`, `9f24c7`, `b365ac`,
+`e3f1c2`, `f4149e`, `wsmig1`. The other 22 already carry one, so the
+convention is mostly followed by hand; extending the check turns 7 specs red,
+not a large batch. Two of the 7 are this filer's (`f4149e`, `7d96be`); they
+were deliberately **not** backfilled here, because grandfather-vs-retroactive
+is the sequencing decision this AC exists to make, and `7d96be` is inside
+palateful-2d's fix-forward from its retroactive review.
+
 ### Why these are one defect
 
 Each is a step the skill enforces by *doing* it, so nothing ever had to
@@ -130,6 +154,13 @@ happened. The line is a claim, and its honesty is the writer's. That is
       actually ran — including "none" — rather than a template to paste.
       A refusal that is satisfied by pasting boilerplate reproduces
       instance 3.
+- [ ] AC 8 (instance 4): dvx103's check covers `debug/` specs as well as
+      `dev/`. The 7 currently-done debug specs without a `phase 4:` line are
+      resolved **in the same change** — each either gets a retroactive line
+      that says honestly what review ran (including "none"), or a grandfather
+      entry with a reason — so extending the check does not turn `main` red
+      (instance 2's failure, reproduced by the fix for it). Prefer honest
+      retroactive lines; a grandfather entry is a permanent exemption.
 - [ ] AC 7: the skill body's hand-run guidance (or `mark-done --help`)
       names all three steps the helper path does not perform — rebuild,
       status-log discipline, Phase 4 — so an operator choosing the helpers
@@ -157,3 +188,7 @@ happened. The line is a claim, and its honesty is the writer's. That is
   `mark-done` reddening `main` on a dvx103 check the PR could not see, and
   helper-run items skipping Phase 4. Retitled to the shared defect. Instance 2
   is the filer's own (5c215e, `74d93cd`).
+- 2026-09-21T13:05 — added instance 4 (reported by palateful-2d): dvx103
+  reads only `dev/`, so it could not flag the Phase 4 skips on the debug-type
+  PRs that made up most of the day's merges. Measured: 7 of 29 done debug
+  specs lack the line. AC 8 requires resolving those 7 in the same change.
