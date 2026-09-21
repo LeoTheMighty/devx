@@ -4,7 +4,7 @@
 
 # Story graph
 
-232 specs across 25 groups — 12 blocked · 162 done · 4 in-progress · 54 ready; 449 edges.
+238 specs across 25 groups — 12 blocked · 162 done · 5 in-progress · 59 ready; 449 edges.
 
 ## Legend
 
@@ -148,6 +148,7 @@ flowchart TD
   subgraph sg_standalone["standalone — no workstream or epic"]
     00b4d3["00b4d3 A layout-migration commit is blocked by d…"]
     135dc9["135dc9 project-level artifact names collide with…"]
+    1dfbdd["1dfbdd merge-gate accepts any non-null string as…"]
     28b267["28b267 learn.auto_allow — the retro watcher stop…"]
     2d6fc1["2d6fc1 A peer session's story commit captured an…"]
     2e1174["2e1174 Tests in the ASYNC blocking pass sit with…"]
@@ -157,6 +158,7 @@ flowchart TD
     3ca108["3ca108 QA walkthrough — the artifact map and the…"]
     494590["494590 Loop token accounting implausibly low — b…"]
     4bd69f["4bd69f QA walkthrough — gate subject resolution…"]
+    4c827d["4c827d Detector Discrimination"]
     4d1a9c["4d1a9c claim commits on whatever branch the main…"]
     4d9c1a["4d9c1a QA walkthrough — sgr104 regen hooks (clai…"]
     5284ae["5284ae Phase-4 discipline check escapes the feat…"]
@@ -171,8 +173,10 @@ flowchart TD
     7b39ad["7b39ad QA walkthrough — workstream resolution +…"]
     7b3e2a["7b3e2a merge-gate reads YAML `branch: null` as t…"]
     7c1e93["7c1e93 loop-concurrency G-1 harness times out un…"]
+    7d96be["7d96be claim requires --type while merge-gate au…"]
     7e2b56["7e2b56 emit-retro-story writes its artifacts to…"]
     7fd3a7["7fd3a7 QA walkthrough — devx layout migrate (dlr…"]
+    828385["828385 Claim splices a duplicate owner: key into…"]
     8a9586["8a9586 Loop merge tail leaves GRAPH.md stale — F…"]
     8b9165["8b9165 QA walkthrough — sgr105 mark-done helper…"]
     97f6d8["97f6d8 QA walkthrough — devx graph renderer + CL…"]
@@ -200,6 +204,7 @@ flowchart TD
     d01000["d01000 Phase 3 — Parallelism & coordination: loc…"]
     d02000["d02000 Phase 9 — Modes & full gate cascade"]
     d7e8e5["d7e8e5 Merge-tail helpers treat transient gh Gra…"]
+    d982ea["d982ea Warn at filing time when a new spec subst…"]
     db36af["db36af devx doctor — mechanical state reconcilia…"]
     dc7514["dc7514 Loop counts infra hangs as item failures…"]
     e01000["e01000 Phase 4 — Observability surfaces: TUI, we…"]
@@ -214,6 +219,7 @@ flowchart TD
     f02000["f02000 Cross-cutting — thoroughness axis wiring"]
     f1d6b2["f1d6b2 Vision-gap Track 4 — Fleet layer: thin mu…"]
     f4149e["f4149e An ASCII `-` in a todo.md phase pointer s…"]
+    f83b04["f83b04 Spec-lock liveness: record the holder, no…"]
     lay101["lay101 Enforce project-level's one-doc-set rule…"]
     lpf101["lpf101 Loop preflight main-health check"]
     roc101["roc101 /devx Phase 1 resume-detection — verify c…"]
@@ -537,6 +543,7 @@ flowchart TD
   class d40ret ready
   class 00b4d3 ready
   class 135dc9 wip
+  class 1dfbdd wip
   class 28b267 done
   class 2d6fc1 ready
   class 2e1174 ready
@@ -546,6 +553,7 @@ flowchart TD
   class 3ca108 ready
   class 494590 done
   class 4bd69f ready
+  class 4c827d ready
   class 4d1a9c done
   class 4d9c1a ready
   class 5284ae ready
@@ -560,8 +568,10 @@ flowchart TD
   class 7b39ad ready
   class 7b3e2a done
   class 7c1e93 done
+  class 7d96be ready
   class 7e2b56 done
   class 7fd3a7 ready
+  class 828385 ready
   class 8a9586 done
   class 8b9165 ready
   class 97f6d8 ready
@@ -589,6 +599,7 @@ flowchart TD
   class d01000 blocked
   class d02000 blocked
   class d7e8e5 done
+  class d982ea ready
   class db36af done
   class dc7514 done
   class e01000 blocked
@@ -603,6 +614,7 @@ flowchart TD
   class f02000 blocked
   class f1d6b2 blocked
   class f4149e ready
+  class f83b04 ready
   class lay101 ready
   class lpf101 done
   class roc101 done
