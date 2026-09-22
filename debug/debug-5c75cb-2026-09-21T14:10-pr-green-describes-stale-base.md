@@ -112,3 +112,26 @@ is not sufficient alone.
 
 - 2026-09-21T14:10 — filed from the #172 merge. Coordinator flagged the gap
   and asked for it to be filed if `d315b9` did not cover it; it does not.
+- 2026-09-22T11:23-06:00 — refinement from palateful (palateful-0a, while
+  verifying rsh102; relayed by the coordinator), for whoever fixes this:
+  - **Literal 0-behind does not converge on a busy repo.** palateful's CI
+    takes ~24 min while several tabs push docs to `main`; palateful#29 never
+    reached 0-behind across three rebases. That is option 1's serialization
+    cost observed, not estimated.
+  - **Workable rule:** gate on *overlap* between `main`'s new commits and
+    anything CI tests, not on the behind-count. This is option 2's "or" arm,
+    widened from "files the PR touches" to "files CI tests".
+  - **Only safe with a backstop, and the two are one claim:** `main`'s
+    post-merge run must re-test the merged tree before any deploy leg can
+    fire. On palateful, `detect-changes` needs `test` and `flutter-test`, and
+    every deploy leg chains from `detect-changes`. So an untested combination
+    at worst blocks the lane and never ships. If a deploy leg ever loses that
+    dependency, "no overlap" stops being sufficient. A fix adopting the
+    overlap rule should also check that the dependency holds (devx's own
+    `devx-deploy.yml` included), not assume it.
+  - devx's own data point, same day: #175 was rebased twice. `main` moved
+    once mid-suite with a CLAUDE.md-only commit. Whether that counts as
+    overlap depends on whether any test reads CLAUDE.md. I did not establish
+    that; I re-ran the prose-budget test to be safe. That is exactly the
+    question the overlap rule needs answered mechanically ("files CI
+    tests" must be computed, not guessed).
