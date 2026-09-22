@@ -46,19 +46,18 @@ import {
   PROJECT_OUTLINE_REL,
   agentSessionRefusal,
   baseBranchFrom,
-  classifyDiffNames,
   dequoteGitPath,
   guardDecision,
   isAgentSessionEnv,
   isProtectedOutlinePath,
-  outlineKindOf,
   renderDenyJson,
 } from "../lib/engine/outline.js";
 import {
   BOOTSTRAP_STAGES,
   gitShowReader,
-  partitionOutlinePaths,
+  outlineDiffArgs,
   scaffoldBody,
+  scanOutlineDiff,
 } from "../lib/engine/outline-scaffold.js";
 
 export interface RunOutlineOpts {
@@ -171,41 +170,37 @@ export function runOutlineCheck(
   }
   const range =
     flags.diff ?? `origin/${baseBranchFrom(ctx.ctx.merged)}...HEAD`;
-  // quotePath=false: git's default C-escaping of non-ASCII paths would slip
-  // past the basename classifier (review HIGH — L2 bypass for accented
-  // workstream slugs); dequoteGitPath in the classifier is the fallback.
-  const r = io.exec(
-    "git",
-    ["-c", "core.quotePath=false", "diff", "--name-only", range],
-    { cwd: ctx.ctx.repoRoot },
-  );
+  // One git invocation shared with the merge gate and the loop tail
+  // (`outlineDiffArgs`): name-status with exact-rename pairing. quotePath
+  // stays off — git's C-escaping of non-ASCII paths would slip past the
+  // basename classifier (review HIGH — L2 bypass for accented workstream
+  // slugs); dequoteGitPath in the scan is the fallback.
+  const r = io.exec("git", outlineDiffArgs(range), { cwd: ctx.ctx.repoRoot });
   if (r.exitCode !== 0) {
     io.err(
       `devx outline check: git diff failed for range '${range}' (missing merge base or unknown ref?): ${r.stderr.trim()}\n`,
     );
     return 2;
   }
-  // Name-based classification first (L2's original scan), then the scaffold
-  // exemption: a file still byte-identical to what `devx outline init` wrote
-  // carries nothing a human typed, so blocking it would only punish
-  // bootstrapping. Everything else — including a DELETED outline — blocks.
-  const outlines = classifyDiffNames(r.stdout.split("\n"));
+  // The same scan every L2 site runs (debug-00b4d3 — this command used to
+  // carry its own copy of it). Exemptions: a pristine scaffold, and a pure
+  // move of a human outline to an outline path of the same kind. Everything
+  // else blocks — including a DELETED outline, and one renamed away.
   const readFile = readFileOrNull(io.fs);
   const source = contentSourceForRange(range);
-  const { authored, scaffolds } = partitionOutlinePaths(
-    outlines,
-    {
-      repoRoot: ctx.ctx.repoRoot,
-      readFile,
-      readAtRev:
-        source.at === "rev"
-          ? gitShowReader(io.exec, ctx.ctx.repoRoot, source.rev)
-          : (rel) => readFile(join(ctx.ctx.repoRoot, ...rel.split("/"))),
-    },
-    outlineKindOf,
-  );
+  const { authored, scaffolds, moved } = scanOutlineDiff(r.stdout, {
+    repoRoot: ctx.ctx.repoRoot,
+    readFile,
+    exec: io.exec,
+    rev: source.at === "rev" ? source.rev : "HEAD",
+    readAtRev:
+      source.at === "rev"
+        ? gitShowReader(io.exec, ctx.ctx.repoRoot, source.rev)
+        : (rel) => readFile(join(ctx.ctx.repoRoot, ...rel.split("/"))),
+    roots: ctx.ctx.engine,
+  });
   io.out(
-    `${JSON.stringify({ clean: authored.length === 0, touched: authored, scaffolds, range })}\n`,
+    `${JSON.stringify({ clean: authored.length === 0, touched: authored, scaffolds, moved, range })}\n`,
   );
   return authored.length === 0 ? 0 : 1;
 }
@@ -532,7 +527,7 @@ export function register(program: Command): void {
   sub
     .command("check")
     .description(
-      "Fail (exit 1) when the diff range touches an outline file — outline changes never ride in a PR. Exit 2 = signal trouble (fail closed).",
+      "Fail (exit 1) when the diff range touches an outline file — outline changes never ride in a PR. Exempt: a pristine scaffold, and an exact move by `devx layout migrate` / `devx archive`. Exit 2 = signal trouble (fail closed).",
     )
     .option("--diff <range>", `git diff range (default ${DEFAULT_CHECK_RANGE})`)
     .action((cmdOpts: { diff?: string }) => {
