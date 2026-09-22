@@ -231,6 +231,7 @@ story's surface:
   828385 corrections were re-confirmed by reading the code.
 - 2026-09-21T12:03:23-06:00 — claimed by /devx in session /devx-2026-09-21T1203-41728
 - 2026-09-21T12:34:25-06:00 — merged via PR #171 (squash → 1c69c45)
+- 2026-09-22T09:40-06:00 — correction: the two lines stamped `14:40` and `14:41` above were hand-written with invented times. Both describe work that landed in PR #171, which merged at 12:33, so they were written before 12:33 on 2026-09-21. Their content stands; only the timestamps are wrong. Lines left as written (append-only).
 
 ## Links
 
