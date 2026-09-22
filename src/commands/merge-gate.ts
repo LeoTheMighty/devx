@@ -44,7 +44,8 @@ import type { Command } from "commander";
 
 import { findProjectConfig, loadMerged } from "../lib/config-io.js";
 import { baseBranchFrom } from "../lib/engine/outline.js";
-import { scanOutlineDiff } from "../lib/engine/outline-scaffold.js";
+import { engineConfigFrom } from "../lib/engine/config.js";
+import { outlineDiffArgs, scanOutlineDiff } from "../lib/engine/outline-scaffold.js";
 import {
   AmbiguousSpecHashError,
   SPEC_TYPE_DIRS,
@@ -589,7 +590,7 @@ export function runMergeGate(
   for (const headRef of [branch, `origin/${branch}`]) {
     const od = baseExec(
       "git",
-      ["-c", "core.quotePath=false", "diff", "--name-only", `${outlineBase}...${headRef}`],
+      outlineDiffArgs(`${outlineBase}...${headRef}`),
       { cwd: projectDir },
     );
     if (od.exitCode === 0) {
@@ -600,6 +601,7 @@ export function runMergeGate(
         repoRoot: projectDir,
         exec: (cmd, args, o) => baseExec(cmd, args, o),
         rev: headRef,
+        roots: engineConfigFrom(merged),
       }).clean;
       break;
     }

@@ -394,7 +394,9 @@ describe("devx merge-gate under a transient 401", () => {
         "-c",
         "core.quotePath=false",
         "diff",
-        "--name-only",
+        "--name-status",
+        "-M100%",
+        "--no-ext-diff",
         "origin/main...feat/dev-flk101",
       ],
     });

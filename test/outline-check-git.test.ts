@@ -82,6 +82,7 @@ describe("devx outline check", () => {
       clean: true,
       touched: [],
       scaffolds: [],
+      moved: [], // debug-00b4d3: pure moves of a human outline are reported
       range: "origin/main...HEAD",
     });
   });

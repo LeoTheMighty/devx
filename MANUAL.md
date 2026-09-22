@@ -292,9 +292,13 @@ CLI serves a downstream-shaped repo with zero devx-repo state reads
     - `[multiple-doc-sets]` — another workstream directory exists on disk. The
       flat layout holds one doc set, and the others would end up resolving to
       the repo root and reading this workstream's artifacts as their own.
-  - **After a successful run, the commit needs a workaround** (debug-00b4d3):
-    the migration moves the human-only outline files, and `devx outline check`
-    fails any diff carrying one. Commit the outline renames separately on the
-    base branch with `devx outline commit`, or land the migration directly on
-    the base branch. Migration is attended and human-run, so either is fine —
-    the fix is filed, not shipped.
+  - **After a successful run, commit it like anything else** (debug-00b4d3,
+    fixed). The migration moves the human-only outline files byte for byte,
+    and `devx outline check` now reads that as what it is: an exact rename of
+    an outline to the same stage's outline path adds no human content, so it
+    passes, and the JSON lists it under `moved`. Only the exact moves
+    `devx layout migrate` and `devx archive` make are exempt; if an
+    outline's CONTENT changed too, or it went anywhere else, the check still
+    blocks — something other than the migration touched it, so stop and
+    look before committing. (Until 2026-09-21 this step needed a workaround:
+    the check refused the migration's own moves.)

@@ -172,6 +172,7 @@ export const SYNC_BLOCKING_TESTS = [
   "test/manage-spawn-cli-e2e.test.ts",
   "test/manage-tick-canonical-state.test.ts",
   "test/outline-check-git.test.ts",
+  "test/outline-check-renames.test.ts",
   "test/postinstall.test.ts",
   "test/repo-root.test.ts",
   "test/skills-packaging.test.ts",

@@ -41,6 +41,8 @@ import {
   PROJECT_OUTLINE_REL,
   type OutlineKind,
   classifyDiffNames,
+  dequoteGitPath,
+  isProtectedOutlinePath,
   outlineKindOf,
 } from "./outline.js";
 
@@ -235,25 +237,168 @@ export function partitionOutlinePaths(
 /** Stage list an `--all` bootstrap covers, in stage order. */
 export const BOOTSTRAP_STAGES: readonly StageDir[] = STAGE_DIRS;
 
-/** The one-call form every L2 site uses: classify a `git diff --name-only`
- *  listing, then apply the scaffold exemption. Keeps `devx outline check`,
+/**
+ * The `git diff` arguments every L2 site runs, so they cannot drift apart
+ * (debug-00b4d3). `--name-status -M100%` pairs EXACT renames and nothing
+ * else: a rename shows as `R100 <from> <to>`, and any rename that also
+ * changes content falls apart into a `D` and an `A`.
+ *
+ * The old `--name-only` was the bug. With git's default rename detection it
+ * lists only a rename's DESTINATION, so:
+ *   - a pure move of a human outline (`devx layout migrate`) was read as an
+ *     authored outline at the new path and refused;
+ *   - an outline renamed to a NON-outline name listed only that name, the
+ *     human's outline vanished from the diff, and the check passed.
+ */
+export function outlineDiffArgs(range: string): string[] {
+  return ["-c", "core.quotePath=false", "diff", "--name-status", "-M100%", "--no-ext-diff", range];
+}
+
+/** A human outline moved without a byte changing. */
+export interface OutlineMove {
+  from: string;
+  to: string;
+}
+
+/** Where a workstream's doc sets live, for the pure-move exemption. */
+export interface OutlineRoots {
+  workstreamsRoot: string;
+  archiveRoot: string;
+}
+
+const DEFAULT_OUTLINE_ROOTS: OutlineRoots = {
+  workstreamsRoot: "_devx/workstreams",
+  archiveRoot: "_devx/archive",
+};
+
+const FLAT_SUFFIX = `-${OUTLINE_BASENAME}`;
+
+/**
+ * The exact destinations a sanctioned tool moves a human outline to — and
+ * nothing else (review round 1). A "same kind" test was too loose: kind is
+ * read from a path's SHAPE, so it let the human's outline be moved into
+ * another workstream, the root project outline moved into a subdirectory,
+ * a workstream renamed wholesale, or an outline parked under
+ * `_devx/templates/` where `devx outline init` would stamp the human's text
+ * into new outlines — several of which the old scan blocked. A move changes
+ * what an outline MEANS even when no byte changes; only these three do not:
+ *
+ *   `<workstreams_root>/<slug>/<stage>/` → root `<stage>-` flat name
+ *        (`devx layout migrate --to project-level`)
+ *   `<workstreams_root>/<slug>/<stage>/` → `<archive_root>/<slug>/<stage>/`
+ *        (`devx archive` — same slug, same stage)
+ *   root `<stage>-` flat name → `<workstreams_root>/<slug>/<stage>/`
+ *        (`devx layout migrate --to workstream`)
+ *   root `<stage>-` flat name → `<archive_root>/<slug>/<stage>/`
+ *        (`devx archive` under `project-level` — the archive always stores
+ *        the folder shape)
+ *
+ * Not exempt, deliberately: the root project outline (no tool moves it);
+ * `devx archive --restore`, because an archived outline is unprotected and
+ * may have been edited while archived — restoring it would launder those
+ * edits into a protected outline. A restore goes through the human's own
+ * `devx outline commit`.
+ */
+function isSanctionedMove(from: string, to: string, roots: OutlineRoots): boolean {
+  const ws = roots.workstreamsRoot.replace(/\/+$/, "");
+  const ar = roots.archiveRoot.replace(/\/+$/, "");
+  const stageOf = (s: string) => ((STAGE_DIRS as readonly string[]).includes(s) ? s : null);
+  const nested = (root: string, p: string): { slug: string; stage: string } | null => {
+    if (!p.startsWith(`${root}/`)) return null;
+    const rest = p.slice(root.length + 1).split("/");
+    if (rest.length !== 3 || rest[2] !== OUTLINE_BASENAME || rest[0] === "" || rest[0].startsWith(".")) return null;
+    const stage = stageOf(rest[1]!);
+    return stage ? { slug: rest[0]!, stage } : null;
+  };
+  const flat = (p: string): string | null =>
+    !p.includes("/") && p.endsWith(FLAT_SUFFIX) ? stageOf(p.slice(0, -FLAT_SUFFIX.length)) : null;
+
+  const src = nested(ws, from);
+  if (src) {
+    if (flat(to) === src.stage) return true;
+    const dst = nested(ar, to);
+    return dst !== null && dst.slug === src.slug && dst.stage === src.stage;
+  }
+  const flatStage = flat(from);
+  if (flatStage) {
+    // Migrate back to the folder layout, or archive under `project-level`:
+    // the archive ALWAYS stores the folder shape (src/lib/archive/plan.ts).
+    const dst = nested(ws, to) ?? nested(ar, to);
+    return dst !== null && dst.stage === flatStage;
+  }
+  return false;
+}
+
+/** A rename column, unquoted but NOT trimmed. `dequoteGitPath` trims, and a
+ *  name with a trailing space is a real, different path (review round 1: a
+ *  rename to `…/<name> ` read as a no-op move onto itself). Git never pads
+ *  these columns, so any surrounding whitespace is part of the name. */
+function renameColumn(raw: string): string {
+  return raw.startsWith('"') ? dequoteGitPath(raw) : raw;
+}
+
+/** The one-call form every L2 site uses: read a `git diff` produced with
+ *  `outlineDiffArgs`, then apply the exemptions. Keeps `devx outline check`,
  *  the merge gate's `outlineClean` signal, and the overnight loop's tail
  *  answering the same question the same way — three copies of this scan
- *  disagreeing is exactly how a guarantee rots. */
+ *  disagreeing is exactly how a guarantee rots.
+ *
+ *  Two exemptions, and only two:
+ *   - a pristine `devx outline init` scaffold;
+ *   - a SANCTIONED MOVE (`isSanctionedMove`): an exact rename (`R100`) of a
+ *     protected outline to the precise destination `devx layout migrate` or
+ *     `devx archive` would produce.
+ *
+ *  Everything else blocks, including a protected outline renamed anywhere
+ *  else — it left its place, which is the same as deleting it. */
 export function scanOutlineDiff(
   diffStdout: string,
-  io: { repoRoot: string; readFile?: (abs: string) => string | null; exec: Exec; rev: string },
-): OutlinePartition & { clean: boolean } {
+  io: {
+    repoRoot: string;
+    readFile?: (abs: string) => string | null;
+    exec: Exec;
+    rev: string;
+    /** Override where content is read (the worktree, for a bare-rev range). */
+    readAtRev?: (repoRelPath: string) => string | null;
+    /** The repo's `engine.workstreams_root` / `engine.archive_root`. */
+    roots?: OutlineRoots;
+  },
+): OutlinePartition & { clean: boolean; moved: OutlineMove[] } {
+  const roots = io.roots ?? DEFAULT_OUTLINE_ROOTS;
+  const moved: OutlineMove[] = [];
+  const left: string[] = [];
+  const candidates: string[] = [];
+  for (const line of diffStdout.split("\n")) {
+    if (line.trim() === "") continue;
+    const cols = line.split("\t");
+    const status = cols[0] ?? "";
+    if (/^[RC]/.test(status) && cols.length >= 3) {
+      const from = renameColumn(cols[1]!);
+      const to = renameColumn(cols[2]!.replace(/\r$/, ""));
+      const protectedFrom = isProtectedOutlinePath(from);
+      if (status === "R100" && protectedFrom && isSanctionedMove(from, to, roots)) {
+        moved.push({ from, to });
+        continue;
+      }
+      // A rename is a delete plus an add. A protected outline that left
+      // blocks (a copy leaves its source in place, so only renames count).
+      if (status.startsWith("R") && protectedFrom) left.push(from);
+      if (isProtectedOutlinePath(to)) candidates.push(to);
+      continue;
+    }
+    candidates.push(...classifyDiffNames([cols[cols.length - 1] ?? ""]));
+  }
   const part = partitionOutlinePaths(
-    classifyDiffNames(diffStdout.split("\n")),
+    candidates,
     {
       repoRoot: io.repoRoot,
       readFile: io.readFile ?? defaultReadFile,
-      readAtRev: gitShowReader(io.exec, io.repoRoot, io.rev),
+      readAtRev: io.readAtRev ?? gitShowReader(io.exec, io.repoRoot, io.rev),
     },
     outlineKindOf,
   );
-  return { ...part, clean: part.authored.length === 0 };
+  const authored = [...left, ...part.authored];
+  return { authored, scaffolds: part.scaffolds, moved, clean: authored.length === 0 };
 }
 
 /** Filesystem reader used when a caller has no injected fs seam. */

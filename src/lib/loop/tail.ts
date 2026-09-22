@@ -39,7 +39,8 @@ import { GhProbeError, hasWorkflowFiles, parseGhRunList } from "../devx/await-re
 import { checkHold } from "../devx/hold-check.js";
 import { mergeGateFor, type GateSignals } from "../merge-gate.js";
 import { baseBranchFrom } from "../engine/outline.js";
-import { scanOutlineDiff } from "../engine/outline-scaffold.js";
+import { engineConfigFrom } from "../engine/config.js";
+import { outlineDiffArgs, scanOutlineDiff } from "../engine/outline-scaffold.js";
 import { type Exec } from "./git-tx.js";
 import { type GhRetryOpts, withGhRetry } from "../gh-retry.js";
 
@@ -305,17 +306,9 @@ export async function defaultTail(item: TailItem, ctx: TailCtx): Promise<TailOut
   let outlineClean: boolean | null = null;
   const outlineBase = baseBranchFrom(ctx.merged);
   exec("git", ["fetch", "origin", outlineBase], { cwd: ctx.repoRoot });
-  const od = exec(
-    "git",
-    [
-      "-c",
-      "core.quotePath=false",
-      "diff",
-      "--name-only",
-      `origin/${outlineBase}...${item.branch}`,
-    ],
-    { cwd: ctx.repoRoot },
-  );
+  const od = exec("git", outlineDiffArgs(`origin/${outlineBase}...${item.branch}`), {
+    cwd: ctx.repoRoot,
+  });
   if (od.exitCode === 0) {
     // Scaffold exemption included (same scan as `devx outline check`): a
     // pristine `devx outline init` scaffold in the range is not a human
@@ -324,6 +317,7 @@ export async function defaultTail(item: TailItem, ctx: TailCtx): Promise<TailOut
       repoRoot: ctx.repoRoot,
       exec,
       rev: item.branch,
+      roots: engineConfigFrom(ctx.merged),
     }).clean;
   }
 
