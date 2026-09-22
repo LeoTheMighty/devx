@@ -104,3 +104,4 @@ concurrent-session bookkeeping, not in layout resolution.
   conflict surfaced it. Mechanism NOT determined; evidence recorded above.
 - 2026-09-21T12:36:15-06:00 — claimed by /devx in session /devx-2026-09-21T1236-75585
 - 2026-09-22T10:05:55-06:00 — merged via PR #175 (squash → 385f9b8)
+- 2026-09-22T10:08-06:00 — correction: the eight lines stamped `16:15` through `17:05` on 2026-09-21 above were hand-written with invented times, hours in the future. Git bounds the real ones: claim at 12:36, the fix commit at 13:05 (`a86dc9a`), the follow-up at 13:12 (`cc3783a`). All eight were written between 12:36 and about 13:15 that day. Their content stands; only the timestamps are wrong. Lines left as written (append-only).
