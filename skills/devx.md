@@ -201,8 +201,8 @@ Steps:
    `devx todo sync <plan-hash>` from the MAIN worktree, then expand this
    session's sub-items as free-nested lines under the current phase pointer
    in the `todo.md` sync resolved, checking them as work lands —
-   always via absolute paths into the main worktree (workstream artifacts
-   live on `main`; never edit the worktree's copy). Derived `Stage:` /
+   always via absolute paths into the main worktree (`todo.md` lives on
+   `main`; never edit the worktree's copy). Derived `Stage:` /
    `Gate:` / `Phase <n>:` lines belong to sync — never hand-check them.
 4. Append the status-log line: `phase 2: spec ACs direct (v2 native); <N>
    ACs; workstream=<slug|none>; red-artifacts=<list|none>`.
@@ -386,11 +386,11 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
    ```
    Where `<type>` is the conventional-commit prefix inferred from the spec (`feat`, `fix`, `refactor`, etc.); default `feat` if unclear.
 3. **One commit per story / logical sub-task.** If the item was split into multiple logical commits, keep them atomic — don't bundle unrelated changes.
-4. **As-built plan sync.** If this spec belongs to a workstream, true THIS phase's row in `plan/agent.md` in the same commit that lands it: check its Phase-checklist box, and correct the phase's Files-with-why / Verification-plan lines where the implementation genuinely departed from the plan. This is **bookkeeping — it reopens nothing**: no gate re-runs, no `plan_verified` reset, no `devx revise`. Scope is strictly this phase.
+4. **As-built plan sync.** If this spec belongs to a workstream, true THIS phase's row in the **worktree's** `plan/agent.md` (not main's — it holds peers' uncommitted work) in the same commit that lands it: check its Phase-checklist box, and correct the phase's Files-with-why / Verification-plan lines where the implementation genuinely departed from the plan. This is **bookkeeping — it reopens nothing**: no gate re-runs, no `plan_verified` reset, no `devx revise`. `devx workstream scope-check` fails lines outside this phase.
 
-   A departure that **re-scopes another phase or contradicts the design** is not bookkeeping and does not belong here — route it through `devx revise` so the cascade runs. The line between them is whether anyone downstream has to re-read something: correcting "we used a Map, not a Set" is as-built; discovering that phase 4 no longer needs to exist is a revision.
+   A departure that **re-scopes another phase or contradicts the design** is not bookkeeping — route it through `devx revise` so the cascade runs. The test: must anyone downstream re-read something? correcting "we used a Map, not a Set" is as-built; discovering that phase 4 no longer needs to exist is a revision.
 
-   Why in the same commit rather than at retro: a plan trued weeks later is archaeology, and the one moment the departure is completely known is the moment it lands.
+   Why now, not at retro: a plan trued weeks later is archaeology; the departure is fully known only as it lands.
 5. Do NOT push yet — continue to Phase 7.
 
 ### Phase 7: Push, PR, Remote CI

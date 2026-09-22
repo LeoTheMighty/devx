@@ -180,6 +180,7 @@ export const SYNC_BLOCKING_TESTS = [
   "test/spec-lock.test.ts",
   "test/stub.test.ts",
   "test/test-results-capture.test.ts",
+  "test/workstream-plan-scope.test.ts",
   "test/worktree-refusal.test.ts",
 ] as const;
 

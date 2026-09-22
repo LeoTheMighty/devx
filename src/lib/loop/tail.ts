@@ -41,6 +41,7 @@ import { mergeGateFor, type GateSignals } from "../merge-gate.js";
 import { baseBranchFrom } from "../engine/outline.js";
 import { engineConfigFrom } from "../engine/config.js";
 import { outlineDiffArgs, scanOutlineDiff } from "../engine/outline-scaffold.js";
+import { checkStoryPlanScope } from "../engine/plan-scope.js";
 import { type Exec } from "./git-tx.js";
 import { type GhRetryOpts, withGhRetry } from "../gh-retry.js";
 
@@ -320,6 +321,36 @@ export async function defaultTail(item: TailItem, ctx: TailCtx): Promise<TailOut
       roots: engineConfigFrom(ctx.merged),
     }).clean;
   }
+
+  // debug-2d6fc1: a story may edit its workstream's plan only inside its own
+  // phase. CI runs `devx workstream scope-check` in devx's own repo; this is
+  // the same check on the unattended path, which every install has. Handed
+  // off rather than wired as a gate signal, so the mode-derived merge gate's
+  // truth table is untouched. Any failure to run the check hands off too —
+  // it never merges on "could not tell".
+  const mbScope = exec("git", ["merge-base", `origin/${outlineBase}`, item.branch], { cwd: ctx.repoRoot });
+  let scopeRefusal: string | null = null;
+  if (mbScope.exitCode !== 0) {
+    scopeRefusal = `plan scope check could not run (no merge base with origin/${outlineBase})`;
+  } else {
+    try {
+      const scope = checkStoryPlanScope({
+        repoRoot: ctx.repoRoot,
+        base: mbScope.stdout.trim(),
+        head: item.branch,
+        story: item.hash,
+        exec,
+      });
+      if (scope.skipped === null && scope.files.length > 0) {
+        scopeRefusal =
+          `plan scope: ${item.hash} (phase ${scope.ownPhase}) edits ${scope.files.map((f) => f.path).join(", ")} outside its own phase — ` +
+          "likely another session's uncommitted work carried in (debug-2d6fc1); run `devx workstream scope-check` for the lines";
+      }
+    } catch (e) {
+      scopeRefusal = `plan scope check failed: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  }
+  if (scopeRefusal !== null) return handOff("handed-off-ok", prUrl, prNumber, scopeRefusal);
 
   const signals: GateSignals = {
     ciConclusion,

@@ -53,3 +53,12 @@ jobs:
       - name: Outline check
         if: github.event_name == 'pull_request'
         run: node dist/cli.js outline check --diff "origin/${{ github.base_ref }}...HEAD"
+
+      # debug-2d6fc1: a workstream story may edit plan/agent.md only inside
+      # its own phase. dlr102 (PR #152) carried main's working copy of that
+      # shared file into its branch and shipped dlr103's uncommitted edits.
+      # In CI because CI is the gate a hand-merge still respects. The story
+      # comes from GITHUB_HEAD_REF; non-story branches are skipped.
+      - name: Workstream plan scope check
+        if: github.event_name == 'pull_request'
+        run: node dist/cli.js workstream scope-check --diff "origin/${{ github.base_ref }}...HEAD"
