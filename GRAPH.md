@@ -4,7 +4,7 @@
 
 # Story graph
 
-248 specs across 25 groups — 12 blocked · 172 done · 6 in-progress · 58 ready; 458 edges.
+249 specs across 25 groups — 12 blocked · 173 done · 5 in-progress · 59 ready; 459 edges.
 
 ## Legend
 
@@ -149,6 +149,7 @@ flowchart TD
     00b4d3["00b4d3 A layout-migration commit is blocked by d…"]
     108c57["108c57 Fix forward the retroactive review of PR…"]
     135dc9["135dc9 project-level artifact names collide with…"]
+    1ab833["1ab833 L2's scaffold exemption lets a PR erase o…"]
     1dfbdd["1dfbdd merge-gate accepts any non-null string as…"]
     28b267["28b267 learn.auto_allow — the retro watcher stop…"]
     2d6fc1["2d6fc1 A peer session's story commit captured an…"]
@@ -243,6 +244,7 @@ flowchart TD
     v2x101["v2x101 V2.2 — execute re-home + BMAD ejection"]
     wsmig1["wsmig1 workstream-migration-integrity pins a har…"]
   end
+  00b4d3 -.-> 1ab833
   1dfbdd -.-> shrule
   28b267 -.-> ebf8c4
   28b267 -.-> ecdcda
@@ -560,9 +562,10 @@ flowchart TD
   class d40006 ready
   class d40007 ready
   class d40ret ready
-  class 00b4d3 wip
+  class 00b4d3 done
   class 108c57 done
   class 135dc9 wip
+  class 1ab833 ready
   class 1dfbdd done
   class 28b267 done
   class 2d6fc1 wip

@@ -4,7 +4,7 @@ type: debug
 created: 2026-09-02T14:36:00-06:00
 title: "A layout-migration commit is blocked by devx outline check"
 from: dev/dev-dlr106-2026-09-02T09:14-layout-migrate.md
-status: in-progress
+status: done
 owner: /devx-2026-09-21T1324-85133
 branch: null
 ---
@@ -73,3 +73,4 @@ operation, so neither is the burden it would be for an agent flow).
   - **Fix (AC 3).** One shared `outlineDiffArgs` (`--name-status -M100%`: exact renames only) and one shared scan. A rename is a PURE MOVE, and exempt, only when it is `R100`, its source is a protected outline, and its destination is an outline of the SAME kind (stage → same stage, project → project); `outlineKindOf` decides kind from path shape, independent of protection. Everything else blocks: a protected outline renamed away counts as removed; a content change alongside a rename splits into D + A; a move to another stage's outline blocks. `devx outline check` now uses the shared scan instead of its own copy, which the scan's own comment had warned against. The JSON gains `moved`.
   - **AC 4.** MANUAL.md MV-a494be.1's workaround is replaced with the fixed behaviour; `v2/02-engine.md` names the new exemption. `CLAUDE.md` still says the check "fails when a PR diff carries" an outline — incomplete rather than unsafe; left for the user, not edited by an agent.
 - 2026-09-22T09:36-06:00 — phase 4: 3-agent PARALLEL adversarial review (Blind Hunter + Edge Case Hunter + Acceptance Auditor, fanned out as subagents), run PRE-MERGE against the uncommitted diff. Findings: Blind Hunter 3 in-change (2 HIGH, 1 LOW) + 2 pre-existing; Edge Case Hunter 4 in-change (1 HIGH, 2 MED, 1 LOW) + 3 pre-existing; Acceptance Auditor 5 (1 MED, 4 LOW). **12 in-change findings, all fixed.** The load-bearing ones: the phase-3 "same kind" exemption above was itself a guard hole — it passed a move into another workstream, the root project outline moved under a subdirectory, a trailing-space rename (the unquote trimmed), and moves into `docs/prd/` or `_devx/templates/`. It is REPLACED by `isSanctionedMove`: only the three moves the tooling performs (nested → project-level flat, project-level flat → nested, workstream → archive under the SAME slug and stage) are exempt; restore-from-archive stays blocked (edits made while archived must not launder back). 7 new tests fail against the phase-3 code, so they discriminate. Pre-existing holes (scaffold overwrite, template poisoning, symlinked stage dir, archived outlines unprotected) are not renames and are out of scope: filed as `debug-1ab833` + an INTERVIEW question, committed on main at `35d0862`. Status-log times on 2026-09-21 above are the clock's; this line is the next morning's.
+- 2026-09-22T09:48:37-06:00 — merged via PR #176 (squash → 5d48fcd)
