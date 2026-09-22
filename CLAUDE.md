@@ -295,7 +295,14 @@ Full contract: `.claude/commands/devx.md`.
   denies agent writes AND any Bash command whose text names a real outline
   path (so write commit messages mentioning them via `git commit -F <file>`,
   and edit docs about them with the Write/Edit tools, not heredocs); `devx
-  outline check` fails CI + merge-gate when a PR diff carries one; `devx
+  outline check` fails CI + merge-gate when a PR diff adds, edits, deletes
+  or moves one — except a *sanctioned move*: an exact, byte-identical rename
+  (`R100`) made by `devx layout migrate` or `devx archive` between a
+  workstream stage folder, the root `<stage>-outline.md` form, and the
+  archive (same slug, same stage). An outline edited in transit is not an
+  exact rename and still fails. `devx archive --restore` is deliberately not
+  exempt: an archived outline is unprotected, so a restore goes through the
+  human's `devx outline commit`. `devx
   outline commit` refuses inside agent sessions. Agents READ outlines
   freely (Read tool), critique them in `outline-critique.md`, and mirror
   their structure in `human.md`. Shipped templates under `_devx/templates/`
