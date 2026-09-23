@@ -61,12 +61,23 @@ different condition wearing the same label.
       genuine case, which is the state's whole purpose.
 - [ ] AC 3: The genuine case still escalates with both shas, unchanged.
 - [ ] AC 4: The retry is bounded and mirrors `empty`'s shape, so a persistent
-      mismatch still reaches a human.
-- [ ] AC 5: The skill body's Phase 7 `sha-mismatch` row is updated with the
+      mismatch still reaches a human. Shape suggested by 3b if the push time
+      is unavailable: two or three probes at 30s, then escalate through the
+      existing INTERVIEW path so the genuine case stays loud.
+- [ ] AC 5 (**non-goal, stated as one**): the retry re-probes for the SAME
+      pinned sha. It must NOT re-read the branch tip and take the newest run.
+      That is the natural first implementation and it is the wrong one — it
+      trades a transient false alarm for a silent wrong verdict, because a
+      fix-forward push mid-poll would discard the run being polled (the
+      `pinnedOpts` pin at `await-remote-ci.ts:897-905` exists to prevent
+      exactly that). A fix that follows the tip fails this spec even if every
+      other AC passes.
+- [ ] AC 6: The skill body's Phase 7 `sha-mismatch` row is updated with the
       new contract; `empty`'s row is the template.
-- [ ] AC 6: A test covers the race (probe 1 mismatched, probe 2 in-progress →
+- [ ] AC 7: A test covers the race (probe 1 mismatched, probe 2 in-progress →
       no escalation) and the genuine case (mismatch that persists, or a
-      non-ancestor run → escalation).
+      non-ancestor run → escalation), and one pins AC 5: a fix-forward push
+      between probes must not retarget the wait.
 
 ## Technical notes
 
@@ -89,6 +100,13 @@ different condition wearing the same label.
   measured on `b28032c3`; relayed by the coordinator session). Both halves —
   the CLI's immediate return and the skill's terminal prescription — verified
   against devx's tree at `729baf1` before filing, not taken on report.
+- 2026-09-22T19:48-06:00 — refinement from 3b, via the coordinator: the
+  tip-following fix is the likely first implementation and the dangerous one,
+  so it is now AC 5, a stated non-goal rather than a note in the technical
+  section. Retry shape when the push time is unavailable (AC 4): two or three
+  probes at 30s, then the existing INTERVIEW path. 3b's framing of why:
+  inferring a race from absence is absence read as a verdict. 3b is not
+  claiming this; it stays `ready` in devx's tree.
 
 ## Links
 
