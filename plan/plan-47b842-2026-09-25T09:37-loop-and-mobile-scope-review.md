@@ -255,3 +255,18 @@ shipped work, and Option C becomes right immediately.
   the orchestrator session. Undetermined items are marked as such in-line:
   whether loop workers register with the harness at all, and whether mobile
   has ever been runnable in CI.
+- 2026-09-25T10:12-06:00 — **decision: Leo chose Option B (freeze the loop)
+  and Option E (retire mobile)**, relayed through the orchestrator session in
+  his words ("freeze the loop and retire mobile. I like it"). Recorded as
+  `v2/07-decisions.md` D-15 and D-16, each carrying what its state obliges —
+  D-15 spells out that frozen means still shipped, still gated in CI, still
+  reported by `devx status`/`devx next`, no new feature work, and the three
+  things a future reader must check before trusting it (a run newer than
+  2026-08-19, the `loop-*` tests, and whether the surfaces beneath it have
+  moved). A frozen subsystem nobody can tell is frozen becomes a trap; the
+  obligations exist so this one cannot. Revisit **2026-11-24** with the scrap
+  rule agreed in advance. Two measured-but-out-of-scope defects are filed
+  rather than fixed here, so neither rots in this spec's prose:
+  `finalizeInstance`'s narrow escape window, and the dead
+  `storage.worktree_root` knob.
+

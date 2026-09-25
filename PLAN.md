@@ -42,10 +42,16 @@ between the built single-repo system and the owner's intended use — portable
 install, overnight usage-window riding, blocker push, multi-repo fleet.
 Ship order = list order; mobile backlog (below) pauses until f1d6b2 ships.
 
+> **2026-09-25 — loop frozen (D-15; `plan-47b842`).** `devx loop` takes no
+> new work: Track 2 (`c8e2d4`) and Track 4 (`f1d6b2`) are blocked on the
+> 2026-11-24 revisit, not on a dependency. The loop stays shipped, tested
+> and reported on — frozen is not deprecated. `v2/07-decisions.md` D-15
+> says what a future reader must check before trusting it.
+
 - [x] `plan/plan-b3f7a1-2026-07-14T10:40-portability-install.md` — Track 1 — Portability & install (packaged skills, real `devx init` scaffold, S-5 on palateful). Status: done (closed 2026-09-04 — pin101-pin104 + pinret merged; pin105 live half remains as a standalone MANUAL-gated DEV row; archived).md § Vision-gap tracks; stage: executing). Blocked-by: —.
-- [/] `plan/plan-c8e2d4-2026-07-14T10:41-usage-window-governor.md` — Track 2 — Usage-window governor (`devx loop` pauses on subscription limit, resumes on reset; re-homes d01000's capacity slice + OPEN_QUESTIONS §3). Status: ready. Blocked-by: —.
+- [-] `plan/plan-c8e2d4-2026-07-14T10:41-usage-window-governor.md` — Track 2 — Usage-window governor (`devx loop` pauses on subscription limit, resumes on reset; re-homes d01000's capacity slice + OPEN_QUESTIONS §3). Status: ready. Blocked-by: —. **Frozen 2026-09-25 (D-15): blocked on the loop revisit, not a dependency.**
 - [x] `plan/plan-e5a9c0-2026-07-14T10:42-blocker-push-interim.md` — Track 3 — Interim blocker push (GitHub blockers-issue @mention; retired by mobile relay). Status: RETIRED 2026-09-04 by owner decision — PRD+Gate 1 only, Design never started, zero dev specs emitted; superseded by the move to project-level standing docs; archived. Blocked-by: —.
-- [-] `plan/plan-f1d6b2-2026-07-14T10:43-fleet-layer.md` — Track 4 — Fleet layer (`~/.devx/projects.yaml`, `devx fleet loop`, aggregated report, `/devx-fleet`; supersedes ROADMAP:16 scope per INTERVIEW Q#10). Status: blocked. Blocked-by: b3f7a1, c8e2d4.
+- [-] `plan/plan-f1d6b2-2026-07-14T10:43-fleet-layer.md` — Track 4 — Fleet layer (`~/.devx/projects.yaml`, `devx fleet loop`, aggregated report, `/devx-fleet`; supersedes ROADMAP:16 scope per INTERVIEW Q#10). Status: blocked. Blocked-by: b3f7a1, c8e2d4. **Frozen 2026-09-25 (D-15): blocked on the loop revisit, not a dependency.**
 
 ## Multi-loop concurrency (2026-07-28)
 

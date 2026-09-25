@@ -189,6 +189,76 @@ file; supersessions are appended, never rewritten.
   and not a cue for another raise. The `[user]` marker stays until Leo flips
   it himself, per D-2's precedent.*
 
+- **D-15 [user] (2026-09-25, `plan-47b842`)** — *`devx loop` is **frozen**,
+  not retired.* Leo's decision, after a measured scope review prompted by the
+  orchestrator standing up: an orchestrator that dispatches to live Claude
+  Code tabs makes the unattended loop much less important, so the question
+  was whether to scrap it. The answer is to stop investing without deleting.
+
+  *What the measurements said.* 9,003 source lines (14.2% of `src/`;
+  `driver.ts` alone 3,340) plus ~9,666 test lines. Nine runs, 2026-07-15 →
+  2026-08-19, then idle. 32 items attempted, 20 merged, 6 abandoned, 3 handed
+  off, 2 claim-failed; one run aborted on the systemic-failure ladder having
+  merged nothing. No open loop bug today (all 18 loop debug specs closed).
+  Nothing outside `src/lib/loop/` depends on it except two call sites that
+  merely *report on* it (`devx status`, `devx next`); every shared primitive
+  (merge-gate, await-remote-ci, pr-body, graph regen, claim/finalize) lives
+  outside `loop/` and would survive its removal.
+
+  *Why frozen and not scrapped.* The cost is already paid — tested, quiet,
+  blocking nothing — so deletion buys simplicity, not velocity. And the one
+  capability that dies has no replacement: an orchestrator dispatching to
+  tabs is **attended by construction**, so overnight work and work nobody
+  wants to watch have nowhere else to go. The argument for scrapping (a
+  session-liveness lease system has no clean handle on a loop worker) is
+  real, and was also the convenient answer: devx's tree contains **zero**
+  references to the orchestrator, which has not yet earned the right to set
+  devx's scope. Freezing lets the lease design exclude loop workers now
+  without foreclosing anything.
+
+  **What "frozen" obliges — read this before assuming anything.**
+  1. **The code stays shipped.** `devx loop` and its subcommands remain in
+     the CLI. Nothing is deprecated, nothing prints a removal warning.
+  2. **It stays gated.** Every `test/loop-*.test.ts` keeps running in `npm
+     test` and in CI. A change elsewhere that reddens a loop test is a
+     regression to fix, not a frozen subsystem to skip.
+  3. **It stays reported.** `devx status` and `devx next` keep rendering loop
+     instances and `state.json` debris warnings. Freezing does not make the
+     loop invisible.
+  4. **No new loop work is claimed.** PLAN.md Tracks 2 (`c8e2d4`) and 4
+     (`f1d6b2`) are `[-]`, blocked on the revisit rather than a dependency.
+     Bug fixes that keep it honest are still in scope; features are not.
+  5. **Before trusting it, a future reader checks three things:** whether
+     `.devx-cache/loop/` holds a run newer than **2026-08-19** (as of this
+     entry, nothing does); that the `loop-*` tests still pass; and that the
+     surfaces it drives have not moved under it — the `/devx` skill body and
+     the merge tail have both changed since the last real run (the plan-scope
+     hand-off landed 2026-09-22, PR #175). **A green test suite is not
+     evidence of a working overnight run**; the last observed end-to-end
+     behaviour is 2026-08-19.
+  6. **Known defect, deliberately left filed rather than fixed here:**
+     `finalizeInstance` (`src/lib/loop/driver.ts:1342`) is straight-line
+     after the item loop rather than in a `finally`. The exposure is narrow —
+     the item loop's own `try/catch` converts any throw into `abortReason`
+     and `writeMorningReport` has its own `try`, so only the ~60 lines of
+     summary construction between them can escape — but it is real, and a
+     frozen subsystem should still be correct.
+
+  *The revisit is a date and a rule, not an intention.* **2026-11-24.** If
+  the loop has still not run by then, scrap it then — that is the agreed
+  rule, recorded now so nobody re-litigates it from scratch.
+
+  *What would reverse this decision early.* If the lease design turns out to
+  need loop *support* rather than loop *exclusion* — i.e. if refusing
+  non-interactive workers is not implementable — the loop is imposing live
+  cost on shipped work, and shrinking it to the parts an orchestrator reuses
+  (`usage-window`, `usage-governor`) becomes right immediately. Related and
+  unsettled: nothing in the orchestrator writes a session's `kind`, so
+  whether a loop-spawned `claude -p` registers at all is **undetermined**;
+  if it does not, loop workers are invisible for a simpler and worse reason
+  than the `kind` filter at `registry.py:25`.
+
+
 ## Open questions (non-blocking, tracked)
 
 - ~~**O-1** — Mermaid in tours~~ **CLOSED 2026-08-04 (tur101)** — moot; the
