@@ -5,7 +5,7 @@ created: 2026-04-23T13:23:00-07:00
 title: Inline INTERVIEW answering (Contents API single-file write)
 from: _bmad-output/planning-artifacts/epic-bidirectional-writes-offline.md
 plan: plan/plan-7a2d1f-2026-04-23T13:00-mobile-companion-v01.md
-status: ready
+status: deleted
 branch: develop/dev-c30004
 blocked_by: [c30001, b20004]
 ---
@@ -35,3 +35,4 @@ Enable the "answer" affordance on INTERVIEW rows in the Inbox tab. Inline TextFi
 - `mobile/lib/core/markdown/interview_rewriter.dart`
 - `mobile/test/core/github/contents_writer_test.dart`
 - `mobile/test/features/inline_answer_test.dart`
+- 2026-09-25T10:30-06:00 — retired with the mobile companion (D-16, `plan-47b842`). Leo's decision: the app never went past a scaffold, the Worker relay was never written, and the backlog had said PAUSED for five months. Spec kept for audit; `mobile/` and `docs/MOBILE.md` are deleted in the same PR.

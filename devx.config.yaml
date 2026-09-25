@@ -257,12 +257,8 @@ ui:
     show_diff: true
     show_pr_preview: true
     enable_drag_reorder: true
-  mobile:
-    enabled: true
-    activity_feed_depth: 50
-    show_phase_changes: true
-    show_token_usage: true
-    swipe_to_kill: true
+  # ui.mobile removed 2026-09-25 with the mobile companion (D-16). The schema
+  # still declares the block; nothing reads it, and no app consumes it.
 
 # ---------------------------------------------------------------------------
 # 12. Manager & Concierge
@@ -417,18 +413,10 @@ projects:
     test: 'npm test --silent'
     coverage: null
     pre_push: null
-  - name: mobile
-    path: mobile
-    layers: [frontend]
-    lint: flutter analyze
-    test: flutter test
-    coverage: flutter test --coverage
-  - name: worker
-    path: worker
-    layers: [backend]
-    lint: bun run lint
-    test: bun test
-    coverage: bun test --coverage
+  # The `mobile` and `worker` projects were removed 2026-09-25 with the mobile
+  # companion's retirement (v2/07-decisions.md D-16, plan-47b842). `mobile/`
+  # never went past a Flutter scaffold and `worker/` was never written, so
+  # both rows pointed the touched-surface gate at surfaces that could not run.
 
 # ---------------------------------------------------------------------------
 # 16. Personalization — the REPO layer of the preference bank

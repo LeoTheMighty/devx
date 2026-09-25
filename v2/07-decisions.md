@@ -258,6 +258,44 @@ file; supersessions are appended, never rewritten.
   if it does not, loop workers are invisible for a simpler and worse reason
   than the `kind` filter at `registry.py:25`.
 
+- **D-16 [user] (2026-09-25, `plan-47b842`)** — *The mobile companion is
+  **retired**, not paused, and `docs/MOBILE.md` + `mobile/` are deleted.*
+  Leo's decision, taken alongside D-15 and deliberately separate from it.
+
+  *What was there.* `mobile/` was a Flutter scaffold and nothing more: 12
+  Dart files, 469 lines, two commits (`a10001` scaffold + nav shell,
+  `a10002` Riverpod/theme/router), both 2026-04, nothing since. `worker/` —
+  the Cloudflare relay named by Epic 4 and listed in CLAUDE.md's layout —
+  **was never written at all**. `docs/MOBILE.md` was 376 lines of contract
+  for an app that never reached it. DEV.md had said PAUSED since 2026-07-14.
+
+  *Why retired rather than paused again.* A pause is a claim that work
+  resumes. Five months and a superseding architecture (the orchestrator) say
+  otherwise, and "paused" was quietly costing: a `mobile` project row in
+  `devx.config.yaml` pointed the touched-surface gate at `flutter analyze`
+  in a repo with no Flutter toolchain step in CI, a `worker` row pointed at
+  a directory that does not exist, and CLAUDE.md described both as part of
+  the repo. Unlike the loop (D-15), mobile **never produced anything** —
+  there is no "it worked 20 times" on the other side of the ledger.
+
+  *What was deleted, and what was kept.* Deleted: `mobile/`,
+  `docs/MOBILE.md`, the `mobile` and `worker` rows in `devx.config.yaml`,
+  and the `ui.mobile` settings block (no reader). **Kept for audit:** all 26
+  `dev-a10*` / `b20*` / `c30*` / `d40*` specs, `plan-7a2d1f`,
+  `plan-a03000` and `test-c98aee` — marked `status: deleted`, with their
+  backlog rows struck rather than removed, per the `~~…~~` convention. The
+  two merged PRs (#76, #77) stay in history.
+
+  *One knock-on, recorded because it is easy to miss.* Track 3's interim
+  GitHub blocker-push notifier was retired 2026-09-04 **on the promise of
+  Epic 4's mobile relay**. That relay is now retired too, so blocker push
+  has no owner in either direction. This decision does not resurrect it; if
+  it matters, it is new work with a live owner.
+
+  *Reviving mobile is a new plan, not an unpause.* Nothing here forbids a
+  phone client; it says this one is over. The retired specs are the record
+  of what was intended, and a revival should re-derive its scope from the
+  system as it is then, not inherit a 2026-04 backlog.
 
 ## Open questions (non-blocking, tracked)
 

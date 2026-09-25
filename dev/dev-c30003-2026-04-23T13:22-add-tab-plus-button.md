@@ -5,7 +5,7 @@ created: 2026-04-23T13:22:00-07:00
 title: Add tab — (+) button flow (atomic spec + DEV.md append)
 from: _bmad-output/planning-artifacts/epic-bidirectional-writes-offline.md
 plan: plan/plan-7a2d1f-2026-04-23T13:00-mobile-companion-v01.md
-status: ready
+status: deleted
 branch: develop/dev-c30003
 blocked_by: [c30001, c30002]
 ---
@@ -38,3 +38,4 @@ Wire the Add tab: single TextField + type dropdown (default `dev`) + submit. On 
 - `mobile/lib/features/add_item/slug_generator.dart`
 - `mobile/lib/features/add_item/spec_template.dart`
 - `mobile/test/features/add_item_test.dart`
+- 2026-09-25T10:30-06:00 — retired with the mobile companion (D-16, `plan-47b842`). Leo's decision: the app never went past a scaffold, the Worker relay was never written, and the backlog had said PAUSED for five months. Spec kept for audit; `mobile/` and `docs/MOBILE.md` are deleted in the same PR.

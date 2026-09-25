@@ -424,7 +424,10 @@ load.
 
 ---
 
-## Mobile companion (Phase 8) prerequisites
+## Mobile companion (Phase 8) prerequisites — RETIRED 2026-09-25 (D-16)
+
+> The mobile companion is retired; no questions will be filed here. Kept so
+> the section's own explanation of what it was for survives the deletion.
 
 Filed by `/devx` against the `dev-a*` / `dev-b*` / `dev-c*` / `dev-d*` epics
 when picked up. Currently empty — `MANUAL.md` carries the prerequisites

@@ -5,7 +5,7 @@ created: 2026-04-23T13:34:00-07:00
 title: Flutter firebase_messaging integration + token registration
 from: _bmad-output/planning-artifacts/epic-realtime-updates-push.md
 plan: plan/plan-7a2d1f-2026-04-23T13:00-mobile-companion-v01.md
-status: ready
+status: deleted
 branch: develop/dev-d40005
 blocked_by: [d40004]
 requires_user_action: true
@@ -38,3 +38,4 @@ Wire `firebase_messaging` + `firebase_core` into the Flutter app. Request notifi
 - `mobile/lib/core/push/notification_handler.dart`
 - `mobile/lib/main.dart` (update)
 - `mobile/test/core/push/push_service_test.dart`
+- 2026-09-25T10:30-06:00 — retired with the mobile companion (D-16, `plan-47b842`). Leo's decision: the app never went past a scaffold, the Worker relay was never written, and the backlog had said PAUSED for five months. Spec kept for audit; `mobile/` and `docs/MOBILE.md` are deleted in the same PR.

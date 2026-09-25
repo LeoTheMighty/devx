@@ -2,42 +2,48 @@
 
 Items here block `/dev` when the user's action is required. Check off when done.
 
-## For Epic 1 (Flutter scaffold & iOS on device)
+## For Epic 1 (Flutter scaffold & iOS on device) — RETIRED 2026-09-25 (D-16)
 
-- [ ] **M1.1 — Share Apple Developer Team ID.**
+> The mobile companion is retired (`v2/07-decisions.md` D-16, `plan-47b842`);
+> `mobile/` is deleted. **Nothing below is asked of you any more** — the
+> items are struck and kept for the record, not deleted, because each names
+> a real account action you may have already taken. If mobile is ever
+> revived, it comes back as a new plan and these get re-filed against it.
+
+- ~~**M1.1 — Share Apple Developer Team ID.** — retired (D-16)~~
   - Why: `dev-a10003` needs it to configure iOS signing.
   - How: Apple Developer portal → Membership → copy Team ID (10-char string).
   - Blocks: `dev-a10003`.
 
-- [ ] **M1.2 — Register iPhone UDID in Developer portal.**
+- ~~**M1.2 — Register iPhone UDID in Developer portal.** — retired (D-16)~~
   - Why: Development signing requires the device be registered.
   - How: Plug phone into Mac → Xcode → Window → Devices and Simulators → copy UDID → Apple Developer portal → Devices → Add.
   - Blocks: `dev-a10004`.
 
-- [ ] **M1.3 — Upload first archive to App Store Connect / TestFlight.**
+- ~~**M1.3 — Upload first archive to App Store Connect / TestFlight.** — retired (D-16)~~
   - Why: One-time setup that can't be automated without App Store Connect API key. Subsequent builds can be scripted.
   - How: Xcode → Product → Archive → Distribute App → App Store Connect → Upload. Wait 10-20 minutes for processing.
   - Blocks: `dev-a10005`.
 
-## For Epic 4 (Real-time updates)
+## For Epic 4 (Real-time updates) — RETIRED 2026-09-25 (D-16)
 
-- [ ] **M4.1 — Create Firebase project and download service account JSON.**
+- ~~**M4.1 — Create Firebase project and download service account JSON.** — retired (D-16)~~
   - Why: Worker needs service account credentials to send FCM pushes.
   - How: firebase.google.com → Create project → Project Settings → Service Accounts → Generate new private key (JSON download).
   - Blocks: `dev-d40002`.
 
-- [ ] **M4.2 — Upload APNs auth key to Firebase.**
+- ~~**M4.2 — Upload APNs auth key to Firebase.** — retired (D-16)~~
   - Why: Firebase uses APNs under the hood to deliver iOS pushes.
   - How: Apple Developer → Keys → Create a new key with APNs enabled → download `.p8`. Firebase console → Project Settings → Cloud Messaging → Apple app configuration → upload `.p8`.
   - Blocks: `dev-d40002`.
 
-- [ ] **M4.3 — Add GoogleService-Info.plist to mobile/ios/Runner/.**
+- ~~**M4.3 — Add GoogleService-Info.plist to mobile/ios/Runner/.** — retired (D-16)~~
   - Why: Flutter `firebase_messaging` needs this to identify the app with FCM.
   - How: Firebase console → Project Settings → Your apps → iOS app → download `GoogleService-Info.plist` → drop into `mobile/ios/Runner/` in Xcode.
   - Blocks: `dev-d40005`.
   - Note: gitignored to avoid leaking app-private config.
 
-- [ ] **M4.4 — Create GitHub webhook on the devx repo pointing at Worker URL.**
+- ~~**M4.4 — Create GitHub webhook on the devx repo pointing at Worker URL.** — retired (D-16)~~
   - Why: Without a webhook configured, GitHub never notifies the Worker.
   - How: devx repo → Settings → Webhooks → Add. Payload URL: `https://<worker-url>/webhook/github`. Content type: application/json. Secret: generate one; mirror into Worker secret `GH_WEBHOOK_SECRET`. Events: Push, Pull requests, Check suites, Workflow runs.
   - Blocks: `dev-d40003`.
@@ -302,3 +308,25 @@ CLI serves a downstream-shaped repo with zero devx-repo state reads
     blocks — something other than the migration touched it, so stop and
     look before committing. (Until 2026-09-21 this step needed a workaround:
     the check refused the migration's own moves.)
+
+- [ ] **MV-47b842.1 — CLAUDE.md still describes the mobile companion and the
+  `worker/` relay, and does not say the loop is frozen.**
+  - Why: `CLAUDE.md` is loaded into every agent's context, and it is your
+    file — an agent editing it is how the instruction layer drifts without
+    you deciding. Three things in it are now false or incomplete:
+    (1) the repo-layout block lists `mobile/` and `worker/` under "Phase 8+
+    adds" — `mobile/` is deleted in this PR and `worker/` never existed;
+    (2) "Mobile companion app runs in parallel from Phase 8" and
+    "Mobile companion v0.1 runs in parallel from Phase 8" both describe a
+    retired product; (3) nothing says `devx loop` is frozen (D-15), so an
+    agent reading only CLAUDE.md would happily pick up loop work.
+  - How: edit those three spots. Suggested wording is in
+    `plan-47b842`'s plan section; D-15 and D-16 in `v2/07-decisions.md` are
+    the source of truth for what to say.
+  - Blocks: nothing. Drift only — but the drift is in the file every agent
+    reads first.
+  - Same call, your voice, separate line: `README.md:228` still sells the
+    mobile companion as part of the month-one experience ("the mobile
+    companion is ambient"). I removed the dangling `docs/MOBILE.md` link but
+    left the pitch alone — rewriting how the project sells itself is yours,
+    not an agent's.

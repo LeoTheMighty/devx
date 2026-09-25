@@ -16,6 +16,13 @@ The phased buildout of devx: locked decisions, dependency graph, and what we won
 - Single-repo MVP; multi-project switcher deferred to v1.5.
 
 **Mobile + realtime**
+
+> **RETIRED 2026-09-25 (`v2/07-decisions.md` D-16, `plan-47b842`).** The
+> mobile companion and its Cloudflare Worker relay are retired: `mobile/`
+> never went past a Flutter scaffold, `worker/` was never written, and the
+> backlog sat PAUSED for five months. Everything below is kept as the
+> record of what was planned, not as work queued. Reviving it is a new
+> plan, not an unpause.
 - Payload shape across push notifications: `{kind, summary, deep_link, repo, emitted_at}`.
 - Badge count = unanswered INTERVIEW + unchecked MANUAL only.
 - PAT MVP; GitHub App OAuth deferred to v0.4.

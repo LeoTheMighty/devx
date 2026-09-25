@@ -7,7 +7,8 @@ Backlog for `/dev` to pick up. Each entry points at a spec file under `dev/`.
 Owner-approved 2026-07-14 drift audit (`PLAN.md § Vision-gap tracks`):
 portability & install → usage-window governor → interim blocker push →
 fleet layer. Dev specs are emitted here by `/devx-plan` as each track is
-planned; this section outranks the paused mobile backlog below.
+planned. (The mobile backlog below was retired 2026-09-25, D-16; it is no
+longer a queue this section outranks.)
 
 ### Epic — portability-install (Track 1, plan: b3f7a1)
 - [x] `dev/dev-pin101-2026-07-14T12:00-packaged-skills-mirror.md` — Packaged skills mirror + drift guard (skills/, sync script, npm-test lock). Status: done. From: epic-portability-install. PR: https://github.com/LeoTheMighty/devx/pull/69 (merged 33d236c)
@@ -116,48 +117,63 @@ mss103 are parallel-safe (no shared files).
 - [x] `dev/dev-ini508-2026-04-26T19:35-init-end-to-end-test.md` — End-to-end integration test. Status: done. Blocked-by: ini506, ini507. PR: https://github.com/LeoTheMighty/devx/pull/29 (merged fa0aa0e).
 - [x] `dev/dev-iniret-2026-04-27T08:00-retro-init-skill.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: done. Blocked-by: ini501, ini502, ini503, ini504, ini505, ini506, ini507, ini508. PR: https://github.com/LeoTheMighty/devx/pull/30 (merged 2634254). Phase 0 closed.
 
-## Mobile companion v0.1 (plan: plan-7a2d1f) — PAUSED 2026-07-14
+## Mobile companion v0.1 (plan: plan-7a2d1f) — RETIRED 2026-09-25 (D-16)
 
-**Paused until the fleet layer (f1d6b2) ships** — vision-gap tracks above
-execute first (owner sequencing decision 2026-07-14; this backlog was also
-gated on user actions: Apple Team ID, on-device run, App Store Connect).
-Statuses below stay `ready` — the section is outranked, not blocked; the
-Track 3 interim GitHub notifier is retired by this backlog's Epic 4 relay
-when it resumes.
+**Retired, not paused.** Leo's decision on `plan-47b842`: after five months
+at PAUSED the app was still a Flutter scaffold (12 files, 469 lines, 2
+commits, last touched 2026-04), the Cloudflare Worker relay named by Epic 4
+was never written, and `docs/MOBILE.md` described a contract nothing
+implemented. `mobile/` and `docs/MOBILE.md` are deleted; the specs below stay
+for audit with `status: deleted`. Reviving this is a new plan, not an
+unpause — see `v2/07-decisions.md` D-16.
+
+
+> *Superseded 2026-09-25 by the retirement above, kept for the record:*
+> **Paused until the fleet layer (f1d6b2) ships** — vision-gap tracks above
+> execute first (owner sequencing decision 2026-07-14; this backlog was also
+> gated on user actions: Apple Team ID, on-device run, App Store Connect).
+> Statuses below stay `ready` — the section is outranked, not blocked; the
+> Track 3 interim GitHub notifier is retired by this backlog's Epic 4 relay
+> when it resumes.
+>
+> *That pause never ended, which is the fact this retirement acts on. Note
+> the knock-on: Track 3's interim GitHub notifier was retired on the promise
+> of Epic 4's relay, and Epic 4 is now retired too — if blocker push still
+> matters, it needs a live owner (see D-16).*
 
 ### Epic 1 — Flutter scaffold & iOS on device (M1)
 - [x] `dev/dev-a10001-2026-04-23T13:01-flutter-project-scaffold.md` — Flutter project scaffold + nav shell. Status: done. From: epic-flutter-scaffold-ios-device. PR: https://github.com/LeoTheMighty/devx/pull/76 (merged 4e5e541)
 - [x] `dev/dev-a10002-2026-04-23T13:02-riverpod-theme-router.md` — Riverpod + Material 3 theme + go_router foundations. Status: done. Blocked-by: a10001. PR: https://github.com/LeoTheMighty/devx/pull/77 (merged b0223bd)
-- [-] `dev/dev-a10003-2026-04-23T13:03-ios-project-config.md` — iOS project configuration (bundle ID, signing, push capability). Status: blocked (MANUAL M1.1 — Apple Team ID). Blocked-by: a10001. Requires user action (Team ID).
-- [ ] `dev/dev-a10004-2026-04-23T13:04-first-ondevice-run.md` — First on-device run. Status: ready. Blocked-by: a10002, a10003. Requires user action (plug in phone).
-- [ ] `dev/dev-a10005-2026-04-23T13:05-testflight-pipeline.md` — TestFlight pipeline. Status: ready. Blocked-by: a10004. Requires user action (App Store Connect upload).
-- [ ] `dev/dev-a10ret-2026-04-27T08:00-retro-flutter-scaffold.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: a10001, a10002, a10003, a10004, a10005.
+- ~~`dev/dev-a10003-2026-04-23T13:03-ios-project-config.md` — iOS project configuration (bundle ID, signing, push capability). Status: blocked (MANUAL M1.1 — Apple Team ID). Blocked-by: a10001. Requires user action (Team ID).~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-a10004-2026-04-23T13:04-first-ondevice-run.md` — First on-device run. Status: ready. Blocked-by: a10002, a10003. Requires user action (plug in phone).~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-a10005-2026-04-23T13:05-testflight-pipeline.md` — TestFlight pipeline. Status: ready. Blocked-by: a10004. Requires user action (App Store Connect upload).~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-a10ret-2026-04-27T08:00-retro-flutter-scaffold.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: a10001, a10002, a10003, a10004, a10005.~~ **Retired 2026-09-25 (D-16).**
 
 ### Epic 2 — GitHub connection read (M2)
-- [ ] `dev/dev-b20001-2026-04-23T13:10-auth-service-onboarding.md` — Auth service + PAT onboarding screen. Status: ready. Blocked-by: a10005.
-- [ ] `dev/dev-b20002-2026-04-23T13:11-github-client-wrapper.md` — GitHub client wrapper + Contents read client. Status: ready. Blocked-by: b20001.
-- [ ] `dev/dev-b20003-2026-04-23T13:12-backlog-parser.md` — Backlog markdown → structured model parser. Status: ready. Blocked-by: b20002.
-- [ ] `dev/dev-b20004-2026-04-23T13:13-inbox-tab.md` — Inbox tab — INTERVIEW + MANUAL + open PRs. Status: ready. Blocked-by: b20003.
-- [ ] `dev/dev-b20005-2026-04-23T13:14-backlogs-tab-spec-detail.md` — Backlogs tab + spec detail view. Status: ready. Blocked-by: b20003.
-- [ ] `dev/dev-b20ret-2026-04-27T08:00-retro-github-connection-read.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: b20001, b20002, b20003, b20004, b20005.
+- ~~`dev/dev-b20001-2026-04-23T13:10-auth-service-onboarding.md` — Auth service + PAT onboarding screen. Status: ready. Blocked-by: a10005.~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-b20002-2026-04-23T13:11-github-client-wrapper.md` — GitHub client wrapper + Contents read client. Status: ready. Blocked-by: b20001.~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-b20003-2026-04-23T13:12-backlog-parser.md` — Backlog markdown → structured model parser. Status: ready. Blocked-by: b20002.~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-b20004-2026-04-23T13:13-inbox-tab.md` — Inbox tab — INTERVIEW + MANUAL + open PRs. Status: ready. Blocked-by: b20003.~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-b20005-2026-04-23T13:14-backlogs-tab-spec-detail.md` — Backlogs tab + spec detail view. Status: ready. Blocked-by: b20003.~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-b20ret-2026-04-27T08:00-retro-github-connection-read.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: b20001, b20002, b20003, b20004, b20005.~~ **Retired 2026-09-25 (D-16).**
 
 ### Epic 3 — Bidirectional writes + offline (M3)
-- [ ] `dev/dev-c30001-2026-04-23T13:20-offline-queue-drift.md` — Offline queue foundation. Status: ready. Blocked-by: b20005.
-- [ ] `dev/dev-c30002-2026-04-23T13:21-git-data-api-client.md` — Git Data API client (atomic multi-file commit). Status: ready. Blocked-by: b20002.
-- [ ] `dev/dev-c30003-2026-04-23T13:22-add-tab-plus-button.md` — Add tab — (+) button flow. Status: ready. Blocked-by: c30001, c30002.
-- [ ] `dev/dev-c30004-2026-04-23T13:23-inline-interview-answer.md` — Inline INTERVIEW answering. Status: ready. Blocked-by: c30001, b20004.
-- [ ] `dev/dev-c30005-2026-04-23T13:24-conflict-resolution-ui.md` — Conflict resolution UI. Status: ready. Blocked-by: c30003, c30004.
-- [ ] `dev/dev-c30ret-2026-04-27T08:00-retro-bidirectional-writes-offline.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: c30001, c30002, c30003, c30004, c30005.
+- ~~`dev/dev-c30001-2026-04-23T13:20-offline-queue-drift.md` — Offline queue foundation. Status: ready. Blocked-by: b20005.~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-c30002-2026-04-23T13:21-git-data-api-client.md` — Git Data API client (atomic multi-file commit). Status: ready. Blocked-by: b20002.~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-c30003-2026-04-23T13:22-add-tab-plus-button.md` — Add tab — (+) button flow. Status: ready. Blocked-by: c30001, c30002.~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-c30004-2026-04-23T13:23-inline-interview-answer.md` — Inline INTERVIEW answering. Status: ready. Blocked-by: c30001, b20004.~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-c30005-2026-04-23T13:24-conflict-resolution-ui.md` — Conflict resolution UI. Status: ready. Blocked-by: c30003, c30004.~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-c30ret-2026-04-27T08:00-retro-bidirectional-writes-offline.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: c30001, c30002, c30003, c30004, c30005.~~ **Retired 2026-09-25 (D-16).**
 
 ### Epic 4 — Real-time updates (M4)
-- [ ] `dev/dev-d40001-2026-04-23T13:30-cloudflare-worker-scaffold.md` — Cloudflare Worker scaffold + HMAC verification. Status: ready. Blocked-by: c30005.
-- [ ] `dev/dev-d40002-2026-04-23T13:31-fcm-sender.md` — FCM sender + service-account JWT auth. Status: ready. Blocked-by: d40001. Requires user action (Firebase project).
-- [ ] `dev/dev-d40003-2026-04-23T13:32-event-filters-fanout.md` — Event filters + fanout to device tokens. Status: ready. Blocked-by: d40002.
-- [ ] `dev/dev-d40004-2026-04-23T13:33-device-registration.md` — Device registration + deregistration endpoints. Status: ready. Blocked-by: d40001.
-- [ ] `dev/dev-d40005-2026-04-23T13:34-flutter-fcm-integration.md` — Flutter firebase_messaging integration. Status: ready. Blocked-by: d40004. Requires user action (GoogleService-Info.plist).
-- [ ] `dev/dev-d40006-2026-04-23T13:35-deep-linking-inline-reply.md` — Deep-linking + iOS inline-reply. Status: ready. Blocked-by: d40005.
-- [ ] `dev/dev-d40007-2026-04-23T13:36-laptop-fastpath-webhook.md` — Laptop-side fast-path webhook receiver. Status: ready. Blocked-by: d40003. Optional.
-- [ ] `dev/dev-d40ret-2026-04-27T08:00-retro-realtime-updates-push.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: d40001, d40002, d40003, d40004, d40005, d40006, d40007.
+- ~~`dev/dev-d40001-2026-04-23T13:30-cloudflare-worker-scaffold.md` — Cloudflare Worker scaffold + HMAC verification. Status: ready. Blocked-by: c30005.~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-d40002-2026-04-23T13:31-fcm-sender.md` — FCM sender + service-account JWT auth. Status: ready. Blocked-by: d40001. Requires user action (Firebase project).~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-d40003-2026-04-23T13:32-event-filters-fanout.md` — Event filters + fanout to device tokens. Status: ready. Blocked-by: d40002.~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-d40004-2026-04-23T13:33-device-registration.md` — Device registration + deregistration endpoints. Status: ready. Blocked-by: d40001.~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-d40005-2026-04-23T13:34-flutter-fcm-integration.md` — Flutter firebase_messaging integration. Status: ready. Blocked-by: d40004. Requires user action (GoogleService-Info.plist).~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-d40006-2026-04-23T13:35-deep-linking-inline-reply.md` — Deep-linking + iOS inline-reply. Status: ready. Blocked-by: d40005.~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-d40007-2026-04-23T13:36-laptop-fastpath-webhook.md` — Laptop-side fast-path webhook receiver. Status: ready. Blocked-by: d40003. Optional.~~ **Retired 2026-09-25 (D-16).**
+- ~~`dev/dev-d40ret-2026-04-27T08:00-retro-realtime-updates-push.md` — Retro + LEARN.md updates (interim, per ROADMAP.md locked decision). Status: ready. Blocked-by: d40001, d40002, d40003, d40004, d40005, d40006, d40007.~~ **Retired 2026-09-25 (D-16).**
 
 ## Phase 1 — Single-agent core loop (plan: plan-b01000)
 

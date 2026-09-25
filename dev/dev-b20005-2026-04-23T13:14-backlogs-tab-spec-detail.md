@@ -5,7 +5,7 @@ created: 2026-04-23T13:14:00-07:00
 title: Backlogs tab + spec detail view
 from: _bmad-output/planning-artifacts/epic-github-connection-read.md
 plan: plan/plan-7a2d1f-2026-04-23T13:00-mobile-companion-v01.md
-status: ready
+status: deleted
 branch: develop/dev-b20005
 blocked_by: [b20003]
 ---
@@ -37,3 +37,4 @@ Backlogs tab with an 8-way TabBar. Tapping an item opens the spec detail screen 
 - `mobile/lib/shared/widgets/status_chip.dart`
 - `mobile/test/features/backlogs_test.dart`
 - `mobile/test/features/spec_detail_test.dart`
+- 2026-09-25T10:30-06:00 — retired with the mobile companion (D-16, `plan-47b842`). Leo's decision: the app never went past a scaffold, the Worker relay was never written, and the backlog had said PAUSED for five months. Spec kept for audit; `mobile/` and `docs/MOBILE.md` are deleted in the same PR.

@@ -4,7 +4,7 @@
 
 # Story graph
 
-249 specs across 25 groups — 12 blocked · 174 done · 4 in-progress · 59 ready; 459 edges.
+226 specs across 22 groups — 10 blocked · 174 done · 3 in-progress · 39 ready; 409 edges.
 
 ## Legend
 
@@ -81,14 +81,6 @@ flowchart TD
     uwgret["uwgret Retro + LEARN.md updates (interim retro d…"]
     uwgspk["uwgspk Spike — does a usage-probe API exist? (ti…"]
   end
-  subgraph sg_bidirectional_writes_offline["bidirectional-writes-offline (epic)"]
-    c30001["c30001 Offline queue foundation (drift + connect…"]
-    c30002["c30002 Git Data API client (atomic multi-file co…"]
-    c30003["c30003 Add tab — (+) button flow (atomic spec +…"]
-    c30004["c30004 Inline INTERVIEW answering (Contents API…"]
-    c30005["c30005 Conflict resolution UI (3-way view for ex…"]
-    c30ret["c30ret Retrospective + LEARN.md updates for epic…"]
-  end
   subgraph sg_bmad_audit["bmad-audit (epic)"]
     grp_bmad_audit["bmad-audit — 4/4 done"]
   end
@@ -111,20 +103,7 @@ flowchart TD
     grp_devx_skill["devx-skill — 8/8 done, last merged 2026-05-07"]
   end
   subgraph sg_flutter_scaffold_ios_on_device["flutter-scaffold-ios-on-device (epic)"]
-    a10001["a10001 Flutter project scaffold + nav shell"]
-    a10002["a10002 Riverpod + Material 3 theme + go_router f…"]
-    a10003["a10003 iOS project configuration (bundle ID, sig… (MANUAL M1.1)"]
-    a10004["a10004 First on-device run (plugged-in iPhone) (MANUAL M1.2)"]
-    a10005["a10005 TestFlight pipeline (archive + upload + i… (MANUAL M1.3)"]
-    a10ret["a10ret Retrospective + LEARN.md updates for epic…"]
-  end
-  subgraph sg_github_connection_read["github-connection-read (epic)"]
-    b20001["b20001 Auth service + PAT onboarding screen"]
-    b20002["b20002 GitHub client wrapper + Contents read cli…"]
-    b20003["b20003 Backlog markdown → structured model parser"]
-    b20004["b20004 Inbox tab — INTERVIEW + MANUAL + open PRs"]
-    b20005["b20005 Backlogs tab + spec detail view"]
-    b20ret["b20ret Retrospective + LEARN.md updates for epic…"]
+    grp_flutter_scaffold_ios_on_device["flutter-scaffold-ios-on-device — 2/2 done, last merged 2026-07-…"]
   end
   subgraph sg_mode_derived_merge_gate["mode-derived-merge-gate (epic)"]
     grp_mode_derived_merge_gate["mode-derived-merge-gate — 4/4 done, last merged 2026-04-28"]
@@ -135,21 +114,13 @@ flowchart TD
   subgraph sg_pr_template["pr-template (epic)"]
     grp_pr_template["pr-template — 3/3 done, last merged 2026-05-02"]
   end
-  subgraph sg_real_time_updates["real-time-updates (epic)"]
-    d40001["d40001 Cloudflare Worker scaffold + GitHub webho…"]
-    d40002["d40002 FCM sender + service-account JWT auth (MANUAL M4.1, MANUAL M4.2)"]
-    d40003["d40003 Event filters + fanout to device tokens (MANUAL M4.4)"]
-    d40004["d40004 Device registration + deregistration endp…"]
-    d40005["d40005 Flutter firebase_messaging integration +… (MANUAL M4.3)"]
-    d40006["d40006 Deep-linking + iOS inline-reply notificat…"]
-    d40007["d40007 Laptop-side fast-path webhook receiver (o…"]
-    d40ret["d40ret Retrospective + LEARN.md updates for epic…"]
-  end
   subgraph sg_standalone["standalone — no workstream or epic"]
     00b4d3["00b4d3 A layout-migration commit is blocked by d…"]
     108c57["108c57 Fix forward the retroactive review of PR…"]
     135dc9["135dc9 project-level artifact names collide with…"]
+    143227["143227 storage.worktree_root is declared, docume…"]
     1ab833["1ab833 L2's scaffold exemption lets a PR erase o…"]
+    1c2679["1c2679 A throw in the loop's summary constructio…"]
     1dfbdd["1dfbdd merge-gate accepts any non-null string as…"]
     28b267["28b267 learn.auto_allow — the retro watcher stop…"]
     2d6fc1["2d6fc1 A peer session's story commit captured an…"]
@@ -158,6 +129,7 @@ flowchart TD
     357d0c["357d0c Loop instance registry: crash-orphan-thro…"]
     3b9e07["3b9e07 `devx loop` never emits the mandatory `ph…"]
     3ca108["3ca108 QA walkthrough — the artifact map and the…"]
+    47b842["47b842 Scope review: keep, shrink or scrap `devx…"]
     494590["494590 Loop token accounting implausibly low — b…"]
     4bd69f["4bd69f QA walkthrough — gate subject resolution…"]
     4c827d["4c827d Detector Discrimination"]
@@ -172,7 +144,6 @@ flowchart TD
     67a7e8["67a7e8 QA walkthrough — claim branch-posture gua…"]
     6a913f["6a913f hash→spec resolution hardcodes dev/ acros…"]
     74632d["74632d loop-driver fixture teardown races on mac…"]
-    7a2d1f["7a2d1f Mobile companion v0.1 through real-time s…"]
     7b39ad["7b39ad QA walkthrough — workstream resolution +…"]
     7b3e2a["7b3e2a merge-gate reads YAML `branch: null` as t…"]
     7c1e93["7c1e93 loop-concurrency G-1 harness times out un…"]
@@ -184,12 +155,12 @@ flowchart TD
     8b9165["8b9165 QA walkthrough — sgr105 mark-done helper…"]
     97f6d8["97f6d8 QA walkthrough — devx graph renderer + CL…"]
     9946f9["9946f9 Human smoke of the devx learn-watch Termi…"]
+    99ad05["99ad05 await-remote-ci's sha-mismatch is termina…"]
     9b9be5["9b9be5 devx gate evals lacks mid-flight state-aw…"]
     9c4e21["9c4e21 appendManualEntry read-check-write race c…"]
     9f24c7["9f24c7 Unparseable spec frontmatter reads as an…"]
     a01000["a01000 Phase 0 — Foundation: /devx-init + config…"]
     a02000["a02000 Phase 6 — Focus group: persistent persona…"]
-    a03000["a03000 Cross-cutting — realtime stream + Live Ac…"]
     a57f22["a57f22 Skill bodies name the folder shape, not t…"]
     a7c3f9["a7c3f9 Backlog-lock timeouts count toward the sy…"]
     ac0751["ac0751 QA walkthrough — docs-layout doc truth (d…"]
@@ -202,7 +173,6 @@ flowchart TD
     c808b1["c808b1 /devx-learn unattended mode — route and a…"]
     c81f04["c81f04 backlog-mutate R3 concurrency test is fla…"]
     c94f14["c94f14 await-remote-ci reads a CONFLICTING PR as…"]
-    c98aee["c98aee Wire flutter analyze + test into devx-ci…"]
     cf65aa["cf65aa loop merge tail never emits the dvx103 ph…"]
     d01000["d01000 Phase 3 — Parallelism & coordination: loc…"]
     d02000["d02000 Phase 9 — Modes & full gate cascade"]
@@ -249,6 +219,8 @@ flowchart TD
   28b267 -.-> ebf8c4
   28b267 -.-> ecdcda
   2e1174 -.-> d315b9
+  47b842 -.-> 143227
+  47b842 -.-> 1c2679
   4d1a9c -.-> 67a7e8
   4d1a9c -.-> 7b3e2a
   5c8b21 -.-> 5e1a77
@@ -262,10 +234,6 @@ flowchart TD
   75563d -.-> evlk01
   75563d -.-> evlk02
   75563d -.-> evlk03
-  7a2d1f -.-> a10ret
-  7a2d1f -.-> b20ret
-  7a2d1f -.-> c30ret
-  7a2d1f -.-> d40ret
   7d96be -.-> 5c75cb
   7d96be -.-> ed8f8d
   828385 -.-> 108c57
@@ -277,18 +245,6 @@ flowchart TD
   a01000 -.-> grp_devx_init_skill
   a01000 -.-> grp_os_supervisor_scaffold
   a02000 --> f01000
-  a03000 --> 7a2d1f
-  a10001 -.-> c98aee
-  a10002 --> a10001
-  a10003 --> a10001
-  a10004 --> a10002
-  a10004 --> a10003
-  a10005 --> a10004
-  a10ret --> a10001
-  a10ret --> a10002
-  a10ret --> a10003
-  a10ret --> a10004
-  a10ret --> a10005
   a494be -.-> 75563d
   a494be -.-> dlr101
   a494be -.-> dlr102
@@ -307,16 +263,6 @@ flowchart TD
   b01000 -.-> grp_pr_template
   b02000 --> a02000
   b02000 --> e01000
-  b20001 --> a10005
-  b20002 --> b20001
-  b20003 --> b20002
-  b20004 --> b20003
-  b20005 --> b20003
-  b20ret --> b20001
-  b20ret --> b20002
-  b20ret --> b20003
-  b20ret --> b20004
-  b20ret --> b20005
   b3f7a1 -.-> pin101
   b3f7a1 -.-> pin102
   b3f7a1 -.-> pin103
@@ -324,19 +270,6 @@ flowchart TD
   b3f7a1 -.-> pin105
   b3f7a1 -.-> pinret
   b41f7c --> grp_mid_story_split
-  c30001 --> b20005
-  c30002 --> b20002
-  c30003 --> c30001
-  c30003 --> c30002
-  c30004 --> b20004
-  c30004 --> c30001
-  c30005 --> c30003
-  c30005 --> c30004
-  c30ret --> c30001
-  c30ret --> c30002
-  c30ret --> c30003
-  c30ret --> c30004
-  c30ret --> c30005
   c808b1 --> 28b267
   c8e2d4 -.-> uwg101
   c8e2d4 -.-> uwg102
@@ -348,20 +281,6 @@ flowchart TD
   grp_devx_cli_skeleton --> grp_devx_config_yaml_schema_cli
   d01000 -.-> grp_multi_loop_concurrency
   d02000 --> b02000
-  d40001 --> c30005
-  d40002 --> d40001
-  d40003 --> d40002
-  d40004 --> d40001
-  d40005 --> d40004
-  d40006 --> d40005
-  d40007 --> d40003
-  d40ret --> d40001
-  d40ret --> d40002
-  d40ret --> d40003
-  d40ret --> d40004
-  d40ret --> d40005
-  d40ret --> d40006
-  d40ret --> d40007
   db36af --> dc7514
   dc7514 -.-> db36af
   dlr101 -.-> 3ca108
@@ -526,12 +445,6 @@ flowchart TD
   class uwg104 ready
   class uwgret ready
   class uwgspk ready
-  class c30001 ready
-  class c30002 ready
-  class c30003 ready
-  class c30004 ready
-  class c30005 ready
-  class c30ret ready
   class grp_bmad_audit collapsed
   class grp_devx_cli_skeleton collapsed
   class grp_devx_config_yaml_schema_cli collapsed
@@ -539,33 +452,16 @@ flowchart TD
   class grp_devx_manage_v0 collapsed
   class grp_devx_plan_skill collapsed
   class grp_devx_skill collapsed
-  class a10001 done
-  class a10002 done
-  class a10003 blocked
-  class a10004 ready
-  class a10005 ready
-  class a10ret ready
-  class b20001 ready
-  class b20002 ready
-  class b20003 ready
-  class b20004 ready
-  class b20005 ready
-  class b20ret ready
+  class grp_flutter_scaffold_ios_on_device collapsed
   class grp_mode_derived_merge_gate collapsed
   class grp_os_supervisor_scaffold collapsed
   class grp_pr_template collapsed
-  class d40001 ready
-  class d40002 ready
-  class d40003 ready
-  class d40004 ready
-  class d40005 ready
-  class d40006 ready
-  class d40007 ready
-  class d40ret ready
   class 00b4d3 done
   class 108c57 done
   class 135dc9 wip
+  class 143227 ready
   class 1ab833 ready
+  class 1c2679 ready
   class 1dfbdd done
   class 28b267 done
   class 2d6fc1 done
@@ -574,6 +470,7 @@ flowchart TD
   class 357d0c done
   class 3b9e07 done
   class 3ca108 ready
+  class 47b842 ready
   class 494590 done
   class 4bd69f ready
   class 4c827d ready
@@ -588,7 +485,6 @@ flowchart TD
   class 67a7e8 ready
   class 6a913f done
   class 74632d done
-  class 7a2d1f wip
   class 7b39ad ready
   class 7b3e2a done
   class 7c1e93 done
@@ -600,12 +496,12 @@ flowchart TD
   class 8b9165 ready
   class 97f6d8 ready
   class 9946f9 ready
+  class 99ad05 ready
   class 9b9be5 done
   class 9c4e21 done
   class 9f24c7 done
   class a01000 done
   class a02000 blocked
-  class a03000 blocked
   class a57f22 done
   class a7c3f9 done
   class ac0751 ready
@@ -618,7 +514,6 @@ flowchart TD
   class c808b1 done
   class c81f04 done
   class c94f14 done
-  class c98aee ready
   class cf65aa done
   class d01000 blocked
   class d02000 blocked
@@ -663,9 +558,4 @@ flowchart TD
 
 ## Warnings
 
-4 warnings — reported, never auto-fixed.
-
-- `heading-fallback` — DEV.md: epic heading 'bidirectional-writes-offline' names no plan hash — grouped by slug alone; add `(plan: <hash>)` or `(workstream <hash>)` to link it to its plan spec
-- `heading-fallback` — DEV.md: epic heading 'flutter-scaffold-ios-on-device' names no plan hash — grouped by slug alone; add `(plan: <hash>)` or `(workstream <hash>)` to link it to its plan spec
-- `heading-fallback` — DEV.md: epic heading 'github-connection-read' names no plan hash — grouped by slug alone; add `(plan: <hash>)` or `(workstream <hash>)` to link it to its plan spec
-- `heading-fallback` — DEV.md: epic heading 'real-time-updates' names no plan hash — grouped by slug alone; add `(plan: <hash>)` or `(workstream <hash>)` to link it to its plan spec
+None — every edge resolved and every heading linked.
