@@ -10,6 +10,8 @@ fleet layer. Dev specs are emitted here by `/devx-plan` as each track is
 planned. (The mobile backlog below was retired 2026-09-25, D-16; it is no
 longer a queue this section outranks.)
 
+- [ ] `dev/dev-4821ec-2026-09-25T14:08-declare-the-lease-instead-of-pleading-for-it.md` — **Declare which gates need the dev-env lease in config, and take it inside `claim`/`finalize`.** Phase 5 now carries the lease as prose, which is all it could be — devx never runs the project's gates, the agent does. What prose cannot do: verify it was taken, decide mechanically which gates qualify (the guard already computes that), or cover devx's OWN main-checkout mutations — `GIT_MUTATING` includes `commit`, so on a repo whose main checkout is leased, `claim` and `finalize` are guarded operations too, and they run inside devx where a wrapper belongs. Also a budget fact: the prose block costs 3,037 B and leaves **2,456 B** free on S-1's full-run surface, so the next refinement does not fit. Explicitly NOT a `devx run` wrapper — `envlock run` already heartbeats and releases. Status: ready. From: the Phase 5 lease work.
+
 ### Epic — portability-install (Track 1, plan: b3f7a1)
 - [x] `dev/dev-pin101-2026-07-14T12:00-packaged-skills-mirror.md` — Packaged skills mirror + drift guard (skills/, sync script, npm-test lock). Status: done. From: epic-portability-install. PR: https://github.com/LeoTheMighty/devx/pull/69 (merged 33d236c)
 - [x] `dev/dev-pin102-2026-07-14T12:01-skills-installer-library.md` — Skills installer library (init-skills.ts pure decision fn + atomic applier). Status: done. Blocked-by: pin101. PR: https://github.com/LeoTheMighty/devx/pull/70 (merged adebcf1)
