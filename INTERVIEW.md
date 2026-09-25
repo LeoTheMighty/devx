@@ -490,3 +490,35 @@ Today `devx archive` moves a workstream's human-typed outlines to `<archive_root
 - **Option A (recommended): protect them.** Treat `<archive_root>/**/<stage>/` outlines as human-only in all three layers. An archive is a record of what the human wrote; there is no workflow that needs an agent to edit it. Restore could then be exempt again as an exact move.
 - **Option B: leave them open.** Archived means closed; nothing reads them, so their integrity does not matter. Restore stays blocked (human runs `devx outline commit`).
 - **Option C: freeze them.** Refuse every edit to anything under the archive root, outline or not.
+
+### Keep, freeze or scrap `devx loop`? And retire the mobile companion? (from plan-47b842, 2026-09-25)
+
+Research, measurements and the full option set are in
+`plan/plan-47b842-2026-09-25T09:37-loop-and-mobile-scope-review.md`. Two
+decisions, deliberately separable.
+
+**The loop.** 9,003 source lines (14.2% of `src/`) + ~9,666 test lines, 9 runs
+between 2026-07-15 and 2026-08-19, 20 of 32 items merged, idle 37 days. No open
+loop bugs. Nothing outside it depends on it except two reporting call sites.
+
+- **Option A: keep investing.** Status quo. The lease design must then solve
+  non-interactive workers, which is its hardest open case.
+- **Option B (recommended): freeze, don't scrap.** No new loop work; it stays
+  shipped and tested. The lease design covers interactive tabs only and refuses
+  loop workers with a named reason. Revisit 2026-11-24 with the rule agreed
+  now: still unused then, scrap it then.
+- **Option C: shrink** to the parts an orchestrator would reuse
+  (`usage-window`, `usage-governor`), delete the runner (~7,000 lines).
+- **Option D: scrap the loop and `manage`** (a further 2,942 lines; `manage`
+  has never run in this repo — there is no `.devx-cache/state/`).
+
+**Mobile.** A 469-line Flutter scaffold, 2 commits, untouched since 2026-04;
+`worker/` never existed; `docs/MOBILE.md` is 376 lines describing it anyway.
+
+- **Option E (recommended): retire it** — delete `mobile/`, `docs/MOBILE.md`,
+  the `mobile` project row in `devx.config.yaml`, and the mobile epics in
+  DEV.md, keeping the two merged PRs in history.
+- **Option F: leave it paused** as it is today.
+
+The reasoning behind both recommendations, including what would change the
+recommendation on the loop, is in the plan spec's final section.

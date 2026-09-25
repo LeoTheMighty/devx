@@ -98,3 +98,7 @@ Independent of phase sequencing — pick up once their named blockers clear.
 ## Mobile (Phase 8 — runs parallel from Phase 2 onward)
 
 - [/] `plan/plan-7a2d1f-2026-04-23T13:00-mobile-companion-v01.md` — Mobile companion v0.1 → real-time. Status: in-planning (frontmatter-aligned; epics + stories already emitted to DEV.md; mobile-v0.1 through mobile-v1.0 sub-roadmap inside the plan file).
+
+## Scope review (2026-09-25)
+
+- [ ] `plan/plan-47b842-2026-09-25T09:37-loop-and-mobile-scope-review.md` — **Keep, shrink or scrap `devx loop` and the mobile companion now that an orchestrator dispatches to live tabs.** Measured: the loop is 9,003 source lines (14.2% of `src/`, `driver.ts` alone 3,340) plus ~9,666 test lines; it has run 9 times, 2026-07-15 → **2026-08-19**, 32 items attempted / 20 merged, one run aborted on the systemic ladder — and has been idle 37 days. Only two consumers outside it (`devx status`, `devx next`) and both merely *report on* it; every shared primitive (merge-gate, await-remote-ci, pr-body, graph regen, claim/finalize) lives outside `loop/` and survives its removal. Mobile is a 469-line Flutter scaffold, 2 commits, last touched 2026-04, its `worker/` relay does not exist, and DEV.md already calls the backlog paused. Five options; **recommendation: freeze the loop (Option B) rather than scrap it, and retire mobile (Option E) now** — with the falsifier stated. Decision is Leo's; see INTERVIEW. Status: ready. From: Leo via the orchestrator session.
