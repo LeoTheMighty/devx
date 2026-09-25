@@ -368,6 +368,58 @@ shifts between two "identical" runs is the same symptom. Cheapest habit:
 `cd <worktree-abs-path> && <gate command>` as one command every time,
 rather than relying on cwd persisting from an earlier call.
 
+**Gates that touch a shared environment take a lease first.** Where
+`dev-env-lock` is installed, one session at a time owns the integrated stack,
+the main checkout it is bind-mounted from, and the browser login; `envlock` is
+the FIFO queue for it. This whole block is a no-op when `command -v envlock`
+finds nothing, or when `envlock status --json` lists no resource covering this
+repo — most installs. It does not replace any gate; it stops Phase 5's gates
+racing another session's.
+
+**Which gates — exactly the ones that WRITE a shared resource.** Bringing the
+stack up or down, a compose command that changes state, `docker
+restart|stop|exec|rm`, a browser pass against a guarded host, and anything
+matching a resource's own `commands` regexes. A `test` that runs inside your
+worktree and spawns nothing shared needs **no** lease — `pytest`, `npm test`,
+`flutter test`, a lint, a coverage pass over a report that already exists.
+Read-only inspection (`git status`, `docker ps|logs`, `compose ps|config`)
+never needs one. Claiming more than the guard covers is how a rule gets
+ignored the first time someone runs a unit test.
+
+```bash
+envlock acquire <resource> --reason "<hash> phase 5" --wait   # run_in_background: true
+envlock run <resource> --reason "<hash> e2e" -- <gate command>
+envlock release <resource>
+```
+
+`--wait` goes in the **background**: the harness wakes the session when the
+command exits, and that exit IS the grant. A lease expires 5 minutes after its
+last heartbeat; every tool call you make heartbeats it, so anything running
+longer than that **without** a tool call — a silent build, a long e2e — must go
+through `envlock run`, which heartbeats while the command runs. Otherwise a
+waiter takes the environment out from under you mid-run.
+
+**Hold it across the gate sequence, not per command.** Acquire before the
+first stack-touching gate and keep it through `test` → `coverage` → step 7's
+`machine` items, which run against the services this lease provisioned;
+release when Phase 5 ends. Re-acquiring per command re-queues behind every
+other session and can lose the provisioned state between two gates.
+
+**Do not hold it past Phase 5.** Phase 7 waits on remote CI for minutes —
+holding the environment through that starves every other session for nothing.
+Phases 1 and 8 need a different resource, the **main checkout**, and only for
+seconds: where that checkout is a guarded path, `devx devx-helper claim` and
+`devx devx-helper finalize` mutate it (`commit`, `pull --ff-only`), as does any
+backlog or spec edit you make there. Wrap those individual calls in `envlock
+run <resource> -- <cmd>` instead of stretching the Phase 5 lease across the
+whole run.
+
+**In `observe` mode nothing is denied, and `acquire --wait` returns WITHOUT
+the lease** — it logs `would_wait` and exits 0. Take the lease anyway. The
+audit log is the evidence that decides when `enforce` turns on, and a session
+that skips the lease while it is free to is indistinguishable from one that
+will break the day it is not.
+
 **Prose-bearing diffs: finish editing before you start the gate.** The skill-body discipline tests (`devx-skill-phase*.test.ts`, `skills-sync.test.ts`, `devx-status-log-discipline.test.ts`) read their subject files from disk at test time, so editing `.claude/commands/*.md`, `skills/*.md`, or a spec while the suite is running produces a red that reflects a torn read, not a real failure — and on a long suite that red costs a full re-run to disprove. Batch every prose fix first, run the targeted discipline files (sub-second), and only then start the full gate. If a prose fix becomes necessary after the gate is underway, let the run finish, apply it, and re-run the affected files rather than racing it.
 
 If the config is missing required gate commands, append an item to `INTERVIEW.md` asking the user to supply them, mark the spec `blocked`, and stop.

@@ -4,7 +4,7 @@
 
 # Story graph
 
-226 specs across 22 groups — 10 blocked · 174 done · 3 in-progress · 39 ready; 409 edges.
+227 specs across 22 groups — 10 blocked · 174 done · 3 in-progress · 40 ready; 409 edges.
 
 ## Legend
 
@@ -130,6 +130,7 @@ flowchart TD
     3b9e07["3b9e07 `devx loop` never emits the mandatory `ph…"]
     3ca108["3ca108 QA walkthrough — the artifact map and the…"]
     47b842["47b842 Scope review: keep, shrink or scrap `devx…"]
+    4821ec["4821ec Declare which gates need the dev-env leas…"]
     494590["494590 Loop token accounting implausibly low — b…"]
     4bd69f["4bd69f QA walkthrough — gate subject resolution…"]
     4c827d["4c827d Detector Discrimination"]
@@ -471,6 +472,7 @@ flowchart TD
   class 3b9e07 done
   class 3ca108 ready
   class 47b842 ready
+  class 4821ec ready
   class 494590 done
   class 4bd69f ready
   class 4c827d ready
