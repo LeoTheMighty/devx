@@ -241,7 +241,7 @@ See:
 - [`CONFIG.md`](./docs/CONFIG.md) — every configurable knob (capacity, permissions, git strategy, promotion gates, notifications, UI), what `devx init` scaffolds vs. defaults.
 - [`ROADMAP.md`](./docs/ROADMAP.md) — phased buildout plan, locked decisions, dependency graph, what we won't build. Backlog state itself lives in `PLAN.md` at root.
 - [`MODES.md`](./docs/MODES.md) — YOLO / BETA / PROD / LOCKDOWN and how each one tunes every gate in the system.
-- [`MOBILE.md`](./docs/MOBILE.md) — the Flutter companion app (iOS + Android + web + desktop), GitHub-as-backend, push notifications via a single Cloudflare Worker.
+- `MOBILE.md` — *removed 2026-09-25: the Flutter companion is retired (`v2/07-decisions.md` D-16).*
 - [`FOCUS_GROUP.md`](./docs/FOCUS_GROUP.md) — persistent user-persona panel consulted throughout planning, shipping, and iteration. The user lens to complement party-mode's team lenses.
 - [`QA.md`](./docs/QA.md) — the two-layer browser QA subsystem: scripted Playwright for regressions, subprocess-spawned browser-use for exploratory UX pain hunting.
 - [`SELF_HEALING.md`](./docs/SELF_HEALING.md) — how `/devx-learn` turns repeated signals into memory/skill/config/template edits, with confidence gates and canary runs for risky changes.

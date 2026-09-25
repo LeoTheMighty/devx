@@ -5,7 +5,7 @@ created: 2026-04-23T13:04:00-07:00
 title: First on-device run (plugged-in iPhone)
 from: _bmad-output/planning-artifacts/epic-flutter-scaffold-ios-device.md
 plan: plan/plan-7a2d1f-2026-04-23T13:00-mobile-companion-v01.md
-status: ready
+status: deleted
 branch: develop/dev-a10004
 blocked_by: [a10002, a10003]
 requires_user_action: true
@@ -32,3 +32,4 @@ Get the app running on Leonid's iPhone via `flutter run` over USB. The 4-tab she
 ## Files expected
 - No code changes; this story is a smoke-test story
 - Possibly updates to `docs/ios-signing-troubleshooting.md` if issues found
+- 2026-09-25T10:30-06:00 — retired with the mobile companion (D-16, `plan-47b842`). Leo's decision: the app never went past a scaffold, the Worker relay was never written, and the backlog had said PAUSED for five months. Spec kept for audit; `mobile/` and `docs/MOBILE.md` are deleted in the same PR.

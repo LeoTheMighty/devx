@@ -5,7 +5,7 @@ created: 2026-04-23T13:12:00-07:00
 title: Backlog markdown → structured model parser
 from: _bmad-output/planning-artifacts/epic-github-connection-read.md
 plan: plan/plan-7a2d1f-2026-04-23T13:00-mobile-companion-v01.md
-status: ready
+status: deleted
 branch: develop/dev-b20003
 blocked_by: [b20002]
 ---
@@ -37,3 +37,4 @@ Parse each of the 8 backlog file shapes (`DEV.md`, `PLAN.md`, `TEST.md`, `DEBUG.
 - `mobile/lib/core/models/manual_action.dart`
 - `mobile/test/parsers/backlog_parser_test.dart`
 - `mobile/test/parsers/fixtures/` (copied from devx repo root)
+- 2026-09-25T10:30-06:00 — retired with the mobile companion (D-16, `plan-47b842`). Leo's decision: the app never went past a scaffold, the Worker relay was never written, and the backlog had said PAUSED for five months. Spec kept for audit; `mobile/` and `docs/MOBILE.md` are deleted in the same PR.

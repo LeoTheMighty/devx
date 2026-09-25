@@ -5,7 +5,7 @@ created: 2026-04-23T13:21:00-07:00
 title: Git Data API client (atomic multi-file commit)
 from: _bmad-output/planning-artifacts/epic-bidirectional-writes-offline.md
 plan: plan/plan-7a2d1f-2026-04-23T13:00-mobile-companion-v01.md
-status: ready
+status: deleted
 branch: develop/dev-c30002
 blocked_by: [b20002]
 ---
@@ -35,3 +35,4 @@ Implement the 6-step Git Data API sequence (ref → commit → tree → blobs �
 - `mobile/lib/core/github/git_data_models.dart`
 - `mobile/test/core/github/git_data_client_test.dart`
 - `mobile/test/core/github/git_data_conflict_test.dart`
+- 2026-09-25T10:30-06:00 — retired with the mobile companion (D-16, `plan-47b842`). Leo's decision: the app never went past a scaffold, the Worker relay was never written, and the backlog had said PAUSED for five months. Spec kept for audit; `mobile/` and `docs/MOBILE.md` are deleted in the same PR.

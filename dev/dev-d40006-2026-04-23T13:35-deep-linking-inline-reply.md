@@ -5,7 +5,7 @@ created: 2026-04-23T13:35:00-07:00
 title: Deep-linking + iOS inline-reply notification action
 from: _bmad-output/planning-artifacts/epic-realtime-updates-push.md
 plan: plan/plan-7a2d1f-2026-04-23T13:00-mobile-companion-v01.md
-status: ready
+status: deleted
 branch: develop/dev-d40006
 blocked_by: [d40005]
 ---
@@ -34,3 +34,4 @@ Tapping a notification opens the correct screen with the right item focused. For
 - `mobile/ios/Runner/AppDelegate.swift` (edit for notification categories)
 - `mobile/lib/features/inbox/inline_reply_handler.dart`
 - `mobile/test/core/push/deep_linker_test.dart`
+- 2026-09-25T10:30-06:00 — retired with the mobile companion (D-16, `plan-47b842`). Leo's decision: the app never went past a scaffold, the Worker relay was never written, and the backlog had said PAUSED for five months. Spec kept for audit; `mobile/` and `docs/MOBILE.md` are deleted in the same PR.

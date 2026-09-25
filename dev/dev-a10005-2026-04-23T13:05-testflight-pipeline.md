@@ -5,7 +5,7 @@ created: 2026-04-23T13:05:00-07:00
 title: TestFlight pipeline (archive + upload + install)
 from: _bmad-output/planning-artifacts/epic-flutter-scaffold-ios-device.md
 plan: plan/plan-7a2d1f-2026-04-23T13:00-mobile-companion-v01.md
-status: ready
+status: deleted
 branch: develop/dev-a10005
 blocked_by: [a10004]
 requires_user_action: true
@@ -34,3 +34,4 @@ Produce a signed `.xcarchive`, upload to App Store Connect, and get the build vi
 - `mobile/SHIP_IOS.md`
 - No code changes; this is a shipping story
 - Optionally: `mobile/fastlane/Fastfile`, `mobile/fastlane/Appfile` if fastlane path is chosen
+- 2026-09-25T10:30-06:00 — retired with the mobile companion (D-16, `plan-47b842`). Leo's decision: the app never went past a scaffold, the Worker relay was never written, and the backlog had said PAUSED for five months. Spec kept for audit; `mobile/` and `docs/MOBILE.md` are deleted in the same PR.

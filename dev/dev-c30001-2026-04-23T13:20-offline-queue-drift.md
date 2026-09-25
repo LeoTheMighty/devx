@@ -5,7 +5,7 @@ created: 2026-04-23T13:20:00-07:00
 title: Offline queue foundation (drift + connectivity listener)
 from: _bmad-output/planning-artifacts/epic-bidirectional-writes-offline.md
 plan: plan/plan-7a2d1f-2026-04-23T13:00-mobile-companion-v01.md
-status: ready
+status: deleted
 branch: develop/dev-c30001
 blocked_by: [b20005]
 ---
@@ -39,3 +39,4 @@ Stand up a `drift` SQLite database with a `PendingWrite` table. `QueueDrainer` l
 - `mobile/lib/core/queue/queue_drainer.dart`
 - `mobile/lib/core/queue/writer_dispatch.dart`
 - `mobile/test/core/queue/queue_drainer_test.dart`
+- 2026-09-25T10:30-06:00 — retired with the mobile companion (D-16, `plan-47b842`). Leo's decision: the app never went past a scaffold, the Worker relay was never written, and the backlog had said PAUSED for five months. Spec kept for audit; `mobile/` and `docs/MOBILE.md` are deleted in the same PR.

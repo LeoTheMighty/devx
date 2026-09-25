@@ -5,7 +5,7 @@ created: 2026-04-23T13:30:00-07:00
 title: Cloudflare Worker scaffold + GitHub webhook HMAC verification
 from: _bmad-output/planning-artifacts/epic-realtime-updates-push.md
 plan: plan/plan-7a2d1f-2026-04-23T13:00-mobile-companion-v01.md
-status: ready
+status: deleted
 branch: develop/dev-d40001
 blocked_by: [c30005]
 ---
@@ -37,3 +37,4 @@ Initialize `worker/` with `wrangler`. Implement POST `/webhook/github` that veri
 - `worker/src/webhook_github.ts`
 - `worker/src/hmac.ts`
 - `worker/test/hmac.test.ts`
+- 2026-09-25T10:30-06:00 — retired with the mobile companion (D-16, `plan-47b842`). Leo's decision: the app never went past a scaffold, the Worker relay was never written, and the backlog had said PAUSED for five months. Spec kept for audit; `mobile/` and `docs/MOBILE.md` are deleted in the same PR.

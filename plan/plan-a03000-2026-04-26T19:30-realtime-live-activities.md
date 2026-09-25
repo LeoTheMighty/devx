@@ -3,7 +3,7 @@ hash: a03000
 type: plan
 created: 2026-04-26T19:30:00-07:00
 title: "Cross-cutting — realtime stream + Live Activities (mobile v0.3.5)"
-status: blocked
+status: deleted
 from: docs/MOBILE.md#realtime-updates--three-tier-architecture
 spawned: []
 mode: YOLO
@@ -40,3 +40,4 @@ To be elicited by `/devx-plan` when this plan is claimed.
 
 - 2026-04-26T19:30 — Cross-cutting placeholder created
 - 2026-07-05T13:50 — status normalized 'deferred' → 'blocked' (canonical checkbox vocabulary; drift surfaced by devx next).
+- 2026-09-25T10:35-06:00 — retired with the mobile companion (D-16, `plan-47b842`). Kept for audit; `mobile/` and `docs/MOBILE.md` are deleted in the same PR.

@@ -5,7 +5,7 @@ created: 2026-04-27T08:00:00-07:00
 title: Retrospective + LEARN.md updates for epic-bidirectional-writes-offline
 from: _bmad-output/planning-artifacts/epic-bidirectional-writes-offline.md
 plan: plan/plan-7a2d1f-2026-04-23T13:00-mobile-companion-v01.md
-status: ready
+status: deleted
 blocked_by: [c30001, c30002, c30003, c30004, c30005]
 branch: develop/dev-c30ret
 ---
@@ -25,3 +25,4 @@ Run `bmad-retrospective` on epic-bidirectional-writes-offline and append finding
 
 ## Status log
 - 2026-04-27 — created by interim retro discipline (ROADMAP.md locked decision)
+- 2026-09-25T10:30-06:00 — retired with the mobile companion (D-16, `plan-47b842`). Leo's decision: the app never went past a scaffold, the Worker relay was never written, and the backlog had said PAUSED for five months. Spec kept for audit; `mobile/` and `docs/MOBILE.md` are deleted in the same PR.

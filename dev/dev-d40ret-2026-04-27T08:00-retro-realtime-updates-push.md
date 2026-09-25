@@ -5,7 +5,7 @@ created: 2026-04-27T08:00:00-07:00
 title: Retrospective + LEARN.md updates for epic-realtime-updates-push
 from: _bmad-output/planning-artifacts/epic-realtime-updates-push.md
 plan: plan/plan-7a2d1f-2026-04-23T13:00-mobile-companion-v01.md
-status: ready
+status: deleted
 blocked_by: [d40001, d40002, d40003, d40004, d40005, d40006, d40007]
 branch: develop/dev-d40ret
 ---
@@ -26,3 +26,4 @@ Run `bmad-retrospective` on epic-realtime-updates-push and append findings to `L
 
 ## Status log
 - 2026-04-27 — created by interim retro discipline (ROADMAP.md locked decision)
+- 2026-09-25T10:30-06:00 — retired with the mobile companion (D-16, `plan-47b842`). Leo's decision: the app never went past a scaffold, the Worker relay was never written, and the backlog had said PAUSED for five months. Spec kept for audit; `mobile/` and `docs/MOBILE.md` are deleted in the same PR.

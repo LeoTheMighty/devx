@@ -4,7 +4,7 @@ type: test
 created: 2026-07-15T11:26:00-06:00
 title: Wire flutter analyze + test into devx-ci for mobile/
 from: dev/dev-a10001-2026-04-23T13:01-flutter-project-scaffold.md
-status: ready
+status: deleted
 ---
 
 ## Goal
@@ -25,3 +25,4 @@ are invisible to remote CI and the YOLO merge gate.
 
 ## Status log
 - 2026-07-15T11:26 — filed by /devx during a10001 cleanup (gap observed at Phase 7: probe returned devx-ci success without any flutter execution)
+- 2026-09-25T10:35-06:00 — retired with the mobile companion (D-16, `plan-47b842`). Kept for audit; `mobile/` and `docs/MOBILE.md` are deleted in the same PR.
