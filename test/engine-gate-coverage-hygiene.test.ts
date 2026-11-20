@@ -104,6 +104,13 @@ describe("parseCoverageTable — the hygiene array", () => {
     if (!r.ok) expect(r.error).toContain(msg);
   });
 
+  it("folds a judged where/note onto one line (it becomes a queue heading)", () => {
+    const r = parseCoverageTable(
+      JSON.stringify({ rows, hygiene: [{ kind: "residue", where: "design/agent.md\n§ A", note: "two\n\nlines" }] }),
+    );
+    expect(r.ok && r.table.hygiene[0]).toMatchObject({ where: "design/agent.md § A", note: "two lines" });
+  });
+
   it("rejects a non-array hygiene", () => {
     const r = parseCoverageTable(JSON.stringify({ rows, hygiene: { kind: "residue" } }));
     expect(r.ok).toBe(false);
@@ -132,7 +139,13 @@ describe("mechanicalHygiene", () => {
   });
 
   it("matches the heading at ##–#### and in any case, never `Unresolved …`", () => {
-    for (const h of ["## Resolved questions", "### resolved Design Questions", "#### Resolved question"]) {
+    for (const h of [
+      "## Resolved questions",
+      "### resolved Design Questions",
+      "#### Resolved question",
+      "## Resolved design questions — see decisions/",
+      "## Resolved questions ##",
+    ]) {
       expect(mechanicalHygiene({ ...base, design: `${h}\n` }), h).toHaveLength(1);
     }
     for (const h of ["## Unresolved design questions", "# Resolved questions", "## Open questions", "Resolved questions"]) {

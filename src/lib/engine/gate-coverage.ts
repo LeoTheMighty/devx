@@ -302,10 +302,12 @@ export function parseCoverageTable(json: string): TableParseResult {
           return { ok: false, error: `hygiene[${i}] (kind=${kind}) has no string \`${field}\`` };
         }
       }
+      // One line each: `where` becomes a health-queue entry title (a
+      // markdown heading), where a newline would split the entry in two.
       hygiene.push({
         kind,
-        where: (h.where as string).trim(),
-        note: (h.note as string).trim(),
+        where: (h.where as string).replace(/\s+/g, " ").trim(),
+        note: (h.note as string).replace(/\s+/g, " ").trim(),
         by: "judgment",
       });
     }
@@ -330,7 +332,7 @@ function hygieneKindOf(v: unknown): HygieneKind | null {
  *  questions`, `### Resolved questions`, … — the section 8am's Gate 2 flags by
  *  name (§18). Its content is Q→A history, which is exactly what a decision
  *  record holds and a current-state design does not. */
-const RESOLVED_QUESTIONS_HEADING_RE = /^#{2,4}\s+(resolved\b[^\n]*\bquestions?)\s*$/i;
+const RESOLVED_QUESTIONS_HEADING_RE = /^#{2,4}\s+(resolved\b.*?\bquestions?\b.*?)(?:\s+#+)?\s*$/i;
 
 export interface MechanicalHygieneInputs {
   /** design/agent.md content. */

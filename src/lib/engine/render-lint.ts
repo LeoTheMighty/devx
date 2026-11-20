@@ -137,7 +137,9 @@ const CONTAINER_H2 = new Set(["design"]);
 // Patterns
 // ---------------------------------------------------------------------------
 
-const HEADING_RE = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
+/** CommonMark ATX heading; a closing `#` run counts only after a space, so
+ *  `## C#` keeps its `#`. */
+const HEADING_RE = /^(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
 const HR_RE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
 const BULLET_RE = /^(\s*)(?:[-*+]|\d+[.)])\s+(.*)$/;
 const TABLE_ROW_RE = /^\s*\|.*\|\s*$/;
@@ -202,6 +204,30 @@ export function githubSlug(title: string): string {
 
 const keyOf = (title: string): string => stripInline(title).trim().toLowerCase();
 
+/** GitHub's anchor minting over a document's headings in order: a repeated
+ *  slug gets `-1`, `-2`, …. One instance per document pass — the lint and
+ *  `renumberFootnotes` must agree on which `notes` is `notes-1`. */
+function makeSlugger(): (title: string) => string {
+  const seen = new Map<string, number>();
+  return (title) => {
+    const base = githubSlug(title);
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    return n === 0 ? base : `${base}-${n}`;
+  };
+}
+
+/** Index of the first `<!--` that is NOT inside an inline code span, or -1.
+ *  A render that writes `` `<!--` `` is quoting the syntax; treating it as an
+ *  opener would blank every line after it and lint nothing — silently. */
+function commentStart(s: string): number {
+  for (let at = s.indexOf("<!--"); at !== -1; at = s.indexOf("<!--", at + 1)) {
+    const ticks = s.slice(0, at).match(/`/g)?.length ?? 0;
+    if (ticks % 2 === 0) return at;
+  }
+  return -1;
+}
+
 /** Blank out `<!-- … -->` spans (multi-line too) outside fenced code, keeping
  *  line numbers. GitHub never renders them, and devx templates use them for
  *  author guidance that must not count against the reader's budget. */
@@ -218,7 +244,7 @@ function stripHtmlComments(lines: string[], fenced: boolean[]): string[] {
         rest = rest.slice(end + 3);
         inComment = false;
       } else {
-        const start = rest.indexOf("<!--");
+        const start = commentStart(rest);
         if (start === -1) return out + rest;
         out += rest.slice(0, start);
         rest = rest.slice(start + 4);
@@ -387,12 +413,12 @@ export function lintRender(md: string, opts: { agentMd?: string } = {}): LintRep
 
   // Anchors: GitHub suffixes a repeated slug with -1, -2, …
   const slugs = new Map<string, Section>();
-  const seenSlug = new Map<string, number>();
+  const slugOfSection = new Map<Section, string>();
+  const mint = makeSlugger();
   for (const s of sections) {
-    const base = githubSlug(s.title);
-    const n = seenSlug.get(base) ?? 0;
-    seenSlug.set(base, n + 1);
-    slugs.set(n === 0 ? base : `${base}-${n}`, s);
+    const slug = mint(s.title);
+    slugs.set(slug, s);
+    slugOfSection.set(s, slug);
   }
   const headingKeys = new Map(sections.map((s) => [s.key, s]));
 
@@ -756,7 +782,7 @@ export function lintRender(md: string, opts: { agentMd?: string } = {}): LintRep
   // Back-references (R13): a destination carries `<sup>[n]</sup>` at its top.
   const marked = new Map<string, number>();
   for (const b of backrefs) {
-    const secSlug = [...slugs.entries()].find(([, sec]) => sec === b.sec)?.[0] ?? githubSlug(b.sec.title);
+    const secSlug = slugOfSection.get(b.sec) ?? githubSlug(b.sec.title);
     const want = expected.get(secSlug);
     for (const n of b.nums) {
       if (want !== undefined && n === want) {
@@ -897,12 +923,13 @@ export function renumberFootnotes(md: string): string {
         }),
   );
   let curSlug: string | null = null;
+  const mint = makeSlugger();
   return pass1
     .map((line, i) => {
       if (fenced[i]) return line;
       const h = HEADING_RE.exec(line);
       if (h && h[1].length >= 2) {
-        curSlug = githubSlug(h[2]);
+        curSlug = mint(h[2]);
         return line;
       }
       const n = curSlug !== null ? order.get(curSlug) : undefined;

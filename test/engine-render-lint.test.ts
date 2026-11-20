@@ -241,6 +241,29 @@ describe("judgment rules point, the author decides (all advisory)", () => {
   });
 });
 
+describe("self-review regressions (harness-s4 Phase 4)", () => {
+  it("a `<!--` quoted in an inline code span does not swallow the rest of the render", () => {
+    const md = "## A\n\nThe marker is `<!-- refined` at the top.\n\n## B\n\nCovers G-1.\n";
+    expect(rules(md)).toContain("HARD:apparatus-leak");
+  });
+
+  it("`## C#` keeps its `#`; a spaced closing run is stripped", () => {
+    const md = "## Reading guide\n\nsuperscript\n\n## C#\n<sup>[1]</sup>\n\nx\n\n## A ##\n\nz<sup>[1](#c)</sup>\n";
+    // `C#` slugs to `c` (punctuation dropped) and resolves; `A ##` is `A`.
+    expect(rules(md).filter((r) => r.startsWith("HARD") || r.includes("backref"))).toEqual([]);
+    expect(githubSlug("C#")).toBe("c");
+  });
+
+  it("--renumber resolves a repeated heading's -1 anchor the way the lint does", () => {
+    const md =
+      "## Reading guide\n\nsuperscript\n\n## Notes\n\nx\n\n## Notes\n<sup>[5]</sup>\n\ny\n\n## A\n\nz<sup>[3](#notes-1)</sup>\n";
+    const fixed = renumberFootnotes(md);
+    expect(fixed).toContain("## Notes\n<sup>[1]</sup>");
+    expect(fixed).toContain("z<sup>[1](#notes-1)</sup>");
+    expect(rules(fixed).filter((r) => r.startsWith("HARD"))).toEqual([]);
+  });
+});
+
 describe("parsing", () => {
   it("strips HTML comments (template guidance) before measuring", () => {
     const md = `## A\n\n<!-- ${distinct(200)}\n${distinct(200, "c")} G-1 -->\nreal text\n`;
