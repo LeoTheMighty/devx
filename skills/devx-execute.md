@@ -233,6 +233,7 @@ Steps:
    - If a machine item fails, that's a Phase 5 gate failure: fix the root cause and re-run (step 5), don't downgrade the item to `human`.
    - Append a row to `TEST.md`: `` - [ ] `test/test-<new-hash>-<ts>-<slug>.md` — QA walkthrough for <spec title>; <n> human check(s) outstanding. Status: ready. From: <story-hash>. ``
    - The walkthrough file commits **with the story** in Phase 6 — it is part of the item's diff, not a follow-up.
+8. **Write the phase checkpoint** — workstream stories only (a spec carrying `phase:`); a standalone story skips it and says so. Run `devx checkpoint <hash> --verdict <V> --reason "<why>" --lint <r> --types <r> --suite "<r>" [--runs runs.json]`; `--help` carries the shapes. The verdict is this PHASE's, not the suite's: PASS only when every expectation the plan verifies here ran green, and an exit code you did not see is `null`, never `0`. `--runs` records what you observed; omit it and the table seeds from the plan un-run — a worklist, not evidence. Re-running replaces every section but `## Drift noted`: put there what later phases must absorb. Commits with the story in Phase 6; one status-log line names it.
 
 **Run the gate in the worktree, and prove it ran there.** A `/devx` run
 straddles two working trees on purpose — code lives in
@@ -304,7 +305,7 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
 
 ### Phase 6: Commit
 
-1. Stage only files relevant to this item — use `git add <specific files>`, never `git add -A`. The Phase 5 walkthrough (`test/test-<new-hash>-<ts>-<slug>.md`) and its `TEST.md` row are part of this item; stage them with it.
+1. Stage only files relevant to this item — use `git add <specific files>`, never `git add -A`. The Phase 5 walkthrough (`test/test-<new-hash>-<ts>-<slug>.md`), its `TEST.md` row, and the phase checkpoint (`<ws>/checkpoints/phase-<n>.md`) are part of this item; stage them with it.
 2. Commit with message:
    ```
    <type>: <spec-hash> — <spec title>

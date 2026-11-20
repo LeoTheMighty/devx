@@ -46,7 +46,13 @@ import { attachPhase } from "../lib/help.js";
 import * as artifacts from "../lib/engine/artifacts.js";
 import { type EngineContext, loadEngineContext } from "../lib/engine/context.js";
 import { nextForWorkstream } from "../lib/engine/next.js";
-import { renderFocusLine, renderGateSummary } from "../lib/engine/render.js";
+import {
+  renderFocusLine,
+  renderGateSummary,
+  renderHealthLine,
+} from "../lib/engine/render.js";
+import { healthCounts } from "../lib/engine/questions.js";
+import { loadQuestions } from "../lib/engine/questions-io.js";
 import { type TodoDrift, computeTodoDrift } from "../lib/engine/todo.js";
 import { loadTodoDoc, todoGroundTruth } from "../lib/engine/todo-truth.js";
 import { formatDate } from "../lib/engine/verdict.js";
@@ -217,6 +223,7 @@ function runRepoNext(
       loops: decision.loops,
       gate_summary: decision.gateSummary,
       focus: decision.focus,
+      health: decision.health,
       todo_drift: decision.todoDrift,
     })}\n`,
   );
@@ -235,6 +242,12 @@ function runRepoNext(
   }
   if (decision.focus !== null) {
     err(`  ${decision.focus}\n`);
+  }
+  // B11: the health line for the row-9 workstream. Omitted when the queue is
+  // clean or absent — the repo-wide picture is row 11's own detail, and a
+  // zero on every row is a line nobody reads.
+  if (decision.health !== null) {
+    err(`  ${decision.health}\n`);
   }
   // Live loops render on EVERY row (mlc105), not only row 1: once N loops
   // are allowed, a run can be live while a more specific row fires, and
@@ -340,6 +353,18 @@ function runWorkstreamNext(
     );
   }
 
+  // B11: this workstream's health line, same posture — `loadQuestions`
+  // never throws, an absent queue is silence, and a queue that exists but
+  // does not parse reports its reason with no counts.
+  const questions = loadQuestions(fs, ws);
+  const health =
+    questions === null
+      ? null
+      : renderHealthLine(
+          questions.error === null ? healthCounts(questions.entries) : null,
+          questions.error,
+        );
+
   out(
     `${JSON.stringify({
       hash: ws.hash,
@@ -354,6 +379,7 @@ function runWorkstreamNext(
         evalsReportExists: has({ kind: "red-report" }),
       }),
       focus,
+      health,
       todo_drift: todoDrift,
       row: decision.row,
       next: decision.command,
