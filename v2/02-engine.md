@@ -229,6 +229,18 @@ product approval"** section flags scope creep neutrally. Mechanical parts
 (ID extraction, table assembly, verdict computation) in the CLI; the
 semantic covered/partial judgment is a single schema-constrained subagent.
 
+**Design-mode hygiene lens (advisory; harness-s4).** The same subagent may
+return a `hygiene` array — `{kind, where, note}` with kind one of `residue`
+(decision narrative in the body), `duplication` (one fact in two sections),
+`ungrounded` (a load-bearing claim about existing code with no citation and
+no research finding), `bare-decision` (a load-bearing choice with no
+alternative weighed). The CLI adds two mechanical findings of its own: a
+settled-questions section (`## Resolved … questions`) and absent
+`design/research.md`. Every finding renders in the report's `## Hygiene
+(advisory)` section and holds the verdict at **CONCERNS at most, never FAIL**
+— upstream blocks on its groundedness checks; at send-it a design advances
+with the finding on record. Plan mode ignores the array (with a warning).
+
 ### 4.5 Plan stage (`/devx plan <hash>`)
 Asks the user for a rough phase breakdown first, explores code, drafts
 `plan/agent.md`: Current state / Desired state / What we're NOT doing / Expectation

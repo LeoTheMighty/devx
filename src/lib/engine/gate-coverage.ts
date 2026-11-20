@@ -21,6 +21,14 @@
 //                          `## Execution graph` is checked by plan-graph.ts
 //                          and folded in via `applyGraphFindings` — a `fail`
 //                          finding is a FAIL, a `concern` is CONCERNS at most)
+//   - hygiene             (design mode only, harness-s4: §18/§21 content
+//                          checks — decision residue, duplicated fact,
+//                          ungrounded load-bearing claim, bare decision. The
+//                          subagent judges them into `hygiene`; two are
+//                          mechanical here (`mechanicalHygiene`). Folded in
+//                          via `applyHygieneFindings`: CONCERNS at most,
+//                          never FAIL — the design advances with the finding
+//                          on record)
 //
 // Table JSON shape (authored by the subagent):
 //
@@ -29,7 +37,9 @@
 //       { "id": "G-1", "status": "covered", "where": "…", "note": "…",
 //         "artifact": "test/x.test.ts" }   // artifact: plan mode only
 //     ],
-//     "extras": [ { "item": "…", "where": "…" } ]
+//     "extras": [ { "item": "…", "where": "…" } ],
+//     "hygiene": [ { "kind": "residue", "where": "…", "note": "…" } ]
+//                                          // design mode only; optional
 //   }
 //
 // Rows whose id is not a source ID are NOT errors — they land in the
@@ -51,6 +61,7 @@ import {
   renderVerdictBlock,
 } from "./verdict.js";
 import { type GraphCheck, effectiveParallelSafe } from "./plan-graph.js";
+import { fencedLineMask } from "./md-fence.js";
 
 export type CoverageMode = "design" | "plan";
 export type TriState = "covered" | "partial" | "missing";
@@ -68,9 +79,32 @@ export interface CoverageExtra {
   where: string;
 }
 
+/** The design-mode hygiene lens's four finding kinds (gap analysis A6/C6):
+ *
+ *  - `residue`       decision narrative in the design body ("we chose",
+ *                    Q→A lists, dated history) — it belongs in `decisions/`,
+ *                    linked from the Decision log
+ *  - `duplication`   one fact spelled out in two sections — one home per fact
+ *  - `ungrounded`    a load-bearing claim about existing code with no
+ *                    citation and no research finding behind it
+ *  - `bare-decision` a load-bearing choice with no alternative weighed
+ *                    (nothing in Trade-offs / Discarded, no record linked) */
+export const HYGIENE_KINDS = ["residue", "duplication", "ungrounded", "bare-decision"] as const;
+export type HygieneKind = (typeof HYGIENE_KINDS)[number];
+
+export interface HygieneFinding {
+  kind: HygieneKind;
+  where: string;
+  note: string;
+  /** `judgment` = the subagent's table; `cli` = `mechanicalHygiene`. */
+  by: "judgment" | "cli";
+}
+
 export interface CoverageTable {
   rows: CoverageRow[];
   extras: CoverageExtra[];
+  /** Design-mode advisory lens; `[]` when the table carries none. */
+  hygiene: HygieneFinding[];
 }
 
 // ---------------------------------------------------------------------------
@@ -243,7 +277,103 @@ export function parseCoverageTable(json: string): TableParseResult {
       });
     }
   }
-  return { ok: true, table: { rows, extras } };
+  const hygiene: HygieneFinding[] = [];
+  if (root.hygiene !== undefined) {
+    if (!Array.isArray(root.hygiene)) {
+      return { ok: false, error: "`hygiene` must be an array when present" };
+    }
+    for (let i = 0; i < root.hygiene.length; i++) {
+      const raw = root.hygiene[i];
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return { ok: false, error: `hygiene[${i}] must be an object` };
+      }
+      const h = raw as Record<string, unknown>;
+      const kind = hygieneKindOf(h.kind);
+      if (kind === null) {
+        return {
+          ok: false,
+          error: `hygiene[${i}] has unknown kind '${String(h.kind)}' (expected ${HYGIENE_KINDS.join("|")})`,
+        };
+      }
+      // A finding with no location or no statement is not actionable — the
+      // lens is advisory, but a receipt-less advisory is noise.
+      for (const field of ["where", "note"] as const) {
+        if (typeof h[field] !== "string" || (h[field] as string).trim() === "") {
+          return { ok: false, error: `hygiene[${i}] (kind=${kind}) has no string \`${field}\`` };
+        }
+      }
+      hygiene.push({
+        kind,
+        where: (h.where as string).trim(),
+        note: (h.note as string).trim(),
+        by: "judgment",
+      });
+    }
+  }
+  return { ok: true, table: { rows, extras, hygiene } };
+}
+
+/** Normalize a judged kind: case, `_`/space → `-`. Exact names only after
+ *  that — a schema-constrained subagent that invents a fifth kind is invalid
+ *  input, the same as an unknown coverage status. */
+function hygieneKindOf(v: unknown): HygieneKind | null {
+  if (typeof v !== "string") return null;
+  const k = v.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  return (HYGIENE_KINDS as readonly string[]).includes(k) ? (k as HygieneKind) : null;
+}
+
+// ---------------------------------------------------------------------------
+// Hygiene — the mechanical half (design mode)
+// ---------------------------------------------------------------------------
+
+/** A heading that names a settled-questions list: `## Resolved design
+ *  questions`, `### Resolved questions`, … — the section 8am's Gate 2 flags by
+ *  name (§18). Its content is Q→A history, which is exactly what a decision
+ *  record holds and a current-state design does not. */
+const RESOLVED_QUESTIONS_HEADING_RE = /^#{2,4}\s+(resolved\b[^\n]*\bquestions?)\s*$/i;
+
+export interface MechanicalHygieneInputs {
+  /** design/agent.md content. */
+  design: string;
+  designRel: string;
+  /** Whether the Design stage's captured research exists. */
+  researchPresent: boolean;
+  researchRel: string;
+}
+
+/**
+ * The two hygiene checks a program can make without judgment. Everything
+ * else in the lens is the subagent's (residue phrasing, duplication,
+ * groundedness of a specific claim, whether a decision was weighed):
+ * phrase scans for "instead of" and kin were measured against this repo's
+ * nine shipped designs and read as ordinary prose far more often than as
+ * residue, so they stay judgment.
+ */
+export function mechanicalHygiene(i: MechanicalHygieneInputs): HygieneFinding[] {
+  const out: HygieneFinding[] = [];
+  const lines = i.design.split("\n");
+  const fenced = fencedLineMask(lines);
+  for (let n = 0; n < lines.length; n++) {
+    if (fenced[n]) continue;
+    const m = RESOLVED_QUESTIONS_HEADING_RE.exec(lines[n].replace(/\r$/, ""));
+    if (m) {
+      out.push({
+        kind: "residue",
+        where: `${i.designRel} § ${m[1]}`,
+        note: "a list of settled questions is decision history — move each answer into the design body in present tense, its reasoning into a decisions/ record, and list the record in the Decision log",
+        by: "cli",
+      });
+    }
+  }
+  if (!i.researchPresent) {
+    out.push({
+      kind: "ungrounded",
+      where: i.researchRel,
+      note: "no captured research — load-bearing claims about existing code have no findings to trace to; run the Design stage's research step",
+      by: "cli",
+    });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -263,6 +393,8 @@ export interface CoverageComputation {
   missingRowIds: string[];
   /** Source IDs with >1 table row. */
   duplicateRowIds: string[];
+  /** Design-mode advisory findings (`applyHygieneFindings`); `[]` otherwise. */
+  hygiene: HygieneFinding[];
 }
 
 export function computeCoverageVerdict(
@@ -330,7 +462,45 @@ export function computeCoverageVerdict(
       ? "CONCERNS"
       : "PASS";
 
-  return { verdict, reasons, keyedRows, extraRows, missingRowIds, duplicateRowIds };
+  return {
+    verdict,
+    reasons,
+    keyedRows,
+    extraRows,
+    missingRowIds,
+    duplicateRowIds,
+    hygiene: [],
+  };
+}
+
+/**
+ * Fold the design-mode hygiene lens into a computation (harness-s4). Pure and
+ * additive, the same shape as `applyGraphFindings`: coverage rows are
+ * untouched, and the verdict moves PASS → CONCERNS at most — **never to
+ * FAIL**, and never off a FAIL the coverage rows already earned. One summary
+ * reason, not one per finding: the report's Hygiene section carries them,
+ * and repeating each in Verdict detail would be the duplication the lens
+ * exists to flag. Plan mode never calls this.
+ */
+export function applyHygieneFindings(
+  c: CoverageComputation,
+  findings: readonly HygieneFinding[],
+): CoverageComputation {
+  if (findings.length === 0) return c;
+  const counts = HYGIENE_KINDS.map((k) => [k, findings.filter((f) => f.kind === k).length] as const)
+    .filter(([, n]) => n > 0)
+    .map(([k, n]) => `${k} ${n}`)
+    .join(", ");
+  const n = findings.length;
+  return {
+    ...c,
+    hygiene: [...findings],
+    verdict: c.verdict === "PASS" ? "CONCERNS" : c.verdict,
+    reasons: [
+      ...c.reasons,
+      `hygiene: ${n} advisory finding${n === 1 ? "" : "s"} (${counts}) — CONCERNS at most, never FAIL`,
+    ],
+  };
 }
 
 /**
@@ -439,10 +609,27 @@ export function renderVerifyReport(args: {
   } else {
     lines.push(...extraLines);
   }
+  // ── Design-mode-only section (harness-s4). ──────────────────────────
+  // Rendered on every design run, `- none` included, so a clean lens is an
+  // explicit zero rather than an absent section a reader cannot tell from
+  // a pre-lens report.
+  if (mode === "design") {
+    lines.push("");
+    lines.push("## Hygiene (advisory)");
+    lines.push("");
+    if (c.hygiene.length === 0) {
+      lines.push("- none");
+    } else {
+      lines.push("Holds the verdict at CONCERNS at most; never FAILs it.");
+      lines.push("");
+      lines.push("| Kind | Where | Note | By |");
+      lines.push("|---|---|---|---|");
+      for (const h of c.hygiene) {
+        lines.push(`| ${h.kind} | ${mdCell(h.where)} | ${mdCell(h.note)} | ${h.by} |`);
+      }
+    }
+  }
   // ── Plan-mode-only section (harness-s5). ────────────────────────────
-  // SEAM: design-mode additions (the advisory hygiene lens, Stream 4 of
-  // docs/updates/8am-harness-gap-analysis.md) belong in their own block,
-  // gated on `mode === "design"`, not inside this one.
   if (mode === "plan" && args.graph) {
     lines.push("");
     lines.push("## Execution graph");

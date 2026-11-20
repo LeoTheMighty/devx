@@ -37,10 +37,12 @@ import { parseExpectations } from "../lib/engine/expectations.js";
 import { evaluateGatePrd } from "../lib/engine/gate-prd.js";
 import {
   applyGraphFindings,
+  applyHygieneFindings,
   computeCoverageVerdict,
   detectCoverageMode,
   expectationPriorities,
   extractSourceIds,
+  mechanicalHygiene,
   parseCoverageTable,
   renderVerifyReport,
 } from "../lib/engine/gate-coverage.js";
@@ -124,6 +126,9 @@ interface GateSubjects {
   evalsDir: artifacts.StageSubject;
   decisionsDir: artifacts.StageSubject;
   redReport: artifacts.StageSubject;
+  /** The Design stage's captured research — read for existence only, by
+   *  Gate 2's mechanical hygiene check (harness-s4). */
+  research: artifacts.StageSubject;
 }
 
 function subjectsFor(
@@ -155,6 +160,7 @@ function subjectsFor(
     evalsDir: at({ kind: "evals-dir" }),
     decisionsDir: at({ kind: "decisions-dir" }),
     redReport: at({ kind: "red-report" }),
+    research: at({ kind: "research" }),
   };
 }
 
@@ -420,6 +426,22 @@ export function runGateCoverage(
   if (mode === "plan") {
     graphCheck = checkExecutionGraph(io.fs.readFile(subjects.plan.abs));
     computation = applyGraphFindings(computation, graphCheck);
+    if (parsed.table.hygiene.length > 0) {
+      io.err(
+        `devx gate coverage: warning: \`hygiene\` is a design-mode lens — ${parsed.table.hygiene.length} finding(s) ignored in plan mode\n`,
+      );
+    }
+  }
+  // Design mode only (harness-s4): the advisory hygiene lens — the CLI's two
+  // mechanical checks plus the subagent's judged findings. CONCERNS at most.
+  if (mode === "design") {
+    const mechanical = mechanicalHygiene({
+      design: io.fs.readFile(subjects.design.abs),
+      designRel: subjects.design.rel,
+      researchPresent: io.fs.exists(subjects.research.abs),
+      researchRel: subjects.research.rel,
+    });
+    computation = applyHygieneFindings(computation, [...mechanical, ...parsed.table.hygiene]);
   }
 
   // Completeness is mechanical: an incomplete or ambiguous table is invalid
@@ -506,6 +528,9 @@ export function runGateCoverage(
               findings: graphCheck.findings.map((f) => `${f.severity}:${f.code}`),
             },
           }
+        : {}),
+      ...(mode === "design"
+        ? { hygiene: computation.hygiene.map((h) => `${h.by}:${h.kind}`) }
         : {}),
     })}\n`,
   );

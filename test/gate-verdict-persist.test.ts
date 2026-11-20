@@ -148,6 +148,8 @@ describe("gate coverage — verdict persistence", () => {
   it("design PASS writes gate_verdicts.design", () => {
     seedSpec({ prd_validated: true, stage: "design" });
     repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
+    // Without captured research Gate 2's hygiene lens holds CONCERNS (harness-s4).
+    repo.write(`${WS}/design/research.md`, "# Research\n");
     expect(gateCoverage(designTable()).code).toBe(0);
     const s = state();
     expect(s.gateVerdicts.design).toBe("PASS");
