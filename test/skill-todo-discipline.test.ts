@@ -9,6 +9,10 @@
 // still holds after the added prose. If an edit legitimately changes one of
 // these, update the pin in the same PR and say why in the PR body.
 //
+// The /devx execute arm and its Finalization nudge live in devx-execute.md
+// since the D-14 arm split (devx.md keeps a `## Execution Loop` pointer), so
+// the execute-arm pins read that file; devx.md stays in the restatement scan.
+//
 // Acceptance twin: _devx/workstreams/harness-fold-in/evals/E-7_skill-todo-discipline.ts
 // Spec: dev/dev-hfi105-2026-07-24T10:41-lifecycle-skill-wiring.md
 
@@ -23,6 +27,7 @@ import { REAL_REPO_ROOT } from "./fixtures/engine-repo.js";
 const commandsDir = join(REAL_REPO_ROOT, ".claude", "commands");
 const planBody = readFileSync(join(commandsDir, "devx-plan.md"), "utf8");
 const devxBody = readFileSync(join(commandsDir, "devx.md"), "utf8");
+const executeBody = readFileSync(join(commandsDir, "devx-execute.md"), "utf8");
 const learnBody = readFileSync(join(commandsDir, "devx-learn.md"), "utf8");
 
 /**
@@ -52,14 +57,16 @@ describe("skill todo discipline (E-7) — todo steps in 5/5 lifecycle sections",
     },
   );
 
-  it("devx.md execute arm (## Execution Loop section) carries the `devx todo sync` step", () => {
-    // Bounded at the section end — a stray mention in a later arm
-    // (Loop / Retro / Address) must not mask deletion of the Phase 2 step
+  it("devx-execute.md execute arm (## Execution Loop section) carries the `devx todo sync` step", () => {
+    // Bounded at the section end — a stray mention in a later section
+    // (Finalization) must not mask deletion of the Phase 2 step
     // (Phase 4 review, Edge Case Hunter #1). Stricter than the E-7 eval's
     // slice-to-EOF; the eval is the frozen acceptance twin.
-    const section = sectionOf(devxBody, "## Execution Loop");
-    expect(section, "devx.md '## Execution Loop' section not found").not.toBe("");
+    const section = sectionOf(executeBody, "## Execution Loop");
+    expect(section, "devx-execute.md '## Execution Loop' section not found").not.toBe("");
     expect(section, "execute arm lost its todo step (T5.2)").toContain("devx todo sync");
+    // The dispatcher's heading is a pointer to that body, never a second copy.
+    expect(sectionOf(devxBody, "## Execution Loop")).toContain(".claude/commands/devx-execute.md");
   });
 
   it("RED stage emits the per-spec phase pointer line shape", () => {
@@ -77,13 +84,15 @@ describe("skill todo discipline (E-7) — nudge single-sourcing", () => {
     expect(countIn(learnBody)).toBe(1);
   });
 
-  it("the marker appears exactly once across all three skill bodies (referenced, not restated)", () => {
-    expect(countIn(planBody) + countIn(devxBody) + countIn(learnBody)).toBe(1);
+  it("the marker appears exactly once across all four skill bodies (referenced, not restated)", () => {
+    expect(
+      countIn(planBody) + countIn(devxBody) + countIn(executeBody) + countIn(learnBody),
+    ).toBe(1);
   });
 
   it.each([
     ["devx-plan.md", planBody],
-    ["devx.md", devxBody],
+    ["devx-execute.md", executeBody],
   ])("%s references the nudge by marker name and file", (_name, body) => {
     // Stronger than the eval's /nudge/i: the reference must name the
     // marker and point at the canonical file (Phase 4 review, Blind
@@ -106,6 +115,7 @@ describe("skill todo discipline (E-7) — nudge single-sourcing", () => {
     for (const [name, body] of [
       ["devx-plan.md", planBody],
       ["devx.md", devxBody],
+      ["devx-execute.md", executeBody],
     ] as const) {
       expect(
         body.replace(/\s+/g, " "),

@@ -37,8 +37,8 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = resolve(__dirname, "..");
-const SKILL_PATH = resolve(REPO_ROOT, ".claude/commands/devx.md");
-const MIRROR_PATH = resolve(REPO_ROOT, "skills/devx.md");
+const SKILL_PATH = resolve(REPO_ROOT, ".claude/commands/devx-execute.md");
+const MIRROR_PATH = resolve(REPO_ROOT, "skills/devx-execute.md");
 
 function loadSkill(): string {
   return readFileSync(SKILL_PATH, "utf8");
@@ -120,7 +120,7 @@ describe("devx skill — Handoff Snippet contract is retired (mss104 AC #1, E-2)
   });
 
   it("the packaged mirror carries zero Handoff Snippet tokens", () => {
-    // skills/devx.md is byte-identical to the canonical file
+    // skills/devx-execute.md is byte-identical to the canonical file
     // (test/skills-sync.test.ts) — asserted independently so a mirror that
     // drifts back to the retired contract fails here too, naming the file.
     expect(readFileSync(MIRROR_PATH, "utf8")).not.toMatch(TOKEN_RE);
@@ -128,7 +128,7 @@ describe("devx skill — Handoff Snippet contract is retired (mss104 AC #1, E-2)
 
   it("the Phase 1 token-source clause no longer offers a snippet as a source", () => {
     const skill = loadSkill();
-    // devx.md's verify-claim clause used to allow "the claim performed
+    // devx-execute.md's verify-claim clause used to allow "the claim performed
     // earlier in this same session, or a Handoff Snippet that carries it".
     // The snippet half is gone; the claim half must remain — an agent with no
     // token source at all would start copying from the lock file, which is

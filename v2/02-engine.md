@@ -383,6 +383,11 @@ and templates (fail CI if the engine's loadable prose regresses past budget).
 > overrun is concentrated in one row: the dispatcher carries six arms in one
 > file (~67.6KB), so every run loads all of them against the "Execute per
 > story ≤ 10KB" target. D-14 records why that was accepted rather than fixed.
+>
+> *2026-11-20:* D-14's named lever was pulled when the 128KB budget bound
+> again. Each arm is now its own body beside `devx.md`, so a run loads the
+> dispatcher plus the arm it needs; the full run stays charged for the
+> Execute and Retro bodies (both rows above), not for Debug, Loop or Outcome.
 
 ## 7. Config: `engine:` block (replaces §15 `bmad:`)
 

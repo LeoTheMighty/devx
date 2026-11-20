@@ -25,8 +25,8 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = resolve(__dirname, "..");
-const SKILL_PATH = resolve(REPO_ROOT, ".claude/commands/devx.md");
-const MIRROR_PATH = resolve(REPO_ROOT, "skills/devx.md");
+const SKILL_PATH = resolve(REPO_ROOT, ".claude/commands/devx-execute.md");
+const MIRROR_PATH = resolve(REPO_ROOT, "skills/devx-execute.md");
 
 function loadSkill(): string {
   return readFileSync(SKILL_PATH, "utf8");

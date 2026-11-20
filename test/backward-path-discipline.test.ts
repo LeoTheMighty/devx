@@ -62,6 +62,9 @@ const flat = (rel: string): string =>
 const REVISE = ".claude/commands/devx-revise.md";
 const ADDRESS = ".claude/commands/devx-address.md";
 const DISPATCHER = ".claude/commands/devx.md";
+// Phase 6 (the as-built departure rule) is in the execute arm's own body
+// since the D-14 arm split.
+const EXECUTE = ".claude/commands/devx-execute.md";
 
 /** The reply marker, read from the skill body that owns it rather than
  *  declared here. A copy in the test would agree with itself while the
@@ -108,7 +111,7 @@ describe("dispatcher → the backward-path bodies", () => {
   });
 
   it("routes a re-scoping as-built departure to the skill, not the bare CLI", () => {
-    expect(flat(DISPATCHER)).toContain(
+    expect(flat(EXECUTE)).toContain(
       "re-scopes another phase or contradicts the design** is not bookkeeping — route it through `/devx-revise`",
     );
   });
