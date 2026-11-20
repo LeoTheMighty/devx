@@ -22,6 +22,13 @@
 //      check, was retired by v2x101 D-7.)
 //   5. Each spec's `branch:` frontmatter must equal
 //      `deriveBranch(config, "dev", hash)` for the resolved config.
+//   7. (workstream-plan source, harness-s5) When the plan declares an
+//      `## Execution graph`, every emitted spec's `blocked_by:` must carry
+//      the dev hash of each phase its phase `depends_on`. Phase → hash
+//      comes from the checklist's `(dev spec: <hash>)` markers, else the
+//      doc set's todo.md `Phase <n>: … → <hash>` pointers. Error severity:
+//      the graph is what Gate 3 verified, and an emission that forgets an
+//      edge lets two ordered phases claim at once.
 //   6. Each `**Locked decision:** ...` prose bullet that anchors on a story
 //      hash (`<hash> AC bumped — ...`) — every backticked phrase inside the
 //      bullet must appear somewhere in the referenced spec body. Heuristic;
@@ -54,7 +61,10 @@ import {
   splitFrontmatterLines,
 } from "../frontmatter-keys.js";
 
-import { blankFencedLines } from "../backlog/parse.js";
+import { blankFencedLines, splitHashes } from "../backlog/parse.js";
+import { readEngineState } from "../engine/frontmatter.js";
+import { blockedByFromGraph, extractExecutionGraph } from "../engine/plan-graph.js";
+import { parseTodo } from "../engine/todo.js";
 import { isNullishScalar } from "../frontmatter-scalar.js";
 import {
   type DeriveBranchConfig,
@@ -543,6 +553,64 @@ export function validateEmit(
               location: specRel,
             },
       );
+    }
+  }
+
+  // --- 7) Execution graph ⇒ blocked_by (harness-s5). Workstream plans only;
+  //        a frozen epic has no graph, and an unreadable graph is Gate 3's
+  //        finding, not this validator's. ------------------------------------
+  if (source === "workstream-plan") {
+    const extracted = extractExecutionGraph(epicBody);
+    if (extracted.present && extracted.ok) {
+      const phaseToHash = new Map<number, string>();
+      // (a) checklist markers: `- [ ] Phase N: … (dev spec: <hash>)`
+      let inChecklist = false;
+      for (const line of blankFencedLines(epicBody.split("\n"))) {
+        if (/^## Phase checklist\s*$/i.test(line)) {
+          inChecklist = true;
+          continue;
+        }
+        if (inChecklist && line.startsWith("## ")) inChecklist = false;
+        if (!inChecklist) continue;
+        const m = /^- \[.\] Phase (\d+)\b.*\(dev spec:\s*([a-z0-9]{3,12})\)/i.exec(line);
+        if (m && !phaseToHash.has(Number(m[1]))) phaseToHash.set(Number(m[1]), m[2].toLowerCase());
+      }
+      // (b) todo.md pointer lines — what RED emission writes for every phase.
+      const todoPath = stageSubject(layout, planBase, { kind: "todo" }).abs;
+      if (fs.exists(todoPath)) {
+        const visit = (items: ReturnType<typeof parseTodo>["items"]): void => {
+          for (const it of items) {
+            if (it.kind === "phase" && it.pointer !== null) {
+              const n = Number(it.label);
+              if (Number.isInteger(n) && !phaseToHash.has(n)) {
+                phaseToHash.set(n, it.pointer.toLowerCase());
+              }
+            }
+            visit(it.children);
+          }
+        };
+        visit(parseTodo(fs.readFile(todoPath)).items);
+      }
+      for (const [phase, needed] of blockedByFromGraph(extracted.graph, phaseToHash)) {
+        if (needed.length === 0) continue;
+        const hash = phaseToHash.get(phase)!;
+        const specFn = specByHash.get(hash);
+        if (!specFn) continue; // flagged by check 1 when it is a listed story
+        const specRel = `dev/${specFn}`;
+        const declared = readEngineState(fs.readFile(join(inputs.repoRoot, specRel)))
+          .blockedBy.flatMap((v) => splitHashes(v))
+          .map((h) => h.toLowerCase());
+        for (const dep of needed) {
+          if (declared.includes(dep)) continue;
+          const depPhase = [...phaseToHash.entries()].find(([, h]) => h === dep)?.[0];
+          issues.push({
+            severity: "error",
+            check: "graph-blocked-by",
+            message: `spec '${hash}' (phase ${phase}) lacks blocked_by '${dep}' (phase ${depPhase ?? "?"}) — the plan's Execution graph says phase ${phase} depends on it`,
+            location: specRel,
+          });
+        }
+      }
     }
   }
 
