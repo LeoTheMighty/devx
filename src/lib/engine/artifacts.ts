@@ -492,8 +492,6 @@ export const planAbs = (base: ResolvedBase): string =>
   absOf(base, { kind: "agent", stage: "plan" });
 export const todoAbs = (base: ResolvedBase): string =>
   absOf(base, { kind: "todo" });
-export const questionsAbs = (base: ResolvedBase): string =>
-  absOf(base, { kind: "questions" });
 export const evalsDirAbs = (base: ResolvedBase): string =>
   absOf(base, { kind: "evals-dir" });
 export const decisionsDirAbs = (base: ResolvedBase): string =>
