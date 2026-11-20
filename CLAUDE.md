@@ -389,8 +389,12 @@ Full contract: `.claude/commands/devx.md`.
   stage); `.claude/commands/devx-plan.md` — planning stages (PRD → Design →
   Plan → RED); `.claude/commands/devx-walk.md` — the health queue's resolver
   (one blocker per invocation: pick by rule → dig against code → propose →
-  route to the writer); `.claude/commands/devx-personalize.md` — the
-  preference interview.
+  route to the writer); `.claude/commands/devx-address.md` — the Stage:
+  Address body (triage every PR comment → research → one plan-mode batch →
+  act on approval); `.claude/commands/devx-revise.md` — the Stage: Revise
+  body (the backward path: name the lowest artifact → amend → record →
+  `devx revise` → dispose the emitted dev specs);
+  `.claude/commands/devx-personalize.md` — the preference interview.
 - `_devx/workstreams/<slug>/` — engine workstream artifacts (prd/agent.md,
   design/agent.md, plan/agent.md, evals/); spec files in `dev/` remain the lightweight
   index on top.

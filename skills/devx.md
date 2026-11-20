@@ -21,7 +21,6 @@ You are an autonomous development agent executing the full devx lifecycle for a 
 | Key | Core | What it changes here |
 | --- | :-: | --- |
 | `role` | ● | Which next-command rows surface; a `pm` never gets git or worktree mechanics |
-| `autonomy.action_mode` | ● | Whether a plan-level approval covers the low-risk batch in the address arm without item-level re-confirmation |
 | `review.above_threshold_shape` | ● | Which sanctioned Phase 4 shape runs on a substantial surface — never *whether* one runs |
 | `review.findings_destination` | ● | Where Phase 4 findings are announced; the record is written regardless |
 | `notify.channel` · `notify.threshold` | ● | Where run events get announced, and which ones |
@@ -72,7 +71,9 @@ Parse the user's message after `/devx`:
    hash overrides (`/devx <hash> retro`).
 3. **Explicit stage word** (`prd|design|plan|red|execute|verify|revise|
    address|retro|outcome|loop`) → that stage. `address <pr>` = Stage:
-   Address (that's where human review input on an open PR lands).
+   Address (that's where human review input on an open PR lands), body
+   `.claude/commands/devx-address.md`; `revise <hash>` = Stage: Revise, body
+   `.claude/commands/devx-revise.md`. Load the named file; follow it.
 4. **Free text** → intent classification (say your routing call out loud;
    `INTERVIEW.md` when genuinely ambiguous — no silent product decisions):
    - **Bug-shaped** ("broken", "500s", stack trace, "why does…") → file
@@ -440,7 +441,7 @@ If the config is missing required gate commands, append an item to `INTERVIEW.md
 3. **One commit per story / logical sub-task.** If the item was split into multiple logical commits, keep them atomic — don't bundle unrelated changes.
 4. **As-built plan sync.** If this spec belongs to a workstream, true THIS phase's row in the **worktree's** `plan/agent.md` (not main's — it holds peers' uncommitted work) in the same commit that lands it: check its Phase-checklist box, and correct the phase's Files-with-why / Verification-plan lines where the implementation genuinely departed from the plan. This is **bookkeeping — it reopens nothing**: no gate re-runs, no `plan_verified` reset, no `devx revise`. `devx workstream scope-check` fails lines outside this phase.
 
-   A departure that **re-scopes another phase or contradicts the design** is not bookkeeping — route it through `devx revise` so the cascade runs. The test: must anyone downstream re-read something? correcting "we used a Map, not a Set" is as-built; discovering that phase 4 no longer needs to exist is a revision.
+   A departure that **re-scopes another phase or contradicts the design** is not bookkeeping — route it through `/devx-revise` so the cascade runs. The test: must anyone downstream re-read something? correcting "we used a Map, not a Set" is as-built; discovering that phase 4 no longer needs to exist is a revision.
 
    Why now, not at retro: a plan trued weeks later is archaeology; the departure is fully known only as it lands.
 5. Do NOT push yet — continue to Phase 7.
@@ -654,23 +655,19 @@ Rules:
 
 Do NOT promote `develop → main`. That's `/devx-manage`'s job, gated by the promotion rules in [`MODES.md`](../../docs/MODES.md).
 
-## Stage: Address (`/devx address <pr>`)
+## Stage: Address (`/devx address <pr>`) · Stage: Revise (`/devx revise <hash>`)
 
-Consume human review input from a PR. Every comment gets a response —
-a reply, a commit, or a filed spec — never silent resolution.
+Both arms ship as their own skill bodies. Load the file named in Routing
+rule 3 and follow it — never improvise either from this summary.
 
-1. Fetch comments + review threads (`gh api repos/{owner}/{repo}/pulls/<n>/comments`
-   + reviews). Inline comments carry `path:line` anchors — map each to the
-   spec AC it bears on mechanically.
-2. Triage each comment: **in-scope** (fix on the PR branch now, reply with
-   what was done + the commit sha) / **out-of-scope** (file a debug/test
-   spec + backlog row, reply with the spec path) / **question** (answer in
-   a reply with file:line evidence).
-3. Re-run local CI after fixes; push; the PR updates in place.
-4. Append a status-log line: `address: <n> comments — <f> fixed, <s> filed,
-   <q> answered`.
-5. If the PR carried a hold, ask the reviewer to lift it (reply summarizing
-   dispositions); the merge tail re-checks via `check-hold`.
+- **Address** — consume human review input. Triage every comment before
+  acting, research the substantial ones, one plan-mode batch, act only on
+  approval, route any gated-artifact amendment to Revise, mark every reply.
+  Never merges.
+- **Revise** — a change landed on an artifact that already passed its gate.
+  Names the lowest artifact, amends it in present tense, writes the revision
+  record, runs `devx revise`, disposes the dev specs the plan already
+  emitted, prints the replay path.
 
 ## Stage: Loop (`/devx loop` — good night, have fun)
 
@@ -790,4 +787,5 @@ LEARN.md row format is byte-compatible with v1.
 ## Pairs with
 
 - **/devx-plan** — produces the artifacts this command consumes. Contract stability matters.
+- **/devx-address**, **/devx-revise** — the two bodies Routing rule 3 loads; also where Phase 6's re-scoping departures go.
 - **/devx-manage** — decides when parallel `/devx` agents should run, handles `develop → main` promotion, rebalances `DEV.md` priorities. Not invoked from here.

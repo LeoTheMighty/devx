@@ -1109,11 +1109,16 @@ describe("devx revise — post-revise verdict clearing", () => {
   });
 
   it("replay-path stdout shape is unchanged by verdict clearing", () => {
+    // Verdict clearing adds no output key — that is what this pins. The
+    // `emitted*` pair is the backward-path's emitted-spec report (A14), a
+    // deliberate addition with its own suite in engine-revise.test.ts.
     seedSpec({});
     expect(gatePrd().code).toBe(0);
     const { code, io } = revise("prd/agent.md");
     expect(code).toBe(0);
     expect(Object.keys(io.json() as Record<string, unknown>).sort()).toEqual([
+      "emitted",
+      "emitted_counts",
       "flags_cleared",
       "hash",
       "replay",

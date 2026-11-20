@@ -251,7 +251,9 @@ describe("cli303 — devx --help command listing", () => {
                                      (Phase 1).
         revise [options] <hash>      Apply the v2 cascade-reset table for a touched
                                      workstream artifact (prd/expectations → 4 flags;
-                                     design → 3; plan → 2) and print the replay path.
+                                     design → 3; plan → 2), print the replay path,
+                                     and report the dev specs the plan already
+                                     emitted (never edits them).
         split [options] <hash>       Split an in-progress spec: emit a follow-up spec
                                      + backlog row for the remaining work (mss101).
                                      merge-first (default): parent lands at reduced

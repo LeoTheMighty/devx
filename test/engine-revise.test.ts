@@ -3,6 +3,7 @@
 // (never forward), the replay path, refusal on unknown/foreign artifacts,
 // and the guarantee that the touched artifact itself is never edited.
 
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runRevise } from "../src/commands/revise.js";
@@ -12,9 +13,13 @@ import {
 } from "../src/lib/engine/frontmatter.js";
 import {
   CASCADE_TABLE,
+  EMITTED_DISPOSITIONS,
   KNOWN_ARTIFACTS,
   cascadeFor,
   computeRevise,
+  dispositionFor,
+  emittedCounts,
+  emittedSpecsFor,
   replayPath,
 } from "../src/lib/engine/revise.js";
 import {
@@ -482,5 +487,332 @@ describe("devx revise — CLI driver", () => {
     expect(code).toBe(0);
     expect(repo.read(SPEC_REL)).toBe(afterFirst);
     expect((io.json() as { flags_cleared: string[] }).flags_cleared).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Emitted dev specs (A14 mid-execution half)
+// ---------------------------------------------------------------------------
+
+describe("dispositionFor — status → what the backward path owes", () => {
+  it("maps the four live statuses", () => {
+    expect(dispositionFor("ready")).toBe("block");
+    expect(dispositionFor("in-progress")).toBe("halt");
+    expect(dispositionFor("done")).toBe("shipped");
+    expect(dispositionFor("blocked")).toBe("already-blocked");
+  });
+
+  it("is case- and whitespace-insensitive (frontmatter is hand-edited)", () => {
+    expect(dispositionFor(" Ready ")).toBe("block");
+    expect(dispositionFor("IN-PROGRESS")).toBe("halt");
+  });
+
+  it("reports an unrecognized or absent status rather than guessing", () => {
+    // `unknown` exists so a typo'd status surfaces in the report instead of
+    // defaulting to `shipped` (silently dropped) or `block` (a spurious edit
+    // proposal on a spec nobody can classify).
+    expect(dispositionFor(null)).toBe("unknown");
+    expect(dispositionFor("")).toBe("unknown");
+    expect(dispositionFor("reddy")).toBe("unknown");
+  });
+
+  it("every disposition is reachable from some status (no dead arm)", () => {
+    const reached = new Set(
+      ["ready", "in-progress", "done", "blocked", "nonsense"].map(dispositionFor),
+    );
+    expect([...reached].sort()).toEqual([...EMITTED_DISPOSITIONS].sort());
+  });
+});
+
+describe("emittedCounts", () => {
+  it("carries every key, zeros included (halt: 0 is the proceed signal)", () => {
+    expect(emittedCounts([])).toEqual({
+      block: 0,
+      halt: 0,
+      shipped: 0,
+      "already-blocked": 0,
+      unknown: 0,
+    });
+  });
+});
+
+describe("emittedSpecsFor — the plan's executable face", () => {
+  let r: EngineRepo;
+  beforeEach(() => {
+    r = makeEngineRepo();
+  });
+  afterEach(() => r.cleanup());
+
+  const fs = () => ({
+    exists: (p: string) => existsSync(p),
+    readdir: (p: string) => readdirSync(p),
+    readFile: (p: string) => readFileSync(p, "utf8"),
+  });
+
+  /** The two fields `resolveWorkstream()` returns, which is what the scan
+   *  matches a `plan:` pointer against. Spelled per-test so each case says
+   *  which SPELLING of the pointer it is exercising. */
+  const target = (workstreamRel: string, specRel = SPEC_REL) => ({
+    workstreamRel,
+    specRel,
+  });
+
+  function devSpec(
+    name: string,
+    fm: Record<string, string | number>,
+  ): void {
+    r.write(
+      `dev/${name}`,
+      [
+        "---",
+        ...Object.entries(fm).map(([k, v]) => `${k}: ${v}`),
+        "---",
+        "",
+        "## Status log",
+        "",
+      ].join("\n"),
+    );
+  }
+
+  it("returns [] when dev/ does not exist", () => {
+    expect(emittedSpecsFor(r.root, target(WS), fs())).toEqual([]);
+  });
+
+  it("collects only specs whose plan: points at THIS workstream", () => {
+    devSpec("dev-aaa111-2026-01-01T00:00-one.md", {
+      hash: "aaa111",
+      type: "dev",
+      status: "ready",
+      phase: 1,
+      plan: WS,
+    });
+    devSpec("dev-bbb222-2026-01-01T00:00-elsewhere.md", {
+      hash: "bbb222",
+      type: "dev",
+      status: "ready",
+      phase: 1,
+      plan: "_devx/workstreams/other-stream",
+    });
+    const got = emittedSpecsFor(r.root, target(WS), fs());
+    expect(got.map((s) => s.hash)).toEqual(["aaa111"]);
+  });
+
+  it("normalizes both sides of the pointer (`./x`, `x/`, `x` are one workstream)", () => {
+    // A raw === here reports an empty list, which reads exactly like
+    // "this revision reopens nothing" — the worst possible failure shape.
+    devSpec("dev-ccc333-2026-01-01T00:00-trailing.md", {
+      hash: "ccc333",
+      type: "dev",
+      status: "ready",
+      phase: 2,
+      plan: `./${WS}/`,
+    });
+    expect(emittedSpecsFor(r.root, target(`${WS}/`), fs()).map((s) => s.hash)).toEqual(["ccc333"]);
+  });
+
+  it("matches the PLAN-SPEC spelling of the pointer, not only the directory", () => {
+    // Measured 2026-11-20 in this repo: 40 dev specs spell `plan:` as the
+    // workstream directory and 100 spell it as the parent plan spec's path,
+    // with several workstreams carrying both. A directory-only matcher
+    // reported ZERO specs for the only workstream then executing — and zero
+    // is indistinguishable from "this revision reopens nothing".
+    devSpec("dev-aaa111-2026-01-01T00:00-by-spec-path.md", {
+      hash: "aaa111",
+      type: "dev",
+      status: "ready",
+      plan: SPEC_REL,
+    });
+    devSpec("dev-bbb222-2026-01-01T00:00-by-dir.md", {
+      hash: "bbb222",
+      type: "dev",
+      status: "ready",
+      plan: WS,
+    });
+    // One target, both spellings, one list.
+    expect(
+      emittedSpecsFor(r.root, target(WS), fs()).map((x) => x.hash),
+    ).toEqual(["aaa111", "bbb222"]);
+  });
+
+  it("still rejects another workstream's plan-spec path", () => {
+    // The widened matcher must not widen into a different workstream: a
+    // plan-spec path is unique, so accepting it is safe only if it is
+    // compared, not merely pattern-matched.
+    devSpec("dev-ccc333-2026-01-01T00:00-foreign.md", {
+      hash: "ccc333",
+      type: "dev",
+      status: "ready",
+      plan: "plan/plan-zzz999-2026-01-01T00:00-other.md",
+    });
+    expect(emittedSpecsFor(r.root, target(WS), fs())).toEqual([]);
+  });
+
+  it("the uwg shape: no phase: key, mixed statuses, all reported", () => {
+    // The real specs the empirical leg ran against carry a plan-spec pointer
+    // and NO `phase:`. Every one must still appear with its disposition —
+    // a phase-less spec is claimable exactly like a phased one.
+    for (const [hash, status] of [
+      ["uwg101", "done"],
+      ["uwg102", "in-progress"],
+      ["uwg103", "ready"],
+      ["uwgret", "ready"],
+    ] as const) {
+      devSpec(`dev-${hash}-2026-01-01T00:00-x.md`, {
+        hash,
+        type: "dev",
+        status,
+        plan: SPEC_REL,
+      });
+    }
+    const got = emittedSpecsFor(r.root, target(WS), fs());
+    expect(got).toHaveLength(4);
+    expect(got.every((x) => x.phase === null)).toBe(true);
+    expect(emittedCounts(got)).toEqual({
+      block: 2,
+      halt: 1,
+      shipped: 1,
+      "already-blocked": 0,
+      unknown: 0,
+    });
+  });
+
+  it("matches the root doc set under project-level (both sides normalize to '')", () => {
+    devSpec("dev-ddd444-2026-01-01T00:00-flat.md", {
+      hash: "ddd444",
+      type: "dev",
+      status: "ready",
+      phase: 1,
+      plan: ".",
+    });
+    expect(emittedSpecsFor(r.root, target("."), fs()).map((s) => s.hash)).toEqual(["ddd444"]);
+  });
+
+  it("orders by phase, phase-less last, hash as the stable tiebreak", () => {
+    const mk = (hash: string, phase: number | null) =>
+      devSpec(`dev-${hash}-2026-01-01T00:00-x.md`, {
+        hash,
+        type: "dev",
+        status: "ready",
+        ...(phase === null ? {} : { phase }),
+        plan: WS,
+      });
+    mk("zzz999", 1);
+    mk("aaa111", 1);
+    mk("mmm555", null);
+    mk("bbb222", 3);
+    expect(emittedSpecsFor(r.root, target(WS), fs()).map((s) => s.hash)).toEqual([
+      "aaa111",
+      "zzz999",
+      "bbb222",
+      "mmm555",
+    ]);
+  });
+
+  it("skips a spec with no plan: pointer, and files one with no phase", () => {
+    devSpec("dev-eee555-2026-01-01T00:00-orphan.md", {
+      hash: "eee555",
+      type: "dev",
+      status: "ready",
+    });
+    devSpec("dev-fff666-2026-01-01T00:00-direct.md", {
+      hash: "fff666",
+      type: "dev",
+      status: "ready",
+      plan: WS,
+    });
+    const got = emittedSpecsFor(r.root, target(WS), fs());
+    expect(got).toHaveLength(1);
+    expect(got[0]).toMatchObject({ hash: "fff666", phase: null, disposition: "block" });
+  });
+
+  it("ignores non-dev filenames in dev/", () => {
+    r.write("dev/README.md", "notes\n");
+    r.write("dev/dev-ggg777-2026-01-01T00:00-x.txt", "nope\n");
+    expect(emittedSpecsFor(r.root, target(WS), fs())).toEqual([]);
+  });
+});
+
+describe("devx revise — emitted dev specs in the report", () => {
+  function emit(hash: string, status: string, phase: number): void {
+    repo.write(
+      `dev/dev-${hash}-2026-01-01T00:00-phase.md`,
+      ["---", `hash: ${hash}`, "type: dev", `status: ${status}`, `phase: ${phase}`, `plan: ${WS}`, "---", ""].join("\n"),
+    );
+  }
+
+  it("lists every emitted spec with a disposition and the counts", () => {
+    seed();
+    emit("aaa111", "ready", 1);
+    emit("bbb222", "in-progress", 2);
+    emit("ccc333", "done", 3);
+    emit("ddd444", "blocked", 4);
+    const { code, io } = revise("design/agent.md");
+    expect(code).toBe(0);
+    const j = io.json() as {
+      emitted: Array<Record<string, unknown>>;
+      emitted_counts: Record<string, number>;
+    };
+    expect(j.emitted.map((s) => [s.hash, s.disposition])).toEqual([
+      ["aaa111", "block"],
+      ["bbb222", "halt"],
+      ["ccc333", "shipped"],
+      ["ddd444", "already-blocked"],
+    ]);
+    expect(j.emitted_counts).toEqual({
+      block: 1,
+      halt: 1,
+      shipped: 1,
+      "already-blocked": 1,
+      unknown: 0,
+    });
+    expect(j.emitted[0].spec).toBe("dev/dev-aaa111-2026-01-01T00:00-phase.md");
+  });
+
+  it("NEVER edits an emitted spec — report only", () => {
+    // The boundary the whole design rests on: an in-progress spec holds a
+    // claim lock and a live worktree (the dvxret resume-collision shape).
+    seed();
+    emit("aaa111", "ready", 1);
+    emit("bbb222", "in-progress", 2);
+    const before = [
+      repo.read("dev/dev-aaa111-2026-01-01T00:00-phase.md"),
+      repo.read("dev/dev-bbb222-2026-01-01T00:00-phase.md"),
+    ];
+    revise("prd/agent.md");
+    expect([
+      repo.read("dev/dev-aaa111-2026-01-01T00:00-phase.md"),
+      repo.read("dev/dev-bbb222-2026-01-01T00:00-phase.md"),
+    ]).toEqual(before);
+  });
+
+  it("warns on stderr about claimed and claimable specs, naming hashes", () => {
+    seed();
+    emit("aaa111", "ready", 1);
+    emit("bbb222", "in-progress", 2);
+    const { io } = revise("plan/agent.md");
+    expect(io.stderr()).toContain("1 emitted dev spec(s) are in-progress");
+    expect(io.stderr()).toContain("bbb222");
+    expect(io.stderr()).toContain("verify claim ownership");
+    expect(io.stderr()).toContain("1 emitted dev spec(s) are still ready");
+    expect(io.stderr()).toContain("aaa111");
+  });
+
+  it("stdout stays pure JSON when the warnings fire", () => {
+    // captureIo().json() reads the LAST stdout line; a warning written to
+    // stdout would shift it and silently break every scripted consumer.
+    seed();
+    emit("bbb222", "in-progress", 2);
+    const { io } = revise("plan/agent.md");
+    expect(io.stdout().trim().split("\n")).toHaveLength(1);
+    expect(() => io.json()).not.toThrow();
+  });
+
+  it("is silent and empty when the plan emitted nothing yet", () => {
+    seed();
+    const { io } = revise("design/agent.md");
+    const j = io.json() as { emitted: unknown[]; emitted_counts: Record<string, number> };
+    expect(j.emitted).toEqual([]);
+    expect(j.emitted_counts.halt).toBe(0);
+    expect(io.stderr()).toBe("");
   });
 });
