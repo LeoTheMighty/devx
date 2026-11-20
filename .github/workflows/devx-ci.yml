@@ -62,3 +62,23 @@ jobs:
       - name: Workstream plan scope check
         if: github.event_name == 'pull_request'
         run: node dist/cli.js workstream scope-check --diff "origin/${{ github.base_ref }}...HEAD"
+
+      # A16/D8 — the holistic review's mechanical half, as an ADVISORY check.
+      # The four gates each guard one artifact and nothing asks whether a
+      # workstream's frontmatter is still telling the truth: a green flag
+      # with no record behind it, a gated artifact rewritten since its
+      # report, a stage ahead of its gates. This surfaces those on the PR
+      # that causes them instead of at the next review.
+      #
+      # Advisory twice over, and deliberately: the command reads gate_status
+      # and never writes it, findings never change its exit code, and
+      # continue-on-error covers even a hard error. A review pass that can
+      # fail a build gets switched off the first time it is wrong.
+      #
+      # `--changed` asks "did this PR touch a doc set" inside the CLI, where
+      # it is tested, rather than in a shell path-match that would silently
+      # stop matching and turn the whole step into a green no-op.
+      - name: Workstream position (advisory)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: node dist/cli.js workstream position --changed "origin/${{ github.base_ref }}...HEAD"

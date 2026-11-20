@@ -13,22 +13,50 @@
 // Spec: dev/dev-v2e101-2026-07-05T13:01-engine-cli-primitives.md
 // Design: v2/02-engine.md §3, §8
 
+import { join } from "node:path";
 import type { Command } from "commander";
 
 import { attachPhase } from "../lib/help.js";
 import { type Exec, realExec } from "../lib/exec.js";
+import * as artifacts from "../lib/engine/artifacts.js";
+import type { EngineConfig } from "../lib/engine/config.js";
 import { loadEngineContext } from "../lib/engine/context.js";
+import {
+  GATE_KEYS,
+  type EngineState,
+  readEngineState,
+} from "../lib/engine/frontmatter.js";
+import { type GateGap, evaluateGatePrd } from "../lib/engine/gate-prd.js";
+import { nextForWorkstream } from "../lib/engine/next.js";
 import { baseBranchFrom } from "../lib/engine/outline.js";
 import { PlanScopeError, checkStoryPlanScope, storyFromBranch } from "../lib/engine/plan-scope.js";
-import { planAbs } from "../lib/engine/artifacts.js";
 import { emissionPlan } from "../lib/engine/plan-graph.js";
+import {
+  type FindingTally,
+  type GateEvidenceMap,
+  type PathProbe,
+  type PositionFinding,
+  type ReviewVerdict,
+  reconcileGates,
+  reviewVerdictFor,
+  tallyFindings,
+} from "../lib/engine/position.js";
+import {
+  gateCellFor,
+  newestDecisionReport,
+  renderGateSummary,
+} from "../lib/engine/render.js";
 import {
   type EngineFs,
   WorkstreamError,
   WorkstreamRefusal,
   createWorkstream,
+  planFilenameHash,
+  planSpecEntries,
+  planSpecWorkstreamRel,
   realEngineFs,
   resolveWorkstream,
+  workstreamSlugFor,
 } from "../lib/engine/workstream.js";
 
 export interface RunWorkstreamNewOpts {
@@ -265,7 +293,7 @@ export function runWorkstreamGraph(
     }
     throw e;
   }
-  const plan = planAbs(ws);
+  const plan = artifacts.planAbs(ws);
   if (!fs.exists(plan)) {
     err(`devx workstream graph: workstream '${ws.workstreamRel}' has no plan artifact yet — run the Plan stage first\n`);
     return 2;
@@ -287,6 +315,546 @@ export function runWorkstreamGraph(
     })}\n`,
   );
   return 0;
+}
+
+// ---------------------------------------------------------------------------
+// position (A16 — the review pass's mechanical half)
+// ---------------------------------------------------------------------------
+
+export interface RunPositionOpts {
+  out?: (s: string) => void;
+  err?: (s: string) => void;
+  projectPath?: string;
+  fs?: Partial<EngineFs>;
+  exec?: Exec;
+  /** YYYY-MM-DD; `devx next` row 2 branches on a due measure_by. */
+  today?: string;
+}
+
+/** One workstream as the review pass reads it. */
+interface PositionReport {
+  slug: string;
+  hash: string;
+  stage: string | null;
+  workstream: string;
+  gates: Record<string, string>;
+  gate_summary: string[];
+  next: { row: number; command: string | null; reason: string };
+  blockers: string[];
+  review: ReviewVerdict;
+  tally: FindingTally;
+  findings: PositionFinding[];
+}
+
+/**
+ * `changedAt` + `dirty` per path, memoized per run and injected through the
+ * same `Exec` seam every other command uses — so a repo with no git (or a
+ * path git has never seen) degrades to "unknown", and the staleness
+ * comparison is skipped rather than guessed.
+ *
+ * `--follow --diff-filter=AM` is the load-bearing part, not a flag
+ * preference. `AM` keeps only commits that added or modified the content, so
+ * a pure relocation is not a change; `--follow` tracks the content across
+ * that relocation, so a real edit made under the artifact's OLD name still
+ * counts. Without the pair, the folder-per-artifact migration (`design.md` →
+ * `design/agent.md`, PR #144) reports every workstream it touched as a
+ * rewritten artifact under a passed gate — four false BLOCKING findings in
+ * this repo alone, which is how a review surface loses its reader.
+ */
+function gitProbe(repoRoot: string, exec: Exec) {
+  const changedCache = new Map<string, number | null>();
+  const dirtyCache = new Map<string, boolean>();
+  const git = (args: string[]) => exec("git", args, { cwd: repoRoot });
+  return {
+    changedAt(rel: string): number | null {
+      const hit = changedCache.get(rel);
+      if (hit !== undefined) return hit;
+      const r = git([
+        "log",
+        "--follow",
+        "-1",
+        "--format=%ct",
+        "--diff-filter=AM",
+        "--",
+        rel,
+      ]);
+      const secs = r.exitCode === 0 ? Number.parseInt(r.stdout.trim(), 10) : Number.NaN;
+      const value = Number.isFinite(secs) ? secs : null;
+      changedCache.set(rel, value);
+      return value;
+    },
+    dirty(rel: string): boolean {
+      const hit = dirtyCache.get(rel);
+      if (hit !== undefined) return hit;
+      const r = git(["status", "--porcelain", "--", rel]);
+      const value = r.exitCode === 0 && r.stdout.trim() !== "";
+      dirtyCache.set(rel, value);
+      return value;
+    },
+  };
+}
+
+/** Probe a repo-relative path. Every probe routes through here so `rel` is
+ *  spelled once per path — the receipt prints it, and a receipt naming a path
+ *  the reader cannot `git log` is not a receipt. */
+function probeRel(
+  fs: EngineFs,
+  repoRoot: string,
+  rel: string,
+  git: ReturnType<typeof gitProbe>,
+  exists?: boolean,
+): PathProbe {
+  return {
+    rel,
+    exists: exists ?? fs.exists(join(repoRoot, ...rel.split("/"))),
+    changedAt: git.changedAt(rel),
+    dirty: git.dirty(rel),
+  };
+}
+
+function probeFor(
+  fs: EngineFs,
+  repoRoot: string,
+  base: artifacts.ResolvedBase,
+  kind: artifacts.ArtifactKind,
+  git: ReturnType<typeof gitProbe>,
+): PathProbe {
+  const subject = artifacts.stageSubject(base.layout, base, kind);
+  // `artifactExists`, not a bare `fs.exists`: under `project-level` the doc
+  // set sits beside devx's own PLAN.md on a case-insensitive filesystem.
+  return probeRel(
+    fs,
+    repoRoot,
+    subject.rel,
+    git,
+    artifacts.artifactExists(fs, base, kind),
+  );
+}
+
+/**
+ * Gate 4's subjects: the authored RED artifacts, one probe each — not the
+ * `evals/` directory.
+ *
+ * The directory is what the gate conceptually gates, and probing it is
+ * exactly wrong: `--follow` has no meaning for a directory, so every
+ * relocation of the doc set (the folder-per-artifact migration, `devx
+ * archive`) reads as "the evals changed" and reports a passed Gate 4 as
+ * stale. Per-file probes follow their own renames and give the real answer —
+ * which in this repo included a genuine finding (an eval authored four days
+ * AFTER the RED report that locked the gate) that the directory probe had
+ * buried under three false ones.
+ */
+function evalSubjects(
+  fs: EngineFs,
+  repoRoot: string,
+  base: artifacts.ResolvedBase,
+  git: ReturnType<typeof gitProbe>,
+): PathProbe[] {
+  const dirRel = artifacts.stageSubject(base.layout, base, { kind: "evals-dir" }).rel;
+  const dirAbs = artifacts.evalsDirAbs(base);
+  if (!fs.exists(dirAbs)) {
+    return [probeRel(fs, repoRoot, dirRel, git, false)];
+  }
+  let names: string[];
+  try {
+    names = [...fs.readdir(dirAbs)].filter((n) => artifacts.isAuthoredEvalEntry(n)).sort();
+  } catch {
+    return [probeRel(fs, repoRoot, dirRel, git, false)];
+  }
+  // No authored artifacts under a green Gate 4 is itself the finding, and
+  // `subject-missing` is the one that states it.
+  if (names.length === 0) return [probeRel(fs, repoRoot, dirRel, git, false)];
+  return names.map((n) => probeRel(fs, repoRoot, `${dirRel}/${n}`, git, true));
+}
+
+/** Newest `<date>-<mode>-verify.md` in a decisions listing, as a probe. The
+ *  dated name is chosen by `newestDecisionReport` — the same picker
+ *  `renderGateSummary` uses for its FAIL fix paths, so the report this
+ *  reconciles against is the report a reader is pointed at. */
+function verifyProbe(
+  decisionsRel: string,
+  decisionNames: readonly string[],
+  mode: "design" | "plan",
+  git: ReturnType<typeof gitProbe>,
+  fs: EngineFs,
+  repoRoot: string,
+): PathProbe {
+  const name = newestDecisionReport(decisionNames, mode);
+  if (name === null) {
+    return {
+      rel: `${decisionsRel}/<date>-${mode}-verify.md`,
+      exists: false,
+      changedAt: null,
+      dirty: false,
+    };
+  }
+  return probeRel(fs, repoRoot, `${decisionsRel}/${name}`, git);
+}
+
+function buildReport(args: {
+  repoRoot: string;
+  slug: string;
+  hash: string;
+  base: artifacts.ResolvedBase;
+  state: EngineState;
+  fs: EngineFs;
+  git: ReturnType<typeof gitProbe>;
+  today: string | null;
+  expectationsMin: number;
+}): PositionReport {
+  const { repoRoot, base, state, fs, git } = args;
+  // Repo-relative, through the resolver: `stageSubject` already prefixes the
+  // doc-set dir (and collapses it to nothing under `project-level`), so
+  // joining `workstreamRel` on by hand here would be a second spelling of a
+  // path the map already owns — and the one that gets it wrong in a flat repo.
+  const decisionsRel = artifacts.stageSubject(base.layout, base, {
+    kind: "decisions-dir",
+  }).rel;
+  const decisionsAbs = artifacts.decisionsDirAbs(base);
+  let decisionNames: readonly string[] = [];
+  if (fs.exists(decisionsAbs)) {
+    try {
+      decisionNames = fs.readdir(decisionsAbs);
+    } catch {
+      // Unreadable decisions/ ≡ no records: every evidence probe then reads
+      // as missing, which is the fail-loud direction for a review pass.
+    }
+  }
+  const probe = (kind: artifacts.ArtifactKind): PathProbe =>
+    probeFor(fs, repoRoot, base, kind, git);
+
+  const gates: GateEvidenceMap = {
+    // Gate 1 gates two artifacts and writes no report (see GateEvidence).
+    prd: {
+      subjects: [probe({ kind: "agent", stage: "prd" }), probe({ kind: "expectations" })],
+      evidence: null,
+      rerun: `devx gate prd ${args.hash}`,
+    },
+    design: {
+      subjects: [probe({ kind: "agent", stage: "design" })],
+      evidence: verifyProbe(decisionsRel, decisionNames, "design", git, fs, repoRoot),
+      rerun: `devx gate coverage ${args.hash}`,
+    },
+    plan: {
+      subjects: [probe({ kind: "agent", stage: "plan" })],
+      evidence: verifyProbe(decisionsRel, decisionNames, "plan", git, fs, repoRoot),
+      rerun: `devx gate coverage ${args.hash}`,
+    },
+    evals: {
+      subjects: evalSubjects(fs, repoRoot, base, git),
+      evidence: probe({ kind: "red-report" }),
+      rerun: `devx gate evals ${args.hash}`,
+    },
+  };
+
+  const findings = reconcileGates({
+    state,
+    gates,
+    prdRecheck: recheckGate1(fs, base, state, args.expectationsMin),
+  });
+  const next = nextForWorkstream(
+    args.hash,
+    state,
+    {
+      prd: artifacts.artifactExists(fs, base, { kind: "agent", stage: "prd" }),
+      expectations: artifacts.artifactExists(fs, base, { kind: "expectations" }),
+      design: artifacts.artifactExists(fs, base, { kind: "agent", stage: "design" }),
+      plan: artifacts.artifactExists(fs, base, { kind: "agent", stage: "plan" }),
+      evalsAuthored: evalsAuthoredIn(fs, base),
+    },
+    args.today,
+    base.layout,
+  );
+
+  const summary = renderGateSummary(state, {
+    hash: args.hash,
+    workstreamRel: base.workstreamRel,
+    layout: base.layout,
+    decisionNames,
+    evalsReportExists: artifacts.artifactExists(fs, base, { kind: "red-report" }),
+  }).split("\n");
+
+  return {
+    slug: args.slug,
+    hash: args.hash,
+    stage: state.stage,
+    workstream: base.workstreamRel,
+    gates: Object.fromEntries(GATE_KEYS.map((k) => [k, gateCellFor(state, k)])),
+    gate_summary: summary,
+    next,
+    blockers: state.blockedBy,
+    review: reviewVerdictFor(findings),
+    tally: tallyFindings(findings),
+    findings,
+  };
+}
+
+/**
+ * Gate 1, re-applied to the artifacts as they stand now.
+ *
+ * `evaluateGatePrd` is the gate's OWN evaluator, called directly rather than
+ * reimplemented: a review that re-derived "what Gate 1 requires" would be a
+ * second opinion drifting from the first, and the one answer worth having
+ * here is the gate's. It is pure, so asking writes nothing — which is the
+ * whole reason this check is available to a read-only pass at all. Returns
+ * null when either input is unreadable; a missing subject is already its own
+ * finding, and a half-read PRD must not read as a regression.
+ */
+function recheckGate1(
+  fs: EngineFs,
+  base: artifacts.ResolvedBase,
+  state: EngineState,
+  expectationsMin: number,
+): { verdict: "PASS" | "FAIL"; gaps: readonly GateGap[] } | null {
+  const prd = artifacts.stageSubject(base.layout, base, { kind: "agent", stage: "prd" });
+  const exp = artifacts.stageSubject(base.layout, base, { kind: "expectations" });
+  if (
+    !artifacts.artifactExists(fs, base, { kind: "agent", stage: "prd" }) ||
+    !artifacts.artifactExists(fs, base, { kind: "expectations" })
+  ) {
+    return null;
+  }
+  try {
+    const result = evaluateGatePrd({
+      prd: fs.readFile(prd.abs),
+      expectations: fs.readFile(exp.abs),
+      // `blocked_by` is reported on its own (`blocked-while-validated`), so
+      // it is passed empty here: folding it in would make every blocked
+      // workstream also report a Gate-1 regression for the same one fact.
+      blockedBy: [],
+      expectationsMin,
+      prdRel: prd.rel,
+      expectationsRel: exp.rel,
+    });
+    return { verdict: result.verdict, gaps: result.gaps };
+  } catch {
+    return null;
+  }
+}
+
+/** Does evals/ hold at least one authored RED artifact? Same predicate
+ *  `devx next`'s gatherer uses (row 10 vs row 11). */
+function evalsAuthoredIn(fs: EngineFs, base: artifacts.ResolvedBase): boolean {
+  const dir = artifacts.evalsDirAbs(base);
+  if (!fs.exists(dir)) return false;
+  try {
+    return [...fs.readdir(dir)].some((n) => artifacts.isAuthoredEvalEntry(n));
+  } catch {
+    return false;
+  }
+}
+
+function renderReport(r: PositionReport): string {
+  const lines = [
+    `${r.slug} (${r.hash})  stage: ${r.stage ?? "none"}  review: ${r.review}` +
+      ` (${r.tally.blocking} blocking · ${r.tally.advisory} advisory)`,
+    ...r.gate_summary.map((l) => `  ${l}`),
+    `  next: ${r.next.command ?? "(nothing)"} — ${r.next.reason}`,
+  ];
+  if (r.blockers.length > 0) lines.push(`  blocked_by: ${r.blockers.join(", ")}`);
+  for (const f of r.findings) {
+    lines.push(`  [${f.severity === "blocking" ? "BLOCKING" : "advisory"}] ${f.check}: ${f.message}`);
+    lines.push(`      receipt: ${f.receipt}`);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * `devx workstream position [hash] [--json] [--changed <range>]`
+ *
+ * Where a workstream stands, and every place its frontmatter disagrees with
+ * the evidence on disk. **Reads `gate_status`; never writes it** — advisory
+ * by construction, so findings never change the exit code
+ * (`test/review-never-writes-gates.test.ts` pins both halves). Exit 2 only
+ * when the question cannot be answered: no config, or an unresolvable hash.
+ *
+ * `--changed <range>` narrows to the doc sets a diff actually touches, which
+ * is what the advisory CI job passes. The decision lives here rather than in
+ * workflow yaml for the usual reason: a path predicate in a shell one-liner
+ * is untestable, and one that silently matches nothing turns the whole job
+ * into a no-op that still reports success.
+ */
+export function runPosition(
+  args: string[],
+  flags: { json?: boolean; changed?: string },
+  opts: RunPositionOpts = {},
+): number {
+  const out = opts.out ?? ((s) => process.stdout.write(s));
+  const err = opts.err ?? ((s) => process.stderr.write(s));
+  const fs: EngineFs = { ...realEngineFs, ...(opts.fs ?? {}) };
+  const exec = opts.exec ?? realExec;
+
+  if (args.length > 1) {
+    err("usage: devx workstream position [hash] [--json] [--changed <range>]\n");
+    return 2;
+  }
+  const ctx = loadEngineContext(opts.projectPath);
+  if (!ctx.ok) {
+    err(`devx workstream position: ${ctx.error}\n`);
+    return 2;
+  }
+  const { repoRoot, engine } = ctx.ctx;
+  const git = gitProbe(repoRoot, exec);
+  const today = opts.today ?? null;
+
+  let changedPaths: string[] | null = null;
+  if (flags.changed !== undefined) {
+    const r = exec("git", ["diff", "--name-only", flags.changed], { cwd: repoRoot });
+    if (r.exitCode !== 0) {
+      err(
+        `devx workstream position: cannot diff '${flags.changed}': ${r.stderr.trim()}\n`,
+      );
+      return 2;
+    }
+    changedPaths = r.stdout.split("\n").map((l) => l.trim()).filter((l) => l !== "");
+  }
+
+  const reports: PositionReport[] = [];
+  // Lowercased on both sides: `planFilenameHash` lowercases its fallback and
+  // frontmatter carries whatever was typed, so a hash given in caps would
+  // match nothing and exit 2 — a hard error on a perfectly valid hash.
+  const asked = args.length === 1 ? args[0].trim().toLowerCase() : null;
+  if (asked !== null && changedPaths !== null) {
+    // Said out loud rather than silently ignored: an explicit hash is an
+    // explicit request, and a flag that quietly does nothing is worse than
+    // one that refuses.
+    err(
+      "devx workstream position: --changed is ignored when a hash is given — reviewing that workstream regardless of the diff\n",
+    );
+  }
+
+  for (const entry of enginePlanSpecs(fs, repoRoot, engine)) {
+    if (asked !== null && entry.hash.toLowerCase() !== asked) continue;
+    if (asked === null) {
+      // No hash: the same active set `devx status` renders — a review of a
+      // retired workstream is a question you ask by name.
+      const active = entry.state.stage !== "done" && entry.state.stage !== "retired";
+      const outcomePending =
+        entry.state.stage === "done" && entry.state.outcome.status === "pending";
+      if (!active && !outcomePending) continue;
+      if (changedPaths !== null && !touchesDocSet(changedPaths, entry, engine)) {
+        continue;
+      }
+    }
+    reports.push(
+      buildReport({
+        repoRoot,
+        slug: entry.slug,
+        hash: entry.hash,
+        base: entry.base,
+        state: entry.state,
+        fs,
+        git,
+        today,
+        expectationsMin: engine.expectationsMin,
+      }),
+    );
+  }
+
+  if (asked !== null && reports.length === 0) {
+    err(
+      `devx workstream position: no engine-managed plan spec for hash '${asked}' — run \`devx status\` for the live ones\n`,
+    );
+    return 2;
+  }
+
+  const tally = reports.reduce(
+    (acc, r) => ({
+      blocking: acc.blocking + r.tally.blocking,
+      advisory: acc.advisory + r.tally.advisory,
+    }),
+    { blocking: 0, advisory: 0 },
+  );
+  const review = reviewVerdictFor(reports.flatMap((r) => r.findings));
+
+  if (flags.json === true) {
+    out(`${JSON.stringify({ review, tally, workstreams: reports })}\n`);
+    return 0;
+  }
+  if (reports.length === 0) {
+    out(
+      changedPaths !== null
+        ? `no workstream artifacts in '${flags.changed}' — nothing to reconcile\n`
+        : "no active workstreams\n",
+    );
+    return 0;
+  }
+  out(`${reports.map(renderReport).join("\n\n")}\n`);
+  return 0;
+}
+
+/** Does a changed-path list touch this doc set? Under `workstream` that is a
+ *  prefix test on the workstream dir. Under `project-level` the doc set IS
+ *  the repo root, so a prefix test would match every path in the repo —
+ *  there the question is whether a changed path IS one of the doc set's own
+ *  artifacts.
+ *
+ *  Either way the plan spec counts. A PR whose whole diff is one flipped
+ *  gate flag touches no artifact at all, and that is precisely the diff this
+ *  pass most wants to see. */
+function touchesDocSet(
+  changed: readonly string[],
+  entry: PlanSpecEntry,
+  engine: { docsLayout: artifacts.DocsLayout },
+): boolean {
+  const normalized = changed.map((p) => artifacts.normalizeArtifactPath(p));
+  const specRel = artifacts.normalizeArtifactPath(entry.specRel);
+  if (normalized.includes(specRel)) return true;
+  const base = entry.base;
+  if (engine.docsLayout !== "project-level") {
+    const prefix = `${base.workstreamRel}/`;
+    return normalized.some((p) => p.startsWith(prefix));
+  }
+  const owned = new Set(
+    artifacts.ALL_ARTIFACT_KINDS.map((k) =>
+      artifacts.normalizeArtifactPath(artifacts.artifactRel(base.layout, k)),
+    ),
+  );
+  return normalized.some((p) => {
+    if (owned.has(p)) return true;
+    // A dated record under one of the doc set's directories counts too.
+    return [...owned].some((o) => !o.endsWith(".md") && p.startsWith(`${o}/`));
+  });
+}
+
+/** Every engine-managed plan spec, with its resolved doc-set base. The same
+ *  scan `devx status` runs — identity derives from the FILE, never a hash
+ *  round-trip, so the two surfaces cannot disagree about one spec. */
+interface PlanSpecEntry {
+  slug: string;
+  hash: string;
+  state: EngineState;
+  base: artifacts.ResolvedBase;
+  /** Repo-relative plan-spec path. The spec IS the state this pass
+   *  reconciles, so a PR that edits nothing but a gate flag must still
+   *  count as touching the doc set. */
+  specRel: string;
+}
+
+function enginePlanSpecs(
+  fs: EngineFs,
+  repoRoot: string,
+  engine: EngineConfig,
+): PlanSpecEntry[] {
+  const out: PlanSpecEntry[] = [];
+  for (const { name, state } of planSpecEntries(fs, repoRoot, undefined)) {
+    // Only engine-managed specs participate; a legacy plan spec has no stage
+    // and PLAN.md is its surface.
+    if (state.stage === null) continue;
+    const hash = state.hash ?? planFilenameHash(name);
+    if (hash === null) continue;
+    const wsRel = planSpecWorkstreamRel(name, state.workstream, engine);
+    if (wsRel === null) continue;
+    if (!fs.exists(join(repoRoot, ...wsRel.split("/")))) continue;
+    out.push({
+      slug: workstreamSlugFor(name, wsRel, engine) ?? wsRel,
+      hash,
+      state,
+      base: { repoRoot, workstreamRel: wsRel, layout: engine.docsLayout },
+      specRel: `plan/${name}`,
+    });
+  }
+  return out;
 }
 
 export function register(program: Command): void {
@@ -321,6 +889,22 @@ export function register(program: Command): void {
     .argument("<hash>", "plan-spec hash")
     .action((hash: string) => {
       const code = runWorkstreamGraph([hash]);
+      if (code !== 0) process.exit(code);
+    });
+
+  sub
+    .command("position")
+    .description(
+      "Where a workstream stands (stage, verdict-aware gates, next command, blockers) plus every place its frontmatter disagrees with the evidence on disk. Advisory: reads gate_status, never writes it, and findings never change the exit code.",
+    )
+    .argument("[hash]", "one workstream (default: every active one, as `devx status` scopes them)")
+    .option("--json", "machine-readable report — what /devx-review writes review.md from")
+    .option("--changed <range>", "only doc sets a git diff range touches (the advisory CI job's form)")
+    .action((hash: string | undefined, cmdOpts: { json?: boolean; changed?: string }) => {
+      const code = runPosition(hash === undefined ? [] : [hash], {
+        json: cmdOpts.json,
+        changed: cmdOpts.changed,
+      });
       if (code !== 0) process.exit(code);
     });
 
