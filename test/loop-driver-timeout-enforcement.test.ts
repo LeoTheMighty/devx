@@ -20,14 +20,33 @@
 //      interrupted; before adoption it would have run to completion in ~1s
 //      and reported a false PASS, which `it.fails` scores as a FAILURE.
 //
-// A word on the 100ms, and on why the number is small rather than close: an
-// `it.fails` case inverts the usual flake direction — it goes red if the body
-// SUCCEEDS, so headroom means a SHORTER cap, not a longer one. The item's
-// claim alone does `git worktree add` plus a push against a real bare origin,
-// which no machine finishes in 100ms; the body measures ~1.2s here and CI is
-// not 12x this box. The margin is structural, not a race with the clock.
+// WHY THE OVERRUN IS CAUSED, NOT HOPED FOR (2026-11-20 CI flake). This
+// file used to rest the cap case on "no machine finishes this in 100ms". That
+// was wrong twice over, and it.fails went red on ubuntu CI about half the time:
+//
+//   * vitest 2.1.9's withTimeout races `fn()` against a timer it arms only
+//     after `fn()` RETURNS — i.e. at the body's first `await`. The fixture
+//     build is not inside the cap at all.
+//   * A timer can only fire in a timers phase, and a timers phase only runs
+//     while runLoop is parked on an async child. On node 20 / Linux, measured
+//     after the cap is armed: last timers phase at 70-92ms, runLoop resolved
+//     at 91-131ms. The remainder is the post-merge bookkeeping on the sync
+//     seam (`worktree remove`, then `pull --ff-only` and the backlog flips
+//     under the lock), which runs to `merged` without yielding. So a 100ms cap fired only when the runner
+//     happened to be slow enough. (The ~1.2s this file quoted was a macOS
+//     wall-clock with the fixture included.)
+//
+// The fix makes the deadline pass BY CONSTRUCTION: the body yields once so the
+// cap is armed first, and the scripted worker then HOLDS THE THREAD past the
+// cap. It must block, not sleep — an awaited sleep would hand vitest the
+// timers phase itself and the row would pass with the sync seam too. After the
+// worker, the remaining per-iteration git traffic either yields (async seam:
+// the overdue timer fires on its first child, every time) or it does not
+// (`realExec`: zero timers phases, measured, so runLoop reaches `merged` and
+// it.fails scores the false PASS). The clock no longer decides which.
 
 import { rmSync } from "node:fs";
+import { performance } from "node:perf_hooks";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runLoop } from "../src/lib/loop/driver.js";
@@ -57,14 +76,35 @@ afterEach(async () => {
   fixture = null;
 });
 
-function mergedItemOpts(fx: Fixture, signal: AbortSignal) {
-  const { worker } = scriptedWorker([
+/** Holds the thread for `ms` WITHOUT giving the event loop a turn — no timer
+ *  can fire inside it, whatever the seam. Atomics.wait rather than a spin so
+ *  it costs no CPU on a shared runner; looped because only the deadline, not
+ *  one wait's return, is the contract. */
+function blockThreadFor(ms: number): void {
+  const cell = new Int32Array(new SharedArrayBuffer(4));
+  const until = performance.now() + ms;
+  for (let left = ms; left > 0; left = until - performance.now()) {
+    Atomics.wait(cell, 0, 0, left);
+  }
+}
+
+/** `workerBlocksMs` > 0 makes the worker step block for that long: every
+ *  timer armed before it is overdue when the post-worker git traffic starts. */
+function mergedItemOpts(fx: Fixture, signal: AbortSignal, workerBlocksMs = 0) {
+  const { worker: scripted } = scriptedWorker([
     {
       kind: "report",
       files: { "a.txt": "a" },
       report: { summary: "did the thing", key_changes_made: ["a"], acs_met: true },
     },
   ]);
+  const worker: typeof scripted =
+    workerBlocksMs > 0
+      ? (prompt, opts) => {
+          blockThreadFor(workerBlocksMs);
+          return scripted(prompt, opts);
+        }
+      : scripted;
   return {
     repoRoot: fx.repoRoot,
     merged: MERGED,
@@ -85,7 +125,9 @@ describe("a loop-driver test's declared timeout is enforceable (debug-5e1a77 AC 
       ticks++;
     }, 20);
     try {
-      const r = await runLoop(mergedItemOpts(fixture, stop.signal));
+      // Same construction as the cap case: the interval is overdue before the
+      // post-worker git starts, so one yield there is one tick, guaranteed.
+      const r = await runLoop(mergedItemOpts(fixture, stop.signal, 60));
       expect(r.summary!.items[0].outcome).toBe("merged");
     } finally {
       clearInterval(timer);
@@ -96,17 +138,23 @@ describe("a loop-driver test's declared timeout is enforceable (debug-5e1a77 AC 
     expect(ticks).toBeGreaterThan(0);
   });
 
-  // The cap FIRES: without it, this body runs ~1.2s to a clean `merged` and
+  // The cap FIRES: without it, this body runs to a clean `merged` and
   // `it.fails` turns that success into a red test. Flip the seam back to
   // `realExec` in driver.ts and this is the row that goes red.
+  const CAP_MS = 100;
   it.fails(
     "a runLoop that overruns a 100ms cap is INTERRUPTED, not silently passed",
     async () => {
+      // Return to withTimeout now, so the cap is armed before the worker.
+      await Promise.resolve();
       fixture = makeFixture([{ hash: "cap001" }]);
       stop = new AbortController();
-      await runLoop(mergedItemOpts(fixture, stop.signal));
+      // `.catch`: a runLoop that THROWS must not read as "interrupted" — it.fails
+      // would score any error green. Swallowed, it completes the body and goes
+      // red; only the cap can pass this row.
+      await runLoop(mergedItemOpts(fixture, stop.signal, 3 * CAP_MS)).catch(() => {});
     },
-    100,
+    CAP_MS,
   );
 
   it("the same scenario passes comfortably under a cap that fits it", async () => {
