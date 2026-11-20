@@ -45,6 +45,22 @@
 // tree is invisible to the comparison — so a dirty gated subject is reported
 // on its own (`uncommitted-subject`) rather than silently passing.
 //
+// WHAT THIS CANNOT SEE, stated so nothing over-trusts it. Every check below
+// looks for state claiming MORE than the evidence supports: a flag over a
+// missing record, a stage ahead of its gates. The mirror-image defect — a
+// gate whose own predicate is WRONGER than its contract, so it withholds
+// relief it should grant — is structurally invisible here, because it shows
+// up as a visible CONCERNS or FAIL rather than a false green. A real example
+// landed the same week this shipped: `shippedPhases()` matched a dev spec's
+// `plan:` pointer against the workstream directory while most specs spell it
+// as the parent plan spec's path, so Gate 4's shipped-phase relief never
+// fired. Reconciliation audits the recorded state, not the gates' internals.
+// What it does do is put the symptom on the page — an unexplained CONCERNS on
+// a gate that should have had relief — which is why `/devx-review`'s L1 lens
+// is told to read the report behind every persisted CONCERNS. The class is
+// otherwise caught by the mutation benchmark (`test/gate-mutations.test.ts`)
+// and by running against a real repo rather than a fixture.
+//
 // Row A16/B13/C13 of docs/updates/8am-harness-gap-analysis.md.
 
 import type { GateGap } from "./gate-prd.js";

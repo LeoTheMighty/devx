@@ -107,6 +107,16 @@ check in the owning skill body, not here.
 - Gate 1 writes **no** report. `devx workstream position` re-runs its pure
   evaluator instead and reports `gate-1-regression` when today's artifacts
   no longer pass. Say so; do not hunt for a report that never existed.
+- **Read the report behind every persisted `CONCERNS`** and confirm the
+  concern is still the real one. This is the lens's own blind spot, covered
+  deliberately: Position finds state that claims MORE than its evidence
+  supports, so a gate whose predicate is *stricter* than its contract — one
+  that withholds relief it should grant — is invisible to it. It surfaces as
+  a CONCERNS nobody can explain. A real one: `shippedPhases()` matched a dev
+  spec's `plan:` pointer against the workstream directory while most specs
+  spell it as the parent plan spec's path, so Gate 4's shipped-phase relief
+  never fired at all. An unexplainable CONCERNS is a finding about the gate,
+  not about the workstream — route it to `DEBUG.md`, not to `devx revise`.
 - Expectations are locked after Gate 1: any later change to the doc set's
   `expectations.md` wants a `<date>-expectation-change.md` record.
 - Every cascade has a `<date>-revision-*.md` or `-pr-resolution-*.md`.
@@ -144,6 +154,16 @@ Build an ID-keyed inventory of every `G-`/`UC-`/`CAP-`/`FR-` (the PRD),
   plan phase, eval, or changed file that traces to no requirement. This is
   how a change that does more than the PRD asked for gets caught — and it
   is the half a forward-only coverage gate cannot see.
+- **A requirement the PRD itself parks or declares inert is not a gap.**
+  Gate 1 requires coverage of `G-` goals only, so `CAP-`/`FR-` orphans are
+  this lens's to find — and the first real workstream it ran on had three,
+  all legitimate: two described a seam shipped deliberately inert (no
+  observable behavior, so no expectation can cover it) and one was a
+  timeboxed spike the PRD explicitly parked as a separate story. Each is
+  **advisory with the PRD's own words as the receipt**, and belongs in
+  Unmapped work rather than the Findings table. Treating them as gaps would
+  have made the lens wrong three times out of three on its first outing,
+  which is how a reviewer learns to stop reading the RTM.
 - **EARS testability:** an expectation with no measurable response or no
   trigger is an untestable-criterion finding, whatever its priority.
 - Emit the RTM table and both coverage percentages (overall, P0).
@@ -195,6 +215,19 @@ Write the doc set's `review.md` from `_devx/templates/engine/review.md`.
 **Reconcile it in place**: re-read it, then overwrite it whole with the
 current state. Never append. A finding that belongs stays only because this
 run earned it again — the file is a worklist, not a log.
+
+**Fill each section by its `##` heading, never by replacing a table
+separator.** The template's two separator rows are deliberately written with
+different padding so neither is a prefix of the other, but the rule is the
+anchor, not the padding: a replace keyed on `|---|---|---|---|---|` matched
+inside the eight-column Findings separator on the first real run and dropped
+the whole RTM into the Findings table.
+
+**Say what a CONCERNS gate means, so Position does not read as a
+contradiction.** `devx next` reports "all four gates passed" for a workstream
+whose gate cells say `design CONCERNS · plan CONCERNS`, and both are correct:
+CONCERNS advances with the concern recorded (D-9). Write it as *advanced with
+concerns*, and name where each concern is recorded.
 
 The verdict is deterministic and computed, not chosen:
 
