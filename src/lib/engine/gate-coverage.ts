@@ -17,6 +17,10 @@
 //                          a runnable artifact path)
 //   - report writing      (decisions/<date>-<mode>-verify.md via the
 //                          shared verdict module, extras section included)
+//   - execution graph     (plan mode only, harness-s5: the plan's optional
+//                          `## Execution graph` is checked by plan-graph.ts
+//                          and folded in via `applyGraphFindings` — a `fail`
+//                          finding is a FAIL, a `concern` is CONCERNS at most)
 //
 // Table JSON shape (authored by the subagent):
 //
@@ -46,6 +50,7 @@ import {
   type Verdict,
   renderVerdictBlock,
 } from "./verdict.js";
+import { type GraphCheck, effectiveParallelSafe } from "./plan-graph.js";
 
 export type CoverageMode = "design" | "plan";
 export type TriState = "covered" | "partial" | "missing";
@@ -328,6 +333,24 @@ export function computeCoverageVerdict(
   return { verdict, reasons, keyedRows, extraRows, missingRowIds, duplicateRowIds };
 }
 
+/**
+ * Fold the plan's Execution graph findings into a plan-mode computation
+ * (harness-s5). Pure and additive: coverage rows are untouched, the
+ * verdict only ever moves toward FAIL, and a plan with no graph section is
+ * a no-op. Design mode never calls this.
+ */
+export function applyGraphFindings(
+  c: CoverageComputation,
+  check: GraphCheck,
+): CoverageComputation {
+  if (!check.present || check.findings.length === 0) return c;
+  const reasons = [...c.reasons, ...check.findings.map((f) => `execution graph: ${f.message}`)];
+  let verdict = c.verdict;
+  if (check.failed) verdict = "FAIL";
+  else if (verdict === "PASS") verdict = "CONCERNS";
+  return { ...c, verdict, reasons };
+}
+
 // ---------------------------------------------------------------------------
 // Report rendering — decisions/<date>-<mode>-verify.md
 // ---------------------------------------------------------------------------
@@ -359,6 +382,8 @@ export function renderVerifyReport(args: {
     planRel: string;
     expectationsRel: string;
   };
+  /** Plan mode only (harness-s5). Omitted / null in design mode. */
+  graph?: GraphCheck | null;
 }): string {
   const { mode, computation: c, subjects } = args;
   const source =
@@ -413,6 +438,41 @@ export function renderVerifyReport(args: {
     lines.push("- none");
   } else {
     lines.push(...extraLines);
+  }
+  // ── Plan-mode-only section (harness-s5). ────────────────────────────
+  // SEAM: design-mode additions (the advisory hygiene lens, Stream 4 of
+  // docs/updates/8am-harness-gap-analysis.md) belong in their own block,
+  // gated on `mode === "design"`, not inside this one.
+  if (mode === "plan" && args.graph) {
+    lines.push("");
+    lines.push("## Execution graph");
+    lines.push("");
+    const g = args.graph;
+    if (!g.present) {
+      lines.push("- none declared — the plan is serial-only; phases emit in checklist order.");
+    } else if (g.graph === null) {
+      lines.push("- declared but unreadable (see Verdict detail).");
+    } else {
+      lines.push("| Phase | Depends on | Parallel-safe | Changes |");
+      lines.push("|---|---|---|---|");
+      for (const p of [...g.graph.phases].sort((a, b) => a.id - b.id)) {
+        const touched = [...(g.files.get(p.id) ?? []), ...p.touches];
+        lines.push(
+          `| ${p.id} | ${p.dependsOn.length ? p.dependsOn.join(", ") : "—"} | ${effectiveParallelSafe(p) ? "yes" : "no"} | ${mdCell(touched.join(", ") || "—")} |`,
+        );
+      }
+      if (g.graph.waivers.length > 0) {
+        lines.push("");
+        for (const w of g.graph.waivers) {
+          lines.push(
+            `- waiver: phases ${w.phases.join(", ")}${w.paths.length ? ` on ${w.paths.join(", ")}` : ""} — ${w.approver || "(no approver)"}: ${w.reason || "(no reason)"}`,
+          );
+        }
+      }
+    }
+    for (const f of g.findings) {
+      lines.push(`- ${f.severity === "fail" ? "❌" : "⚠️"} ${f.message}`);
+    }
   }
   lines.push("");
   lines.push("## Verdict detail");
