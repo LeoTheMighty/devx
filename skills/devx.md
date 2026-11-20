@@ -92,7 +92,7 @@ Parse the user's message after `/devx`:
 **Every arm is its own body**, beside this file (`.claude/commands/`, or
 `~/.claude/commands/` under `--global`): the Execute arm is
 `devx-execute.md`; each `Stage:` below names its file. Load the body a route
-lands on and follow it — never improvise an arm from its pointer here.
+lands on and follow it — never improvise an arm from a pointer or a summary.
 
 Drift reported by `devx next` (backlog↔frontmatter mismatch) is surfaced to
 the user as a defect, never silently fixed.

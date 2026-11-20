@@ -107,7 +107,7 @@ function parseSpec(absPath: string): SpecMeta {
 
   // The mandate: a status-log line MUST contain `phase 4:` (case-sensitive,
   // colon-suffixed — matches the canonical zero-issue and non-zero forms in
-  // .claude/commands/devx.md Phase 4 step 6). The check is on the status-log
+  // .claude/commands/devx-execute.md Phase 4 step 6). The check is on the status-log
   // body only; a `phase 4:` token elsewhere in the spec body (goal, ACs)
   // does not count.
   const hasPhase4Line = /^- .*\bphase 4:/m.test(statusLogBody);
@@ -159,7 +159,7 @@ describe("Phase 4 status-log discipline (dvx103)", () => {
           `Phase 4 status-log discipline violated: ${violations.length} spec(s) missing the mandatory \`phase 4:\` line.`,
           "",
           "Each non-retro non-grandfathered dev spec that has reached the ship stage must include a `phase 4:` line",
-          "in its `## Status log` section (see `.claude/commands/devx.md` Phase 4 step 6 for the canonical",
+          "in its `## Status log` section (see `.claude/commands/devx-execute.md` Phase 4 step 6 for the canonical",
           "zero-issue + non-zero forms). Ship stage = `status: done`, `merged via PR`, or a `phase 5:`/`phase 7:`",
           "line — the last two land on the feature branch, which is why this can now fail your PR rather than main.",
           "",
