@@ -88,6 +88,40 @@ export interface FindingTally {
   advisory: number;
 }
 
+/**
+ * Report rank per check. Lower leads.
+ *
+ * The premature-closure family goes first because it is the class a
+ * frontmatter-as-state engine most needs told: a gate flag standing over a
+ * record that is missing, stale, or over an artifact that is gone. Everything
+ * downstream believes that boolean, so a reader must meet it before a
+ * verdict-persistence note about a migration.
+ *
+ * Ranking rather than sorting by severity alone: `blocking` is a two-value
+ * field and half a dozen checks share it, so severity cannot say which
+ * blocking finding a reader should see first. Unlisted checks rank last, in
+ * the order the reconciler produced them.
+ */
+const CHECK_RANK: Record<string, number> = {
+  "premature-closure": 0,
+  "subject-missing": 1,
+  "stale-evidence": 2,
+  "gate-1-regression": 3,
+  "verdict-disagrees": 4,
+  "illegal-transition": 5,
+  "stage-ahead-of-gates": 6,
+  "blocked-while-validated": 7,
+};
+
+/** Stable sort by rank — gate order is preserved inside each rank, so two
+ *  runs over the same inputs still produce byte-identical output. */
+function byReportRank(findings: PositionFinding[]): PositionFinding[] {
+  return findings
+    .map((f, i) => ({ f, i, rank: CHECK_RANK[f.check] ?? Number.MAX_SAFE_INTEGER }))
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .map((e) => e.f);
+}
+
 export function tallyFindings(findings: readonly PositionFinding[]): FindingTally {
   return {
     blocking: findings.filter((f) => f.severity === "blocking").length,
@@ -177,11 +211,15 @@ export interface ReconcileInputs {
 
 /** Stages at or past which every gate must be green. `executing` is the stage
  *  Gate 4 itself sets, so reaching it with an open gate means the flags were
- *  hand-edited (or a cascade half-applied). */
+ *  hand-edited (or a cascade half-applied).
+ *
+ *  `retired` is deliberately NOT here. Retiring is abandonment, and a
+ *  workstream abandoned at the design stage legitimately leaves two gates
+ *  open forever — demanding all four would make every retirement a BLOCKING
+ *  finding, which is the opposite of what retiring something means. */
 const POST_GATE_STAGES: ReadonlySet<Stage> = new Set<Stage>([
   "executing",
   "done",
-  "retired",
 ]);
 
 /** Stages a workstream can legitimately sit at with gates still open. */
@@ -403,5 +441,5 @@ export function reconcileGates(inputs: ReconcileInputs): PositionFinding[] {
     });
   }
 
-  return out;
+  return byReportRank(out);
 }

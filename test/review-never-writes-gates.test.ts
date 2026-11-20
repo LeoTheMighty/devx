@@ -207,6 +207,54 @@ describe.each(CASES)("devx workstream position — $name", (c) => {
   });
 });
 
+describe("devx workstream position --changed", () => {
+  /** A git seam whose `diff --name-only` answers with a fixed file list. */
+  const gitWithDiff = (changed: string[]) =>
+    (_cmd: string, args: string[]) => {
+      if (args[0] === "diff") {
+        return { stdout: changed.join("\n"), stderr: "", exitCode: 0 };
+      }
+      if (args[0] === "log") return { stdout: "1", stderr: "", exitCode: 0 };
+      return { stdout: "", stderr: "", exitCode: 0 };
+    };
+
+  function reportFor(changed: string[]): { workstreams: Array<{ hash: string }> } {
+    const repo = seedRepo({ stage: "executing", gates: [true, true, true, true], withReports: true });
+    try {
+      const io = captureIo();
+      const code = runPosition([], { json: true, changed: "base...HEAD" }, {
+        ...io,
+        projectPath: repo.configPath,
+        exec: gitWithDiff(changed),
+      });
+      expect(code).toBe(0);
+      return io.json() as { workstreams: Array<{ hash: string }> };
+    } finally {
+      repo.cleanup();
+    }
+  }
+
+  it("includes a doc set whose artifact the diff touches", () => {
+    expect(reportFor([`${WS}/design/agent.md`]).workstreams).toHaveLength(1);
+  });
+
+  it("includes a doc set whose PLAN SPEC the diff touches", () => {
+    // The diff a review most wants to see: one flipped gate flag and nothing
+    // else. It touches no artifact, so a doc-set prefix test alone skips it.
+    expect(reportFor([SPEC_REL]).workstreams).toHaveLength(1);
+  });
+
+  it("excludes a doc set the diff does not touch", () => {
+    expect(reportFor(["src/cli.ts", "README.md"]).workstreams).toEqual([]);
+  });
+
+  it("is not fooled by a path that merely starts like the doc set's", () => {
+    // `_devx/workstreams/demo-feature-2/x.md` shares a prefix with
+    // `_devx/workstreams/demo-feature` but is a different workstream.
+    expect(reportFor([`${WS}-2/design/agent.md`]).workstreams).toEqual([]);
+  });
+});
+
 describe("devx workstream position — the snapshot comparison is honest", () => {
   it("detects a modification when one really happens", () => {
     // Negative control for (b): a byte-identity check that cannot fail is a

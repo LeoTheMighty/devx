@@ -405,10 +405,73 @@ describe("every finding is receipted and ordered", () => {
     expect(reconcileGates({ state: messy, gates, prdRecheck: null })).toEqual(found);
   });
 
-  it("reports gates in gate order", () => {
+  it("leads with the premature-closure family", () => {
+    // The whole point of the pass: a flag standing over a missing record is
+    // what every downstream reader believes, so it must be the first thing a
+    // human meets — ahead of a verdict-persistence note about a migration.
+    expect(found[0].check).toBe("premature-closure");
     const order = found.map((f) => f.check);
     expect(order.indexOf("premature-closure")).toBeLessThan(
       order.indexOf("uncommitted-subject"),
+    );
+    expect(order.indexOf("blocked-while-validated")).toBeLessThan(
+      order.indexOf("verdict-not-persisted"),
+    );
+  });
+
+  it("keeps gate order inside one rank", () => {
+    // The sort is stable, so two stale-evidence findings stay in gate order
+    // (design before plan) rather than being reshuffled run to run.
+    const gates = greenGates({
+      design: {
+        subjects: [probe("design/agent.md", { changedAt: T_LATE + 1 })],
+      },
+      plan: {
+        subjects: [probe("plan/agent.md", { changedAt: T_LATE + 1 })],
+      },
+    });
+    const stale = reconcileGates({ ...PASSING, gates }).filter(
+      (f) => f.check === "stale-evidence",
+    );
+    expect(stale).toHaveLength(2);
+    expect(stale[0].message).toContain("design_verified");
+    expect(stale[1].message).toContain("plan_verified");
+  });
+});
+
+describe("reconcileGates — a retired workstream is abandoned, not broken", () => {
+  it("does not demand green gates of a retired workstream", () => {
+    // Retiring something at the design stage leaves two gates open forever.
+    // Treating that as premature closure would make every retirement a
+    // BLOCKING finding — the opposite of what retiring means.
+    const state = stateFrom([
+      "hash: abc123",
+      "stage: retired",
+      "gate_status:",
+      "  prd_validated: true",
+      "  design_verified: false",
+      "  plan_verified: false",
+      "  evals_red: false",
+      "gate_verdicts:",
+      "  prd: PASS",
+    ]);
+    expect(checks(reconcileGates({ ...PASSING, state }))).toEqual([]);
+  });
+
+  it("still flags `done` with an open gate (the negative control)", () => {
+    const state = stateFrom([
+      "hash: abc123",
+      "stage: done",
+      "gate_status:",
+      "  prd_validated: true",
+      "  design_verified: false",
+      "  plan_verified: false",
+      "  evals_red: false",
+      "gate_verdicts:",
+      "  prd: PASS",
+    ]);
+    expect(checks(reconcileGates({ ...PASSING, state }))).toContain(
+      "stage-ahead-of-gates",
     );
   });
 });
