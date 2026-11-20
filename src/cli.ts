@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 
 import * as askCommand from "./commands/ask.js";
+import * as checkpointCommand from "./commands/checkpoint.js";
 import * as configCommand from "./commands/config.js";
 import * as doctorCommand from "./commands/doctor.js";
 import * as devxHelperCommand from "./commands/devx-helper.js";
@@ -64,6 +65,7 @@ interface CommandModule {
 
 const commands: CommandModule[] = [
   askCommand,
+  checkpointCommand,
   configCommand,
   devxHelperCommand,
   doctorCommand,
