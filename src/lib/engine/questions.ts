@@ -516,9 +516,12 @@ export function reconcileGateConcerns(
   if (appended.length > 0) {
     // One blank line of separation, and never two: the template ends in a
     // comment with no trailing blank, while a file that already holds
-    // entries ends in `---` + blank.
+    // entries ends in `---` + blank. An EMPTY file gets no leading blank at
+    // all — the degraded path (shipped template missing) starts from `""`,
+    // and a queue whose first byte is a newline reads as a truncated file.
     while (out.length > 0 && out[out.length - 1].trim() === "") out.pop();
-    out.push("", ...appended);
+    if (out.length > 0) out.push("");
+    out.push(...appended);
   }
   return {
     content: out.join("\n"),

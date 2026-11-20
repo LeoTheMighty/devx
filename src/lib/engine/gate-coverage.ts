@@ -250,10 +250,34 @@ export function parseCoverageTable(json: string): TableParseResult {
 // Verdict computation
 // ---------------------------------------------------------------------------
 
+/**
+ * One source ID this run did not clear, with the severity its own verdict
+ * contribution proves — `blocking` when it is what made the run FAIL
+ * (❌ missing, or an unmet P0 floor), `concern` when the run still advances
+ * (⚠️ partial).
+ *
+ * Emitted alongside `reasons` rather than derived from it: severity is
+ * decided by the same branches that set `anyMissing` / `anyPartial`, and a
+ * consumer re-deriving it from the reason STRINGS would be a second,
+ * drifting copy of the floor rule. One finding per ID, not per reason — a
+ * P0 expectation that is missing contributes three reasons and is one defect.
+ *
+ * Read by `devx gate coverage`'s health-queue reconcile (B11). Never by the
+ * verdict: `verdict` is computed from the same loop and does not look here.
+ */
+export interface CoverageFinding {
+  id: string;
+  severity: "blocking" | "concern";
+  /** Every reason recorded for this ID, joined — the entry's Recommendation. */
+  detail: string;
+}
+
 export interface CoverageComputation {
   verdict: Extract<Verdict, "PASS" | "CONCERNS" | "FAIL">;
   /** Human-precise reasons behind a FAIL / CONCERNS. */
   reasons: string[];
+  /** The same shortfalls, one per source ID and severity-classified. */
+  findings: CoverageFinding[];
   /** Source-keyed rows in source order. */
   keyedRows: CoverageRow[];
   /** Table rows whose id is not a source ID → extras section. */
@@ -291,6 +315,16 @@ export function computeCoverageVerdict(
 
   const keyedRows: CoverageRow[] = [];
   const reasons: string[] = [];
+  // id → its shortfalls. `blocking` latches true: a P0 partial is blocking
+  // even though `partial` alone is not, and the floor branch below is what
+  // knows that.
+  const shortfalls = new Map<string, { blocking: boolean; details: string[] }>();
+  const note = (id: string, blocking: boolean, detail: string): void => {
+    const cur = shortfalls.get(id) ?? { blocking: false, details: [] };
+    cur.blocking = cur.blocking || blocking;
+    cur.details.push(detail);
+    shortfalls.set(id, cur);
+  };
   let anyMissing = false;
   let anyPartial = false;
 
@@ -300,10 +334,14 @@ export function computeCoverageVerdict(
     keyedRows.push(row);
     if (row.status === "missing") {
       anyMissing = true;
-      reasons.push(`${id} is ❌ missing${row.note ? ` (${row.note})` : ""}`);
+      const reason = `${id} is ❌ missing${row.note ? ` (${row.note})` : ""}`;
+      reasons.push(reason);
+      note(id, true, reason);
     } else if (row.status === "partial") {
       anyPartial = true;
-      reasons.push(`${id} is ⚠️ partial${row.note ? ` (${row.note})` : ""}`);
+      const reason = `${id} is ⚠️ partial${row.note ? ` (${row.note})` : ""}`;
+      reasons.push(reason);
+      note(id, false, reason);
     }
 
     // P0 floor — plan mode only: every P0 expectation `covered` AND naming
@@ -311,15 +349,15 @@ export function computeCoverageVerdict(
     if (mode === "plan" && priorities.get(id) === "P0") {
       if (row.status !== "covered") {
         anyMissing = true;
-        reasons.push(
-          `P0 floor unmet: ${id} is P0 but not fully covered (status: ${row.status})`,
-        );
+        const reason = `P0 floor unmet: ${id} is P0 but not fully covered (status: ${row.status})`;
+        reasons.push(reason);
+        note(id, true, reason);
       }
       if (row.artifact === null || !isConcreteVerifiedBy(row.artifact)) {
         anyMissing = true;
-        reasons.push(
-          `P0 floor unmet: ${id} is P0 but names no runnable artifact path${row.artifact ? ` ('${row.artifact}' is not path-shaped)` : ""}`,
-        );
+        const reason = `P0 floor unmet: ${id} is P0 but names no runnable artifact path${row.artifact ? ` ('${row.artifact}' is not path-shaped)` : ""}`;
+        reasons.push(reason);
+        note(id, true, reason);
       }
     }
   }
@@ -330,7 +368,27 @@ export function computeCoverageVerdict(
       ? "CONCERNS"
       : "PASS";
 
-  return { verdict, reasons, keyedRows, extraRows, missingRowIds, duplicateRowIds };
+  // Source order, so the queue's entry order matches the report's.
+  const findings: CoverageFinding[] = sourceIds
+    .filter((id) => shortfalls.has(id))
+    .map((id) => {
+      const s = shortfalls.get(id)!;
+      return {
+        id,
+        severity: s.blocking ? ("blocking" as const) : ("concern" as const),
+        detail: s.details.join("; "),
+      };
+    });
+
+  return {
+    verdict,
+    reasons,
+    findings,
+    keyedRows,
+    extraRows,
+    missingRowIds,
+    duplicateRowIds,
+  };
 }
 
 /**
