@@ -473,6 +473,8 @@ The kind leads each row because the table is keyed on it, not on prose:
 | `expectations` — EARS expectations; Gate 4's driver | `<root>/<slug>/expectations.md` | `expectations.md` |
 | `todo` — derived working memory (`devx todo sync`) | `<root>/<slug>/todo.md` | `todo.md` |
 | `results` — outcome scoring (`devx outcome score`) | `<root>/<slug>/RESULTS.md` | `RESULTS.md` |
+| `research-questions` — the Design stage's factual research questions, framed without intent | `<root>/<slug>/design/research-questions.md` | `design-research-questions.md` |
+| `research` — their blind, cited answers; Gate 2 notes when absent | `<root>/<slug>/design/research.md` | `design-research.md` |
 | `evals-dir` — RED artifacts (`E-*`) | `<root>/<slug>/evals/` | `evals/` |
 | `decisions-dir` — dated verify / critique / revision records | `<root>/<slug>/decisions/` | `decisions/` |
 | `checkpoints-dir` — per-phase verification reports | `<root>/<slug>/checkpoints/` | `checkpoints/` |
@@ -481,8 +483,8 @@ The kind leads each row because the table is keyed on it, not on prose:
 `<root>` is `engine.workstreams_root` and `<slug>` the workstream's directory
 name; neither exists under `project-level`, where the doc set **is** the repo
 root. `<stage>` is one of `prd` · `design` · `plan` · `evals` — the three
-companion rows are stage-generic, which is how 22 representable identities
-render as 13 rows, while the three subjects keep their stage because
+companion rows are stage-generic, which is how 24 representable identities
+render as 15 rows, while the three subjects keep their stage because
 `prd.md`, `design.md` and `plan.md` are three different names.
 
 The table is machine-checked, not prose-reviewed: `ARTIFACT_KINDS` in
@@ -492,7 +494,8 @@ row names a kind the resolver does not handle, or when a cell spells a path
 the resolver does not produce. Wording after the em-dash is free; the paths
 are not.
 
-**Deliberately absent.** `RETRO-<date>.md`, `research/`, and the hand-written
+**Deliberately absent.** `RETRO-<date>.md`, the older dated `research/<date>-*.md`
+notes (distinct from the Design stage's `research` rows above), and the hand-written
 notes a workstream accumulates have no `ArtifactKind` — no code resolves their
 paths, so there is nothing for a layout to decide and they keep one spelling
 in both shapes. They are still part of the **doc set**, which is what `devx
