@@ -64,6 +64,7 @@ import {
   stampEvalShas,
   verifyStepBodies,
 } from "../lib/engine/evals-lock.js";
+import { reviseCommand } from "../lib/engine/revise.js";
 import { formatDate } from "../lib/engine/verdict.js";
 import type { GateFinding } from "../lib/engine/questions.js";
 import { blocksForGate } from "../lib/engine/questions.js";
@@ -380,8 +381,13 @@ function closedGateWayOut(hash: string, reopen: string): string {
   return `To look without writing: \`devx workstream position ${hash}\`. To re-open it for a re-stamp: ${reopen}.`;
 }
 
-const reviseCmd = (hash: string, touched: "prd" | "design" | "plan"): string =>
-  `\`devx revise ${hash} --touched ${touched}\``;
+// Local alias, not a second definition: the four call sites below keep their
+// spelling so this file's diff stays two lines, and `reviseCommand` in
+// revise.ts — beside the cascade table and the stage shorthands it has to
+// agree with — is the one place the command string is written. It was copied
+// here and in position.ts's receipts for one release, and the copy went stale
+// the day these refusals landed.
+const reviseCmd = reviseCommand;
 
 // ---------------------------------------------------------------------------
 // devx gate prd <hash>

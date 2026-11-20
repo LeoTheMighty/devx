@@ -70,6 +70,13 @@ the spec's frontmatter disagrees with the evidence on disk. Each carries a
 `check` id and a `receipt`. They are findings, already verified; carry them
 into the report as they are.
 
+**A receipt names a command that works, or it names no command.** Every
+gate-evidence finding fires on a *closed* gate, so the fix is never a gate
+re-run — it is `devx revise … --touched …`, or on a done workstream
+`devx outcome score … --verdict tune` for the verification-scoped half. If you
+ever write a receipt yourself, hold it to that: a receipt pointing at a
+command that would refuse is the same defect this lens hunts, one level up.
+
 Its thirteen checks are the reconciliation half of this review, so **do not
 redo them by hand**. What it cannot do is classify: `stale-evidence` says a
 gated artifact changed after its report was written, and whether that change
@@ -270,8 +277,16 @@ nothing-found — the same rule Phase 4 self-review lives under.
 - **Never writes an outline file**, in any layout. Read it, critique it in
   the critique file.
 - **Never edits `todo.md`** — `devx todo sync` owns it.
-- **Never re-runs `devx gate prd|coverage|evals`** to "check". Those gates
-  write: a pass flips flags and advances the stage. Reconciliation reads.
+- **Cannot re-run `devx gate prd|coverage|evals`** to "check" — and no longer
+  needs to be told not to. A *closed* gate refuses the re-run and writes
+  nothing (#187, #190); an *open* gate's re-run is not a look either, since a
+  pass flips flags, advances the stage and resolves the gate's queue entries.
+  The read-only path is `devx workstream position <hash>`, the lock check is
+  `devx gate evals <hash> --verify`, and the sanctioned reopen is
+  `devx revise <hash> --touched prd|design|plan`. This was discipline for one
+  release and is now enforced, which is the better place for it: the earlier
+  wording said the gates "write", and after #190 that is true of an open gate
+  only.
 - **No finding without a receipt**, and **no BLOCKING finding without a
   refuter pass**.
 - If no workstream resolves — a change touching only skills, docs or

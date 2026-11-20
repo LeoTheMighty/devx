@@ -28,6 +28,7 @@ import {
 } from "../lib/engine/frontmatter.js";
 import { type GateGap, evaluateGatePrd } from "../lib/engine/gate-prd.js";
 import { nextForWorkstream } from "../lib/engine/next.js";
+import { reviseCommand } from "../lib/engine/revise.js";
 import { baseBranchFrom } from "../lib/engine/outline.js";
 import { PlanScopeError, checkStoryPlanScope, storyFromBranch } from "../lib/engine/plan-scope.js";
 import { emissionPlan } from "../lib/engine/plan-graph.js";
@@ -528,22 +529,24 @@ function buildReport(args: {
     prd: {
       subjects: [probe({ kind: "agent", stage: "prd" }), probe({ kind: "expectations" })],
       evidence: null,
-      rerun: `devx gate prd ${args.hash}`,
+      reopen: reviseCommand(args.hash, "prd"),
     },
     design: {
       subjects: [probe({ kind: "agent", stage: "design" })],
       evidence: verifyProbe(decisionsRel, decisionNames, "design", git, fs, repoRoot),
-      rerun: `devx gate coverage ${args.hash}`,
+      reopen: reviseCommand(args.hash, "design"),
     },
     plan: {
       subjects: [probe({ kind: "agent", stage: "plan" })],
       evidence: verifyProbe(decisionsRel, decisionNames, "plan", git, fs, repoRoot),
-      rerun: `devx gate coverage ${args.hash}`,
+      reopen: reviseCommand(args.hash, "plan"),
     },
     evals: {
       subjects: evalSubjects(fs, repoRoot, base, git),
       evidence: probe({ kind: "red-report" }),
-      rerun: `devx gate evals ${args.hash}`,
+      // Gate 4 has no cascade row of its own — RED artifacts re-run, they do
+      // not roll a stage back — so the plan is what clears `evals_red`.
+      reopen: reviseCommand(args.hash, "plan"),
     },
   };
 
