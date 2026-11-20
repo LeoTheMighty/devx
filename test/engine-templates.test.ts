@@ -26,7 +26,6 @@ const EXPECTED_TEMPLATES = [
   "expectations.md",
   "decision.md",
   "red-report.md",
-  "checkpoint.md",
   "lessons-entry.md",
   "results.md",
   "todo.md",
@@ -84,7 +83,7 @@ describe("engine templates (v2s101)", () => {
   });
 
   it("verdict-bearing templates open with the deterministic verdict block (D-9)", () => {
-    for (const name of ["decision.md", "red-report.md", "checkpoint.md"]) {
+    for (const name of ["decision.md", "red-report.md"]) {
       const body = readFileSync(join(engineDir, name), "utf8");
       expect(body.startsWith("---\n"), `${name} must open with frontmatter`).toBe(true);
       expect(body, `${name} verdict vocabulary`).toMatch(/gate: <PASS \| CONCERNS \| FAIL/);

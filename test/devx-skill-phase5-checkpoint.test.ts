@@ -80,11 +80,14 @@ describe("devx skill — Phase 5 writes the phase checkpoint", () => {
     expect(body).toMatch(/exit code you did not see is `null`, never `0`/);
   });
 
-  it("names the --runs shape and what omitting it means", () => {
+  it("says what omitting --runs means", () => {
     const body = phaseBody(loadSkill(), 5);
-    expect(body).toContain("{eId, type, command, exitCode, detail}");
+    expect(body).toMatch(/--runs` records what you observed/);
     // The seeded table is a worklist — stating that is what stops a reader
-    // treating a seeded checkpoint as evidence.
+    // treating a seeded checkpoint as evidence. The flag's JSON SHAPE lives
+    // in `--help`, not here: the S-1 full-run budget is the binding
+    // constraint on this body, and a shape the CLI already prints is the
+    // first thing that should leave it.
     expect(body).toMatch(/a worklist, not evidence/);
   });
 

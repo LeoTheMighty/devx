@@ -5,7 +5,8 @@
 // ... computed from tables and ID sets, not vibes"). One module owns the
 // shape so `devx gate coverage` and `devx gate evals` (and later checkpoint
 // writers) can never drift from each other or from the templates in
-// `_devx/templates/engine/` (decision.md, red-report.md, checkpoint.md).
+// `_devx/templates/engine/` (decision.md, red-report.md) and from
+// `engine/checkpoint.ts`, which renders its artifact whole.
 //
 // Vocabulary is locked by D-9 (v2/07-decisions.md): PASS | CONCERNS | FAIL |
 // WAIVED, and WAIVED requires a named approver + reason. render throws on a

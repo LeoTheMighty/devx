@@ -2,15 +2,12 @@
   questions, one `## Q-<n>: <title>` each, carrying exactly these bullets:
 
   Kind: gate-concern | open-question | discovered-gap | needs-revision ·
-  Severity: blocking | concern (required — a missing one fails the parse) ·
-  Blocks: gate-prd | gate-design | gate-plan | gate-evals | phase-N | — ·
-  Origin · Recommendation (required when blocking) ·
+  Severity: blocking | concern (required — missing fails the parse) ·
+  Blocks: gate-<prd|design|plan|evals> | phase-N | — · Origin (which run
+  recorded it) · Recommendation (required when blocking) ·
   Status: open | asked | answered | resolved · Resolution
 
-  Auto-populated: every `devx gate` run reconciles its own findings — adds,
-  updates, resolves. Current-state, not append-only; never a gate INPUT; ids
-  are never reused; hand-edits are legal and the next run reconciles them.
-  `/devx-walk` resolves one entry per invocation. A human DECISION belongs in
-  INTERVIEW.md and a human ACTION in MANUAL.md — file it there, point at it
-  from `Resolution:`. Contract: src/lib/engine/questions.ts.
+  Auto-populated — every `devx gate` run reconciles its own findings: adds,
+  updates, resolves. Current-state, never a gate INPUT, ids never reused;
+  hand-edits are legal. `/devx-walk` resolves one entry per invocation.
 -->

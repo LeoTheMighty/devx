@@ -11,9 +11,13 @@
 // paths and writes it. Pure by contract, same posture as verdict.ts and
 // render.ts: callers read and write, this only transforms text.
 //
-// The shape is the template's, filled rather than reinvented — the template
-// is what a human reads when they open a checkpoint, and two definitions of
-// one artifact's shape is how the rendered file and the scaffold drift apart.
+// This renderer is the SINGLE definition of the artifact's shape, and the
+// shipped `_devx/templates/engine/checkpoint.md` is deleted with it. That
+// template had no reader at all — not before (nothing wrote checkpoints) and
+// not now (this builds the file whole), so it was dead prose inside a gated
+// budget, and a second definition of one artifact's shape is exactly how a
+// rendered file and its scaffold drift apart. A reader who wants the shape
+// opens a real checkpoint, or this function.
 //
 // Design: v2/02-engine.md §4.8 (/devx verify folded into Phase 5 under YOLO)
 
