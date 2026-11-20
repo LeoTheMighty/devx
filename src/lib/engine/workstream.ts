@@ -1134,3 +1134,108 @@ export function resolveSpecWorkstream(
 
   return none();
 }
+
+// ---------------------------------------------------------------------------
+// Engine-workstream enumeration (the plan/ walk every rollup surface needs)
+// ---------------------------------------------------------------------------
+
+/** One engine-managed workstream, as the rollup surfaces see it. */
+export interface EngineWorkstreamEntry {
+  /** The plan spec's filename — the slug and hash fallbacks read from it. */
+  specName: string;
+  hash: string;
+  slug: string;
+  state: EngineState;
+  /** Resolved doc-set base — already layout-aware, ready for `stageSubject`. */
+  base: ResolvedBase;
+  /** D-13: first YAML error in the spec's frontmatter, or null. Non-null
+   *  means `state` is soft-degraded and anything rendered from it is
+   *  partial — the caller SAYS so rather than rendering a confident empty. */
+  frontmatterError: string | null;
+}
+
+/**
+ * Every engine-managed workstream in `plan/`, resolved.
+ *
+ * The walk `devx status` and `devx board` both need, in one place. It was
+ * duplicated once already — `devx status` and `devx next`'s gatherer each
+ * carried their own copy — and the comment on `runStatus` records exactly why
+ * that matters: the two surfaces deriving identity differently is how a spec
+ * whose frontmatter hash disagrees with its filename vanishes from one and
+ * surfaces in the other. A third copy for the board would be a third chance
+ * to disagree.
+ *
+ * `onWarning` is a sink rather than a return field because the two D-13
+ * degradations a caller must announce — an unreadable spec and an
+ * unparseable frontmatter — are per-ENTRY and the entry may still render.
+ * Collecting them into an array would make a caller that forgot to print it
+ * look identical to a clean scan.
+ *
+ * Per-entry degradation throughout: an unreadable or renamed-mid-scan spec
+ * skips that entry, never the whole walk.
+ */
+export function enumerateEngineWorkstreams(
+  fs: Pick<EngineFs, "exists" | "readdir" | "readFile">,
+  repoRoot: string,
+  engine: EngineConfig,
+  onWarning: (message: string) => void = () => {},
+): EngineWorkstreamEntry[] {
+  const planDir = join(repoRoot, PLAN_DIR);
+  if (!fs.exists(planDir)) return [];
+  let names: string[];
+  try {
+    names = [...fs.readdir(planDir)].sort();
+  } catch (e) {
+    onWarning(
+      `${PLAN_DIR}/ unreadable (${e instanceof Error ? e.message : String(e)}) — nothing to render`,
+    );
+    return [];
+  }
+
+  const out: EngineWorkstreamEntry[] = [];
+  for (const specName of names) {
+    if (!specName.endsWith(".md")) continue;
+    try {
+      const content = fs.readFile(join(planDir, specName));
+      // Warn FIRST, then take whichever path the (partial) state implies: the
+      // colon frontmatter shape swallows every key below a bad one, so
+      // `stage: null` here is indistinguishable from a legacy plan spec and
+      // the entry would drop out in total silence (9f24c7 / D-13).
+      const frontmatterError = frontmatterParseError(content);
+      if (frontmatterError !== null) {
+        onWarning(
+          `${PLAN_DIR}/${specName}: frontmatter does not parse (${frontmatterError}) — engine state below the error is unreadable; anything rendered for it is partial`,
+        );
+      }
+      const state = readEngineState(content);
+      // Only engine-managed specs participate — a legacy plan spec has no
+      // stage, and PLAN.md is its surface.
+      if (state.stage === null) continue;
+      const hash =
+        state.hash ?? (PLAN_HASH_FROM_NAME_RE.exec(specName)?.[1].toLowerCase() ?? null);
+      if (hash === null) continue;
+
+      const wsRel = planSpecWorkstreamRel(specName, state.workstream, engine);
+      if (wsRel === null) continue;
+      if (!fs.exists(join(repoRoot, ...wsRel.split("/")))) continue;
+
+      out.push({
+        specName,
+        hash,
+        // The tail of `.` is `.`, so under `project-level` a hand-rolled tail
+        // names every workstream "." — the slug lives in the plan spec's
+        // filename there (dlr103).
+        slug: workstreamSlugFor(specName, wsRel, engine) ?? wsRel,
+        state,
+        base: { repoRoot, workstreamRel: wsRel, layout: engine.docsLayout },
+        frontmatterError,
+      });
+    } catch {
+      continue;
+    }
+  }
+  return out;
+}
+
+/** Hash from a plan spec's filename, when its frontmatter carries none. */
+const PLAN_HASH_FROM_NAME_RE = /^plan-([a-z0-9]{3,12})-/i;
