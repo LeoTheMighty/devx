@@ -189,11 +189,11 @@ file; supersessions are appended, never rewritten.
   and not a cue for another raise. The `[user]` marker stays until Leo flips
   it himself, per D-2's precedent.*
   *Lever pulled (2026-11-20, branch `feat/harness-devx-md-arm-split`): the
-  budget bound at 130,547 B (525 free) with two streams queued behind it, and
+  budget bound at 131,045 B (27 free) with two streams queued behind it, and
   option (b) was taken instead of a raise — each `devx.md` arm became its own
   body beside the dispatcher. Neither knob moved. The full run stays charged
   for the Execute and Retro bodies (both §6 rows of a full feature run); only
-  the debug, loop and outcome arms left the sum, which fell to 126,494 B. The
+  the debug, loop and outcome arms left the sum, which fell to 126,992 B. The
   lever is spent: what remains counted is what a full run loads.*
 
 - **D-15 [user] (2026-09-25, `plan-47b842`)** — *`devx loop` is **frozen**,

@@ -158,10 +158,10 @@ describe("engine prose-budget canary (S-1)", () => {
   // WAS the budget by accident, and raising it would have loosened the
   // planning gate above as well. It now has its own knob and is gated
   // directly: the number that binds is the number that was chosen.
-  // 2026-11-20: the budget bound again (130,547 B, 525 free) and D-14's
+  // 2026-11-20: the budget bound again (131,045 B, 27 free) and D-14's
   // named lever was pulled instead of a raise — devx.md's arms became their
   // own bodies. The debug/loop/outcome arms (no full run loads them) left
-  // the sum; 126,494 B after.
+  // the sum; 126,992 B after.
   //
   // If this fails: cut prose, or change `engine.full_run_prose_budget_kb`
   // in a PR that says why (D-14 records the reasoning for the current
