@@ -248,6 +248,24 @@ describe("devx workstream position --changed", () => {
     expect(reportFor(["src/cli.ts", "README.md"]).workstreams).toEqual([]);
   });
 
+  it("reviews the named hash regardless of the diff, and says so", () => {
+    const repo = seedRepo({ stage: "executing", gates: [true, true, true, true], withReports: true });
+    try {
+      const io = captureIo();
+      const code = runPosition(["ABC123"], { json: true, changed: "base...HEAD" }, {
+        ...io,
+        projectPath: repo.configPath,
+        exec: gitWithDiff(["src/cli.ts"]),
+      });
+      expect(code).toBe(0);
+      // Case-insensitive: a hash typed in caps must not exit 2 on a valid spec.
+      expect((io.json() as { workstreams: unknown[] }).workstreams).toHaveLength(1);
+      expect(io.stderr()).toContain("--changed is ignored when a hash is given");
+    } finally {
+      repo.cleanup();
+    }
+  });
+
   it("is not fooled by a path that merely starts like the doc set's", () => {
     // `_devx/workstreams/demo-feature-2/x.md` shares a prefix with
     // `_devx/workstreams/demo-feature` but is a different workstream.
