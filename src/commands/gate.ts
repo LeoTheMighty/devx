@@ -7,7 +7,8 @@
 //   0 — gate passed (PASS, or CONCERNS: the gate advances with the concern
 //       recorded — D-9 semantics).
 //   1 — gate failed / refused (FAIL verdict, predecessor gate open, no
-//       open gate, a closed gate re-run). Precise gap report in the JSON. An
+//       open gate, a closed gate re-run, a coverage table judging another
+//       gate than the open one). Precise gap report in the JSON. An
 //       *evaluated* FAIL records its verdict in the spec's `gate_verdicts:`
 //       map (hfi102) — gate_status booleans and stage stay untouched;
 //       refusals (missing inputs, open predecessor, closed gate) write
@@ -45,6 +46,7 @@ import {
   extractSourceIds,
   parseCoverageTable,
   renderVerifyReport,
+  tableJudges,
 } from "../lib/engine/gate-coverage.js";
 import { type GraphCheck, checkExecutionGraph } from "../lib/engine/plan-graph.js";
 import {
@@ -526,9 +528,13 @@ export function runGateCoverage(
     planRel: subjects.plan.rel,
   });
   if (detected.mode === null) {
-    io.out(
-      `${JSON.stringify({ gate: "FAIL", hash: ws.hash, refusal: detected.refusal })}\n`,
-    );
+    const refusal = detected.closed
+      ? `${detected.refusal}. ${closedGateWayOut(
+          ws.hash,
+          `${reviseCmd(ws.hash, "design")} (Gates 2 + 3) or ${reviseCmd(ws.hash, "plan")} (Gate 3)`,
+        )}`
+      : detected.refusal;
+    io.out(`${JSON.stringify({ gate: "FAIL", hash: ws.hash, refusal })}\n`);
     return 1;
   }
   const mode = detected.mode;
@@ -560,6 +566,31 @@ export function runGateCoverage(
       ? io.fs.readFile(subjects.expectations.abs)
       : "",
   };
+
+  // The mode above comes from STATE; the table is what the caller judged.
+  // When they disagree the caller is not running the gate they think they
+  // are — a design table after Gate 2 closed would otherwise be run against
+  // Gate 3, and only a completeness miss stood between that and a Gate-3
+  // verdict nobody asked for. Refuse before anything is written.
+  const judged = tableJudges(parsed.table, files);
+  if (judged !== null && judged !== mode) {
+    const refusal =
+      judged === "design"
+        ? `this table judges design coverage, but Gate 2 (design coverage) is closed — design_verified is true${
+            ws.state.gateVerdicts.design !== null
+              ? ` (verdict: ${ws.state.gateVerdicts.design})`
+              : ""
+          } — and the open coverage gate is Gate 3 (plan coverage). Refusing rather than evaluating a gate the table does not judge; nothing written. ${closedGateWayOut(
+            ws.hash,
+            reviseCmd(ws.hash, "design"),
+          )}`
+        : `this table judges plan coverage, but Gate 2 (design coverage) is still open and Gate 3 (plan coverage) can't run before it. Refusing rather than evaluating a gate the table does not judge; nothing written. Judge ${subjects.design.rel} against ${subjects.prd.rel} first; \`devx workstream position ${ws.hash}\` shows where the workstream stands.`;
+    // Same shape as every other refusal: `mode` in this JSON means the mode
+    // EVALUATED, and nothing was.
+    io.out(`${JSON.stringify({ gate: "FAIL", hash: ws.hash, refusal })}\n`);
+    return 1;
+  }
+
   const sourceIds = extractSourceIds(mode, files);
   if (sourceIds.length === 0) {
     io.err(

@@ -23,13 +23,16 @@ import { readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { runGatePrd } from "../src/commands/gate.js";
+import { runGateCoverage, runGatePrd } from "../src/commands/gate.js";
 import { runRevise } from "../src/commands/revise.js";
 import { readEngineState } from "../src/lib/engine/frontmatter.js";
+import { parseCoverageTable, tableJudges } from "../src/lib/engine/gate-coverage.js";
 import {
   type EngineRepo,
   captureIo,
+  designTable,
   makeEngineRepo,
+  planTable,
   validExpectations,
   validPlan,
   validPrd,
@@ -126,6 +129,17 @@ function gatePrd() {
   return { code, io };
 }
 
+function gateCoverage(table: string) {
+  repo.write(TABLE, table);
+  const io = captureIo();
+  const code = runGateCoverage(["abc123"], { table: join(repo.root, TABLE) }, {
+    ...io,
+    projectPath: repo.configPath,
+    now: FIXED_NOW,
+  });
+  return { code, io };
+}
+
 function revise(touched: string): number {
   const io = captureIo();
   return runRevise(["abc123"], { touched }, { ...io, projectPath: repo.configPath });
@@ -214,5 +228,132 @@ describe("devx gate prd — a closed gate refuses and writes nothing", () => {
     expect((io.json() as { gate: string }).gate).toBe("PASS");
     expect(state().gateStatus.prd_validated).toBe(true);
     expect(state().gateVerdicts.prd).toBe("PASS");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bug 2 — coverage evaluates only the gate its table judges
+// ---------------------------------------------------------------------------
+
+describe("devx gate coverage — never evaluates a gate the table did not judge", () => {
+  it("a design table against a closed Gate 2 refuses instead of evaluating Gate 3", () => {
+    seed({ stage: "plan", prd: true, design: true, plan: false, verdicts: { prd: "PASS", design: "PASS" } }, { plan: true });
+    const before = snapshot();
+    const { code, io } = gateCoverage(designTable());
+    expect(code).toBe(1);
+    const refusal = refusalOf(io);
+    expect(refusal).toContain("Gate 2 (design coverage) is closed");
+    expect(refusal).toContain("Gate 3 (plan coverage)");
+    expect(refusal).toContain("`devx workstream position abc123`");
+    expect(refusal).toContain("`devx revise abc123 --touched design`");
+    // Nothing: no decisions/ report, no verdict, no queue.
+    expectTreeUnchanged(before);
+    expect(repo.exists(`${WS}/decisions`)).toBe(false);
+    expect(repo.exists(QUESTIONS)).toBe(false);
+  });
+
+  it("a plan table while Gate 2 is still open refuses instead of evaluating Gate 2", () => {
+    seed({ stage: "design", prd: true, design: false, plan: false }, { plan: true });
+    const before = snapshot();
+    const { code, io } = gateCoverage(planTable());
+    expect(code).toBe(1);
+    expect(refusalOf(io)).toContain("Gate 2 (design coverage) is still open");
+    expectTreeUnchanged(before);
+  });
+
+  it("a design table with both coverage gates closed refuses, naming the read-only look", () => {
+    seed({ stage: "red", prd: true, design: true, plan: true }, { plan: true });
+    const before = snapshot();
+    const { code, io } = gateCoverage(designTable());
+    expect(code).toBe(1);
+    const refusal = refusalOf(io);
+    expect(refusal).toContain("no open coverage gate");
+    expect(refusal).toContain("`devx workstream position abc123`");
+    expect(refusal).toContain("`devx revise abc123 --touched design`");
+    expectTreeUnchanged(before);
+  });
+
+  // The property, over every reachable coverage state × both table shapes:
+  // the run either refuses with the tree byte-identical, or the mode it
+  // evaluated is the mode the table judges. There is no third outcome.
+  const STATES: Array<{ name: string; s: SeedState; plan: boolean }> = [
+    { name: "design open", s: { stage: "design", prd: true, design: false, plan: false }, plan: false },
+    { name: "design open, plan drafted", s: { stage: "design", prd: true, design: false, plan: false }, plan: true },
+    { name: "design closed, plan open", s: { stage: "plan", prd: true, design: true, plan: false }, plan: true },
+    { name: "design closed, no plan yet", s: { stage: "plan", prd: true, design: true, plan: false }, plan: false },
+    { name: "both closed", s: { stage: "red", prd: true, design: true, plan: true }, plan: true },
+  ];
+  const TABLES = [
+    { judges: "design", json: () => designTable() },
+    { judges: "plan", json: () => planTable() },
+  ] as const;
+
+  for (const st of STATES) {
+    for (const t of TABLES) {
+      it(`${st.name} × ${t.judges} table → refuses untouched, or evaluates ${t.judges}`, () => {
+        seed(st.s, { plan: st.plan });
+        const before = snapshot();
+        const { code, io } = gateCoverage(t.json());
+        // An exit-2 input error prints nothing on stdout; that is still a
+        // "did not evaluate" outcome, held to the same byte-identity bar.
+        const j = (io.stdout().trim() === "" ? null : io.json()) as { mode?: string } | null;
+        if (j !== null && j.mode !== undefined) {
+          expect(j.mode).toBe(t.judges);
+          expect(code).toBe(0);
+        } else {
+          expect(code).not.toBe(0);
+          expectTreeUnchanged(before);
+        }
+      });
+    }
+  }
+
+  it("the matching table still evaluates and advances — the gate itself is unchanged", () => {
+    seed({ stage: "plan", prd: true, design: true, plan: false }, { plan: true });
+    const { code, io } = gateCoverage(planTable());
+    expect(code).toBe(0);
+    expect((io.json() as { mode: string }).mode).toBe("plan");
+    expect(state().gateStatus.plan_verified).toBe(true);
+    expect(state().gateVerdicts.plan).toBe("PASS");
+  });
+
+  it("a design table with a stray E-id row is still a design table", () => {
+    // Extras were always tolerated (they land in the report); a stray row of
+    // the other family must not turn a complete design judgment into a
+    // refusal.
+    seed({ stage: "design", prd: true, design: false, plan: false });
+    const table = JSON.parse(designTable()) as { rows: unknown[] };
+    table.rows.push({ id: "E-1", status: "covered", where: "stray" });
+    const { code, io } = gateCoverage(JSON.stringify(table));
+    expect(code).toBe(0);
+    expect((io.json() as { mode: string }).mode).toBe("design");
+  });
+});
+
+describe("tableJudges — which gate a table judges", () => {
+  const files = { prd: validPrd(), expectations: validExpectations() };
+  const judge = (rows: Array<{ id: string }>) => {
+    const parsed = parseCoverageTable(
+      JSON.stringify({ rows: rows.map((r) => ({ ...r, status: "covered" })) }),
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    return tableJudges(parsed.table, files);
+  };
+
+  it("reads the mode off the source IDs the rows key", () => {
+    expect(judge([{ id: "G-1" }, { id: "FR-1" }])).toBe("design");
+    expect(judge([{ id: "E-1" }])).toBe("plan");
+  });
+
+  it("is null for a table keying both modes, or neither", () => {
+    expect(judge([{ id: "G-1" }, { id: "E-1" }])).toBeNull();
+    expect(judge([{ id: "G-99" }, { id: "E-99" }])).toBeNull();
+    expect(judge([])).toBeNull();
+  });
+
+  it("keys rows exactly, as the verdict does — a row it counts is a row the verdict counts", () => {
+    // computeCoverageVerdict matches `row.id` verbatim against upper-cased
+    // source IDs, so a lower-cased row is an extra there and must be here.
+    expect(judge([{ id: "e-1" }])).toBeNull();
   });
 });
