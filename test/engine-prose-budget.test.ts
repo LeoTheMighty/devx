@@ -161,7 +161,7 @@ describe("engine prose-budget canary (S-1)", () => {
   // 2026-11-20: the budget bound again (130,547 B, 525 free) and D-14's
   // named lever was pulled instead of a raise — devx.md's arms became their
   // own bodies. The debug/loop/outcome arms (no full run loads them) left
-  // the sum; 126,488 B after.
+  // the sum; 126,494 B after.
   //
   // If this fails: cut prose, or change `engine.full_run_prose_budget_kb`
   // in a PR that says why (D-14 records the reasoning for the current
