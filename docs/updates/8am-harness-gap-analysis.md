@@ -226,7 +226,7 @@ tests; **a week** = several PRs. "Depends on" names rows, not streams.
 | B17 eval manifest | new `_devx/templates/engine/evals/eval.md` (frontmatter id/priority/covers/status/last_run; typed steps `script`/`judge`/`metric`/`human`; `## Runs`), `src/lib/engine/gate-evals.ts` (a `metric` step marked deferred-to-outcome counts as deferred at any priority; no FAIL on a P0 whose only unmet step is that), `src/lib/engine/evals-lock.ts` (confirm the template's lines classify as intended; add a fixture) | a day | — |
 | B19 / C10 spike record | `_devx/templates/engine/decision.md` (spike variant) or new `spike.md`; `skills/devx-walk.md` Step 2 (one line naming the record) | one-sitting | — |
 | C1 L1 eval hook (optional) | `src/commands/gate.ts` (`devx gate evals guard` endpoint over `evalsGuardDecision`), `_devx/templates/init/claude-settings-hooks.json`, `src/lib/init-write.ts`, `CLAUDE.md` (the "detection, not enforcement" sentence changes) | one-sitting | owner decision — it reverses a recorded stance |
-| C8 / A7 / A8 execution graph | `_devx/templates/engine/plan/agent.md` (`## Execution graph` yaml: phases with `depends_on`, `touches`, `parallel_safe`, `integration`, `production_touch`; task edges; waivers), new `src/lib/engine/plan-graph.ts` (parse; acyclic; bijective with the checklist; same-file overlap from `Files:` entry paths — path before the ` — ` separator, per upstream `docs/updates/2026-08-04-g7-files-entry-definition.md`; waiver with approver), `src/lib/engine/gate-coverage.ts` plan mode (graph FAIL/CONCERNS), `skills/devx-plan.md` Plan step + RED emission (`blocked_by` from `depends_on`; `parallel_safe: false` phases emit with a note the loop honours), `src/lib/graph/model.ts` (phases as nodes) | a day–two | — |
+| C8 / A7 / A8 execution graph | `_devx/templates/engine/plan/agent.md` (`## Execution graph` yaml: phases with `depends_on`, `touches`, `parallel_safe`, `integration`, `production_touch`; task edges; waivers), new `src/lib/engine/plan-graph.ts` (parse; acyclic; bijective with the checklist; same-file overlap from `Files:` entry paths — path before the ` — ` separator, per upstream `docs/updates/2026-08-04-g7-files-entry-definition.md`; waiver with approver), `src/lib/engine/gate-coverage.ts` plan mode (graph FAIL/CONCERNS), `skills/devx-plan.md` Plan step + RED emission (`blocked_by` from `depends_on`; independent pairs as `Parallel-safe with` rows), `src/commands/workstream.ts` (`devx workstream graph <hash>` reader), `src/lib/plan/validate-emit.ts` (check 7: emitted `blocked_by` ⇐ graph); no change to `src/lib/graph/model.ts` — emitted edges already render | a day–two | — |
 | C29 gate mutation tests | `test/gate-mutations.test.ts` over the real-repo fixture helper `test/fixtures/engine-repo.ts` | one-sitting | — |
 | D1 board | new `src/commands/board.ts` + `src/lib/board/*` (static HTML to `.devx-cache/board/` or `_devx/board/`; one index + one page per workstream: stage, gates with verdicts, focus, health, todo, graph via `GRAPH.md` mermaid), `docs/DESIGN.md` §Observability (note the static board as the first lens) | a day | B11 for the health column (renders blockers from `blocked_by` until then) |
 | D8 review in CI | `.github/workflows/devx-ci.yml` (job runs `/devx-review` or its CLI position check only when a workstream dir changed; advisory) | one-sitting | A16 |
@@ -346,9 +346,14 @@ sequence below keeps those pairs out of the same wave.
 
 - **Rows:** C8/A7/A8, B10.
 - **Files owned:** `_devx/templates/engine/plan/agent.md`, `src/lib/engine/plan-graph.ts`,
-  `src/lib/engine/gate-coverage.ts` **plan-mode only**, `skills/devx-plan.md`
-  Plan step 3 + RED step 3 (emission), `src/lib/graph/model.ts`, docs note in
-  `v2/02-engine.md §4.5`.
+  `src/lib/engine/gate-coverage.ts` **plan-mode only**, a few lines of
+  `src/commands/gate.ts` (plan-mode read + JSON field), `src/commands/workstream.ts`
+  (`graph` subcommand), `src/lib/plan/validate-emit.ts` (check 7),
+  `skills/devx-plan.md` Plan steps 3/5 + RED step 3 (emission), docs note in
+  `v2/02-engine.md §4.5`. *(Amended 2026-11-20 once the stream was in code:
+  `src/lib/graph/model.ts` needed no change — emitted `blocked_by` edges and
+  `Parallel-safe with` rows already render, and the model never invents a
+  node.)*
 - **Done means:** a plan may declare `## Execution graph`; Gate 3 FAILs a
   cycle, a phase missing from the checklist (or vice versa), and an
   unordered same-file overlap without a named waiver, and warns on
