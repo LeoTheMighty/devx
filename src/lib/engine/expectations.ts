@@ -154,7 +154,15 @@ export interface MeasureField {
 // `Measure: see the Datadog dashboard` look runnable to `--run`, which would
 // then execute a sentence. An unfenced value parses as NO measure, so Gate
 // 1 still warns and the outcome gate still asks for an attested number.
-const MEASURE_COMMAND_RE = /`([^`]+)`/;
+//
+// The fence follows CommonMark's run-length rule — N backticks open, N
+// close, and the command may contain shorter runs — so a command with
+// backticks in it can be written ``bin/count --filter `*.ts` ``. A fixed
+// single-backtick pattern truncated that at the first inner tick and
+// silently yielded `bin/count --filter`: not a parse failure but a
+// DIFFERENT, still-runnable command, which is the one way this field can
+// produce a confidently wrong number rather than a refusal.
+const MEASURE_COMMAND_RE = /(`+)(.+?)\1/;
 // `· window: trailing 30d`. Any of `·`, `|`, `;` separates it; so does a
 // plain newline-folded continuation, which is why the separator is optional
 // when `window:` starts the remainder.
@@ -168,7 +176,7 @@ export function parseMeasureField(value: string | null): MeasureField | null {
   if (value === null) return null;
   const cmdMatch = MEASURE_COMMAND_RE.exec(value);
   if (cmdMatch === null) return null;
-  const command = cmdMatch[1].trim();
+  const command = cmdMatch[2].trim();
   if (command === "") return null;
   // Only the text AFTER the command can declare the window — a `window:`
   // inside the backticked command is part of the command.

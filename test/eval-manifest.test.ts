@@ -15,6 +15,7 @@ import {
   outcomeMeasures,
   parseEvalManifest,
 } from "../src/lib/engine/eval-manifest.js";
+import { parseMeasureField } from "../src/lib/engine/expectations.js";
 
 describe("parseEvalManifest — step parsing", () => {
   it("reads a numbered typed step with its fields", () => {
@@ -212,5 +213,65 @@ describe("parseEvalManifest — the deferred-to-outcome marker", () => {
     ]) {
       expect(OUTCOME_MARKER_RE.test(near), near).toBe(false);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The expectations `Measure:` one-liner (the other declaration site)
+// ---------------------------------------------------------------------------
+
+describe("parseMeasureField", () => {
+  it("reads a backticked command and an optional window", () => {
+    expect(parseMeasureField("`bin/minutes` · window: trailing 30d")).toEqual({
+      command: "bin/minutes",
+      window: "trailing 30d",
+    });
+    expect(parseMeasureField("`bin/minutes`")).toEqual({
+      command: "bin/minutes",
+      window: null,
+    });
+  });
+
+  it("requires the fence — prose is NOT a runnable measure", () => {
+    // Otherwise `--run` would execute a sentence, and Gate 1 would stop
+    // warning about a goal that still has no way to be measured.
+    for (const prose of [
+      "see the Datadog dashboard",
+      "ask Leo at the end of the month",
+      "",
+      "window: trailing 30d",
+    ]) {
+      expect(parseMeasureField(prose), prose).toBeNull();
+    }
+    expect(parseMeasureField(null)).toBeNull();
+  });
+
+  it("honours CommonMark run-length fencing, so a command may contain backticks", () => {
+    // A fixed single-tick pattern truncated this at the first inner tick and
+    // produced `bin/count --filter` — not a parse failure but a DIFFERENT,
+    // still-runnable command. That is the one way this field can yield a
+    // confidently wrong number instead of a refusal.
+    expect(
+      parseMeasureField("``bin/count --filter `*.ts` `` · window: trailing 7d"),
+    ).toEqual({ command: "bin/count --filter `*.ts`", window: "trailing 7d" });
+  });
+
+  it("does not mistake a `window:` INSIDE the command for the window", () => {
+    expect(parseMeasureField("`bin/q --window: 5d`")).toEqual({
+      command: "bin/q --window: 5d",
+      window: null,
+    });
+  });
+
+  it("keeps a piped command intact", () => {
+    expect(parseMeasureField("`gh pr list | wc -l`")?.command).toBe(
+      "gh pr list | wc -l",
+    );
+  });
+
+  it("trims a trailing separator off the window", () => {
+    expect(parseMeasureField("`c` · window: trailing 30d ·")?.window).toBe(
+      "trailing 30d",
+    );
   });
 });
