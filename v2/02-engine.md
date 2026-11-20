@@ -423,6 +423,7 @@ config sections untouched.
 | `devx revise <hash> --touched <file>` | cascade-reset applier |
 | `devx workstream graph <hash>` | plan Execution graph → emission order, `blocked_by`, independent pairs (harness-s5) |
 | `devx outline guard\|check\|init\|commit` | outline protection (hook endpoint, diff scan, human-side helpers) |
+| `devx render lint <hash> <stage>` | human-digest style bar (`docs/RENDER-STYLE.md`); exit 1 on HARD; never a gate input (harness-s4) |
 | `devx loop …` | see `04-overnight-loop.md` |
 
 Skill bodies added/rewritten: the `/devx` dispatcher + stage sections
