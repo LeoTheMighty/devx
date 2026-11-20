@@ -36,6 +36,7 @@ import {
 import { parseExpectations } from "../lib/engine/expectations.js";
 import { evaluateGatePrd } from "../lib/engine/gate-prd.js";
 import {
+  applyGraphFindings,
   computeCoverageVerdict,
   detectCoverageMode,
   expectationPriorities,
@@ -43,6 +44,7 @@ import {
   parseCoverageTable,
   renderVerifyReport,
 } from "../lib/engine/gate-coverage.js";
+import { type GraphCheck, checkExecutionGraph } from "../lib/engine/plan-graph.js";
 import {
   type ShellExec,
   donePhasesFor,
@@ -405,12 +407,20 @@ export function runGateCoverage(
     return 2;
   }
   const priorities = expectationPriorities(files.expectations);
-  const computation = computeCoverageVerdict(
+  let computation = computeCoverageVerdict(
     mode,
     sourceIds,
     parsed.table,
     priorities,
   );
+  // Plan mode only (harness-s5): the plan's optional Execution graph. Read
+  // here, judged in plan-graph.ts, folded in by gate-coverage.ts. A plan
+  // with no `## Execution graph` section leaves the computation untouched.
+  let graphCheck: GraphCheck | null = null;
+  if (mode === "plan") {
+    graphCheck = checkExecutionGraph(io.fs.readFile(subjects.plan.abs));
+    computation = applyGraphFindings(computation, graphCheck);
+  }
 
   // Completeness is mechanical: an incomplete or ambiguous table is invalid
   // input from the judgment layer, not a gate verdict.
@@ -442,6 +452,7 @@ export function runGateCoverage(
       planRel: subjects.plan.rel,
       expectationsRel: subjects.expectations.rel,
     },
+    graph: graphCheck,
   });
   const reportName = `${date}-${mode}-verify.md`;
   const reportRel = `${subjects.decisionsDir.rel}/${reportName}`;
@@ -488,6 +499,14 @@ export function runGateCoverage(
       report: reportRel,
       reasons: computation.reasons,
       flipped,
+      ...(graphCheck
+        ? {
+            graph: {
+              present: graphCheck.present,
+              findings: graphCheck.findings.map((f) => `${f.severity}:${f.code}`),
+            },
+          }
+        : {}),
     })}\n`,
   );
   if (

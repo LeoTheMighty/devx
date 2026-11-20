@@ -494,3 +494,98 @@ describe("devx gate coverage — CLI driver", () => {
     expect(code).toBe(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Plan-mode Execution graph (harness-s5) — folded in by applyGraphFindings.
+// ---------------------------------------------------------------------------
+
+function graphPlan(graphYaml: string | null, phase3Files = "- `src/c.ts` — cli"): string {
+  return [
+    "# Plan",
+    "",
+    "## Phase checklist",
+    "",
+    "- [ ] Phase 1: a",
+    "- [ ] Phase 2: b",
+    "- [ ] Phase 3: c",
+    "",
+    ...(graphYaml === null ? [] : ["## Execution graph", "", "```yaml", graphYaml, "```", ""]),
+    "## Phases",
+    "",
+    "### 1. Phase: a",
+    "",
+    "**Files**:",
+    "- `src/a.ts` — a",
+    "",
+    "### 2. Phase: b",
+    "",
+    "**Files**:",
+    "- `src/b.ts` — b",
+    "",
+    "### 3. Phase: c",
+    "",
+    "**Files**:",
+    phase3Files,
+    "",
+  ].join("\n");
+}
+
+const SOUND_GRAPH = "phases:\n  - { id: 1 }\n  - { id: 2, depends_on: [1] }\n  - { id: 3, depends_on: [1] }";
+
+describe("devx gate coverage — plan-mode Execution graph", () => {
+  it("a sound graph passes and the report carries the graph section", () => {
+    seed({ design_verified: true, stage: "plan", plan: true });
+    repo.write(`${WS}/plan/agent.md`, graphPlan(SOUND_GRAPH));
+    const { code, io } = gateCoverage(planTable());
+    expect(code).toBe(0);
+    const j = io.json() as { gate: string; graph: { present: boolean; findings: string[] } };
+    expect(j.gate).toBe("PASS");
+    expect(j.graph).toEqual({ present: true, findings: [] });
+    const report = repo.read(`${WS}/decisions/2026-07-05-plan-verify.md`);
+    expect(report).toContain("## Execution graph");
+    expect(report).toContain("| 2 | 1 | yes | src/b.ts |");
+  });
+
+  it("a cycle FAILs the plan gate even when coverage is clean", () => {
+    seed({ design_verified: true, stage: "plan", plan: true });
+    repo.write(`${WS}/plan/agent.md`, graphPlan(SOUND_GRAPH.replace("{ id: 1 }", "{ id: 1, depends_on: [3] }")));
+    const { code, io } = gateCoverage(planTable());
+    expect(code).toBe(1);
+    const j = io.json() as { gate: string; reasons: string[]; graph: { findings: string[] } };
+    expect(j.gate).toBe("FAIL");
+    expect(j.reasons.join(" ")).toContain("cycle");
+    expect(j.graph.findings).toContain("fail:graph-cycle");
+    expect(readEngineState(repo.read(SPEC_REL)).gateStatus.plan_verified).toBe(false);
+  });
+
+  it("an unordered same-file overlap without a waiver FAILs; a waived one between parallel-safe phases is CONCERNS", () => {
+    seed({ design_verified: true, stage: "plan", plan: true });
+    repo.write(`${WS}/plan/agent.md`, graphPlan(SOUND_GRAPH, "- `src/b.ts` — also b"));
+    expect(gateCoverage(planTable()).code).toBe(1);
+
+    seed({ design_verified: true, stage: "plan", plan: true });
+    const waived = `${SOUND_GRAPH}\nwaivers:\n  - { phases: [2, 3], paths: [src/b.ts], approver: leo, reason: append-only }`;
+    repo.write(`${WS}/plan/agent.md`, graphPlan(waived, "- `src/b.ts` — also b"));
+    const { code, io } = gateCoverage(planTable());
+    expect(code).toBe(0);
+    const j = io.json() as { gate: string; graph: { findings: string[] } };
+    expect(j.gate).toBe("CONCERNS");
+    expect(j.graph.findings).toEqual(["concern:graph-parallel-collision"]);
+    expect(readEngineState(repo.read(SPEC_REL)).gateStatus.plan_verified).toBe(true);
+  });
+
+  it("no graph section: serial-only note, verdict untouched, JSON says present: false", () => {
+    seed({ design_verified: true, stage: "plan", plan: true });
+    repo.write(`${WS}/plan/agent.md`, graphPlan(null));
+    const { code, io } = gateCoverage(planTable());
+    expect(code).toBe(0);
+    expect((io.json() as { graph: { present: boolean } }).graph.present).toBe(false);
+    expect(repo.read(`${WS}/decisions/2026-07-05-plan-verify.md`)).toContain("serial-only");
+  });
+
+  it("design mode never carries a graph field", () => {
+    seed({});
+    const { io } = gateCoverage(designTable());
+    expect("graph" in (io.json() as Record<string, unknown>)).toBe(false);
+  });
+});

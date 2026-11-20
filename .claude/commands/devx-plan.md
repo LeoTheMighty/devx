@@ -249,7 +249,10 @@ free-nested sub-items (contract in Stage: PRD).
    coverage table** (every E-id: phase, validation type, artifact path,
    full/partial); Phase checklist; per-phase Overview / Files-with-why /
    Context / Verification plan (tests-first | tests-after | human | none +
-   success criteria) / Tasks.
+   success criteria) / Tasks. When phases can run side by side, keep the
+   template's `## Execution graph` (`depends_on` / `touches` /
+   `parallel_safe` per phase); otherwise delete it. `Files:` lists only
+   what a phase changes — it is the overlap input.
 4. **Critique step** (re-homed party-mode; thoroughness-gated: skip at
    send-it unless the plan touches ≥ `engine.critique.min_surfaces`
    config/stack layers): spawn the configured lenses
@@ -261,7 +264,9 @@ free-nested sub-items (contract in Stage: PRD).
    and a decisions/ entry.
 5. Coverage gate, plan mode: subagent judges the E-id → phase map into a
    table JSON; run **`devx gate coverage <hash> --table <path>`**. The P0
-   floor is mechanical: every P0 `full` + runnable artifact. PASS/CONCERNS
+   floor is mechanical: every P0 `full` + runnable artifact; so is a
+   declared Execution graph (cycle, phase set ≠ checklist, unordered
+   same-file overlap without a waiver → FAIL). PASS/CONCERNS
    → `plan_verified` + `stage: red`.
 6. Commit, status log, print `devx next <hash>`.
 
@@ -329,7 +334,11 @@ free-nested sub-items (contract in Stage: PRD).
    — one per plan phase, v1 contract unchanged: spec file under `dev/`
    (frontmatter `from:` the plan spec; Goal + ACs from the phase's success
    criteria + tasks), branch via `devx plan-helper derive-branch dev
-   <hash>`, DEV.md entries appended in dependency order, retro story
+   <hash>`, DEV.md entries appended in dependency order — from
+   `devx workstream graph <hash>` when the plan declares an Execution
+   graph: `blocked_by` = the phase's `depends_on` hashes, `independent_with`
+   pairs get `Parallel-safe with <hashes>` on their rows (validate-emit's
+   `graph-blocked-by` aborts on a miss) — retro story
    co-emitted via `devx plan-helper emit-retro-story`, the whole emission
    validated with `devx plan-helper validate-emit <epic-slug>` (abort on
    error). Then write one `  - [ ] Phase <n>: <title> → <dev-hash>` pointer
