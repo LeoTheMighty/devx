@@ -39,6 +39,15 @@
 // IDs are stable and never reused — `nextQuestionId` reads the max over ALL
 // entries including resolved ones, so a resolved `Q-3` never has its number
 // handed to something else.
+//
+// WHERE AN ENTRY'S VERDICT CAME FROM. A `gate-concern` is only as trustworthy
+// as the run that recorded it, and `Origin:` is what says which run that was.
+// Read it before acting on an entry: a gate re-run against an already-closed
+// gate stamps today's verdict over a settled one, so an entry whose Origin
+// names a run that should not have happened is a reconcile nobody asked for.
+// The entry survives either way — the resolve half sets `Status: resolved`
+// with a `Resolution:` pointer rather than deleting anything — so a wrongly
+// closed entry is recoverable from the file, not lost.
 
 // ---------------------------------------------------------------------------
 // Types
