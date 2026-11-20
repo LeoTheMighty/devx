@@ -1,9 +1,8 @@
 # /devx-loop — the overnight arm of /devx
 
-> An arm of `/devx`, loaded by its Routing (`.claude/commands/devx.md`)
-> after Step 0. Step 0's preflight, Branch model resolution and Core
-> Principles there bind here. Reached any other way, load that file and
-> start at Step 0.
+> An arm of `/devx`: enter via `.claude/commands/devx.md`, whose Step 0
+> (preflight; **Layout** — `engine.docs_layout`, names here are
+> doc-set-relative), Branch model resolution and Core Principles bind here.
 
 ## Stage: Loop (`/devx loop` — good night, have fun)
 
