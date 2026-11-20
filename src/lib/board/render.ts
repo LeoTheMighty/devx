@@ -34,6 +34,41 @@ export function pageName(slug: string): string {
   return `${safe === "" ? "workstream" : safe}.html`;
 }
 
+/**
+ * Page name per workstream, with collisions broken by a numeric suffix.
+ *
+ * `pageName` is LOSSY — it has to be, since a slug is a directory name and a
+ * `/` or `..` in one must not escape the out dir — so two workstreams can
+ * collapse onto one filename. Without this the second page overwrites the
+ * first and BOTH index cards link to the survivor: a board that silently
+ * shows one workstream's state under another's name, which is worse than
+ * showing nothing. Reachable two ways: a hand-made directory carrying a
+ * character `SLUG_RE` forbids, and two plan specs pointing at the same
+ * workstream dir (the ambiguity `layout-tree-mismatch` already names).
+ *
+ * Same trick, and the same reason, as `assignGroupIds` in the graph renderer.
+ * Keyed by INDEX rather than by slug, because two colliding entries may share
+ * a slug outright and a slug-keyed map would hand them the same answer again.
+ */
+export function pageNames(slugs: readonly string[]): string[] {
+  const used = new Set<string>();
+  return slugs.map((slug) => {
+    const base = pageName(slug);
+    if (!used.has(base)) {
+      used.add(base);
+      return base;
+    }
+    const stem = base.replace(/\.html$/, "");
+    for (let n = 2; ; n++) {
+      const candidate = `${stem}-${n}.html`;
+      if (!used.has(candidate)) {
+        used.add(candidate);
+        return candidate;
+      }
+    }
+  });
+}
+
 const STYLE = `
 :root { color-scheme: light dark;
   --bg:#fff; --fg:#14161a; --dim:#5c6370; --line:#e3e6ea; --card:#f7f8fa;
@@ -123,15 +158,27 @@ function warningsBlock(warnings: readonly string[]): string {
   ].join("\n");
 }
 
-/** `index.html` — one card per workstream, the whole GRAPH.md board below. */
-export function renderIndex(model: BoardModel, generatedAt: string): string {
-  const active = model.workstreams.filter((w) => w.active);
-  const closed = model.workstreams.filter((w) => !w.active);
+/** `index.html` — one card per workstream, the whole GRAPH.md board below.
+ *
+ *  `hrefs` is passed in rather than re-derived: `pageNames` resolves
+ *  collisions positionally, so a card that called `pageName` itself would
+ *  link the second of two colliding workstreams at the first one's page. */
+export function renderIndex(
+  model: BoardModel,
+  generatedAt: string,
+  hrefs: readonly string[],
+): string {
+  const linked = model.workstreams.map((ws, i) => ({
+    ws,
+    href: hrefs[i] ?? pageName(ws.slug),
+  }));
+  const active = linked.filter((l) => l.ws.active);
+  const closed = linked.filter((l) => !l.ws.active);
 
-  const card = (ws: BoardWorkstream): string =>
+  const card = ({ ws, href }: { ws: BoardWorkstream; href: string }): string =>
     [
       '<div class="card">',
-      `<h3><a href="${esc(pageName(ws.slug))}">${esc(ws.slug)}</a> <span class="meta">${esc(ws.hash)}</span></h3>`,
+      `<h3><a href="${esc(href)}">${esc(ws.slug)}</a> <span class="meta">${esc(ws.hash)}</span></h3>`,
       `<p class="meta">stage: ${esc(ws.stage)}${ws.outcomePending ? " (outcome pending)" : ""}</p>`,
       `<p>${healthPill(ws)}</p>`,
       `<pre class="gates">${esc(ws.gateSummary)}</pre>`,
@@ -144,7 +191,7 @@ export function renderIndex(model: BoardModel, generatedAt: string): string {
       .filter((l) => l !== "")
       .join("\n");
 
-  const section = (title: string, list: BoardWorkstream[]): string =>
+  const section = (title: string, list: typeof linked): string =>
     list.length === 0
       ? ""
       : [`<h2>${esc(title)} (${list.length})</h2>`, ...list.map(card)].join("\n");

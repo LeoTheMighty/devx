@@ -14,7 +14,7 @@ import {
   extractMermaid,
   extractWorkstreamSubgraph,
 } from "../src/lib/board/model.js";
-import { esc, pageName } from "../src/lib/board/render.js";
+import { esc, pageName, pageNames } from "../src/lib/board/render.js";
 import { ENGINE_DEFAULTS } from "../src/lib/engine/config.js";
 import { realEngineFs } from "../src/lib/engine/workstream.js";
 import {
@@ -130,6 +130,34 @@ describe("render helpers", () => {
     expect(pageName("../../etc/passwd")).toBe("etc-passwd.html");
     expect(pageName("a b/c")).toBe("a-b-c.html");
     expect(pageName("...")).toBe("workstream.html");
+  });
+
+  it("breaks a page-name collision rather than overwriting the page", () => {
+    // `pageName` is lossy by necessity, so two slugs can land on one file.
+    // Without the suffix the second page overwrites the first and BOTH index
+    // cards link to the survivor — one workstream's state shown under
+    // another's name, which is worse than showing nothing.
+    expect(pageNames(["a.b", "a-b", "a b"])).toEqual([
+      "a.b.html",
+      "a-b.html",
+      "a-b-2.html",
+    ]);
+  });
+
+  it("breaks a collision between two entries with the SAME slug", () => {
+    // Two plan specs pointing at one workstream dir — the ambiguity
+    // `layout-tree-mismatch` already names. A slug-keyed map would hand both
+    // the same answer again, so the resolution is positional.
+    expect(pageNames(["dup", "dup", "dup"])).toEqual([
+      "dup.html",
+      "dup-2.html",
+      "dup-3.html",
+    ]);
+  });
+
+  it("leaves a collision-free list byte-identical to pageName", () => {
+    const slugs = ["one", "two", "three"];
+    expect(pageNames(slugs)).toEqual(slugs.map(pageName));
   });
 });
 
@@ -405,6 +433,20 @@ describe("devx board", () => {
       const html = repo.read(".devx-cache/board/demo-feature.html");
       expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
       expect(html).not.toContain("<script>alert(1)");
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("links each card at the file it actually wrote", () => {
+    const repo = seed();
+    try {
+      build(repo);
+      const index = repo.read(".devx-cache/board/index.html");
+      for (const href of ["demo-feature.html", "other-thing.html"]) {
+        expect(index).toContain(`href="${href}"`);
+        expect(repo.exists(`.devx-cache/board/${href}`)).toBe(true);
+      }
     } finally {
       repo.cleanup();
     }

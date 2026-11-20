@@ -994,13 +994,15 @@ function gatherWorkstreamSignals(
             error: loaded.error,
           });
         }
-        for (const line of loaded.headingDrift) {
+        if (loaded.headingDrift.length > 0) {
           const rel = wsArtifacts.stageSubject(base.layout, base, {
             kind: "questions",
           }).rel;
-          warnings.push(
-            `${rel}:${line}: a '## Q…' heading is off the canonical '## Q-<n>: <title>' shape — its fields read as the entry above it`,
-          );
+          for (const line of loaded.headingDrift) {
+            warnings.push(
+              `${rel}:${line}: a '## Q…' heading is off the canonical '## Q-<n>: <title>' shape — its fields read as the entry above it`,
+            );
+          }
         }
       }
     }

@@ -29,7 +29,7 @@ import type { Command } from "commander";
 
 import { attachPhase } from "../lib/help.js";
 import { buildBoardModel } from "../lib/board/model.js";
-import { pageName, renderIndex, renderWorkstreamPage } from "../lib/board/render.js";
+import { pageNames, renderIndex, renderWorkstreamPage } from "../lib/board/render.js";
 import { loadEngineContext } from "../lib/engine/context.js";
 import { GRAPH_FILENAME } from "../lib/graph/regen.js";
 import { type EngineFs, realEngineFs } from "../lib/engine/workstream.js";
@@ -88,10 +88,14 @@ export function runBoard(
   const outAbs = join(repoRoot, ...outRel.split("/"));
   const generatedAt = now().toISOString().replace("T", " ").slice(0, 16);
 
+  // Resolved ONCE and threaded through both sides, so a card's href and the
+  // file it names can never disagree — which is what a second `pageName` call
+  // in the renderer would allow the moment two slugs collide.
+  const hrefs = pageNames(model.workstreams.map((ws) => ws.slug));
   const files: Array<{ name: string; body: string }> = [
-    { name: "index.html", body: renderIndex(model, generatedAt) },
-    ...model.workstreams.map((ws) => ({
-      name: pageName(ws.slug),
+    { name: "index.html", body: renderIndex(model, generatedAt, hrefs) },
+    ...model.workstreams.map((ws, i) => ({
+      name: hrefs[i],
       body: renderWorkstreamPage(ws, generatedAt),
     })),
   ];
