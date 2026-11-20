@@ -960,7 +960,7 @@
           "exclusiveMinimum": 0
         },
         "full_run_prose_budget_kb": {
-          "description": "S-1 full-run budget in KB: the planning surface plus the /devx dispatcher body — the prose one PRD-to-merge run can load. Separate from prose_budget_kb so raising one never silently loosens the other (D-14).",
+          "description": "S-1 full-run budget in KB: the planning surface plus the /devx dispatcher and the arm bodies one full run loads (execute, retro) — the prose one PRD-to-merge run can load. Separate from prose_budget_kb so raising one never silently loosens the other (D-14).",
           "type": "number",
           "exclusiveMinimum": 0
         },

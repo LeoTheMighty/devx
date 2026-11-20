@@ -31,7 +31,7 @@ import type { GateDecision } from "../merge-gate.js";
 /**
  * The three canonical advice keywords parsed by `/devx` Phase 8 per AC #3.
  * The skill body dispatches on exact-string match, so any change here MUST
- * land in `.claude/commands/devx.md` Phase 8 simultaneously — the discipline
+ * land in `.claude/commands/devx-execute.md` Phase 8 simultaneously — the discipline
  * test in `test/devx-skill-phase8-discipline.test.ts` enforces that.
  */
 export const ADVICE_INTERVIEW = "file INTERVIEW for approval" as const;
