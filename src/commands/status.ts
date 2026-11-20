@@ -35,10 +35,6 @@ import { attachPhase } from "../lib/help.js";
 import * as artifacts from "../lib/engine/artifacts.js";
 import { loadEngineContext } from "../lib/engine/context.js";
 import {
-  frontmatterParseError,
-  readEngineState,
-} from "../lib/engine/frontmatter.js";
-import {
   renderFocusLine,
   renderGateSummary,
   renderHealthLine,
@@ -50,8 +46,7 @@ import { heartbeatIntervalMsFrom } from "../lib/loop/config.js";
 import { listLiveInstances } from "../lib/loop/instances.js";
 import {
   type EngineFs,
-  planSpecWorkstreamRel,
-  workstreamSlugFor,
+  enumerateEngineWorkstreams,
   realEngineFs,
 } from "../lib/engine/workstream.js";
 
@@ -65,8 +60,6 @@ export interface RunStatusOpts {
   now?: () => Date;
 }
 
-const HASH_FROM_NAME_RE = /^plan-([a-z0-9]{3,12})-/i;
-
 export function runStatus(opts: RunStatusOpts = {}): number {
   const out = opts.out ?? ((s) => process.stdout.write(s));
   const err = opts.err ?? ((s) => process.stderr.write(s));
@@ -79,116 +72,64 @@ export function runStatus(opts: RunStatusOpts = {}): number {
   }
   const { repoRoot, engine } = ctx.ctx;
 
-  const planDir = join(repoRoot, "plan");
-  let names: string[] = [];
-  if (fs.exists(planDir)) {
-    try {
-      names = [...fs.readdir(planDir)].sort();
-    } catch (e) {
-      err(
-        `devx status: plan/ unreadable (${e instanceof Error ? e.message : String(e)}) — nothing to render\n`,
-      );
-    }
-  }
-
+  // One walk, shared with `devx board` (and the reason runStatus's header
+  // warns about identity drift): the enumerator owns the plan/ scan, the
+  // D-13 warnings, and the hash/slug/base derivation.
   const blocks: string[] = [];
-  for (const name of names) {
-    if (!name.endsWith(".md")) continue;
-    // Per-entry degradation: an unreadable/renamed-mid-scan spec (or any
-    // other per-file failure) skips that entry, never the whole command.
-    try {
-      const content = fs.readFile(join(planDir, name));
-      // 9f24c7 / D-13: say "unreadable" instead of rendering a confident
-      // empty state. The colon shape swallows every key below the bad one,
-      // so `stage: null` here is indistinguishable from a legacy plan spec
-      // and the entry would drop out of the render in total silence. Warn
-      // first, THEN take whichever path the (partial) state implies — the
-      // backtick shape still reads losslessly and must keep rendering.
-      const parseError = frontmatterParseError(content);
-      if (parseError !== null) {
-        err(
-          `devx status: plan/${name}: frontmatter does not parse (${parseError}) — engine state below the error is unreadable; anything rendered for it is partial\n`,
-        );
-      }
-      const state = readEngineState(content);
-      // Only engine-managed specs participate (legacy plan specs have no
-      // stage — PLAN.md is their surface).
-      if (state.stage === null) continue;
-      const hash =
-        state.hash ?? (HASH_FROM_NAME_RE.exec(name)?.[1].toLowerCase() ?? null);
-      if (hash === null) continue;
+  for (const ws of enumerateEngineWorkstreams(fs, repoRoot, engine, (m) =>
+    err(`devx status: ${m}\n`),
+  )) {
+    const { state, base, hash, slug } = ws;
+    const active = state.stage !== "done" && state.stage !== "retired";
+    const outcomePending =
+      state.stage === "done" && state.outcome.status === "pending";
+    if (!active && !outcomePending) continue;
 
-      // "whose workstream: resolves" — frontmatter pointer, filename-slug
-      // fallback, then a directory-existence check. Through the shared
-      // resolver (dlr103) so a stale pointer under `project-level` cannot
-      // bypass the layout guard and drop the workstream on the probe below.
-      const wsRel = planSpecWorkstreamRel(name, state.workstream, engine);
-      if (wsRel === null) continue;
-      const base: artifacts.ResolvedBase = {
-        repoRoot,
-        workstreamRel: wsRel,
-        layout: engine.docsLayout,
-      };
-      const wsAbs = join(repoRoot, ...wsRel.split("/"));
-      if (!fs.exists(wsAbs)) continue;
-
-      const active = state.stage !== "done" && state.stage !== "retired";
-      const outcomePending =
-        state.stage === "done" && state.outcome.status === "pending";
-      if (!active && !outcomePending) continue;
-
-      const decisionsAbs = artifacts.decisionsDirAbs(base);
-      let decisionNames: readonly string[] = [];
-      if (fs.exists(decisionsAbs)) {
-        try {
-          decisionNames = fs.readdir(decisionsAbs);
-        } catch {
-          // degrade — FAIL rows fall back to re-run-only fix paths
-        }
-      }
-      const summary = renderGateSummary(state, {
-        hash,
-        workstreamRel: wsRel,
-        layout: engine.docsLayout,
-        decisionNames,
-        evalsReportExists: artifacts.artifactExists(fs, base, { kind: "red-report" }),
-      });
-
-      let focusLine: string | null = null;
+    const decisionsAbs = artifacts.decisionsDirAbs(base);
+    let decisionNames: readonly string[] = [];
+    if (fs.exists(decisionsAbs)) {
       try {
-        const loaded = loadTodoDoc(fs, base);
-        focusLine = renderFocusLine(loaded?.doc ?? null, state.stage);
+        decisionNames = fs.readdir(decisionsAbs);
       } catch {
-        // unreadable todo.md — the focus line is advisory; omit it
+        // degrade — FAIL rows fall back to re-run-only fix paths
       }
-
-      // B11: the health-queue line. `loadQuestions` never throws and reports
-      // a malformed queue with its reason rather than zeroes, so there is no
-      // try/catch here and no way for a bad entry to make this block render
-      // a confident `0 blocking` over a file that may hold four.
-      const questions = loadQuestions(fs, base);
-      const healthLine =
-        questions === null
-          ? null
-          : renderHealthLine(
-              questions.error === null ? healthCounts(questions.entries) : null,
-              questions.error,
-            );
-
-      // Through the shared helper (dlr103): the tail of `.` is `.`, so under
-      // `project-level` a hand-rolled tail renders every workstream as
-      // ". (<hash>)". The slug lives in the plan spec's filename there.
-      const slug = workstreamSlugFor(name, wsRel, engine) ?? wsRel;
-      const lines = [
-        `${slug} (${hash})  stage: ${state.stage}${outcomePending ? " (outcome pending)" : ""}`,
-        ...summary.split("\n").map((l) => `  ${l}`),
-      ];
-      if (focusLine !== null) lines.push(`  ${focusLine}`);
-      if (healthLine !== null) lines.push(`  ${healthLine}`);
-      blocks.push(lines.join("\n"));
-    } catch {
-      continue;
     }
+    const summary = renderGateSummary(state, {
+      hash,
+      workstreamRel: base.workstreamRel,
+      layout: base.layout,
+      decisionNames,
+      evalsReportExists: artifacts.artifactExists(fs, base, { kind: "red-report" }),
+    });
+
+    let focusLine: string | null = null;
+    try {
+      const loaded = loadTodoDoc(fs, base);
+      focusLine = renderFocusLine(loaded?.doc ?? null, state.stage);
+    } catch {
+      // unreadable todo.md — the focus line is advisory; omit it
+    }
+
+    // B11: the health-queue line. `loadQuestions` never throws and reports a
+    // malformed queue with its reason rather than zeroes, so there is no
+    // try/catch here and no way for a bad entry to make this block render a
+    // confident `0 blocking` over a file that may hold four.
+    const questions = loadQuestions(fs, base);
+    const healthLine =
+      questions === null
+        ? null
+        : renderHealthLine(
+            questions.error === null ? healthCounts(questions.entries) : null,
+            questions.error,
+          );
+
+    const lines = [
+      `${slug} (${hash})  stage: ${state.stage}${outcomePending ? " (outcome pending)" : ""}`,
+      ...summary.split("\n").map((l) => `  ${l}`),
+    ];
+    if (focusLine !== null) lines.push(`  ${focusLine}`);
+    if (healthLine !== null) lines.push(`  ${healthLine}`);
+    blocks.push(lines.join("\n"));
   }
 
   // Live loops (mlc105) — the same registry `devx next` row 1 aggregates,

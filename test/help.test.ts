@@ -296,6 +296,12 @@ describe("cli303 — devx --help command listing", () => {
                                      (verdicts + FAIL fix paths), the current todo
                                      focus, and the health-queue counts for every
                                      active workstream. Read-only.
+        board [options]              Write a static HTML board: one index plus one
+                                     page per workstream (stage, gates with verdicts,
+                                     focus, the health queue, the todo checklist, and
+                                     its slice of GRAPH.md). No server, no build
+                                     step; re-run to refresh. Read-only except for
+                                     its own output dir.
         serve                        (coming in Phase 4 — epic-devx-serve-web)
         tail                         (coming in Phase 4 — epic-devx-ui-tui)
         ui                           (coming in Phase 4 — epic-devx-ui-tui)
