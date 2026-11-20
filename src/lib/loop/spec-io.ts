@@ -139,7 +139,7 @@ export function hasPhase4StatusLine(content: string): boolean {
 /**
  * Compose the merge tail's `phase 4:` status-log head from the review
  * evidence workers reported across the item's iterations (debug-3b9e07).
- * Three honest shapes, mirroring `.claude/commands/devx.md` Phase 4 step 6:
+ * Three honest shapes, mirroring `.claude/commands/devx-execute.md` Phase 4 step 6:
  *
  *   - evidence present, findings > 0 — the canonical non-zero form: shape
  *     descriptor, finding count, disposition, most load-bearing fix.

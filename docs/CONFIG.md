@@ -412,7 +412,7 @@ engine:
   code_citation_hints: []               # paths the design stage grounds discussion in
   expectations_min: 3                   # Gate 1 floor: ≥N E-blocks in expectations.md
   prose_budget_kb: 60                   # S-1 planning surface: engine templates + /devx-plan skill body
-  full_run_prose_budget_kb: 128         # S-1 full run: planning surface + /devx dispatcher body (D-14)
+  full_run_prose_budget_kb: 128         # S-1 full run: planning surface + /devx dispatcher + its execute/retro arm bodies (D-14)
   reading_guide_roles: [pm, architect, dev, qa]   # Reading Guide columns on a design human render
   critique:                             # re-homed party-mode (plan-stage critique)
     lenses: [pm, architect, dev, qa]

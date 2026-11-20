@@ -1,17 +1,27 @@
 // v2l101 discipline pins: the Stage: Loop section of /devx.
+//
+// Since the D-14 arm split the Loop and Outcome bodies are their own files;
+// devx.md keeps each `## Stage:` heading as a pointer, and the content pins
+// read the body the dispatcher points at.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const body = readFileSync(
-  join(process.cwd(), ".claude", "commands", "devx.md"),
-  "utf8",
-);
+const read = (name: string): string =>
+  readFileSync(join(process.cwd(), ".claude", "commands", name), "utf8");
+const dispatcher = read("devx.md");
+const body = read("devx-loop.md");
+const outcomeBody = read("devx-outcome.md");
 
 describe("/devx loop discipline (v2l101)", () => {
   it("has the Stage: Loop section", () => {
     expect(body).toContain("## Stage: Loop (`/devx loop`");
+  });
+
+  it("the dispatcher's Stage: Loop heading points at the body", () => {
+    expect(dispatcher).toContain("## Stage: Loop (`/devx loop`");
+    expect(dispatcher).toContain("Body: `.claude/commands/devx-loop.md`.");
   });
 
   it("pins D-6: trust is transactional git + ladder + gate, not permission bypass; LOCKDOWN refuses", () => {
@@ -39,13 +49,18 @@ describe("/devx loop discipline (v2l101)", () => {
 
 describe("/devx outcome discipline (v2o101)", () => {
   it("has the Stage: Outcome section with CLI delegation", () => {
-    expect(body).toContain("## Stage: Outcome (`/devx outcome <hash>`");
-    expect(body).toContain("devx outcome arm <hash>");
-    expect(body).toMatch(/--verdict keep\|tune\|restart\|retire/);
+    expect(outcomeBody).toContain("## Stage: Outcome (`/devx outcome <hash>`");
+    expect(outcomeBody).toContain("devx outcome arm <hash>");
+    expect(outcomeBody).toMatch(/--verdict keep\|tune\|restart\|retire/);
+  });
+
+  it("the dispatcher's Stage: Outcome heading points at the body", () => {
+    expect(dispatcher).toContain("## Stage: Outcome (`/devx outcome <hash>`");
+    expect(dispatcher).toContain("Body: `.claude/commands/devx-outcome.md`.");
   });
 
   it("pins sources-not-vibes and the unattended-judgment rule", () => {
-    expect(body).toMatch(/never vibes/);
-    expect(body).toMatch(/file the\s+recommendation in INTERVIEW\.md instead of deciding silently/);
+    expect(outcomeBody).toMatch(/never vibes/);
+    expect(outcomeBody).toMatch(/file the\s+recommendation in INTERVIEW\.md instead of deciding silently/);
   });
 });
