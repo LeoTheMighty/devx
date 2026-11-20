@@ -44,9 +44,11 @@ right", `/devx-review <hash>`, or when the advisory CI job flags a PR.
 ## What this is not
 
 - **Not a gate.** It computes no `Verdict` and writes no `gate_status`. Its
-  own vocabulary — `CLEAN | CONCERNS | BLOCKING` — is deliberately disjoint
-  from D-9's `PASS | CONCERNS | FAIL | WAIVED` so a review can never be read
-  as, or parsed as, a gate's answer.
+  own vocabulary — `CLEAN | CONCERNS | BLOCKING` — borrows no word from D-9
+  that *decides*: never PASS, never FAIL, never WAIVED. (`CONCERNS` is shared
+  on purpose; it means the same thing on both sides.) What keeps the two
+  apart is the key: a review carries `review:`, never `gate:`, so nothing
+  that reads a gate report can read a review as a gate's answer.
 - **Not `devx doctor`.** Doctor fixes the mechanical half (stale locks, dead
   owners, mirror drift) and acts. This one reports and recommends. **Run
   `devx doctor` first** and let it clear what is computable.

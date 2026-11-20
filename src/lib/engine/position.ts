@@ -23,9 +23,12 @@
 //
 // Advisory by construction: nothing here returns a `Verdict` (the D-9 gate
 // vocabulary) and nothing here is a gate input. The review's own vocabulary
-// is CLEAN | CONCERNS | BLOCKING, deliberately disjoint from
-// PASS | CONCERNS | FAIL | WAIVED, so a review verdict can never be mistaken
-// for — or parsed as — a gate's.
+// is CLEAN | CONCERNS | BLOCKING. It borrows no word that DECIDES — no PASS,
+// no FAIL, no WAIVED — though `CONCERNS` is shared on purpose, because it
+// means the same thing on both sides. The firewall that actually holds is the
+// KEY: a review carries `review:`, never `gate:`, so `parseVerdictBlock`
+// returns null for one and no consumer of a gate report can read a review as
+// a gate's answer.
 //
 // Staleness is measured in COMMIT time, not mtime: mtimes are rewritten by
 // every fresh clone and by CI's own checkout, so an mtime check fires on
@@ -77,9 +80,8 @@ export interface PositionFinding {
   receipt: string;
 }
 
-/** The review's own verdict vocabulary. Deliberately NOT D-9's: a review
- *  writes no gate state, so sharing the words would be the first step toward
- *  something reading one as the other. */
+/** The review's own verdict vocabulary — see the file header on why it shares
+ *  `CONCERNS` with D-9 and nothing that decides. */
 export const REVIEW_VERDICTS = ["CLEAN", "CONCERNS", "BLOCKING"] as const;
 export type ReviewVerdict = (typeof REVIEW_VERDICTS)[number];
 
