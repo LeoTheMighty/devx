@@ -21,8 +21,15 @@
 // target wins). Gate flags are one-directional too — the cascade only
 // clears flags, never sets them.
 //
+// It also REPORTS (never touches) the dev specs the plan already emitted —
+// see §"Emitted dev specs" at the bottom. That is the half `/devx-revise`
+// needs to close the mid-execution gap: a reopened plan whose ready specs
+// stay claimable.
+//
 // Spec: dev/dev-v2e101-2026-07-05T13:01-engine-cli-primitives.md
 // Design: v2/02-engine.md §4.9
+
+import { join as joinPath } from "node:path";
 
 import {
   type EngineState,
@@ -30,6 +37,7 @@ import {
   type GateFlag,
   type GateKey,
   type Stage,
+  readEngineState,
   stageIndex,
 } from "./frontmatter.js";
 import {
@@ -37,6 +45,7 @@ import {
   DOCS_LAYOUTS,
   artifactKindIdentity,
   artifactRel,
+  normalizeArtifactPath,
 } from "./artifacts.js";
 import { pathToArtifactKind } from "./artifact-index.js";
 
@@ -253,4 +262,148 @@ export function replayPath(stage: Stage, hash: string): string[] {
     return stage === "intake" ? full.map((e) => e.cmd) : [];
   }
   return full.slice(startIdx).map((e) => e.cmd);
+}
+
+// ---------------------------------------------------------------------------
+// Emitted dev specs — the mid-execution half of the backward path (A14).
+// ---------------------------------------------------------------------------
+//
+// Every cascade row clears `plan_verified`, so after ANY revision the plan
+// that emitted this workstream's dev specs is unverified. Those specs are the
+// executable face of the artifact that just moved: a `[ ]` ready one is
+// claimable by the next `/devx` or `devx loop` tick against a plan whose
+// phases nobody has re-read.
+//
+// The CLI reports them; it does not touch them. Two reasons, both learned:
+//
+//   - An `in-progress` spec holds a claim lock and (usually) a live worktree.
+//     Flipping its status from here is exactly the 2026-05-07 dvxret
+//     resume-collision shape — a session stomping a peer's work from outside
+//     its own claim (CLAUDE.md §"Verify claim ownership before resuming").
+//   - WHICH phases a change genuinely invalidates is judgment. The full set
+//     is the honest mechanical answer; narrowing it is the /devx-revise
+//     skill's job, with the human in the loop.
+//
+// So `disposition` is a recommendation, keyed only on the spec's own status.
+
+/** What the backward path owes an emitted dev spec. */
+export type EmittedDisposition =
+  /** `ready` — claimable right now against a reopened plan. Flip to blocked. */
+  | "block"
+  /** `in-progress` — a live claim. The human decides; never flipped here. */
+  | "halt"
+  /** `done` — the phase shipped. Re-execution needs a NEW spec, not a reopen. */
+  | "shipped"
+  /** Already `blocked` — nothing owed. */
+  | "already-blocked"
+  /** No recognizable status — reported so it cannot be missed by silence. */
+  | "unknown";
+
+export const EMITTED_DISPOSITIONS: readonly EmittedDisposition[] = [
+  "block",
+  "halt",
+  "shipped",
+  "already-blocked",
+  "unknown",
+];
+
+/** Status → disposition. Case- and whitespace-insensitive because spec
+ *  frontmatter is hand-edited as often as it is written by the CLI. */
+export function dispositionFor(status: string | null): EmittedDisposition {
+  switch ((status ?? "").trim().toLowerCase()) {
+    case "ready":
+      return "block";
+    case "in-progress":
+      return "halt";
+    case "done":
+      return "shipped";
+    case "blocked":
+      return "already-blocked";
+    default:
+      return "unknown";
+  }
+}
+
+export interface EmittedSpec {
+  hash: string;
+  /** 1-based plan phase, or null when the spec records none (D-8 direct
+   *  entry, or a hand-authored spec pointed at the workstream). */
+  phase: number | null;
+  status: string | null;
+  /** Repo-relative spec path. */
+  spec: string;
+  disposition: EmittedDisposition;
+}
+
+/** Read-only fs seam — `EngineFs` qualifies structurally. */
+export interface EmittedScanFs {
+  exists(path: string): boolean;
+  readdir(path: string): string[];
+  readFile(path: string): string;
+}
+
+/**
+ * Every `dev/dev-*.md` spec whose `plan:` pointer resolves to this
+ * workstream, ordered by phase (phase-less last) then hash.
+ *
+ * Both sides of the pointer comparison go through `normalizeArtifactPath`,
+ * the resolver the rest of the engine uses: `.`, `./x`, `x/` and `x` are one
+ * workstream, and under `project-level` the root doc set normalizes to the
+ * empty string on both sides. A raw `===` here would silently report an empty
+ * list — which reads exactly like "this revision reopens nothing".
+ *
+ * An unreadable or unparseable spec is reported with `disposition: unknown`
+ * rather than dropped: the whole point of the list is that nothing executable
+ * disappears into silence. One that cannot even be read for its pointer is
+ * skipped, because there is no evidence it belongs to this workstream.
+ */
+export function emittedSpecsFor(
+  repoRoot: string,
+  workstreamRel: string,
+  fs: EmittedScanFs,
+): EmittedSpec[] {
+  const wanted = normalizeArtifactPath(workstreamRel);
+  const dir = joinPath(repoRoot, "dev");
+  if (!fs.exists(dir)) return [];
+  let names: string[];
+  try {
+    names = fs.readdir(dir);
+  } catch {
+    return [];
+  }
+  const out: EmittedSpec[] = [];
+  for (const name of names.slice().sort()) {
+    if (!name.startsWith("dev-") || !name.endsWith(".md")) continue;
+    let state;
+    try {
+      state = readEngineState(fs.readFile(joinPath(dir, name)));
+    } catch {
+      continue; // no readable pointer → no evidence it is ours
+    }
+    if (state.plan === null || normalizeArtifactPath(state.plan) !== wanted) continue;
+    out.push({
+      hash: state.hash ?? name.replace(/^dev-/, "").split("-")[0] ?? name,
+      phase: state.phase,
+      status: state.status,
+      spec: `dev/${name}`,
+      disposition: dispositionFor(state.status),
+    });
+  }
+  return out.sort((a, b) => {
+    const ap = a.phase ?? Number.MAX_SAFE_INTEGER;
+    const bp = b.phase ?? Number.MAX_SAFE_INTEGER;
+    return ap !== bp ? ap - bp : a.hash.localeCompare(b.hash);
+  });
+}
+
+/** Per-disposition counts, every key present (a zero is information too —
+ *  `halt: 0` is what tells the skill it may proceed without a human). */
+export function emittedCounts(
+  specs: EmittedSpec[],
+): Record<EmittedDisposition, number> {
+  const counts = Object.fromEntries(
+    EMITTED_DISPOSITIONS.map((d) => [d, 0]),
+  ) as Record<EmittedDisposition, number>;
+  for (const s of specs) counts[s.disposition] += 1;
+  return counts;
 }

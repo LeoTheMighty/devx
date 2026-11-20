@@ -5,6 +5,11 @@
 // open). Refuses unknown artifacts — a typo'd --touched must never clear
 // gate flags. Never edits the touched artifact itself.
 //
+// It also REPORTS the dev specs the plan already emitted (`emitted`,
+// `emitted_counts`) with a per-spec disposition, and warns on stderr when
+// any are claimable or claimed. It never edits them — see revise.ts
+// §"Emitted dev specs" for why that boundary is where it is.
+//
 // Exit codes:
 //   0 — cascade applied; JSON on stdout carries resets + stage + replay.
 //   1 — refusal: unknown artifact, or a path pointing outside this
@@ -27,6 +32,8 @@ import {
   STAGE_SHORTHAND_NAMES,
   cascadeFor,
   computeRevise,
+  emittedCounts,
+  emittedSpecsFor,
 } from "../lib/engine/revise.js";
 
 /** Stage shorthands cascadeFor accepts (`--touched prd`) — derived from the
@@ -149,6 +156,12 @@ export function runRevise(
     return 2;
   }
 
+  // The dev specs this plan already emitted. Reported, never touched (see
+  // revise.ts §"Emitted dev specs"): a `halt` row is a live claim, and the
+  // blast radius of the change is judgment, not arithmetic.
+  const emitted = emittedSpecsFor(ctx.ctx.repoRoot, ws.workstreamRel, fs);
+  const counts = emittedCounts(emitted);
+
   out(
     `${JSON.stringify({
       hash: ws.hash,
@@ -158,8 +171,29 @@ export function runRevise(
       stage: computation.stage,
       replay: computation.replay,
       spec: ws.specRel,
+      emitted,
+      emitted_counts: counts,
     })}\n`,
   );
+
+  // Loud on stderr, so a cascade applied from a script cannot quietly leave a
+  // claimed phase standing over a reopened plan. stdout stays pure JSON.
+  if (counts.halt > 0) {
+    err(
+      `devx revise: ${counts.halt} emitted dev spec(s) are in-progress against the reopened plan (${emitted
+        .filter((s) => s.disposition === "halt")
+        .map((s) => s.hash)
+        .join(", ")}) — verify claim ownership before touching them; /devx-revise halts here for a human.\n`,
+    );
+  }
+  if (counts.block > 0) {
+    err(
+      `devx revise: ${counts.block} emitted dev spec(s) are still ready and claimable (${emitted
+        .filter((s) => s.disposition === "block")
+        .map((s) => s.hash)
+        .join(", ")}) — block or re-emit them before the next \`devx next\`.\n`,
+    );
+  }
   return 0;
 }
 
@@ -167,7 +201,7 @@ export function register(program: Command): void {
   const sub = program
     .command("revise")
     .description(
-      "Apply the v2 cascade-reset table for a touched workstream artifact (prd/expectations → 4 flags; design → 3; plan → 2) and print the replay path.",
+      "Apply the v2 cascade-reset table for a touched workstream artifact (prd/expectations → 4 flags; design → 3; plan → 2), print the replay path, and report the dev specs the plan already emitted (never edits them).",
     )
     .argument("<hash>", "workstream (plan spec) hash")
     .requiredOption(
