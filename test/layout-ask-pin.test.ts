@@ -34,6 +34,7 @@ const POINTERS = [
   ".claude/commands/devx-walk.md",
   ".claude/commands/devx-address.md",
   ".claude/commands/devx-revise.md",
+  ".claude/commands/devx-review.md",
 ];
 
 const read = (rel: string): string => readFileSync(resolve(REPO_ROOT, rel), "utf8");

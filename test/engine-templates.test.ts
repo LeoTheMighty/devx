@@ -24,6 +24,7 @@ const EXPECTED_TEMPLATES = [
   "plan/human.md",
   "plan/outline.md",
   "plan/outline-critique.md",
+  "evals/eval.md",
   "evals/human.md",
   "evals/outline.md",
   "evals/outline-critique.md",
@@ -85,6 +86,26 @@ describe("engine templates (v2s101)", () => {
       expect(body).toContain(field);
     }
     expect(body).toMatch(/When <trigger>, the system SHALL <behavior>\./);
+  });
+
+  it("eval manifest template carries the typed-step + Runs contract (B17)", () => {
+    const body = readFileSync(join(engineDir, "evals", "eval.md"), "utf8");
+    // The step-type menu an author chooses from. `ui` is deliberately NOT
+    // offered: devx routes browser checks to /devx-test walkthroughs or a
+    // committed Playwright spec invoked from a `script` step (docs/QA.md),
+    // so a `ui` type would be a third path to the same two places.
+    expect(body).toMatch(/### 1\. script —/);
+    expect(body).toMatch(/### 2\. metric —/);
+    expect(body).not.toMatch(/^#{2,6} *\d*[.)]? *ui\b/m);
+    // The deferral marker and the fields the outcome runner reads.
+    expect(body).toContain("(measured at outcome)");
+    expect(body).toContain("- **Run:**");
+    expect(body).toContain("- **Window:**");
+    expect(body).toContain("- **Expected:**");
+    // The result-of-record region, which must stay writable under the lock.
+    expect(body).toContain("## Runs");
+    expect(body).toMatch(/^status: red/m);
+    expect(body).toMatch(/^last_run: null/m);
   });
 
   it("verdict-bearing templates open with the deterministic verdict block (D-9)", () => {

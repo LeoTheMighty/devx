@@ -125,7 +125,10 @@ export interface ModeDetectInputs {
 
 export type ModeDetectResult =
   | { mode: CoverageMode }
-  | { mode: null; refusal: string };
+  /** `closed` marks the one refusal that is about a gate having PASSED
+   *  rather than not being ready: both coverage gates are shut, so the only
+   *  way to a re-stamp is `devx revise`, and the CLI says so. */
+  | { mode: null; refusal: string; closed?: true };
 
 export function detectCoverageMode(i: ModeDetectInputs): ModeDetectResult {
   const gs = i.state.gateStatus;
@@ -160,6 +163,7 @@ export function detectCoverageMode(i: ModeDetectInputs): ModeDetectResult {
     mode: null,
     refusal:
       "no open coverage gate — design_verified and plan_verified are both true",
+    closed: true,
   };
 }
 
@@ -179,6 +183,37 @@ export function extractSourceIds(
     return extractDefinedIds(files.prd).map((r) => r.id);
   }
   return parseExpectations(files.expectations).map((b) => b.id);
+}
+
+/**
+ * Which coverage gate a judgment table judges, read off the source IDs its
+ * rows key: the one mode whose IDs it names, or null when it names both or
+ * neither.
+ *
+ * This is the caller's half of mode selection. `detectCoverageMode` picks
+ * the gate from STATE; the table is what the caller actually judged, and the
+ * CLI refuses when the two disagree — otherwise a design table handed in
+ * after Gate 2 closed is quietly run against Gate 3, and only completeness
+ * happens to stop it.
+ *
+ * Both-or-neither is deliberately null, not a refusal: off-source rows were
+ * always tolerated as extras, so a complete design table with one stray
+ * E-id still judges design; and a table keying nothing is the completeness
+ * check's to report. Matching is exact, as `computeCoverageVerdict` keys
+ * rows, so a row this reads as one mode's is a row the verdict would count.
+ */
+export function tableJudges(
+  table: CoverageTable,
+  files: { prd: string; expectations: string },
+): CoverageMode | null {
+  const keys = (mode: CoverageMode): boolean => {
+    const ids = new Set(extractSourceIds(mode, files));
+    return table.rows.some((row) => ids.has(row.id));
+  };
+  const design = keys("design");
+  const plan = keys("plan");
+  if (design === plan) return null;
+  return design ? "design" : "plan";
 }
 
 /** E-id → normalized priority (plan-mode P0-floor input). */

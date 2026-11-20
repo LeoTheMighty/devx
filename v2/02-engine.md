@@ -396,6 +396,9 @@ and templates (fail CI if the engine's loadable prose regresses past budget).
 > again. Each arm is now its own body beside `devx.md`, so a run loads the
 > dispatcher plus the arm it needs; the full run stays charged for the
 > Execute and Retro bodies (both rows above), not for Debug, Loop or Outcome.
+>
+> *2026-11-20 (D-17):* this repo's planning knob is 62KB; the shipped default
+> (§7) stays 60KB.
 
 ## 7. Config: `engine:` block (replaces §15 `bmad:`)
 

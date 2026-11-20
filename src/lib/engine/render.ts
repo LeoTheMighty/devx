@@ -105,8 +105,14 @@ export function newestDecisionReport(
 }
 
 /** The verdict cell for one gate: verdict → verdict; else legacy flag-true
- *  → PASS; else never-run. */
-function gateCell(state: EngineState, key: GateKey): string {
+ *  → PASS; else never-run.
+ *
+ *  Exported for `devx workstream position --json`, which has to hand a
+ *  machine-readable cell to the review pass. A second copy of this three-way
+ *  fallback is the one thing that surface must not have: the rendered line
+ *  and the JSON would then disagree about the same gate, and the JSON is what
+ *  `review.md`'s Position section gets written from. */
+export function gateCellFor(state: EngineState, key: GateKey): string {
   const verdict = state.gateVerdicts[key];
   if (verdict !== null) return verdict;
   const legacyFlag = {
@@ -150,7 +156,7 @@ export function renderGateSummary(
   state: EngineState,
   ctx: GateSummaryContext = {},
 ): string {
-  const cells = GATE_KEYS.map((key) => `${key} ${gateCell(state, key)}`);
+  const cells = GATE_KEYS.map((key) => `${key} ${gateCellFor(state, key)}`);
   const lines = [`gates: ${cells.join(" · ")}`];
 
   const hash = ctx.hash ?? state.hash ?? "<hash>";
