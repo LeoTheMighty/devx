@@ -16,6 +16,13 @@
 //     to `tests-first` (must run).
 //   - `.md` artifacts (eval specs under evals/) are not mechanically
 //     runnable — they count as deferred and follow the same type rules.
+//   - Outcome-measure manifests (B17): a `.md` artifact that parses as an
+//     eval manifest whose steps are ALL marked `(measured at outcome)` is
+//     deferred at any priority, P0 included. Such a step asserts a number
+//     that cannot exist before the thing is live, so it is RED by
+//     construction and proves nothing here; `devx outcome score --run`
+//     executes it weeks later. A manifest with even one non-deferred step
+//     keeps the strict rule — see `isOutcomeDeferredManifest`.
 //   - Shipped-green (debug-9b9be5): an eval whose plan-table phase resolves
 //     to a `status: done` dev spec is deferred at any priority — after a
 //     revise cascade its behavior already merged and the artifact is green
@@ -39,6 +46,7 @@ import {
 } from "./expectations.js";
 import { readEngineState } from "./frontmatter.js";
 import { EVALS_DIR_REL } from "./artifacts.js";
+import { isOutcomeDeferredManifest } from "./eval-manifest.js";
 import {
   INACTIVE_WAIVER,
   type Verdict,
@@ -273,6 +281,7 @@ export type RedVerdict =
   | "not-run (deferred: none)"
   | "not-run (deferred: shipped-green)"
   | "not-run (deferred: waived)"
+  | "not-run (deferred: outcome-measure)"
   | "not-run (eval-spec)"
   | "not-run (no runner)";
 
@@ -301,6 +310,14 @@ export interface GateEvalsInputs {
   exec: ShellExec;
   /** fs.exists seam. */
   exists: (absPath: string) => boolean;
+  /**
+   * Read seam for markdown eval artifacts, used ONLY to decide whether a
+   * `.md` target is an all-deferred outcome-measure manifest (B17).
+   * Returns null when the file cannot be read, which reads as "not a
+   * manifest" — the conservative direction, keeping today's strict verdict.
+   * Optional so every pre-existing caller behaves exactly as before.
+   */
+  readFile?: (absPath: string) => string | null;
   /** Plan phases whose dev spec is `status: done` (see donePhasesFor).
    *  Evals verified in a shipped phase are green by definition — a
    *  post-revise replay defers them instead of demanding RED
@@ -326,8 +343,13 @@ export interface GateEvalsResult {
  * Resolve an artifact path: `evals/...` targets live under the workstream
  * dir; everything else is repo-relative. Returns {abs, rel} where rel is
  * repo-relative for runner matching.
+ *
+ * Exported because `devx outcome score --run` resolves the same
+ * `Verified by:` values to find a manifest's measures. Two spellings of
+ * that rule is how a manifest the RED gate ran becomes a manifest the
+ * outcome gate cannot find.
  */
-function resolveArtifactPath(
+export function resolveArtifactPath(
   repoRoot: string,
   workstreamAbs: string,
   target: string,
@@ -485,6 +507,15 @@ function evaluateExpectation(
   // must be runnable (the plan-mode P0 floor already required a runnable
   // artifact) — a P0 that lands here blocks.
   if (rel.toLowerCase().endsWith(".md")) {
+    // B17: an all-deferred outcome-measure manifest is the one markdown
+    // artifact the RED gate accepts from a P0. Read BEFORE the eval-spec
+    // branch below, because that branch's whole claim ("a P0 needs a
+    // captured nonzero exit") is the thing this case contradicts.
+    const md = inputs.readFile?.(abs) ?? null;
+    if (md !== null && isOutcomeDeferredManifest(md)) {
+      base.redVerdict = "not-run (deferred: outcome-measure)";
+      return base;
+    }
     base.redVerdict = "not-run (eval-spec)";
     if (isP0) {
       base.gap = `${block.id} is P0 but its artifact '${rel}' is an eval spec (.md), not a runnable target — P0s need a captured nonzero exit`;

@@ -34,6 +34,24 @@
 // compared mechanically against the supplied actual; anything else scores
 // `recorded` and the judgment lives in the Reading/Disposition prose.
 //
+// MEASUREMENT IS RUN, NOT ASKED FOR (upstream CONVENTIONS §16, row A18).
+// The verdict machinery above shipped with the number hand-typed through
+// `--goal G-1=<actual>`, which made the whole loop only as honest as the
+// operator's memory: "a hand-typed figure or a bare dashboard link is not a
+// result." So a goal may now NAME its measurement — an expectations
+// `Measure:` one-liner, or a `(measured at outcome)` step in a `Verified by:`
+// eval manifest — and `devx outcome score --run` executes it, recording the
+// command, the value, the observation window and the timestamp as the source
+// of record. Once a goal names a runnable measure, `--goal` for that goal is
+// REFUSED: the point is not to offer running as an option, it is to stop the
+// un-run number from being accepted. The sanctioned exception is explicit
+// and recorded, never silent — `--attested G-1` with a `--source` says in the
+// artifact that a human vouched for this figure instead of a command
+// producing it, which is also the escape hatch when a measure exists but
+// cannot run today (upstream: flag it as attested, never present it as
+// measured). A goal with no measure at all keeps the old path, and Gate 1
+// now warns about exactly that case while the PRD is still being written.
+//
 // Spec: dev/dev-v2o101-2026-07-05T13:07-outcome-loop.md
 // Design: v2/02-engine.md §4.10; template _devx/templates/engine/results.md
 
@@ -44,10 +62,22 @@ import {
   type Stage,
   stageIndex,
 } from "./frontmatter.js";
-import { parseExpectations } from "./expectations.js";
-import { extractDefinedIds } from "./gate-prd.js";
+import {
+  type EBlock,
+  parseCoversIds,
+  parseExpectations,
+  parseMeasureField,
+} from "./expectations.js";
+import { type PrdGoal, parsePrdGoals } from "./gate-prd.js";
+import { outcomeMeasures } from "./eval-manifest.js";
 import { replayPath } from "./revise.js";
 import { formatDate } from "./verdict.js";
+
+// `parsePrdGoals` moved to gate-prd.ts, beside `extractDefinedIds` it is
+// built on, so Gate 1's measurability floor can read a goal's text without
+// making the two modules a cycle. Re-exported here because this is where
+// every existing caller imports it from.
+export { type PrdGoal, parsePrdGoals } from "./gate-prd.js";
 
 export const OUTCOME_VERDICTS = ["keep", "tune", "restart", "retire"] as const;
 export type OutcomeVerdict = (typeof OUTCOME_VERDICTS)[number];
@@ -172,59 +202,175 @@ export function computeArm(
 }
 
 // ---------------------------------------------------------------------------
-// PRD goal parsing (score)
+// Runnable measures (A18 / C5) — resolution is pure, execution is the CLI's
 // ---------------------------------------------------------------------------
 
-export interface PrdGoal {
-  /** "G-1" (uppercased). */
-  id: string;
-  /** 1-based prd/agent.md line of the definition. */
-  line: number;
-  /** The goal's definition text (bullet body after the colon, wrapped
-   *  continuation lines folded), "" when the shape is unrecognized. */
-  text: string;
+/** A runnable measurement bound to exactly one business goal. */
+export interface GoalMeasure {
+  /** Uppercased `G-n` this measure scores. */
+  goalId: string;
+  /** The expectation that declared it. */
+  eId: string;
+  /** The shell command. Run from the repo root. */
+  command: string;
+  /** The observation window the value is read over, when declared. Null is
+   *  legal and recorded as such — a window nobody wrote down is a
+   *  re-run nobody can interpret, which is worth SAYING rather than
+   *  inventing a default that would silently change the number's meaning. */
+  window: string | null;
+  /** Human-readable provenance for messages and the Source cell audit
+   *  trail — e.g. "E-1 Measure:" or "E-1 step 4 (metric)". */
+  origin: string;
+}
+
+/** The result of running a measure: the value of record, with its clock. */
+export interface MeasuredValue {
+  measure: GoalMeasure;
+  /** The value the command printed — its LAST non-empty stdout line. */
+  value: string;
+  /** ISO 8601 with offset, minute precision — see `measuredAtStamp`. */
+  measuredAt: string;
 }
 
 /**
- * Extract the `G-` goals defined in prd/agent.md, with their definition text.
- * Definition positions come from gate-prd's extractDefinedIds (bold or
- * heading — the template's two shapes); the text is the remainder of the
- * defining bullet/heading line plus indented continuation lines (same
- * wrapped-value folding lesson as parseExpectations — v2e102's first real
- * run caught exactly this class).
+ * The value of record from a command's stdout: the last non-empty line.
+ *
+ * Last, not first and not the whole buffer: a measurement script that logs
+ * while it works ends with its answer, and a first-line rule would score the
+ * goal against a progress message. The template says so, so an author who
+ * reads it gets this right by construction.
  */
-export function parsePrdGoals(prd: string): PrdGoal[] {
-  // CRLF-normalize first: `(.*)$` won't cross a trailing `\r`, which would
-  // silently blank every goal's text on a CRLF checkout (EC#3).
-  const normalized = prd.replace(/\r\n/g, "\n");
-  const lines = normalized.split("\n");
-  const out: PrdGoal[] = [];
-  for (const ref of extractDefinedIds(normalized)) {
-    if (!ref.id.startsWith("G-")) continue;
-    const line = lines[ref.line - 1] ?? "";
-    // Bullet shape: `- **G-1**: <text>`; heading shape: `### G-1: <text>`.
-    const m =
-      new RegExp(`\\*\\*${ref.id}\\*\\*\\s*:?\\s*(.*)$`, "i").exec(line) ??
-      new RegExp(`^#{2,4}\\s+${ref.id}\\b\\s*:?\\s*(.*)$`, "i").exec(line);
-    let text = m ? m[1].trim() : "";
-    for (let i = ref.line; i < lines.length; i++) {
-      const next = lines[i];
-      // Continuation = indented plain prose. Sub-bullets, numbered lists,
-      // and table rows under a goal are NOT part of its sentence (EC#6 —
-      // folding a table in garbles the Target cell and its stray `≥ N`
-      // tokens poison comparator inference).
-      if (
-        /^\s{2,}\S/.test(next) &&
-        !/^\s*[-*]\s/.test(next) &&
-        !/^\s*\d+[.)]\s/.test(next) &&
-        !/^\s*\|/.test(next)
-      ) {
-        text = `${text} ${next.trim()}`.trim();
-      } else {
-        break;
+export function measuredValueFrom(stdout: string): string | null {
+  const lines = stdout
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l !== "");
+  return lines.length === 0 ? null : lines[lines.length - 1];
+}
+
+/**
+ * ISO 8601 to the minute, in LOCAL time with an explicit offset —
+ * `2026-07-05T12:00-06:00`.
+ *
+ * Local, not UTC, because every other date in this record is local:
+ * `measure_by`, the verdict block's `updated:`, the decisions filenames. A
+ * `…T06:00Z` stamp beside `updated: 2026-07-04` is a reader wondering which
+ * day the measurement belongs to, in the one artifact whose whole job is to
+ * be unambiguous months later. The offset is carried explicitly so the
+ * instant is still exact — a bare local time would be the actual ambiguity.
+ */
+export function measuredAtStamp(now: Date): string {
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  // getTimezoneOffset() is minutes to ADD to local to get UTC, so it is
+  // positive west of Greenwich — the sign is inverted from ISO 8601's.
+  const offsetMinutes = -now.getTimezoneOffset();
+  const sign = offsetMinutes < 0 ? "-" : "+";
+  const abs = Math.abs(offsetMinutes);
+  const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  return `${date}T${time}${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
+}
+
+/**
+ * The Source cell for a measured goal: command · value · window · timestamp.
+ *
+ * Deliberately self-contained — it repeats the value that is already in the
+ * Actual column — because this cell is the EVIDENCE, read months later by
+ * someone deciding whether the number can be reproduced. A cell that said
+ * only "the measure" would send them back to an expectations.md that has
+ * since been revised (upstream §16: "a bare dashboard link is not a result").
+ */
+export function formatMeasuredSource(m: MeasuredValue): string {
+  return [
+    `\`${m.measure.command}\``,
+    m.value,
+    `window: ${m.measure.window ?? "not declared"}`,
+    m.measuredAt,
+  ].join(" · ");
+}
+
+/**
+ * Resolve each goal's runnable measure from the expectations that Cover it.
+ *
+ * Two declaration sites, with a fixed precedence per expectation:
+ *   1. the E-block's `Measure:` one-liner, and
+ *   2. failing that, a `(measured at outcome)` step with a `Run:` command in
+ *      the `Verified by:` eval manifest.
+ * The one-liner wins for its own block because it is the more specific
+ * statement; it does not suppress a DIFFERENT expectation's manifest.
+ *
+ * A goal with two or more measures REFUSES. "Which of these two numbers is
+ * G-1?" has no mechanical answer, and quietly taking the first would record
+ * a verdict against a bound nobody chose — the same reason
+ * `comparatorVerdict` declines two comparators instead of guessing.
+ * `--attested G-1` is the escape when the author genuinely means one of them,
+ * which is why `attested` is checked BEFORE the refusal is raised rather
+ * than after: an escape hatch behind a refusal is not an escape hatch.
+ *
+ * `readManifest` is injected (given a raw `Verified by:` value, return the
+ * file or null) so this stays pure and layout-blind: path resolution is the
+ * CLI's job, through the same `resolveArtifactPath` Gate 4 uses.
+ */
+export function resolveGoalMeasures(
+  goals: readonly PrdGoal[],
+  blocks: readonly EBlock[],
+  readManifest: (verifiedBy: string) => string | null,
+  attested: ReadonlySet<string> = new Set<string>(),
+): Map<string, GoalMeasure> {
+  const byGoal = new Map<string, GoalMeasure[]>();
+  for (const block of blocks) {
+    const covered = block.covers === null ? [] : parseCoversIds(block.covers);
+    const goalIds = covered.filter((id) => id.startsWith("G-"));
+    if (goalIds.length === 0) continue;
+
+    const found: Array<{ command: string; window: string | null; origin: string }> = [];
+    const inline = parseMeasureField(block.measure);
+    if (inline !== null) {
+      found.push({
+        command: inline.command,
+        window: inline.window,
+        origin: `${block.id} Measure:`,
+      });
+    } else if (block.verifiedBy !== null) {
+      const target = block.verifiedBy.replace(/`/g, "").trim();
+      if (target.toLowerCase().endsWith(".md")) {
+        const md = readManifest(target);
+        if (md !== null) {
+          for (const step of outcomeMeasures(md)) {
+            if (step.run === null) continue;
+            found.push({
+              command: step.run,
+              window: step.window,
+              origin: `${block.id} ${target} step ${step.index} (${step.type})`,
+            });
+          }
+        }
       }
     }
-    out.push({ id: ref.id, line: ref.line, text });
+    for (const goalId of goalIds) {
+      const list = byGoal.get(goalId) ?? [];
+      for (const f of found) list.push({ goalId, eId: block.id, ...f });
+      byGoal.set(goalId, list);
+    }
+  }
+
+  const out = new Map<string, GoalMeasure>();
+  const defined = new Set(goals.map((g) => g.id));
+  for (const [goalId, list] of byGoal) {
+    // A measure on an expectation covering an ID the PRD never defines is
+    // gate-prd's `covers-id-dangling` FAIL, not this command's business.
+    if (!defined.has(goalId) || list.length === 0) continue;
+    // An attested goal is not scored from a measure at all, so which of its
+    // measures "wins" is a question nobody asked.
+    if (attested.has(goalId)) continue;
+    if (list.length > 1) {
+      throw new OutcomeRefusal(
+        `${goalId} has ${list.length} runnable measures (${list
+          .map((m) => m.origin)
+          .join("; ")}) — a goal scores from exactly one; remove the extras, or pass --attested ${goalId} --goal ${goalId}=<value> --source ${goalId}=<who/where> to record a human-attested figure instead`,
+      );
+    }
+    out.set(goalId, list[0]);
   }
   return out;
 }
@@ -242,6 +388,14 @@ export interface GoalScoreInput {
   sources: Map<string, string>;
   /** `--result G-1=hit|miss|partial` overrides. */
   results: Map<string, GoalRowVerdict>;
+  /** Goals whose measure RAN this session (`--run`), keyed by goal ID. */
+  measured?: ReadonlyMap<string, MeasuredValue>;
+  /** Goals that NAME a runnable measure which was not run — i.e. `--run`
+   *  was omitted. Each refuses rather than accepting a hand-typed figure. */
+  unrun?: ReadonlyMap<string, GoalMeasure>;
+  /** Goals the operator explicitly attested (`--attested G-1`): the number
+   *  is hand-supplied AND labelled as such in the artifact. */
+  attested?: ReadonlySet<string>;
 }
 
 export interface GoalRow {
@@ -253,6 +407,9 @@ export interface GoalRow {
   verdict: GoalRowVerdict;
   /** How the verdict was derived (for the JSON audit trail). */
   derivation: "explicit" | "comparator" | "recorded";
+  /** How the ACTUAL was obtained — orthogonal to `derivation`, which is
+   *  about the verdict. `measured` is the only one §16 calls a result. */
+  provenance: "measured" | "attested" | "hand-typed";
 }
 
 // A mechanical comparator in goal prose: `≥ 1571`, `>=10`, `≤ 5`, `<= 5`.
@@ -310,10 +467,46 @@ export function computeGoalRows(
     );
   }
   const defined = new Set(goals.map((g) => g.id));
-  const missing = goals.filter((g) => !input.actuals.has(g.id)).map((g) => g.id);
+  const measured = input.measured ?? new Map<string, MeasuredValue>();
+  const unrun = input.unrun ?? new Map<string, GoalMeasure>();
+  const attested = input.attested ?? new Set<string>();
+
+  // A goal whose measure RAN needs no --goal, and must not be handed one:
+  // "measurement is run, not asked for" (§16) only bites if the un-run
+  // number is refused rather than merely discouraged. Same for --source —
+  // the source of a measured goal is the command, the value, the window and
+  // the clock, all of which this command produced itself.
+  for (const [id, m] of measured) {
+    if (input.actuals.has(id)) {
+      throw new OutcomeRefusal(
+        `--goal ${id}=${input.actuals.get(id) ?? ""} was supplied but ${id} has a runnable measure (${m.measure.origin}) which this run executed — a hand-typed figure is not a result; drop the flag, or pass --attested ${id} to record an attested number instead`,
+      );
+    }
+    if (input.sources.has(id)) {
+      throw new OutcomeRefusal(
+        `--source ${id}=... was supplied but ${id}'s source is computed from its measure (command, value, window, timestamp) — drop the flag`,
+      );
+    }
+  }
+
+  // A goal that NAMES a measure nobody ran. Refusing (rather than silently
+  // accepting the --goal value) is the whole point: the operator either runs
+  // it or says out loud, in the artifact, that a human vouched for the
+  // number. Both are honest; a quiet hand-type is not.
+  for (const [id, measure] of unrun) {
+    if (measured.has(id) || attested.has(id)) continue;
+    throw new OutcomeRefusal(
+      `${id} names a runnable measure (${measure.origin}: \`${measure.command}\`) — re-run with --run so the figure is measured, or pass --attested ${id} --source ${id}=<who/where> to record it as human-attested`,
+    );
+  }
+
+  const needsActual = goals.filter((g) => !measured.has(g.id));
+  const missing = needsActual
+    .filter((g) => !input.actuals.has(g.id))
+    .map((g) => g.id);
   if (missing.length > 0) {
     throw new OutcomeRefusal(
-      `every PRD goal needs a --goal flag; missing: ${missing.join(", ")}`,
+      `every PRD goal needs a --goal flag (or a measure this run executed); missing: ${missing.join(", ")}`,
     );
   }
   for (const id of input.actuals.keys()) {
@@ -332,9 +525,24 @@ export function computeGoalRows(
       }
     }
   }
+  for (const id of attested) {
+    if (!defined.has(id)) {
+      throw new OutcomeRefusal(
+        `--attested names '${id}' but the PRD defines no such goal`,
+      );
+    }
+    // An attestation with no provenance is a vibe with a flag on it. The
+    // whole reason this escape hatch is allowed is that it is RECORDED.
+    if ((input.sources.get(id) ?? "").trim() === "") {
+      throw new OutcomeRefusal(
+        `--attested ${id} requires --source ${id}=<who/where> — an attested number has to say who vouched for it`,
+      );
+    }
+  }
 
   const rows: GoalRow[] = goals.map((g) => {
-    const actual = input.actuals.get(g.id) ?? "";
+    const run = measured.get(g.id);
+    const actual = run !== undefined ? run.value : (input.actuals.get(g.id) ?? "");
     const explicit = input.results.get(g.id);
     let verdict: GoalRowVerdict;
     let derivation: GoalRow["derivation"];
@@ -351,13 +559,25 @@ export function computeGoalRows(
         derivation = "recorded";
       }
     }
+    const handSource = input.sources.get(g.id) ?? "(not recorded)";
     return {
       id: g.id,
       target: g.text || "(definition text not extractable)",
       actual,
-      source: input.sources.get(g.id) ?? "(not recorded)",
+      source:
+        run !== undefined
+          ? formatMeasuredSource(run)
+          : attested.has(g.id)
+            ? `attested — ${handSource}`
+            : handSource,
       verdict,
       derivation,
+      provenance:
+        run !== undefined
+          ? "measured"
+          : attested.has(g.id)
+            ? "attested"
+            : "hand-typed",
     };
   });
   return { rows };

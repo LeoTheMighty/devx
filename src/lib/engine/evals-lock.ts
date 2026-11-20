@@ -40,7 +40,14 @@ import { createHash } from "node:crypto";
  * never reads as editing the eval; everything else is a step and is locked.
  *
  * Result of record (writable, NOT hashed):
- *   - `Status:`, `Last run:` / `Last-run:`, `Verdict:` — outcome of a run.
+ *   - `Status:`, `Last run:` / `Last-run:` / `last_run:`, `Verdict:` — the
+ *     outcome of a run. All three spellings of last-run are accepted
+ *     because devx's own frontmatter is snake_case everywhere else, so
+ *     `last_run:` is what an author writes by reflex. Omitting it made the
+ *     field hashed, which made STAMPING A RUN read as softening the eval —
+ *     the cry-wolf failure this module's own notes say gets a lock switched
+ *     off. Nothing encodes step content on a `last_run:` line, so the set is
+ *     wider without being weaker.
  *   - `Result:` — the OBSERVED result of a run.
  *   - table rows inside a section headed `Runs` (`## Runs`, `### Runs (…)`).
  *
@@ -59,7 +66,15 @@ import { createHash } from "node:crypto";
  * where no workstream in devx or palateful carried a stamp, so tightening
  * what is hashed invalidated nothing.
  */
-const RESULT_FIELDS = ["status", "last run", "last-run", "runs", "result", "verdict"];
+const RESULT_FIELDS = [
+  "status",
+  "last run",
+  "last-run",
+  "last_run",
+  "runs",
+  "result",
+  "verdict",
+];
 
 const RESULT_LINE_RE = new RegExp(
   `^\\s*(?:[-*+]\\s*)?\\**\\s*(${RESULT_FIELDS.join("|")})\\s*\\**\\s*:`,
