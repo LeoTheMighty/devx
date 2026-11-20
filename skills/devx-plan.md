@@ -75,36 +75,32 @@ spec conventions are unchanged from v1 (`docs/DESIGN.md`).
    creates the EMPTY scaffold and can never overwrite), then offer once: "I
    scaffolded `<path>` — optional but genuinely helpful; type the bullets
    yourself, that is the point, then land it with `devx outline commit` from
-   your own terminal." Restate the scaffold's own rule when you offer:
-   **bullets only** — one thought each, ≤ 12 words, two-space nesting, names
-   in `ticks`, code as excerpts never blocks. A pristine scaffold does not
-   wedge the PR (the scan exempts it byte-for-byte); the first typed bullet
-   makes it the human's.
+   your own terminal." Restate its header's **bullets-only** rule when you
+   offer. A pristine scaffold rides the PR; the first typed bullet makes it
+   the human's.
 
-   Present → read it (Read tool);
-   when you have findings (gaps, misinformation, design problems, places
-   to expand) write `<stage>/outline-critique.md`; when clean, delete a
-   stale critique. At PRD open also read the repo-root
-   `OUTLINE.md` as seed context (critique → `OUTLINE-CRITIQUE.md`).
-   Never `git add` an outline path — outlines reach `main` only via the
-   human's `devx outline commit`.
+   Present → read it (Read tool); with findings write
+   `<stage>/outline-critique.md` in the form `design/outline-critique.md`'s
+   template defines (annotated reproduction, one redraw, Gap / Content /
+   Framing findings); when clean, delete a stale critique. At PRD open also
+   read the repo-root `OUTLINE.md` as seed context (critique →
+   `OUTLINE-CRITIQUE.md`). Never `git add` an outline path — outlines reach
+   `main` only via the human's `devx outline commit`.
 
-   **A critique is regenerated, never amended.** It is a pure function of
-   the outline as it stands right now: re-read the whole outline, then
-   overwrite the whole critique. Do not open the previous critique before
-   writing it, and never quote, diff against, carry forward, or reconcile
-   with it — a finding survives only because the current outline earns it
-   again — the live critique is a worklist, never a changelog. Same rule
-   for `OUTLINE-CRITIQUE.md`. Continuity (what the human changed, why a
-   finding is gone) is a delta record, not critique content: resolved
-   findings move to `decisions/<date>-outline-critique-delta.md`, and the
-   stage's status log records that the round happened.
+   **A critique is regenerated, never amended** — a pure function of the
+   outline as it stands: re-read it whole, overwrite the critique whole,
+   never open, quote, or reconcile with the previous one (same for
+   `OUTLINE-CRITIQUE.md`). Resolved findings move to
+   `decisions/<date>-outline-critique-delta.md`; the status log records the
+   round.
 9. **human.md (every stage, before its gate).** Write/refresh
    `<stage>/human.md`: the succinct human digest — mermaid first, brevity
    with nothing load-bearing dropped. When `<stage>/outline.md` exists,
    its structure IS human.md's structure (the outline dictates the shape);
    `agent.md` keeps the template's gate-required sections either way.
-   human.md is never a gate input; conflicts resolve to `agent.md`.
+   human.md is never a gate input; conflicts resolve to `agent.md`. Then
+   run `devx render lint <hash> <stage>` and fix every HARD finding (exit
+   1) before the gate; the bar is `docs/RENDER-STYLE.md`.
 
 ## Arguments
 
@@ -149,8 +145,13 @@ to sync — never hand-check them.
    Verified-by (a `projects:`-runnable path for anything P0 — `.md` prose
    targets count as deferred and fail a P0 at the RED gate).
 5. Optional (`--review`, or thoroughness ≥ balanced): spawn one critique
-   subagent to cross-reference other active workstreams + LEARN.md; write
-   findings to `decisions/<date>-prd-critique.md`. Non-gating.
+   subagent to cross-reference other active workstreams + LEARN.md and hold
+   the PRD's altitude — an item naming only mechanism (a schema, module,
+   flag) with no user-visible behavior is a finding: quote it, propose the
+   user-level restatement. The record ends with a `Risk | Mitigation |
+   Proven by` table, one row per top risk, `Proven by` an E-id; a
+   high-severity risk with none is a finding. Write it to
+   `decisions/<date>-prd-critique.md`. Non-gating.
 6. Run **`devx gate prd <hash>`**. On fail: fix the reported gaps (ask the
    user where a gap is a real decision), re-run until PASS. On pass the CLI
    flips `prd_validated` + `stage: design`.
@@ -168,48 +169,42 @@ free-nested sub-items (contract in Stage: PRD).
 
 1. Open by asking the user's design questions: "You've got the PRD — what
    are you unsure about?" Work those first.
-2. Ground every architectural claim in real code: read the paths in
-   `engine.code_citation_hints` (plus what Explore finds); every cited
-   path must exist — grep-verify before writing it down.
+2. **Research before drafting — captured, blind.** Write
+   `design/research-questions.md` (template): factual, code-answerable
+   questions — what exists to reuse, how a mechanism works today, its
+   limits, which files touch this — with the PRD's intent kept OUT ("which
+   approach?" is design, not research); a handful for a small change, the
+   full map for a new subsystem. Give one `Explore` subagent ONLY that file
+   (no PRD) and `engine.code_citation_hints`; write its answers, each with
+   a `path:line`, to `design/research.md`. Re-entry refreshes, never
+   redoes: re-verify cited lines, answer new questions. A load-bearing
+   claim traces to a citation or an answer; every cited path must exist. A
+   question that must be *tried*, not read, gets a `spike` record
+   (`decision.md`) and stays Unresolved, naming it.
 3. Fill the template: Overview, Constraints, Risks (each proven by an
-   E-id), Trade-offs, Out of scope, Assumptions, Discarded considerations,
+   E-id), Trade-offs (every load-bearing choice names the alternative it
+   beat), Out of scope, Assumptions, Discarded considerations,
    **Wrap-don't-duplicate** (list what's reused vs genuinely new — the v1
    working agreement), Design (architecture / interfaces / data), Migration
-   plan, Resolved + Unresolved questions.
-3b. **Reading guide** (§31). Build `design/human.md`'s opening Reading Guide
-   in the same pass that writes the render — never as a later polish step.
-   One row per section: Overview → each `###` mechanism under `## Design` in
-   outline order → Migration plan → the scope sections grouped into one `·`
-   row. "What it covers" is the *question* that section answers, derived
-   from its outline bullet, not a teaser. Columns come from
-   `engine.reading_guide_roles` (default: the same lenses the Plan stage's
-   critique uses). Marks: ● read before signing off · ○ useful context ·
-   blank skip; drop a column that would carry no ● outside Overview.
+   plan, Decision log (links only), Unresolved questions, Glossary.
+3b. **Reading guide** (§31): build `design/human.md`'s Reading guide in the
+   same pass as the render, per that template's comment. An amendment that
+   renames, splits, or drops a section re-derives its rows in the same
+   edit. `checkReadingGuide()` checks the sync; the marks are judgment. A
+   pre-§31 render is grandfathered — add the guide on its next revision.
 
-   Two obligations that are easy to skip and expensive to miss:
-
-   - **Amendments re-derive their rows.** Renaming, splitting, or dropping a
-     section re-derives the affected rows in the same edit. A row that
-     outlives its section is the one failure the mechanical check exists to
-     catch, and it is always introduced by an amendment, never by the
-     first write.
-   - **Depth is bounded by the map.** `####` sub-parts are allowed only when
-     they share their mechanism's audience. The moment sub-parts want
-     different reviewers they are separate mechanisms — split at `###` so
-     each earns a row.
-
-   Self-review the sync before the gate: every row names a real heading in
-   the render, and every `###` mechanism has a row. That half is mechanical
-   (`checkReadingGuide()` in `src/lib/engine/reading-guide.ts`); the audience
-   marks are judgment and stay advisory. A render authored before §31 is
-   grandfathered — add the guide on its next revision, never fail it.
-
-4. Coverage gate: spawn one subagent to judge coverage — for every
+4. Coverage gate: self-review the draft against the hygiene kinds below,
+   then spawn one subagent to judge coverage — for every
    `G-/UC-/CAP-/FR-` ID in prd/agent.md, a row `{id, status: ✅|⚠️|❌, where,
-   note}`; write the JSON table to a temp file. Then run
+   note}` — plus `hygiene: [{kind, where, note}]`: `residue` (decision
+   narrative in the body), `duplication` (one fact in two sections),
+   `ungrounded` (a load-bearing claim with no citation or research
+   answer), `bare-decision` (no alternative weighed). Write the JSON to a
+   temp file. Then run
    **`devx gate coverage <hash> --table <path>`** (the CLI owns
    completeness, verdict computation, and the decisions/ report; extras
-   beyond the PRD are flagged for product approval, not deleted).
+   beyond the PRD are flagged for product approval, not deleted; hygiene
+   holds CONCERNS at most, never FAIL).
 5. FAIL → fix design (or `devx revise` if the PRD itself is wrong),
    re-judge, re-run. PASS/CONCERNS advances `design_verified` +
    `stage: plan`.

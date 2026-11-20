@@ -3,6 +3,8 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { mechanicalHygiene } from "../src/lib/engine/gate-coverage.js";
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const engineDir = join(repoRoot, "_devx", "templates", "engine");
 
@@ -15,6 +17,9 @@ const EXPECTED_TEMPLATES = [
   "design/human.md",
   "design/outline.md",
   "design/outline-critique.md",
+  // harness-s4: the Design stage's captured research (gap analysis B6).
+  "design/research-questions.md",
+  "design/research.md",
   "plan/agent.md",
   "plan/human.md",
   "plan/outline.md",
@@ -155,5 +160,49 @@ describe("engine templates (v2s101)", () => {
 
   it("workstreams root exists", () => {
     expect(existsSync(join(repoRoot, "_devx", "workstreams", ".gitkeep"))).toBe(true);
+  });
+
+  // harness-s4 (B7): the design template is a current-state artifact — a
+  // links-only Decision log and a Glossary, and no settled-questions list.
+  // Gate 2's own mechanical hygiene check is the judge, so the template and
+  // the lens cannot drift apart.
+  it("design template: Decision log + Glossary, nothing Gate 2's lens flags as residue", () => {
+    const body = readFileSync(join(engineDir, "design", "agent.md"), "utf8");
+    const h2 = body.split("\n").filter((l) => l.startsWith("## ")).map((l) => l.slice(3).trim());
+    expect(h2).toContain("Decision log");
+    expect(h2).toContain("Glossary");
+    expect(h2).toContain("Unresolved design questions");
+    expect(h2.at(-1)).toBe("Glossary");
+    const residue = mechanicalHygiene({
+      design: body,
+      designRel: "design/agent.md",
+      researchPresent: true,
+      researchRel: "design/research.md",
+    });
+    expect(residue).toEqual([]);
+    // The Decision log is an index: its row is a link, not reasoning.
+    expect(body).toMatch(/\| <YYYY-MM-DD> \| <one line> \| \[<slug>\]\(decisions\/<date>-<slug>\.md\) \|/);
+  });
+
+  // harness-s4 (B8): one critique form, one home. Every stage's critique
+  // template carries the three sections; the design one defines the form and
+  // the three finding kinds — and keeps the regenerate-whole contract.
+  it("outline-critique templates share the annotated-reproduction + one-redraw form", () => {
+    for (const stage of ["prd", "design", "plan", "evals"]) {
+      const body = readFileSync(join(engineDir, stage, "outline-critique.md"), "utf8");
+      const h2 = body.split("\n").filter((l) => l.startsWith("## ")).map((l) => l.slice(3).trim());
+      expect(h2, stage).toEqual(["Annotated outline", "Proposed structure", "Findings"]);
+      if (stage !== "design") expect(body, stage).toContain("design/outline-critique.md");
+    }
+    const design = readFileSync(join(engineDir, "design", "outline-critique.md"), "utf8");
+    expect(design).toMatch(/Gap ·\s+Content ·\s+Framing, never Structure/);
+    expect(design).toMatch(/pure function of the\s+CURRENT outline/);
+    expect(design).toMatch(/never open,\s+quote, carry forward, or reconcile/);
+    expect(design).toContain("decisions/<date>-outline-critique-delta.md");
+  });
+
+  it("decision template defines the spike record's form (B19)", () => {
+    const body = readFileSync(join(engineDir, "decision.md"), "utf8");
+    expect(body).toMatch(/Goal · Questions · Done when · Findings ·\s+Recommendation/);
   });
 });

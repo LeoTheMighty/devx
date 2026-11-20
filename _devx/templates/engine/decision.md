@@ -17,7 +17,10 @@ waiver: { active: false, approver: null, reason: null }
      (a gate's own report) · `prd-critique` · `revision` (/devx-revise) ·
      `expectation-change` (mandatory when a LOCKED expectation moves) ·
      `pr-resolution` (/devx-address) · `design-question` · `spike` ·
-     `arch-review`.
+     `arch-review`. A spike (a question that must be tried, not read) swaps
+     the sections below for Goal · Questions · Done when · Findings ·
+     Recommendation; the open question it answers names it until Findings
+     land.
 
      A PR comment earns a pr-resolution record when it moves a locked
      expectation, sets a precedent, resolves an open question an artifact

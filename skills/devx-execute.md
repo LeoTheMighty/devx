@@ -65,7 +65,8 @@ Steps:
    sessions tried), and the parent (`from:`) epic/plan for locked decisions.
 2. If the spec belongs to a workstream (plan spec has `gate_status:`), read
    the workstream's `plan/agent.md` for this phase's Verification plan +
-   Context, and locate the RED artifacts named in the Expectation-coverage
+   Context (and `design/research.md`, the cited code truth, when present),
+   and locate the RED artifacts named in the Expectation-coverage
    table. `tests-first` phases MUST re-run their already-RED artifact and
    watch it fail NOW, before writing code — never re-author it to pass.
    **Confirm it fails for the STATED reason**: read the failure output and

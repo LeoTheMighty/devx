@@ -2,17 +2,18 @@
      first, prose second; every diagram must carry real content, not
      decoration. When <stage>/outline.md exists its structure IS this file's
      structure (the outline dictates the shape; agent.md keeps the gate
-     sections). Refreshed by the stage before its gate runs. -->
+     sections). Refreshed by the stage before its gate runs, held to
+     docs/RENDER-STYLE.md (`devx render lint <hash> design`). -->
 
 # design — <workstream title> (human digest)
 
 ## Reading guide
 
-<!-- MANDATORY on every design human render (ported from 8am-harness §31).
-     An annotated table of contents that doubles as an audience map. A
-     reviewer arrives with two questions before any technical one: what is
-     the SHAPE of this document, and which parts am I responsible for. This
-     answers both on the first screen.
+<!-- MANDATORY on every design human render (8am-harness §31): an annotated
+     table of contents that doubles as an audience map — the document's
+     shape, and each reader's part of it, on the first screen. Using
+     footnotes? One line under the table: "A superscript number links to the
+     section that owns that fact."
 
      Rows, in order: Overview → each `###` mechanism under `## Design` in
      outline order → Migration plan → the scope sections, grouped into one
