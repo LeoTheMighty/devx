@@ -304,6 +304,66 @@ file; supersessions are appended, never rewritten.
   of what was intended, and a revival should re-derive its scope from the
   system as it is then, not inherit a 2026-04 backlog.
 
+- **D-17 [user] (2026-11-20, `feat/prose-budget-62`)** — *This repo's S-1
+  planning budget, `engine.prose_budget_kb`, goes from 60 to 62.* The full-run
+  knob stays at 128, and the shipped default (`ENGINE_DEFAULTS.proseBudgetKb`,
+  `02-engine.md` §7) stays at 60, so downstream repos are not moved by this
+  repo's growth. **The decision is Leo's.** D-14 deliberately left this knob
+  unchanged and put its direction with him: "raise it deliberately, as its own
+  reviewed change". He chose this out of four options: raise the knob, trim
+  the two incoming templates, land only one of the two streams, or cut
+  unrelated template prose.
+
+  *What forced it.* On main `0892be9` the planning sum (every `.md` under
+  `_devx/templates/engine/` plus `/devx-plan`) measured 58,329 of 61,440 B,
+  and the full run measured 126,992 of 131,072. Two harness-port PRs add to
+  the planning sum. #183 (holistic review) adds +1,273 B; #184 (measurable
+  goals) adds +2,333 B. Either fits alone. Together they put planning at
+  61,935 B, 495 over 60 KB, and the full run at 130,598 (474 free). At 62 KB
+  (63,488 B) both land with 1,553 B of planning headroom.
+
+  *Arithmetic worth keeping straight.* #184's Outcome-stage hunk moves to
+  `devx-outcome.md` on rebase. Neither that body nor `devx.md` is in the
+  planning sum, so the move changes only the full run: 474 B free with it,
+  44 B without. Planning is 495 over 60 KB either way.
+
+  *Why this is not a raise standing in for work not done.* D-14 named the
+  full-run lever, Q#9 option (b), and said a binding budget should pull it
+  rather than raise. That lever was pulled first, the same day (PR #186):
+  `devx.md`'s arms became their own bodies, freeing 4,053 B of full-run
+  headroom with the Execute and Retro bodies still counted. The planning sum
+  is a different surface. Nothing in the dispatcher could reach it, so there
+  was no lever left to pull before deciding.
+
+  *Why the planning surface is where the growth belongs.* The bytes pressing
+  on it are artifacts the harness port exists to add: `review.md`,
+  `evals/eval.md`, `questions.md`, the reworked `decision.md`, and Stream 4's
+  research templates still to come. They are scaffolds agents fill, the
+  engine's outputs, not a skill body that grew by restating itself. A budget
+  that forced them out would be cutting the work the port was commissioned
+  to do.
+
+  *What the number is, and is not.* 62 is a policy line, like 60 and 128
+  before it. D-14 already recorded that the original 60 KB was "a policy
+  line, not a measured degradation threshold", and nobody has yet measured
+  where agent behaviour degrades against prose size in this repo; this entry
+  does not pretend otherwise. 62 KB keeps the planning surface at ~11.3% of
+  BMAD's ~550 KB per-feature load (from ~10.9%). It is sized to land the two
+  queued PRs with a margin of about one small template, not to absorb a
+  trend. Stream 4 has not been measured against it, and if it does not fit,
+  that is the next decision.
+
+  *What is still true after the raise.* Every engine template stays counted
+  (recursive walk, no exclusions). The two knobs stay independent (pinned in
+  `test/engine-prose-budget.test.ts`). Every `.claude/commands/*.md` must be
+  either counted or named in `OFF_THE_FULL_RUN` with a reason (the #186
+  guard), so neither sum can be eased by moving prose into a new skill body.
+  The next time either budget binds, it is a decision again — a cut, or a
+  raise with its own reviewed record — never a habit.
+  *Evidence (2026-11-20): Leo approved 62 KB. The coordinator session relayed
+  it, and he confirmed it directly in the session that made this change. The
+  `[user]` marker stays until Leo flips it himself, per D-2's precedent.*
+
 ## Open questions (non-blocking, tracked)
 
 - ~~**O-1** — Mermaid in tours~~ **CLOSED 2026-08-04 (tur101)** — moot; the

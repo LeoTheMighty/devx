@@ -605,7 +605,10 @@ function recheckGate1(
   base: artifacts.ResolvedBase,
   state: EngineState,
   expectationsMin: number,
-): { verdict: "PASS" | "FAIL"; gaps: readonly GateGap[] } | null {
+): {
+  verdict: "PASS" | "CONCERNS" | "FAIL";
+  gaps: readonly GateGap[];
+} | null {
   const prd = artifacts.stageSubject(base.layout, base, { kind: "agent", stage: "prd" });
   const exp = artifacts.stageSubject(base.layout, base, { kind: "expectations" });
   if (

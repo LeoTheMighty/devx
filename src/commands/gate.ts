@@ -37,7 +37,7 @@ import {
   stageIndex,
 } from "../lib/engine/frontmatter.js";
 import { parseExpectations } from "../lib/engine/expectations.js";
-import { evaluateGatePrd } from "../lib/engine/gate-prd.js";
+import { type GateGap, evaluateGatePrd } from "../lib/engine/gate-prd.js";
 import {
   applyGraphFindings,
   computeCoverageVerdict,
@@ -439,14 +439,33 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
     expectationsRel: subjects.expectations.rel,
   });
 
-  // Gate 1 is binary (PASS | FAIL), so every gap it reports is what made it
-  // fail — each one is `blocking`. The check name leads the title because it
-  // is the stable half across runs; the message carries the detail that moves.
-  const prdFindings: GateFinding[] = result.gaps.map((gap) => ({
-    title: `${gap.check}${gap.location ? ` at ${gap.location}` : ""}: ${gap.message}`,
-    severity: "blocking",
-    recommendation: gap.message,
-  }));
+  // Gate 1 reports two kinds. A `gap` is what made it FAIL, so every gap is
+  // `blocking`. A `concern` — today the measurability floor: a numeric `G-`
+  // with no runnable measure — advances the gate and is `concern`, the same
+  // split Gate 4 draws below (`run.blocking ? "blocking" : "concern"`).
+  //
+  // Concerns go into the queue for the reason the queue exists: a CONCERNS
+  // finding that lives only in one run's stdout is a finding nobody re-reads,
+  // and this particular one is only actionable WEEKS later, when the outcome
+  // comes due and there is still nothing to measure. The frontmatter verdict
+  // says a concern exists; the queue entry says which goal and what to do.
+  //
+  // The check name leads the title because it is the stable half across runs;
+  // the message carries the detail that moves. Both kinds share that shape so
+  // a concern that later becomes a gap reconciles onto the same entry rather
+  // than opening a second one.
+  const prdFinding = (
+    f: GateGap,
+    severity: "blocking" | "concern",
+  ): GateFinding => ({
+    title: `${f.check}${f.location ? ` at ${f.location}` : ""}: ${f.message}`,
+    severity,
+    recommendation: f.message,
+  });
+  const prdFindings: GateFinding[] = [
+    ...result.gaps.map((gap) => prdFinding(gap, "blocking")),
+    ...result.concerns.map((c) => prdFinding(c, "concern")),
+  ];
   const prdQueue = (): void =>
     reconcileHealthQueue(
       r,
@@ -472,7 +491,11 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
     return ok ? 1 : 2;
   }
 
-  // PASS: flip prd_validated + stage: design + verdict in one patch.
+  // PASS / CONCERNS: both advance (D-9) — flip prd_validated + stage: design
+  // + the evaluated verdict in one patch. CONCERNS is how the measurability
+  // floor surfaces: persisting it rather than only printing it is what makes
+  // the concern outlive this run, so `devx status`'s gates line still says
+  // `prd CONCERNS` weeks later when the outcome comes due.
   const newStage = advanceStage(ws.state.stage, "design");
   try {
     const updated = applyEnginePatch(ws.content, {
@@ -483,21 +506,23 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
     writeSpecPatchLocked(r.repoRoot, io, ws.specAbs, updated);
   } catch (e) {
     io.err(
-      `devx gate prd: PASS computed but frontmatter write failed: ${e instanceof Error ? e.message : String(e)}\n`,
+      `devx gate prd: ${result.verdict} computed but frontmatter write failed: ${e instanceof Error ? e.message : String(e)}\n`,
     );
     return 2;
   }
   io.out(
     `${JSON.stringify({
-      gate: "PASS",
+      gate: result.verdict,
       hash: ws.hash,
       flipped: { prd_validated: true, stage: newStage },
+      ...(result.concerns.length > 0 ? { concerns: result.concerns } : {}),
       spec: ws.specRel,
     })}\n`,
   );
-  // With no findings this run, the reconcile is pure resolve: a prior FAIL's
-  // blocking entries close here, which is what makes the queue track a gate
-  // that now advances instead of reading "blocked" forever.
+  // A prior FAIL's blocking entries close here, which is what makes the queue
+  // track a gate that now advances instead of reading "blocked" forever —
+  // while any concern this run raised stays open at `concern` severity, so
+  // advancing the gate does not erase what it advanced in spite of.
   prdQueue();
   return 0;
 }
@@ -730,6 +755,23 @@ export function runGateCoverage(
 // ---------------------------------------------------------------------------
 // devx gate evals <hash> [--dry-run] [--verify]
 // ---------------------------------------------------------------------------
+
+/**
+ * Read a markdown eval artifact for the gate's manifest check (B17), or null.
+ *
+ * Swallows every read failure on purpose: this feeds ONE decision — is this
+ * `.md` an all-deferred outcome-measure manifest — and null is the strict
+ * answer (keep demanding RED). A throw here would turn an unreadable file
+ * into a crashed gate, and a loud warning would fire on every ordinary
+ * freeform eval spec, which is the shape most of them still have.
+ */
+function readMdOrNull(io: GateIo, abs: string): string | null {
+  try {
+    return io.fs.readFile(abs);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Read each run eval's artifact for stamping. Keys are REPO-relative —
@@ -1068,6 +1110,7 @@ export function runGateEvalsCli(
         runners: projectRunnersFrom(r.merged),
         exec: () => ({ stdout: "", stderr: "--verify never executes evals", exitCode: 127 }),
         exists: (p) => io.fs.exists(p),
+        readFile: (p) => readMdOrNull(io, p),
         donePhases: new Set<number>(),
         waived: new Set<string>(),
         dryRun: true,
@@ -1244,6 +1287,7 @@ export function runGateEvalsCli(
     runners: projectRunnersFrom(r.merged),
     exec: opts.exec ?? realShellExec,
     exists: (p) => io.fs.exists(p),
+    readFile: (p) => readMdOrNull(io, p),
     donePhases: donePhasesFor(io.fs, r.repoRoot, subjects.docSetRel),
     waived: new Set(waive),
     dryRun: flags.dryRun === true,
@@ -1399,7 +1443,7 @@ export function register(program: Command): void {
       // here — name the ARTIFACTS rather than one layout's spelling of
       // them, which under `project-level` would name files that don't
       // exist (review BH-3 / AA / EC-LOW2).
-      "Gate 1: placeholder/E-block/EARS/threshold/ID-resolution checks on the PRD + expectations artifacts; pass flips prd_validated + stage: design.",
+      "Gate 1: placeholder/E-block/EARS/threshold/ID-resolution checks on the PRD + expectations artifacts; pass flips prd_validated + stage: design. A numeric goal with no runnable measure is advisory CONCERNS, which also advances.",
     )
     .argument("<hash>", "workstream (plan spec) hash")
     .action((hash: string) => {

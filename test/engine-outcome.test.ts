@@ -16,6 +16,8 @@ import {
   computeTune,
   defaultStatusReason,
   isMeasureByDue,
+  measuredAtStamp,
+  measuredValueFrom,
   parsePrdGoals,
   renderResults,
   resolveMeasureBy,
@@ -33,6 +35,11 @@ import {
 } from "./fixtures/engine-repo.js";
 
 const NOW = new Date("2026-07-05T12:00:00");
+// The timestamp the measured Source cell must carry. Computed, not spelled:
+// the stamp is LOCAL with an explicit offset (so it agrees with the record's
+// own `updated:` date), and a literal would pin this suite to one timezone.
+// `measuredAtStamp` has its own round-trip unit tests below.
+const STAMP = measuredAtStamp(NOW);
 
 // ---------------------------------------------------------------------------
 // Pure: measure_by
@@ -383,7 +390,11 @@ function writeClosedWorkstream(
   repo: EngineRepo,
   hash: string,
   slug: string,
-  opts: { outcome?: string[]; gateVerdicts?: string[] } = {},
+  opts: {
+    outcome?: string[];
+    gateVerdicts?: string[];
+    expectations?: string;
+  } = {},
 ): void {
   repo.write(
     `plan/plan-${hash}-2026-07-05T12:00-${slug}.md`,
@@ -412,12 +423,24 @@ function writeClosedWorkstream(
   );
   repo.mkdir(`_devx/workstreams/${slug}`);
   repo.write(`_devx/workstreams/${slug}/prd/agent.md`, validPrd());
-  repo.write(`_devx/workstreams/${slug}/expectations.md`, validExpectations());
+  // measures: false — these cases exercise the hand-typed `--goal` path. A
+  // goal that names a runnable measure refuses a typed figure (A18), which
+  // the --run describes below cover separately.
+  repo.write(
+    `_devx/workstreams/${slug}/expectations.md`,
+    opts.expectations ?? validExpectations({ measures: false }),
+  );
 }
 
-function armed(repo: EngineRepo, hash = "abc123", slug = "demo"): void {
+function armed(
+  repo: EngineRepo,
+  hash = "abc123",
+  slug = "demo",
+  opts: { expectations?: string } = {},
+): void {
   writeClosedWorkstream(repo, hash, slug, {
     outcome: ["outcome:", "  status: pending", "  measure_by: 2026-08-02"],
+    expectations: opts.expectations,
   });
 }
 
@@ -1034,5 +1057,567 @@ describe("renderResults — template drift guard", () => {
         successor: null,
       }),
     ).toThrow(OutcomeError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A18 / C5 — measurement is run, not asked for
+// ---------------------------------------------------------------------------
+
+/** A fake shell: command → {stdout, exitCode}. Records what it was asked. */
+function fakeMeasureExec(
+  table: Record<string, { stdout?: string; stderr?: string; exitCode?: number }>,
+) {
+  const calls: Array<{ command: string; cwd: string }> = [];
+  const exec = (command: string, cwd: string) => {
+    calls.push({ command, cwd });
+    const hit = table[command] ?? { stdout: "", exitCode: 127 };
+    return {
+      stdout: hit.stdout ?? "",
+      stderr: hit.stderr ?? "",
+      exitCode: hit.exitCode ?? 0,
+    };
+  };
+  return { exec, calls };
+}
+
+/** validExpectations() with measures, but only on E-1 and E-2 — so each of
+ *  G-1 and G-2 has exactly one. E-3 also covers G-1, so a measure there too
+ *  would be an ambiguity refusal, which is its own test below. */
+const MEASURED_EXPECTATIONS = validExpectations();
+
+const RUN_FLAGS = {
+  verdict: "keep",
+  goals: [] as string[],
+  sources: [] as string[],
+  results: [] as string[],
+  attested: [] as string[],
+  run: true,
+  reopen: undefined,
+  successor: undefined,
+  reason: "Both goals measured.",
+  notes: "Measured from the shipped scripts.",
+  disposition: undefined,
+};
+
+const MEASURE_TABLE = {
+  "scripts/review-minutes.sh": { stdout: "collecting…\n6\n" },
+  "scripts/creep-incidents.sh": { stdout: "0" },
+};
+
+describe("devx outcome score --run — executes each goal's measure", () => {
+  it("runs both measures and writes command · value · window · timestamp", () => {
+    const repo = makeEngineRepo();
+    try {
+      armed(repo, "abc123", "demo", { expectations: MEASURED_EXPECTATIONS });
+      const io = captureIo();
+      const { exec, calls } = fakeMeasureExec(MEASURE_TABLE);
+      const code = runOutcomeScore("abc123", RUN_FLAGS, {
+        ...cliOpts(repo, io),
+        exec,
+      });
+      expect(code).toBe(0);
+
+      // Both measures ran, from the repo root, in a stable (sorted) order.
+      expect(calls.map((c) => c.command)).toEqual([
+        "scripts/review-minutes.sh",
+        "scripts/creep-incidents.sh",
+      ]);
+      expect(calls.every((c) => c.cwd === repo.root)).toBe(true);
+
+      const results = repo.read("_devx/workstreams/demo/RESULTS.md");
+      // The value of record is the LAST non-empty stdout line, not the first:
+      // a script that logs while it works ends with its answer.
+      expect(results).toContain(
+        `| G-1 | review time per PR under 10 min by 2026-08-01 | 6 | \`scripts/review-minutes.sh\` · 6 · window: trailing 30d · ${STAMP} | recorded |`,
+      );
+      expect(results).toContain(
+        `| G-2 | zero silent scope-creep incidents per month | 0 | \`scripts/creep-incidents.sh\` · 0 · window: trailing 30d · ${STAMP} | recorded |`,
+      );
+
+      const j = io.json() as {
+        goals: Array<{ id: string; provenance: string }>;
+        measured: Array<{ id: string; command: string; value: string; window: string }>;
+        goals_without_measure: string[];
+      };
+      expect(j.goals.every((g) => g.provenance === "measured")).toBe(true);
+      expect(j.measured.map((m) => m.id).sort()).toEqual(["G-1", "G-2"]);
+      expect(j.goals_without_measure).toEqual([]);
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("refuses a hand-typed --goal for a goal that has a measure", () => {
+    // The teeth of §16: running has to be the only way in, not one of two.
+    const repo = makeEngineRepo();
+    try {
+      armed(repo, "abc123", "demo", { expectations: MEASURED_EXPECTATIONS });
+      const io = captureIo();
+      const { exec } = fakeMeasureExec(MEASURE_TABLE);
+      const code = runOutcomeScore(
+        "abc123",
+        { ...RUN_FLAGS, goals: ["G-1=6"] },
+        { ...cliOpts(repo, io), exec },
+      );
+      expect(code).toBe(1);
+      expect(io.stderr()).toContain("a hand-typed figure is not a result");
+      expect(io.stderr()).toContain("E-1 Measure:");
+      expect(repo.exists("_devx/workstreams/demo/RESULTS.md")).toBe(false);
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("refuses WITHOUT --run too, naming the measure and the two ways out", () => {
+    // Omitting --run must not be a bypass — that would make the refusal
+    // above decorative.
+    const repo = makeEngineRepo();
+    try {
+      armed(repo, "abc123", "demo", { expectations: MEASURED_EXPECTATIONS });
+      const io = captureIo();
+      const code = runOutcomeScore(
+        "abc123",
+        { ...RUN_FLAGS, run: false, goals: ["G-1=6", "G-2=0"] },
+        cliOpts(repo, io),
+      );
+      expect(code).toBe(1);
+      expect(io.stderr()).toContain("names a runnable measure");
+      expect(io.stderr()).toContain("--run");
+      expect(io.stderr()).toContain("--attested");
+      expect(repo.exists("_devx/workstreams/demo/RESULTS.md")).toBe(false);
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("refuses a --source for a measured goal (its source is computed)", () => {
+    const repo = makeEngineRepo();
+    try {
+      armed(repo, "abc123", "demo", { expectations: MEASURED_EXPECTATIONS });
+      const io = captureIo();
+      const { exec } = fakeMeasureExec(MEASURE_TABLE);
+      const code = runOutcomeScore(
+        "abc123",
+        { ...RUN_FLAGS, sources: ["G-1=timesheet"] },
+        { ...cliOpts(repo, io), exec },
+      );
+      expect(code).toBe(1);
+      expect(io.stderr()).toContain("source is computed");
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("a measure that exits nonzero refuses the whole score, writing nothing", () => {
+    // An outcome verdict is permanent — `score` refuses to re-run over one.
+    // Scoring `miss` because the script was broken would carve the wrong
+    // verdict into history and reopen the wrong expectations.
+    const repo = makeEngineRepo();
+    try {
+      armed(repo, "abc123", "demo", { expectations: MEASURED_EXPECTATIONS });
+      const io = captureIo();
+      const { exec } = fakeMeasureExec({
+        ...MEASURE_TABLE,
+        "scripts/review-minutes.sh": {
+          stdout: "",
+          stderr: "psql: connection refused",
+          exitCode: 2,
+        },
+      });
+      const code = runOutcomeScore("abc123", RUN_FLAGS, {
+        ...cliOpts(repo, io),
+        exec,
+      });
+      expect(code).toBe(1);
+      expect(io.stderr()).toContain("exited 2");
+      expect(io.stderr()).toContain("a broken measurement is not a missed goal");
+      expect(io.stderr()).toContain("connection refused");
+      expect(repo.exists("_devx/workstreams/demo/RESULTS.md")).toBe(false);
+      // Re-runnable: the verdict was never recorded.
+      expect(
+        readEngineState(repo.read("plan/plan-abc123-2026-07-05T12:00-demo.md"))
+          .outcome.status,
+      ).toBe("pending");
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("a measure that exits 0 printing nothing refuses — empty is not zero", () => {
+    // The most dangerous default available here: for a "reduce X" goal,
+    // reading empty as 0 looks like a perfect result.
+    const repo = makeEngineRepo();
+    try {
+      armed(repo, "abc123", "demo", { expectations: MEASURED_EXPECTATIONS });
+      const io = captureIo();
+      const { exec } = fakeMeasureExec({
+        ...MEASURE_TABLE,
+        "scripts/creep-incidents.sh": { stdout: "   \n\n", exitCode: 0 },
+      });
+      const code = runOutcomeScore("abc123", RUN_FLAGS, {
+        ...cliOpts(repo, io),
+        exec,
+      });
+      expect(code).toBe(1);
+      expect(io.stderr()).toContain("printed nothing");
+      expect(repo.exists("_devx/workstreams/demo/RESULTS.md")).toBe(false);
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("--attested records the figure as attested and never runs the measure", () => {
+    const repo = makeEngineRepo();
+    try {
+      armed(repo, "abc123", "demo", { expectations: MEASURED_EXPECTATIONS });
+      const io = captureIo();
+      const { exec, calls } = fakeMeasureExec(MEASURE_TABLE);
+      const code = runOutcomeScore(
+        "abc123",
+        {
+          ...RUN_FLAGS,
+          attested: ["G-1"],
+          goals: ["G-1=7"],
+          sources: ["G-1=Leo, from the timesheet export"],
+        },
+        { ...cliOpts(repo, io), exec },
+      );
+      expect(code).toBe(0);
+      // G-2 still measured; G-1 deliberately skipped.
+      expect(calls.map((c) => c.command)).toEqual(["scripts/creep-incidents.sh"]);
+      const results = repo.read("_devx/workstreams/demo/RESULTS.md");
+      // Labelled in the artifact — upstream's rule is never to present an
+      // attested number as if the command produced it.
+      expect(results).toContain("| 7 | attested — Leo, from the timesheet export |");
+      const j = io.json() as { goals: Array<{ id: string; provenance: string }> };
+      expect(j.goals.find((g) => g.id === "G-1")?.provenance).toBe("attested");
+      expect(j.goals.find((g) => g.id === "G-2")?.provenance).toBe("measured");
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("--attested without a --source refuses — an attestation names who", () => {
+    const repo = makeEngineRepo();
+    try {
+      armed(repo, "abc123", "demo", { expectations: MEASURED_EXPECTATIONS });
+      const io = captureIo();
+      const { exec } = fakeMeasureExec(MEASURE_TABLE);
+      const code = runOutcomeScore(
+        "abc123",
+        { ...RUN_FLAGS, attested: ["G-1"], goals: ["G-1=7"] },
+        { ...cliOpts(repo, io), exec },
+      );
+      expect(code).toBe(1);
+      expect(io.stderr()).toContain("has to say who vouched for it");
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("two measures for one goal refuses rather than picking the first", () => {
+    const repo = makeEngineRepo();
+    try {
+      // E-3 also covers G-1; give it a measure too and G-1 has two.
+      const ambiguous = MEASURED_EXPECTATIONS.replace(
+        "- **Verified by:** test/perf.test.mjs",
+        "- **Verified by:** test/perf.test.mjs\n- **Measure:** `scripts/p95.sh` · window: trailing 7d",
+      );
+      armed(repo, "abc123", "demo", { expectations: ambiguous });
+      const io = captureIo();
+      const { exec, calls } = fakeMeasureExec(MEASURE_TABLE);
+      const code = runOutcomeScore("abc123", RUN_FLAGS, {
+        ...cliOpts(repo, io),
+        exec,
+      });
+      expect(code).toBe(1);
+      expect(io.stderr()).toContain("has 2 runnable measures");
+      expect(io.stderr()).toContain("E-1 Measure:");
+      expect(io.stderr()).toContain("E-3 Measure:");
+      // Refused before anything ran — no side effects from an ambiguity.
+      expect(calls).toEqual([]);
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("--attested is the escape hatch for an ambiguous goal", () => {
+    const repo = makeEngineRepo();
+    try {
+      const ambiguous = MEASURED_EXPECTATIONS.replace(
+        "- **Verified by:** test/perf.test.mjs",
+        "- **Verified by:** test/perf.test.mjs\n- **Measure:** `scripts/p95.sh` · window: trailing 7d",
+      );
+      armed(repo, "abc123", "demo", { expectations: ambiguous });
+      const io = captureIo();
+      const { exec } = fakeMeasureExec(MEASURE_TABLE);
+      const code = runOutcomeScore(
+        "abc123",
+        {
+          ...RUN_FLAGS,
+          attested: ["G-1"],
+          goals: ["G-1=6"],
+          sources: ["G-1=Leo"],
+        },
+        { ...cliOpts(repo, io), exec },
+      );
+      expect(code).toBe(0);
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("reads a measure out of a (measured at outcome) manifest step", () => {
+    const repo = makeEngineRepo();
+    try {
+      const viaManifest = validExpectations({ measures: false }).replace(
+        "- **Verified by:** test/demo.test.mjs\n\n## E-2",
+        "- **Verified by:** evals/E-1_adoption.md\n\n## E-2",
+      );
+      armed(repo, "abc123", "demo", { expectations: viaManifest });
+      repo.write(
+        "_devx/workstreams/demo/evals/E-1_adoption.md",
+        [
+          "# E-1: adoption",
+          "",
+          "## Steps",
+          "",
+          "### 1. metric — review minutes `(measured at outcome)`",
+          "",
+          "- **Run:** `bin/review-minutes --p50`",
+          "- **Window:** trailing 14d",
+          "- **Expected:** <= 10",
+          "",
+        ].join("\n"),
+      );
+      const io = captureIo();
+      const { exec, calls } = fakeMeasureExec({
+        "bin/review-minutes --p50": { stdout: "6" },
+      });
+      const code = runOutcomeScore(
+        "abc123",
+        { ...RUN_FLAGS, goals: ["G-2=0"], sources: ["G-2=retro sweep"] },
+        { ...cliOpts(repo, io), exec },
+      );
+      expect(code).toBe(0);
+      expect(calls.map((c) => c.command)).toEqual(["bin/review-minutes --p50"]);
+      const results = repo.read("_devx/workstreams/demo/RESULTS.md");
+      expect(results).toContain(
+        `\`bin/review-minutes --p50\` · 6 · window: trailing 14d · ${STAMP}`,
+      );
+      // G-2 had no measure, so its hand-typed figure is still accepted —
+      // and reported as the measurability gap Gate 1 warns about.
+      expect(results).toContain("| G-2 | zero silent scope-creep incidents per month | 0 | retro sweep |");
+      expect(
+        (io.json() as { goals_without_measure: string[] }).goals_without_measure,
+      ).toEqual(["G-2"]);
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("a manifest step with no (measured at outcome) marker is not a measure", () => {
+    const repo = makeEngineRepo();
+    try {
+      const viaManifest = validExpectations({ measures: false }).replace(
+        "- **Verified by:** test/demo.test.mjs\n\n## E-2",
+        "- **Verified by:** evals/E-1_adoption.md\n\n## E-2",
+      );
+      armed(repo, "abc123", "demo", { expectations: viaManifest });
+      repo.write(
+        "_devx/workstreams/demo/evals/E-1_adoption.md",
+        "# E-1\n\n### 1. metric — x\n\n- **Run:** `bin/x`\n",
+      );
+      const io = captureIo();
+      const { exec, calls } = fakeMeasureExec({ "bin/x": { stdout: "9" } });
+      const code = runOutcomeScore(
+        "abc123",
+        {
+          ...RUN_FLAGS,
+          goals: ["G-1=6", "G-2=0"],
+          sources: ["G-1=timesheet", "G-2=retro sweep"],
+        },
+        { ...cliOpts(repo, io), exec },
+      );
+      expect(code).toBe(0);
+      expect(calls).toEqual([]);
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("--run with no measures anywhere behaves exactly as before", () => {
+    // The whole grandfathered path: no Measure:, no manifest → hand-typed
+    // figures, no refusal, nothing executed.
+    const repo = makeEngineRepo();
+    try {
+      armed(repo);
+      const io = captureIo();
+      const { exec, calls } = fakeMeasureExec({});
+      const code = runOutcomeScore(
+        "abc123",
+        {
+          ...RUN_FLAGS,
+          goals: ["G-1=6", "G-2=0"],
+          sources: ["G-1=timesheet", "G-2=retro sweep"],
+        },
+        { ...cliOpts(repo, io), exec },
+      );
+      expect(code).toBe(0);
+      expect(calls).toEqual([]);
+      const j = io.json() as {
+        goals: Array<{ provenance: string }>;
+        goals_without_measure: string[];
+      };
+      expect(j.goals.every((g) => g.provenance === "hand-typed")).toBe(true);
+      expect(j.goals_without_measure).toEqual(["G-1", "G-2"]);
+      // Source cell unchanged for the hand-typed path.
+      expect(repo.read("_devx/workstreams/demo/RESULTS.md")).toContain(
+        "| 6 | timesheet |",
+      );
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("--attested naming an undefined goal refuses", () => {
+    const repo = makeEngineRepo();
+    try {
+      armed(repo, "abc123", "demo", { expectations: MEASURED_EXPECTATIONS });
+      const io = captureIo();
+      const { exec } = fakeMeasureExec(MEASURE_TABLE);
+      const code = runOutcomeScore(
+        "abc123",
+        { ...RUN_FLAGS, attested: ["G-9"], sources: ["G-9=x"] },
+        { ...cliOpts(repo, io), exec },
+      );
+      expect(code).toBe(1);
+      expect(io.stderr()).toContain("no such goal");
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("--attested with a malformed id is a usage error (exit 2)", () => {
+    const repo = makeEngineRepo();
+    try {
+      armed(repo, "abc123", "demo", { expectations: MEASURED_EXPECTATIONS });
+      const io = captureIo();
+      const code = runOutcomeScore(
+        "abc123",
+        { ...RUN_FLAGS, attested: ["G-1=6"] },
+        cliOpts(repo, io),
+      );
+      expect(code).toBe(2);
+      expect(io.stderr()).toContain("expected --attested G-<n>");
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("a measured comparator goal still scores mechanically", () => {
+    // The verdict machinery is untouched: provenance is about the ACTUAL,
+    // derivation is about the verdict, and they stay orthogonal.
+    const repo = makeEngineRepo();
+    try {
+      const prd = validPrd().replace(
+        "- **G-1**: review time per PR under 10 min by 2026-08-01",
+        "- **G-1**: review minutes per PR <= 10",
+      );
+      armed(repo, "abc123", "demo", { expectations: MEASURED_EXPECTATIONS });
+      repo.write("_devx/workstreams/demo/prd/agent.md", prd);
+      const io = captureIo();
+      const { exec } = fakeMeasureExec(MEASURE_TABLE);
+      expect(
+        runOutcomeScore("abc123", RUN_FLAGS, { ...cliOpts(repo, io), exec }),
+      ).toBe(0);
+      const g1 = (
+        io.json() as { goals: Array<{ id: string; verdict: string; derivation: string }> }
+      ).goals.find((g) => g.id === "G-1");
+      expect(g1).toMatchObject({ verdict: "hit", derivation: "comparator" });
+    } finally {
+      repo.cleanup();
+    }
+  });
+});
+
+describe("measured-source formatting", () => {
+  it("records 'window: not declared' rather than inventing one", () => {
+    const repo = makeEngineRepo();
+    try {
+      const noWindow = validExpectations({ measures: false }).replace(
+        "- **Verified by:** test/demo.test.mjs\n\n## E-2",
+        "- **Verified by:** test/demo.test.mjs\n- **Measure:** `bin/minutes`\n\n## E-2",
+      );
+      armed(repo, "abc123", "demo", { expectations: noWindow });
+      const io = captureIo();
+      const { exec } = fakeMeasureExec({ "bin/minutes": { stdout: "6" } });
+      const code = runOutcomeScore(
+        "abc123",
+        { ...RUN_FLAGS, goals: ["G-2=0"], sources: ["G-2=retro sweep"] },
+        { ...cliOpts(repo, io), exec },
+      );
+      expect(code).toBe(0);
+      // A default window would silently change what the number MEANS.
+      expect(repo.read("_devx/workstreams/demo/RESULTS.md")).toContain(
+        `\`bin/minutes\` · 6 · window: not declared · ${STAMP}`,
+      );
+    } finally {
+      repo.cleanup();
+    }
+  });
+
+  it("escapes a pipe in a measured command so the table survives", () => {
+    const repo = makeEngineRepo();
+    try {
+      const piped = validExpectations({ measures: false }).replace(
+        "- **Verified by:** test/demo.test.mjs\n\n## E-2",
+        "- **Verified by:** test/demo.test.mjs\n- **Measure:** `gh pr list | wc -l`\n\n## E-2",
+      );
+      armed(repo, "abc123", "demo", { expectations: piped });
+      const io = captureIo();
+      const { exec } = fakeMeasureExec({ "gh pr list | wc -l": { stdout: "6" } });
+      expect(
+        runOutcomeScore(
+          "abc123",
+          { ...RUN_FLAGS, goals: ["G-2=0"], sources: ["G-2=retro sweep"] },
+          { ...cliOpts(repo, io), exec },
+        ),
+      ).toBe(0);
+      const results = repo.read("_devx/workstreams/demo/RESULTS.md");
+      expect(results).toContain("`gh pr list \\| wc -l`");
+      // Five cells, still — the pipe did not split the row.
+      const row = results.split("\n").find((l) => l.startsWith("| G-1 |")) ?? "";
+      expect(row.split(/(?<!\\)\|/).filter((c) => c.trim() !== "")).toHaveLength(5);
+    } finally {
+      repo.cleanup();
+    }
+  });
+});
+
+describe("measuredAtStamp / measuredValueFrom", () => {
+  it("stamps ISO 8601 to the minute with an explicit offset", () => {
+    const stamp = measuredAtStamp(NOW);
+    expect(stamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
+    // Timezone-independent and not a tautology: the stamp must denote the
+    // same instant as the clock it came from, truncated to the minute.
+    expect(new Date(stamp).getTime()).toBe(
+      Math.floor(NOW.getTime() / 60_000) * 60_000,
+    );
+  });
+
+  it("carries the LOCAL calendar date, so it agrees with the record's `updated:`", () => {
+    const stamp = measuredAtStamp(NOW);
+    const local = `${NOW.getFullYear()}-${String(NOW.getMonth() + 1).padStart(2, "0")}-${String(NOW.getDate()).padStart(2, "0")}`;
+    expect(stamp.slice(0, 10)).toBe(local);
+  });
+
+  it("takes the last non-empty stdout line as the value of record", () => {
+    expect(measuredValueFrom("collecting…\nstill going\n42\n")).toBe("42");
+    expect(measuredValueFrom("  42  ")).toBe("42");
+    // No output is NOT zero — the caller refuses rather than guessing.
+    expect(measuredValueFrom("")).toBeNull();
+    expect(measuredValueFrom("   \n\n\t\n")).toBeNull();
   });
 });

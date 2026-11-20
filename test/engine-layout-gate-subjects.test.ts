@@ -166,6 +166,13 @@ function expectationsBody(): string {
       "- **Expectation (EARS):** When a gate runs under either layout, the system SHALL return the identical verdict for identical content.",
       "- **Threshold:** 0 verdict differences across both layouts.",
       `- **Verified by:** \`evals/E-${n}_deferred.mjs\``,
+      // Gate 1's measurability floor: G-1 ("cut layout-path defects to 0 by
+      // 2026-12-31") is numeric, so without a named measure the good
+      // fixture would score CONCERNS and this suite's layout-independence
+      // assertions would all read as tolerated concerns. The measure is a
+      // command, not a layout path — it cannot reintroduce the thing these
+      // tests exist to rule out.
+      "- **Measure:** `bin/layout-path-defects` · window: trailing 30d",
       "",
     ].join("\n");
   return ["# Expectations — Demo", "", block(1, "P0"), block(2, "P1"), block(3, "P1")].join("\n");
