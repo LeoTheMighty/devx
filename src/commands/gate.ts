@@ -37,7 +37,7 @@ import {
   stageIndex,
 } from "../lib/engine/frontmatter.js";
 import { parseExpectations } from "../lib/engine/expectations.js";
-import { evaluateGatePrd } from "../lib/engine/gate-prd.js";
+import { type GateGap, evaluateGatePrd } from "../lib/engine/gate-prd.js";
 import {
   applyGraphFindings,
   computeCoverageVerdict,
@@ -439,14 +439,33 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
     expectationsRel: subjects.expectations.rel,
   });
 
-  // Gate 1 is binary (PASS | FAIL), so every gap it reports is what made it
-  // fail — each one is `blocking`. The check name leads the title because it
-  // is the stable half across runs; the message carries the detail that moves.
-  const prdFindings: GateFinding[] = result.gaps.map((gap) => ({
-    title: `${gap.check}${gap.location ? ` at ${gap.location}` : ""}: ${gap.message}`,
-    severity: "blocking",
-    recommendation: gap.message,
-  }));
+  // Gate 1 reports two kinds. A `gap` is what made it FAIL, so every gap is
+  // `blocking`. A `concern` — today the measurability floor: a numeric `G-`
+  // with no runnable measure — advances the gate and is `concern`, the same
+  // split Gate 4 draws below (`run.blocking ? "blocking" : "concern"`).
+  //
+  // Concerns go into the queue for the reason the queue exists: a CONCERNS
+  // finding that lives only in one run's stdout is a finding nobody re-reads,
+  // and this particular one is only actionable WEEKS later, when the outcome
+  // comes due and there is still nothing to measure. The frontmatter verdict
+  // says a concern exists; the queue entry says which goal and what to do.
+  //
+  // The check name leads the title because it is the stable half across runs;
+  // the message carries the detail that moves. Both kinds share that shape so
+  // a concern that later becomes a gap reconciles onto the same entry rather
+  // than opening a second one.
+  const prdFinding = (
+    f: GateGap,
+    severity: "blocking" | "concern",
+  ): GateFinding => ({
+    title: `${f.check}${f.location ? ` at ${f.location}` : ""}: ${f.message}`,
+    severity,
+    recommendation: f.message,
+  });
+  const prdFindings: GateFinding[] = [
+    ...result.gaps.map((gap) => prdFinding(gap, "blocking")),
+    ...result.concerns.map((c) => prdFinding(c, "concern")),
+  ];
   const prdQueue = (): void =>
     reconcileHealthQueue(
       r,
@@ -500,9 +519,10 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
       spec: ws.specRel,
     })}\n`,
   );
-  // With no findings this run, the reconcile is pure resolve: a prior FAIL's
-  // blocking entries close here, which is what makes the queue track a gate
-  // that now advances instead of reading "blocked" forever.
+  // A prior FAIL's blocking entries close here, which is what makes the queue
+  // track a gate that now advances instead of reading "blocked" forever —
+  // while any concern this run raised stays open at `concern` severity, so
+  // advancing the gate does not erase what it advanced in spite of.
   prdQueue();
   return 0;
 }

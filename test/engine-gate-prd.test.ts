@@ -433,6 +433,31 @@ function seedWorkstream(
   repo.write(`${WS}/expectations.md`, opts.expectations ?? validExpectations());
 }
 
+/** The `## Q-n:` entries in a questions.md, as {title, severity, status}.
+ *  Parsed rather than grepped: the template's header comment spells out
+ *  "Severity: blocking | concern", so a whole-file `toContain` passes on an
+ *  empty queue. */
+function queueEntries(
+  md: string,
+): Array<{ title: string; severity: string; status: string }> {
+  const out: Array<{ title: string; severity: string; status: string }> = [];
+  let current: { title: string; severity: string; status: string } | null = null;
+  for (const line of md.split("\n")) {
+    const h = /^##\s+(Q-\d+:.*)$/.exec(line);
+    if (h) {
+      current = { title: h[1], severity: "", status: "" };
+      out.push(current);
+      continue;
+    }
+    if (current === null) continue;
+    const sev = /^-\s+\*\*Severity:\*\*\s*(\S+)/.exec(line);
+    if (sev) current.severity = sev[1];
+    const st = /^-\s+\*\*Status:\*\*\s*(\S+)/.exec(line);
+    if (st) current.status = st[1];
+  }
+  return out;
+}
+
 function gatePrd() {
   const io = captureIo();
   const code = runGatePrd(["abc123"], { ...io, projectPath: repo.configPath });
@@ -472,6 +497,57 @@ describe("devx gate prd — CLI driver", () => {
     // re-reads — the exact complaint the gap analysis makes about gate
     // reports.
     expect(state.gateVerdicts.prd).toBe("CONCERNS");
+  });
+
+  it("CONCERNS opens a `concern`-severity health-queue entry, not a blocker", () => {
+    // The composition of this stream's advisory with the health queue: a
+    // CONCERNS finding that lives only in one run's stdout is a finding
+    // nobody re-reads, and this one is only actionable WEEKS later when the
+    // outcome comes due and there is still nothing to measure.
+    seedWorkstream({ expectations: validExpectations({ measures: false }) });
+    expect(gatePrd().code).toBe(0);
+    const queue = repo.read(`${WS}/questions.md`);
+    expect(queue).toContain("- **Kind:** gate-concern");
+    const entries = queueEntries(queue);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].title).toContain("goal-no-runnable-measure");
+    expect(entries[0].title).toContain("G-1");
+    // `concern`, not `blocking` — the gate advanced, so nothing is blocked.
+    expect(entries[0].severity).toBe("concern");
+    expect(entries[0].status).toBe("open");
+  });
+
+  it("a FAIL's blocker closes while the concern stays open on the next run", () => {
+    // Advancing the gate must not erase what it advanced in spite of.
+    seedWorkstream({
+      expectations: validExpectations({ measures: false }).replace(
+        "- **Threshold:** tour present on 100% of PRs\n",
+        "",
+      ),
+    });
+    expect(gatePrd().code).toBe(1);
+    expect(repo.read(`${WS}/questions.md`)).toContain("- **Severity:** blocking");
+
+    // Fix the gap, leave the measure absent, and re-open the gate so the
+    // closed-gate refusal (#187) does not short-circuit the re-run.
+    repo.write(
+      `${WS}/expectations.md`,
+      validExpectations({ measures: false }),
+    );
+    repo.write(
+      SPEC_REL,
+      repo.read(SPEC_REL).replace("prd_validated: true", "prd_validated: false"),
+    );
+    expect(gatePrd().code).toBe(0);
+    // The queue is a current-state record, not a worklist that forgets: the
+    // blocker is RESOLVED in place (ids are never reused) while the concern
+    // stays open. Advancing the gate must not erase what it advanced in
+    // spite of.
+    const entries = queueEntries(repo.read(`${WS}/questions.md`));
+    const blocker = entries.find((e) => e.title.includes("expectation-threshold-missing"));
+    const concern = entries.find((e) => e.title.includes("goal-no-runnable-measure"));
+    expect(blocker).toMatchObject({ severity: "blocking", status: "resolved" });
+    expect(concern).toMatchObject({ severity: "concern", status: "open" });
   });
 
   it("PASS omits the concerns key entirely", () => {

@@ -97,14 +97,48 @@ function seed(which: Which, m: Mutation): EngineRepo {
     ].join("\n"),
   );
   repo.mkdir(WS);
-  repo.write(`${WS}/prd/agent.md`, (m.prd ?? ((x) => x))(validPrd()));
-  repo.write(`${WS}/expectations.md`, (m.expectations ?? ((x) => x))(validExpectations()));
+  repo.write(`${WS}/prd/agent.md`, mutated("prd", m.prd, validPrd()));
+  repo.write(
+    `${WS}/expectations.md`,
+    mutated("expectations", m.expectations, validExpectations()),
+  );
   repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
-  repo.write(`${WS}/plan/agent.md`, (m.plan ?? ((x) => x))(validPlan()));
+  repo.write(`${WS}/plan/agent.md`, mutated("plan", m.plan, validPlan()));
   if (m.dropP0Artifact !== true) repo.write("test/demo.test.mjs", "process.exit(1);\n");
   repo.write("test/perf.test.mjs", "process.exit(1);\n");
   if (which === "plan-coverage") repo.write("table.json", m.table ?? planTable());
   return repo;
+}
+
+/**
+ * Apply a mutation and PROVE it changed something.
+ *
+ * Every mutant here is a `String.replace` against a fixture line. A fixture
+ * edit that moves the anchored line turns the replace into a silent no-op:
+ * the gate then runs on an unmutated fixture, passes, and the mutant's three
+ * assertions fail with "the gate does not pass" — which reads as a hole in
+ * the GATE, exactly inverting what happened. Worse, a mutant whose expected
+ * verdict is PASS would go green while testing nothing at all.
+ *
+ * Hit for real: harness-s6 added a `Measure:` line after E-1's `Verified by:`
+ * in `validExpectations()`, which broke the "no runnable verification target"
+ * mutant's `…test/demo.test.mjs\n\n## E-2` anchor. A mutation that mutates
+ * nothing is a broken test, so it throws here rather than being diagnosed
+ * from the far side of a gate verdict.
+ */
+function mutated(
+  which: string,
+  fn: ((s: string) => string) | undefined,
+  input: string,
+): string {
+  if (fn === undefined) return input;
+  const out = fn(input);
+  if (out === input) {
+    throw new Error(
+      `mutation on ${which} changed nothing — its anchor no longer matches the fixture, so this mutant tests an UNMUTATED gate. Re-anchor it against the current test/fixtures/engine-repo.ts.`,
+    );
+  }
+  return out;
 }
 
 interface GateRun {
@@ -279,11 +313,12 @@ const CASES: Case[] = [
     name: "the P0 names no runnable verification target",
     which: "prd",
     mutate: {
+      // Anchored on E-1's block, not on what follows it: E-2 carries the
+      // same `Verified by:` value, so a bare replace would mutate whichever
+      // comes first, and anchoring on `## E-2` broke when a field was added
+      // between them. `replace` takes the first match, which is E-1's.
       expectations: (s) =>
-        s.replace(
-          "- **Verified by:** test/demo.test.mjs\n\n## E-2",
-          "- **Verified by:** TBD\n\n## E-2",
-        ),
+        s.replace("- **Verified by:** test/demo.test.mjs", "- **Verified by:** TBD"),
     },
     flag: "prd_validated",
     because: "E-1",

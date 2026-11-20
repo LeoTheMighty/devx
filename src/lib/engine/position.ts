@@ -220,7 +220,15 @@ export interface ReconcileInputs {
    * pure over inputs and does not grow a second opinion about what Gate 1
    * requires. The caller passes `evaluateGatePrd`'s own result.
    */
-  prdRecheck: { verdict: "PASS" | "FAIL"; gaps: readonly GateGap[] } | null;
+  prdRecheck: {
+    /** Gate 1 is tri-state. `CONCERNS` is NOT a regression: the gate's
+     *  criteria still hold and it still advances — the measurability floor
+     *  just has something advisory to say, which the spec's
+     *  `gate_verdicts.prd` already records. Only `FAIL` means the criteria
+     *  stopped holding, so only `FAIL` reaches check 7. */
+    verdict: "PASS" | "CONCERNS" | "FAIL";
+    gaps: readonly GateGap[];
+  } | null;
 }
 
 // ---------------------------------------------------------------------------
