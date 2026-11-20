@@ -2,45 +2,27 @@
      first, prose second; every diagram must carry real content, not
      decoration. When <stage>/outline.md exists its structure IS this file's
      structure (the outline dictates the shape; agent.md keeps the gate
-     sections). Refreshed by the stage before its gate runs. -->
+     sections). Refreshed by the stage before its gate runs, held to
+     docs/RENDER-STYLE.md (`devx render lint <hash> design`). -->
 
 # design — <workstream title> (human digest)
 
 ## Reading guide
 
-<!-- MANDATORY on every design human render (ported from 8am-harness §31).
-     An annotated table of contents that doubles as an audience map. A
-     reviewer arrives with two questions before any technical one: what is
-     the SHAPE of this document, and which parts am I responsible for. This
-     answers both on the first screen.
-
-     Rows, in order: Overview → each `###` mechanism under `## Design` in
-     outline order → Migration plan → the scope sections, grouped into one
-     row joined by `·`. Two levels max — `####` sub-parts are allowed only
-     when they share their mechanism's audience; the moment sub-parts want
-     different readers they are separate mechanisms, split at `###` where
-     each earns its own row.
-
-     "What it covers" is the QUESTION the section answers, derived from its
-     outline bullet — not a teaser.
-
+<!-- MANDATORY on every design render (8am-harness §31): a table of contents
+     that doubles as an audience map. Rows, in order: Overview → each `###`
+     mechanism under agent.md's `## Design`, outline order → Migration plan →
+     the scope sections as one `·`-joined row. `####` parts only when they
+     share their mechanism's readers; else split at `###`, a row each.
+     "What it covers" is the QUESTION the section answers, not a teaser.
      Marks: ● read before signing off · ○ useful context · blank = skip.
-     A role scans its own column and has its reading list.
+     Columns: `engine.reading_guide_roles` (default pm, architect, dev, qa);
+     drop one with no ● outside Overview. `checkReadingGuide()` checks every
+     row names a heading here and every mechanism has a row; marks are
+     judgment. Footnotes? Add under the table: "A superscript number links
+     to the section that owns that fact." Shape:
 
-     Columns come from `devx.config.yaml → engine.reading_guide_roles`
-     (default: the plan-stage critique lenses — pm, architect, dev, qa — so
-     the document is mapped in the vocabulary the repo already uses). Columns
-     are the scarce resource: drop one that would carry no ● outside
-     Overview.
-
-     Structural sync is checked mechanically by `checkReadingGuide()` — every
-     row must name a real heading in THIS file, and every `###` mechanism in
-     agent.md must have a row. The audience marks are judgment and stay
-     advisory. Replace the rows below; the shape to copy is:
-
-       | Overview        | what this solves            | ● | ● | ● | ● |
        | Token bucket    | how spend is bounded        |   | ● | ● | ● |
-       | Migration plan  | how today's state gets there| ○ | ○ | ● | ○ |
        | Constraints · Assumptions · Out of scope · Discarded | the edges | ○ | ○ | ○ | ○ |
 -->
 

@@ -48,7 +48,9 @@
 ### Architecture
 
 <components + responsibilities + how they compose; cite real code paths
-(engine.code_citation_hints) — every cited path must exist>
+(engine.code_citation_hints) — every cited path must exist. A mechanism with
+failure classes of its own gets a `#### Failure handling`: class → disposition>
+
 
 ### Interfaces
 
@@ -63,10 +65,19 @@
 <how the world moves from current to desired without breaking; N/A for
 greenfield>
 
-## Resolved design questions
+## Decision log
 
-- <question> → <answer + where decided>
+<!-- Links only, one line a row: the answer lives in the design body in
+     present tense, the reasoning in the record. -->
+
+| Date | Decision | Record |
+| --- | --- | --- |
+| <YYYY-MM-DD> | <one line> | [<slug>](decisions/<date>-<slug>.md) |
 
 ## Unresolved design questions
 
 - <question> — <who/what resolves it; blocks Gate 2 only if a P0 depends on it>
+
+## Glossary
+
+- **<term>** — <one line> <!-- optional; delete if nothing needs glossing -->

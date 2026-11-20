@@ -305,6 +305,9 @@ function seed(flags: {
   stage?: string;
   design?: boolean;
   plan?: boolean;
+  /** harness-s4: captured research, default present — its absence is a
+   *  hygiene finding that would turn every PASS below into CONCERNS. */
+  research?: boolean;
 }): void {
   repo.write(
     SPEC_REL,
@@ -329,6 +332,7 @@ function seed(flags: {
   repo.write(`${WS}/prd/agent.md`, validPrd());
   repo.write(`${WS}/expectations.md`, validExpectations());
   if (flags.design !== false) repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
+  if (flags.research !== false) repo.write(`${WS}/design/research.md`, "# Research\n");
   if (flags.plan) repo.write(`${WS}/plan/agent.md`, "## Plan\n\nreal.\n");
 }
 

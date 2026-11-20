@@ -82,6 +82,7 @@ _devx/workstreams/<slug>/
 │   │                       #   empty scaffold (never overwrites); never a gate input
 │   └── outline-critique.md # the agent's critique of the outline; non-gating
 ├── design/                 # same quartet; agent.md = Gate 2 subject
+│                           #   + research-questions.md / research.md (captured, blind code research)
 ├── plan/                   # same quartet; agent.md = Gate 3 subject; phase checklist = execution tracker
 ├── expectations.md         # Gate 1 input (the E-blocks)
 ├── decisions/              # dated decision/critique/verify reports
@@ -194,15 +195,22 @@ to cross-reference other active workstreams + LEARN.md and writes
 `decisions/<date>-prd-critique.md`; non-gating, thoroughness-gated.
 
 ### 4.3 Design stage (`/devx design <hash>`)
-Collaborative: **asks the user's design questions first**, grounds discussion
-in real code (config: `engine.code_citation_hints` paths), then drafts
+Collaborative: **asks the user's design questions first**, then **captures
+research before drafting** (harness-s4): factual questions framed without the
+PRD's intent go to `design/research-questions.md`, an Explore subagent that
+sees only that file answers them with `path:line` citations into
+`design/research.md`, and re-entry refreshes rather than redoes it (aimed at
+`engine.code_citation_hints`; plan and execute re-read it). Then it drafts
 `design/agent.md`: Overview / Constraints / Risks / Trade-offs / Out of scope /
 Assumptions / Discarded considerations / **Wrap-don't-duplicate check** (v1's
 working agreement, recast from harness's "Configuration, not Code") / Design
-(architecture, interfaces, data) / Migration plan / Resolved + Unresolved
-design questions. Hard rule: *no phases, no tasks — design is the approach,
-not the sequence.* Stripped from the source template: Confluence sync,
-Compliance Scope, Reviewers signoff matrix, Document Information tracker rows.
+(architecture, interfaces, data; a `#### Failure handling` per mechanism that
+has failure classes) / Migration plan / Decision log (links-only index of
+`decisions/` records — a settled-questions list in the body is decision
+residue, which Gate 2's hygiene lens flags) / Unresolved design questions /
+Glossary. Hard rule: *no phases, no tasks — design is the approach, not the
+sequence.* Stripped from the source template: Confluence sync, Compliance
+Scope, Reviewers signoff matrix, Document Information tracker rows.
 
 ### 4.4 Gate 2 & 3 — `devx gate coverage <hash>` (CLI + one subagent)
 State-aware two-mode gate, ported near-verbatim:
@@ -228,6 +236,18 @@ recorded). WAIVED requires named approver + reason. An **"Extras requiring
 product approval"** section flags scope creep neutrally. Mechanical parts
 (ID extraction, table assembly, verdict computation) in the CLI; the
 semantic covered/partial judgment is a single schema-constrained subagent.
+
+**Design-mode hygiene lens (advisory; harness-s4).** The same subagent may
+return a `hygiene` array — `{kind, where, note}` with kind one of `residue`
+(decision narrative in the body), `duplication` (one fact in two sections),
+`ungrounded` (a load-bearing claim about existing code with no citation and
+no research finding), `bare-decision` (a load-bearing choice with no
+alternative weighed). The CLI adds two mechanical findings of its own: a
+settled-questions section (`## Resolved … questions`) and absent
+`design/research.md`. Every finding renders in the report's `## Hygiene
+(advisory)` section and holds the verdict at **CONCERNS at most, never FAIL**
+— upstream blocks on its groundedness checks; at send-it a design advances
+with the finding on record. Plan mode ignores the array (with a warning).
 
 ### 4.5 Plan stage (`/devx plan <hash>`)
 Asks the user for a rough phase breakdown first, explores code, drafts
@@ -419,6 +439,7 @@ config sections untouched.
 | `devx revise <hash> --touched <file>` | cascade-reset applier |
 | `devx workstream graph <hash>` | plan Execution graph → emission order, `blocked_by`, independent pairs (harness-s5) |
 | `devx outline guard\|check\|init\|commit` | outline protection (hook endpoint, diff scan, human-side helpers) |
+| `devx render lint <hash> <stage>` | human-digest style bar (`docs/RENDER-STYLE.md`); exit 1 on HARD; never a gate input (harness-s4) |
 | `devx loop …` | see `04-overnight-loop.md` |
 
 Skill bodies added/rewritten: the `/devx` dispatcher + stage sections

@@ -164,6 +164,9 @@ function traceGate(
       code = runGatePrd(["abc123"], common);
     } else if (gate === "coverage") {
       repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
+      // Captured research present, so the baseline is a true PASS rather
+      // than the hygiene lens's CONCERNS (harness-s4).
+      repo.write(`${WS}/design/research.md`, "# Research\n");
       repo.write("table.json", designTable());
       code = runGateCoverage(
         ["abc123"],
