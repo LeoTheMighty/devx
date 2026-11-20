@@ -874,7 +874,8 @@ function isNotAnEval(name: string): boolean {
  * Carried forward like the shas: a fresh stamped artifact wins; a fresh
  * `null` never erases an earlier artifact (a later `--waive` must not drop
  * the re-point check any more than it may drop the sha); a prior E-id
- * absent from this run is kept.
+ * absent from this run is kept. Same reach as `carryForwardStamps`: only a
+ * hand-flipped `evals_red` gets a run over a prior map.
  */
 function lockedEvalIds(
   prior: Readonly<Record<string, string | null>>,
@@ -914,6 +915,11 @@ function lockedEvalIds(
  *
  * The one sanctioned way to discard a live stamp is re-opening the red
  * stage (`devx revise`), and applyEnginePatch clears the stamp there.
+ *
+ * Reach, now that a closed Gate 4 refuses every re-run: each sanctioned
+ * re-open drops the stamp with `evals_red`, so the only run that sees a
+ * prior stamp is one over `evals_red` flipped back by hand. Kept as defense
+ * in depth for exactly that state — a hand edit must not launder the lock.
  */
 function carryForwardStamps(
   prior: Readonly<Record<string, string>>,
@@ -1154,6 +1160,38 @@ export function runGateEvalsCli(
     // findings block only in a coverage-locked workstream, which is what
     // keeps grandfathered and pre-evlk01 workstreams advisory.
     return blocking ? 1 : 0;
+  }
+
+  // A closed gate is not re-run. It used to be: after implementation the P0s
+  // pass, so a re-run stamped `evals: FAIL` beside `evals_red: true` and
+  // OVERWROTE the RED report — the only record that the expectation was ever
+  // watched failing, which no later run can reproduce. A re-run over an eval
+  // edited to still fail was worse: it exited 0 and re-stamped the edited
+  // body, so `--verify` then passed — the lock laundered by its own gate.
+  // `--waive` gets no exception: a waiver is recorded when the gate closes,
+  // and re-waiving takes the same re-open as any re-stamp. Refused before the
+  // predecessor and input checks, so a closed gate whose inputs have since
+  // moved still refuses rather than reading as inconsistent. `--verify`
+  // returned above; `--dry-run` writes nothing and stays a look.
+  if (ws.state.gateStatus.evals_red && flags.dryRun !== true) {
+    const recorded = ws.state.gateVerdicts.evals;
+    io.out(
+      `${JSON.stringify({
+        gate: "FAIL",
+        hash: ws.hash,
+        refusal: `Gate 4 (evals) is closed — evals_red is true${
+          recorded !== null ? ` (verdict: ${recorded})` : ""
+        }, stage: ${ws.state.stage ?? "unset"}. A re-run would re-stamp its verdict, could re-lock an edited eval, and would overwrite ${subjects.redReport.rel} — the only record of the P0s observed failing — so it refuses and writes nothing.${
+          waive.length > 0
+            ? " A waiver is recorded when the gate closes; re-waiving takes the same re-open."
+            : ""
+        } ${closedGateWayOut(
+          ws.hash,
+          `${reviseCmd(ws.hash, "plan")} (Gates 3 + 4)`,
+        )} To check the eval lock without writing: \`devx gate evals ${ws.hash} --verify\`.`,
+      })}\n`,
+    );
+    return 1;
   }
 
   // Predecessor gates must have passed (tenet 2).
