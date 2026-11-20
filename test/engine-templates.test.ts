@@ -30,6 +30,7 @@ const EXPECTED_TEMPLATES = [
   "lessons-entry.md",
   "results.md",
   "todo.md",
+  "questions.md",
   "qa-walkthrough.md",
 ];
 

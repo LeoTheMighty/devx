@@ -13,6 +13,7 @@
 //   ├── plan/               ← same quartet, authored at Plan stage (not scaffolded)
 //   ├── expectations.md     ← from _devx/templates/engine/expectations.md
 //   ├── todo.md             ← from _devx/templates/engine/todo.md (hfi101)
+//   ├── questions.md        ← from _devx/templates/engine/questions.md (health queue)
 //   ├── decisions/          ← empty (dated verify/critique/revision reports)
 //   ├── checkpoints/        ← empty (per-phase verification reports)
 //   └── evals/              ← empty (RED-gate artifacts + RED-report.md + human-facing companions)
@@ -247,6 +248,7 @@ export interface CreateWorkstreamResult {
     prd: boolean;
     expectations: boolean;
     todo: boolean;
+    questions: boolean;
     specFrontmatterExtended: boolean;
   };
   noop: boolean;
@@ -321,11 +323,16 @@ const templateSourceRel = (kind: ArtifactKind): string =>
 
 const SCAFFOLDED_ARTIFACTS: ReadonlyArray<{
   kind: ArtifactKind;
-  key: "prd" | "expectations" | "todo";
+  key: "prd" | "expectations" | "todo" | "questions";
 }> = [
   { kind: { kind: "agent", stage: "prd" }, key: "prd" },
   { kind: { kind: "expectations" }, key: "expectations" },
   { kind: { kind: "todo" }, key: "todo" },
+  // Scaffolded empty, like todo.md, so the FIRST gate run has a file to
+  // reconcile into rather than having to mint one. A gate that had to create
+  // it would be a gate whose bookkeeping can fail on a missing template —
+  // and the gates deliberately never fail on missing infrastructure.
+  { kind: { kind: "questions" }, key: "questions" },
 ];
 
 /** Artifacts whose presence proves a doc set already lives at a base. The
@@ -335,6 +342,7 @@ const DOC_SET_EVIDENCE: readonly ArtifactKind[] = [
   ...SUBJECT_STAGES.map((stage): ArtifactKind => ({ kind: "agent", stage })),
   { kind: "expectations" },
   { kind: "todo" },
+  { kind: "questions" },
 ];
 
 /**
@@ -619,6 +627,7 @@ export function createWorkstream(
     prd: false,
     expectations: false,
     todo: false,
+    questions: false,
     specFrontmatterExtended: false,
   };
 
@@ -738,6 +747,7 @@ export function createWorkstream(
     !created.prd &&
     !created.expectations &&
     !created.todo &&
+    !created.questions &&
     !created.specFrontmatterExtended;
 
   return { hash, slug, specPath: specRel, workstreamDir: wsRel, created, noop };

@@ -250,7 +250,7 @@ describe("pathToArtifactKind — the same table, read backwards", () => {
   // `plan-*`, and all six `evals` companions, in both spellings. Drive it off
   // the same product the map is built from.
   it("round-trips EVERY representable identity, in both layouts", () => {
-    expect(ALL_ARTIFACT_KINDS.length).toBe(3 + STAGE_DIRS.length * 3 + 7);
+    expect(ALL_ARTIFACT_KINDS.length).toBe(3 + STAGE_DIRS.length * 3 + 8);
     for (const kind of ALL_ARTIFACT_KINDS) {
       for (const layout of DOCS_LAYOUTS) {
         const base = layout === "workstream" ? BASE : FLAT;
