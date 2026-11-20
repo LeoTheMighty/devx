@@ -37,13 +37,15 @@ import {
   stageIndex,
 } from "../lib/engine/frontmatter.js";
 import { parseExpectations } from "../lib/engine/expectations.js";
-import { evaluateGatePrd } from "../lib/engine/gate-prd.js";
+import { type GateGap, evaluateGatePrd } from "../lib/engine/gate-prd.js";
 import {
   applyGraphFindings,
+  applyHygieneFindings,
   computeCoverageVerdict,
   detectCoverageMode,
   expectationPriorities,
   extractSourceIds,
+  mechanicalHygiene,
   parseCoverageTable,
   renderVerifyReport,
   tableJudges,
@@ -134,6 +136,9 @@ interface GateSubjects {
   evalsDir: artifacts.StageSubject;
   decisionsDir: artifacts.StageSubject;
   redReport: artifacts.StageSubject;
+  /** The Design stage's captured research — read for existence only, by
+   *  Gate 2's mechanical hygiene check (harness-s4). */
+  research: artifacts.StageSubject;
 }
 
 function subjectsFor(
@@ -165,6 +170,7 @@ function subjectsFor(
     evalsDir: at({ kind: "evals-dir" }),
     decisionsDir: at({ kind: "decisions-dir" }),
     redReport: at({ kind: "red-report" }),
+    research: at({ kind: "research" }),
   };
 }
 
@@ -439,14 +445,33 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
     expectationsRel: subjects.expectations.rel,
   });
 
-  // Gate 1 is binary (PASS | FAIL), so every gap it reports is what made it
-  // fail — each one is `blocking`. The check name leads the title because it
-  // is the stable half across runs; the message carries the detail that moves.
-  const prdFindings: GateFinding[] = result.gaps.map((gap) => ({
-    title: `${gap.check}${gap.location ? ` at ${gap.location}` : ""}: ${gap.message}`,
-    severity: "blocking",
-    recommendation: gap.message,
-  }));
+  // Gate 1 reports two kinds. A `gap` is what made it FAIL, so every gap is
+  // `blocking`. A `concern` — today the measurability floor: a numeric `G-`
+  // with no runnable measure — advances the gate and is `concern`, the same
+  // split Gate 4 draws below (`run.blocking ? "blocking" : "concern"`).
+  //
+  // Concerns go into the queue for the reason the queue exists: a CONCERNS
+  // finding that lives only in one run's stdout is a finding nobody re-reads,
+  // and this particular one is only actionable WEEKS later, when the outcome
+  // comes due and there is still nothing to measure. The frontmatter verdict
+  // says a concern exists; the queue entry says which goal and what to do.
+  //
+  // The check name leads the title because it is the stable half across runs;
+  // the message carries the detail that moves. Both kinds share that shape so
+  // a concern that later becomes a gap reconciles onto the same entry rather
+  // than opening a second one.
+  const prdFinding = (
+    f: GateGap,
+    severity: "blocking" | "concern",
+  ): GateFinding => ({
+    title: `${f.check}${f.location ? ` at ${f.location}` : ""}: ${f.message}`,
+    severity,
+    recommendation: f.message,
+  });
+  const prdFindings: GateFinding[] = [
+    ...result.gaps.map((gap) => prdFinding(gap, "blocking")),
+    ...result.concerns.map((c) => prdFinding(c, "concern")),
+  ];
   const prdQueue = (): void =>
     reconcileHealthQueue(
       r,
@@ -472,7 +497,11 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
     return ok ? 1 : 2;
   }
 
-  // PASS: flip prd_validated + stage: design + verdict in one patch.
+  // PASS / CONCERNS: both advance (D-9) — flip prd_validated + stage: design
+  // + the evaluated verdict in one patch. CONCERNS is how the measurability
+  // floor surfaces: persisting it rather than only printing it is what makes
+  // the concern outlive this run, so `devx status`'s gates line still says
+  // `prd CONCERNS` weeks later when the outcome comes due.
   const newStage = advanceStage(ws.state.stage, "design");
   try {
     const updated = applyEnginePatch(ws.content, {
@@ -483,21 +512,23 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
     writeSpecPatchLocked(r.repoRoot, io, ws.specAbs, updated);
   } catch (e) {
     io.err(
-      `devx gate prd: PASS computed but frontmatter write failed: ${e instanceof Error ? e.message : String(e)}\n`,
+      `devx gate prd: ${result.verdict} computed but frontmatter write failed: ${e instanceof Error ? e.message : String(e)}\n`,
     );
     return 2;
   }
   io.out(
     `${JSON.stringify({
-      gate: "PASS",
+      gate: result.verdict,
       hash: ws.hash,
       flipped: { prd_validated: true, stage: newStage },
+      ...(result.concerns.length > 0 ? { concerns: result.concerns } : {}),
       spec: ws.specRel,
     })}\n`,
   );
-  // With no findings this run, the reconcile is pure resolve: a prior FAIL's
-  // blocking entries close here, which is what makes the queue track a gate
-  // that now advances instead of reading "blocked" forever.
+  // A prior FAIL's blocking entries close here, which is what makes the queue
+  // track a gate that now advances instead of reading "blocked" forever —
+  // while any concern this run raised stays open at `concern` severity, so
+  // advancing the gate does not erase what it advanced in spite of.
   prdQueue();
   return 0;
 }
@@ -612,6 +643,22 @@ export function runGateCoverage(
   if (mode === "plan") {
     graphCheck = checkExecutionGraph(io.fs.readFile(subjects.plan.abs));
     computation = applyGraphFindings(computation, graphCheck);
+    if (parsed.table.hygiene.length > 0) {
+      io.err(
+        `devx gate coverage: warning: \`hygiene\` is a design-mode lens — ${parsed.table.hygiene.length} finding(s) ignored in plan mode\n`,
+      );
+    }
+  }
+  // Design mode only (harness-s4): the advisory hygiene lens — the CLI's two
+  // mechanical checks plus the subagent's judged findings. CONCERNS at most.
+  if (mode === "design") {
+    const mechanical = mechanicalHygiene({
+      design: io.fs.readFile(subjects.design.abs),
+      designRel: subjects.design.rel,
+      researchPresent: io.fs.exists(subjects.research.abs),
+      researchRel: subjects.research.rel,
+    });
+    computation = applyHygieneFindings(computation, [...mechanical, ...parsed.table.hygiene]);
   }
 
   // Completeness is mechanical: an incomplete or ambiguous table is invalid
@@ -699,6 +746,9 @@ export function runGateCoverage(
             },
           }
         : {}),
+      ...(mode === "design"
+        ? { hygiene: computation.hygiene.map((h) => `${h.by}:${h.kind}`) }
+        : {}),
     })}\n`,
   );
   const gateKey = FLAG_TO_GATE_KEY[flag];
@@ -713,11 +763,21 @@ export function runGateCoverage(
     r,
     gateKey,
     `devx gate coverage · ${mode === "design" ? subjects.design.rel : subjects.plan.rel}`,
-    computation.findings.map((f) => ({
-      title: `${f.id} coverage`,
-      severity: f.severity,
-      recommendation: f.detail,
-    })),
+    [
+      ...computation.findings.map((f) => ({
+        title: `${f.id} coverage`,
+        severity: f.severity,
+        recommendation: f.detail,
+      })),
+      // harness-s4: hygiene findings are gate concerns too — always `concern`,
+      // never `blocking` (the lens holds CONCERNS at most). Title = kind +
+      // location, the stable match key; the note is the recommendation.
+      ...computation.hygiene.map((h) => ({
+        title: `hygiene ${h.kind} · ${h.where}`,
+        severity: "concern" as const,
+        recommendation: h.note,
+      })),
+    ],
     reportRel,
     "devx gate coverage",
     io,
@@ -730,6 +790,23 @@ export function runGateCoverage(
 // ---------------------------------------------------------------------------
 // devx gate evals <hash> [--dry-run] [--verify]
 // ---------------------------------------------------------------------------
+
+/**
+ * Read a markdown eval artifact for the gate's manifest check (B17), or null.
+ *
+ * Swallows every read failure on purpose: this feeds ONE decision — is this
+ * `.md` an all-deferred outcome-measure manifest — and null is the strict
+ * answer (keep demanding RED). A throw here would turn an unreadable file
+ * into a crashed gate, and a loud warning would fire on every ordinary
+ * freeform eval spec, which is the shape most of them still have.
+ */
+function readMdOrNull(io: GateIo, abs: string): string | null {
+  try {
+    return io.fs.readFile(abs);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Read each run eval's artifact for stamping. Keys are REPO-relative —
@@ -874,7 +951,8 @@ function isNotAnEval(name: string): boolean {
  * Carried forward like the shas: a fresh stamped artifact wins; a fresh
  * `null` never erases an earlier artifact (a later `--waive` must not drop
  * the re-point check any more than it may drop the sha); a prior E-id
- * absent from this run is kept.
+ * absent from this run is kept. Same reach as `carryForwardStamps`: only a
+ * hand-flipped `evals_red` gets a run over a prior map.
  */
 function lockedEvalIds(
   prior: Readonly<Record<string, string | null>>,
@@ -914,6 +992,11 @@ function lockedEvalIds(
  *
  * The one sanctioned way to discard a live stamp is re-opening the red
  * stage (`devx revise`), and applyEnginePatch clears the stamp there.
+ *
+ * Reach, now that a closed Gate 4 refuses every re-run: each sanctioned
+ * re-open drops the stamp with `evals_red`, so the only run that sees a
+ * prior stamp is one over `evals_red` flipped back by hand. Kept as defense
+ * in depth for exactly that state — a hand edit must not launder the lock.
  */
 function carryForwardStamps(
   prior: Readonly<Record<string, string>>,
@@ -1062,6 +1145,7 @@ export function runGateEvalsCli(
         runners: projectRunnersFrom(r.merged),
         exec: () => ({ stdout: "", stderr: "--verify never executes evals", exitCode: 127 }),
         exists: (p) => io.fs.exists(p),
+        readFile: (p) => readMdOrNull(io, p),
         donePhases: new Set<number>(),
         waived: new Set<string>(),
         dryRun: true,
@@ -1156,6 +1240,38 @@ export function runGateEvalsCli(
     return blocking ? 1 : 0;
   }
 
+  // A closed gate is not re-run. It used to be: after implementation the P0s
+  // pass, so a re-run stamped `evals: FAIL` beside `evals_red: true` and
+  // OVERWROTE the RED report — the only record that the expectation was ever
+  // watched failing, which no later run can reproduce. A re-run over an eval
+  // edited to still fail was worse: it exited 0 and re-stamped the edited
+  // body, so `--verify` then passed — the lock laundered by its own gate.
+  // `--waive` gets no exception: a waiver is recorded when the gate closes,
+  // and re-waiving takes the same re-open as any re-stamp. Refused before the
+  // predecessor and input checks, so a closed gate whose inputs have since
+  // moved still refuses rather than reading as inconsistent. `--verify`
+  // returned above; `--dry-run` writes nothing and stays a look.
+  if (ws.state.gateStatus.evals_red && flags.dryRun !== true) {
+    const recorded = ws.state.gateVerdicts.evals;
+    io.out(
+      `${JSON.stringify({
+        gate: "FAIL",
+        hash: ws.hash,
+        refusal: `Gate 4 (evals) is closed — evals_red is true${
+          recorded !== null ? ` (verdict: ${recorded})` : ""
+        }, stage: ${ws.state.stage ?? "unset"}. A re-run would re-stamp its verdict, could re-lock an edited eval, and would overwrite ${subjects.redReport.rel} — the only record of the P0s observed failing — so it refuses and writes nothing.${
+          waive.length > 0
+            ? " A waiver is recorded when the gate closes; re-waiving takes the same re-open."
+            : ""
+        } ${closedGateWayOut(
+          ws.hash,
+          `${reviseCmd(ws.hash, "plan")} (Gates 3 + 4)`,
+        )} To check the eval lock without writing: \`devx gate evals ${ws.hash} --verify\`.`,
+      })}\n`,
+    );
+    return 1;
+  }
+
   // Predecessor gates must have passed (tenet 2).
   if (!ws.state.gateStatus.plan_verified) {
     const open = !ws.state.gateStatus.prd_validated
@@ -1206,6 +1322,7 @@ export function runGateEvalsCli(
     runners: projectRunnersFrom(r.merged),
     exec: opts.exec ?? realShellExec,
     exists: (p) => io.fs.exists(p),
+    readFile: (p) => readMdOrNull(io, p),
     donePhases: donePhasesFor(io.fs, r.repoRoot, subjects.docSetRel),
     waived: new Set(waive),
     dryRun: flags.dryRun === true,
@@ -1361,7 +1478,7 @@ export function register(program: Command): void {
       // here — name the ARTIFACTS rather than one layout's spelling of
       // them, which under `project-level` would name files that don't
       // exist (review BH-3 / AA / EC-LOW2).
-      "Gate 1: placeholder/E-block/EARS/threshold/ID-resolution checks on the PRD + expectations artifacts; pass flips prd_validated + stage: design.",
+      "Gate 1: placeholder/E-block/EARS/threshold/ID-resolution checks on the PRD + expectations artifacts; pass flips prd_validated + stage: design. A numeric goal with no runnable measure is advisory CONCERNS, which also advances.",
     )
     .argument("<hash>", "workstream (plan spec) hash")
     .action((hash: string) => {

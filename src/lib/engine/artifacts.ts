@@ -63,6 +63,13 @@ export const RESULTS_REL = "RESULTS.md";
 /** The holistic review pass's living report (`/devx-review`). Advisory:
  *  reconciled in place on every run, never a gate input. */
 const REVIEW_REL = "review.md";
+/** The Design stage's captured codebase research (harness-s4, gap analysis
+ *  B6): the factual questions, framed without intent, and their blind,
+ *  citation-backed answers. Design-stage files, so they sit in `design/`;
+ *  plan and execute re-read them. Never a gate SUBJECT — Gate 2 reads only
+ *  whether the answers exist (an advisory hygiene finding when they don't). */
+const RESEARCH_QUESTIONS_REL = "design/research-questions.md";
+const RESEARCH_REL = "design/research.md";
 
 /** The subdirs `devx workstream new` creates empty. `prd` is created by the
  *  scaffold's own prd/agent.md write; design/ and plan/ appear when their
@@ -243,14 +250,15 @@ export const SUBJECT_STAGES: readonly SubjectStage[] = STAGE_DIRS.filter(
   (s): s is SubjectStage => s !== "evals",
 );
 
-/** A layout-independent artifact identity. 13 variants render as the §15
- *  table's 15 rows: `agent` expands to three (prd / design / plan), the three
- *  stage-parametrized companions are one row each, and the nine singletons
+/** A layout-independent artifact identity. 15 variants render as the §15
+ *  table's 17 rows: `agent` expands to three (prd / design / plan), the three
+ *  stage-parametrized companions are one row each, and the eleven singletons
  *  are one row each. */
 export type ArtifactKind =
   | { kind: "agent"; stage: SubjectStage }
   | { kind: "human" | "outline" | "outline-critique"; stage: StageDir }
   | { kind: "expectations" | "todo" | "questions" | "results" | "review" }
+  | { kind: "research-questions" | "research" }
   | { kind: "evals-dir" | "decisions-dir" | "checkpoints-dir" }
   | { kind: "red-report" };
 
@@ -259,7 +267,7 @@ export type ArtifactKind =
  *  It exists because a TYPE erases: `docs/CONFIG.md` §15 claims one row per
  *  artifact kind, and a doc check has nothing to set-compare against unless
  *  the enumeration survives to runtime. `ALL_ARTIFACT_KINDS` is the wrong
- *  granularity for that job — it is the full 22-identity product, because the
+ *  granularity for that job — it is the full 26-identity product, because the
  *  reverse map has to key `human · design` apart from `human · prd`. §15 is
  *  read by a human choosing a layout, and the three stage-parametrized
  *  companions have one stage-generic spelling each (`<stage>/human.md` →
@@ -284,6 +292,8 @@ export const ARTIFACT_KINDS = [
   "questions",
   "results",
   "review",
+  "research-questions",
+  "research",
   "evals-dir",
   "decisions-dir",
   "checkpoints-dir",
@@ -430,6 +440,13 @@ export function artifactRel(layout: DocsLayout, kind: ArtifactKind): string {
       return RESULTS_REL;
     case "review":
       return REVIEW_REL;
+    // Design-stage singletons: folder-shaped under `workstream`; under
+    // `project-level` they take the `design-` prefix every other design
+    // companion takes (`design-human.md`).
+    case "research-questions":
+      return layout === "workstream" ? RESEARCH_QUESTIONS_REL : "design-research-questions.md";
+    case "research":
+      return layout === "workstream" ? RESEARCH_REL : "design-research.md";
     case "evals-dir":
       return EVALS_DIR_REL;
     case "decisions-dir":
@@ -578,6 +595,8 @@ export const ALL_ARTIFACT_KINDS: readonly ArtifactKind[] = [
   { kind: "questions" },
   { kind: "results" },
   { kind: "review" },
+  { kind: "research-questions" },
+  { kind: "research" },
   { kind: "evals-dir" },
   { kind: "decisions-dir" },
   { kind: "checkpoints-dir" },

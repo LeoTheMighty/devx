@@ -83,6 +83,9 @@ function runDesign(
 ): { code: number; stderr: string } {
   const io = captureIo();
   repo.write("table.json", table);
+  // harness-s4: without captured research Gate 2's hygiene lens adds its own
+  // `concern` entry; these cases count coverage entries, so seed it.
+  if (!repo.exists(`${WS}/design/research.md`)) repo.write(`${WS}/design/research.md`, "# Research\n");
   const code = runGateCoverage(
     ["abc123"],
     { table: join(repo.root, "table.json") },

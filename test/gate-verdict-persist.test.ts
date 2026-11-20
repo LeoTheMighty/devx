@@ -148,6 +148,8 @@ describe("gate coverage — verdict persistence", () => {
   it("design PASS writes gate_verdicts.design", () => {
     seedSpec({ prd_validated: true, stage: "design" });
     repo.write(`${WS}/design/agent.md`, "## Design\n\nreal.\n");
+    // Without captured research Gate 2's hygiene lens holds CONCERNS (harness-s4).
+    repo.write(`${WS}/design/research.md`, "# Research\n");
     expect(gateCoverage(designTable()).code).toBe(0);
     const s = state();
     expect(s.gateVerdicts.design).toBe("PASS");
@@ -250,6 +252,17 @@ function gateEvals(
   return { code, io };
 }
 
+/** Flip `evals_red` back to false BY HAND, leaving the lock behind.
+ *
+ *  A closed Gate 4 refuses every re-run (test/gate-closed-rerun.test.ts), and
+ *  every sanctioned re-open — `devx revise`, `outcome tune` — drops the lock
+ *  with the flag. So this is the one state in which the gate still runs over
+ *  a prior stamp, and the carry-forward rules are its defense in depth: a
+ *  hand re-open must not launder the lock any more than a re-run could. */
+function reopenByHand(): void {
+  repo.write(SPEC_REL, repo.read(SPEC_REL).replace("evals_red: true", "evals_red: false"));
+}
+
 describe("gate evals — verdict persistence", () => {
   it("PASS (all P0s observed RED) writes gate_verdicts.evals", () => {
     seedEvals();
@@ -333,7 +346,10 @@ describe("gate evals — RED step-body stamp (debug-75563d)", () => {
     expect(gateEvals().code).toBe(0);
     const before = state().redEvalShas["test/demo.test.mjs"];
     // Same file, different body → different sha. A stamp that ignored
-    // content would pass every other assertion here.
+    // content would pass every other assertion here. Compared across two
+    // fresh workstreams: re-running the closed gate over the edited body is
+    // refused now — it used to re-stamp it, which laundered the lock.
+    seedEvals();
     repo.write("test/demo.test.mjs", "process.exit(2); // softened\n");
     expect(gateEvals().code).toBe(0);
     expect(state().redEvalShas["test/demo.test.mjs"]).not.toBe(before);
@@ -482,14 +498,17 @@ function verifyOut(io: ReturnType<typeof captureIo>) {
 }
 
 describe("RED eval lock — review of #164", () => {
-  it("A: a --waive re-run keeps the ORIGINAL lock, so the waived eval's softening is still caught", () => {
+  it("A: a --waive run keeps the ORIGINAL lock, so the waived eval's softening is still caught", () => {
     // Pre-fix: the re-stamp REPLACED the map with only the evals that ran,
     // so waiving E-1 dropped its sha and --verify reported stamped:0, PASS.
+    // A closed gate now refuses the --waive re-run outright; this pins the
+    // carry-forward for the one state that still reaches it.
     seedEvals();
     expect(gateEvals().code).toBe(0);
     const original = state().redEvalShas["test/demo.test.mjs"];
     repo.write("test/demo.test.mjs", "process.exit(0); // softened\n");
-    gateEvals({ waive: ["E-1"], reason: "flaky in CI", approver: "agent" }, 0);
+    reopenByHand();
+    expect(gateEvals({ waive: ["E-1"], reason: "flaky in CI", approver: "agent" }, 0).code).toBe(0);
     // The ORIGINAL sha survives — not re-hashed to the softened body, which
     // would launder the edit the waiver might be covering.
     expect(state().redEvalShas["test/demo.test.mjs"]).toBe(original);
@@ -505,6 +524,7 @@ describe("RED eval lock — review of #164", () => {
       redEvalShas: { ...state().redEvalShas, "test/deleted.test.mjs": "f".repeat(64) },
     });
     repo.write(SPEC_REL, withGone);
+    reopenByHand();
     expect(gateEvals().code).toBe(0);
     expect(Object.keys(state().redEvalShas)).toEqual(["test/demo.test.mjs"]);
   });
@@ -947,6 +967,7 @@ describe("RED eval lock — Phase 4 of evlk01", () => {
     repo.write(`${WS}/plan/agent.md`, TWO_RUNNING_PLAN());
     expect(gateEvals().code).toBe(0);
     expect(state().redEvalIds["E-2"]).toBe("test/perf.test.mjs");
+    reopenByHand();
     expect(gateEvals({ waive: ["E-2"], reason: "x", approver: "a" }).code).toBe(0);
     expect(state().redEvalIds["E-2"]).toBe("test/perf.test.mjs");
     // …so re-pointing it afterwards is still caught.
@@ -959,8 +980,9 @@ describe("RED eval lock — Phase 4 of evlk01", () => {
   });
 
   it("carry-forward: a locked eval deleted then re-gated keeps its artifact, so re-creating it softened is caught", () => {
-    // A P1 that WAS watched failing is then deleted; the gate allows the
-    // re-run (a missing P1 is only CONCERNS). Keeping its artifact in the map
+    // A P1 that WAS watched failing is then deleted, and a hand re-open lets
+    // the gate run again (a missing P1 is only CONCERNS; a closed gate
+    // refuses the re-run outright). Keeping its artifact in the map
     // is what stops "delete, re-gate, re-create softened" from laundering it.
     // Contrast a P1 that was missing at its FIRST gate: never watched, so it
     // maps to null and writing it later is allowed.
@@ -969,6 +991,7 @@ describe("RED eval lock — Phase 4 of evlk01", () => {
     expect(gateEvals().code).toBe(0);
     expect(state().redEvalIds["E-2"]).toBe("test/perf.test.mjs");
     rmSync(join(repo.root, "test", "perf.test.mjs"));
+    reopenByHand();
     expect(gateEvals().code).toBe(0);
     expect(state().gateVerdicts.evals).toBe("CONCERNS");
     expect(state().redEvalIds["E-2"]).toBe("test/perf.test.mjs");
@@ -980,6 +1003,7 @@ describe("RED eval lock — Phase 4 of evlk01", () => {
     seedEvals();
     expect(gateEvals().code).toBe(0);
     const before = state().redEvalIds;
+    reopenByHand();
     expect(gateEvals().code).toBe(0);
     expect(state().redEvalIds).toEqual(before);
   });

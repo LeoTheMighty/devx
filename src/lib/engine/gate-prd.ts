@@ -18,9 +18,22 @@
 //      in prd/agent.md is covered by ≥1 expectation (orphan goals fail).
 //   5. INTERVIEW-blocker check: the spec's `blocked_by:` must be empty.
 //
+//   6. Measurability (ADVISORY — the measurability floor, upstream
+//      `FUTURE.md` §C.1): a numeric `G-` goal with no runnable measure named
+//      anywhere in its covering expectations is a CONCERNS, never a FAIL.
+//      §16's law is "measurement is run, not asked for", and the outcome
+//      gate can only run a measure somebody wrote down. Catching it here —
+//      weeks before the outcome window, while the author is still in the
+//      PRD — is the only point at which it is cheap. It is advisory because
+//      the goal may legitimately be scored by hand (`--attested`) and
+//      because blocking Gate 1 on it would retro-fail every workstream
+//      authored before the field existed.
+//
 // Pass → the CLI flips `prd_validated: true` + `stage: design` (both
-// written in one frontmatter patch). Fail → precise gap report on stdout,
-// NOTHING written. Exit 0 pass / 1 fail / 2 error.
+// written in one frontmatter patch). CONCERNS does the same and records the
+// concern (D-9: CONCERNS advances, FAIL does not — same semantics as gate
+// coverage). Fail → precise gap report on stdout, NOTHING written.
+// Exit 0 pass/concerns / 1 fail / 2 error.
 //
 // Spec: dev/dev-v2e101-2026-07-05T13:01-engine-cli-primitives.md
 // Design: v2/02-engine.md §4.1–4.2
@@ -30,6 +43,7 @@ import {
   normalizePriority,
   parseCoversIds,
   parseExpectations,
+  parseMeasureField,
 } from "./expectations.js";
 import { EVALS_DIR_REL } from "./artifacts.js";
 
@@ -67,8 +81,11 @@ export interface GatePrdInputs {
 }
 
 export interface GatePrdResult {
-  verdict: "PASS" | "FAIL";
+  verdict: "PASS" | "CONCERNS" | "FAIL";
   gaps: GateGap[];
+  /** Advisory findings. Never affect the verdict's pass/fail split — a
+   *  non-empty list turns PASS into CONCERNS, which still advances (D-9). */
+  concerns: GateGap[];
   /** IDs defined in prd/agent.md — reused by callers for reporting. */
   definedIds: string[];
 }
@@ -190,6 +207,84 @@ export function extractDefinedIds(prd: string): Array<{ id: string; line: number
   return out;
 }
 
+export interface PrdGoal {
+  /** "G-1" (uppercased). */
+  id: string;
+  /** 1-based prd/agent.md line of the definition. */
+  line: number;
+  /** The goal's definition text (bullet body after the colon, wrapped
+   *  continuation lines folded), "" when the shape is unrecognized. */
+  text: string;
+}
+
+/**
+ * Extract the `G-` goals defined in prd/agent.md, with their definition text.
+ * Definition positions come from `extractDefinedIds` (bold or heading — the
+ * template's two shapes); the text is the remainder of the defining
+ * bullet/heading line plus indented continuation lines (same wrapped-value
+ * folding lesson as parseExpectations — v2e102's first real run caught
+ * exactly this class).
+ *
+ * Lives here, beside `extractDefinedIds`, and is re-exported by outcome.ts
+ * for its original callers: the outcome gate needs it to score goals and
+ * Gate 1 needs it to judge whether a goal is numeric, and importing it the
+ * other way round would make gate-prd and outcome a cycle.
+ */
+export function parsePrdGoals(prd: string): PrdGoal[] {
+  // CRLF-normalize first: `(.*)$` won't cross a trailing `\r`, which would
+  // silently blank every goal's text on a CRLF checkout (EC#3).
+  const normalized = prd.replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+  const out: PrdGoal[] = [];
+  for (const ref of extractDefinedIds(normalized)) {
+    if (!ref.id.startsWith("G-")) continue;
+    const line = lines[ref.line - 1] ?? "";
+    // Bullet shape: `- **G-1**: <text>`; heading shape: `### G-1: <text>`.
+    const m =
+      new RegExp(`\\*\\*${ref.id}\\*\\*\\s*:?\\s*(.*)$`, "i").exec(line) ??
+      new RegExp(`^#{2,4}\\s+${ref.id}\\b\\s*:?\\s*(.*)$`, "i").exec(line);
+    let text = m ? m[1].trim() : "";
+    for (let i = ref.line; i < lines.length; i++) {
+      const next = lines[i];
+      // Continuation = indented plain prose. Sub-bullets, numbered lists,
+      // and table rows under a goal are NOT part of its sentence (EC#6 —
+      // folding a table in garbles the Target cell and its stray `≥ N`
+      // tokens poison comparator inference).
+      if (
+        /^\s{2,}\S/.test(next) &&
+        !/^\s*[-*]\s/.test(next) &&
+        !/^\s*\d+[.)]\s/.test(next) &&
+        !/^\s*\|/.test(next)
+      ) {
+        text = `${text} ${next.trim()}`.trim();
+      } else {
+        break;
+      }
+    }
+    out.push({ id: ref.id, line: ref.line, text });
+  }
+  return out;
+}
+
+// An ISO date is digits that say WHEN, not HOW MUCH. "ship by 2026-08-01" is
+// a deadline, not a measurement, and warning about it on every dated goal
+// would make the advisory noise rather than signal.
+const ISO_DATE_RE = /\d{4}-\d{2}-\d{2}/g;
+
+/**
+ * Whether a goal carries a number worth measuring.
+ *
+ * Deliberately conservative: it UNDER-warns. The test is "a digit survives
+ * after ISO dates are removed", so `zero silent incidents per month` (a real
+ * numeric goal written in words) is not flagged. The alternative — flagging
+ * every goal and letting the author dismiss it — is how an advisory becomes
+ * wallpaper. The comparator inference in outcome.ts draws the same line for
+ * the same reason.
+ */
+export function isNumericGoal(text: string): boolean {
+  return /\d/.test(text.replace(ISO_DATE_RE, ""));
+}
+
 /**
  * Concrete Verified-by: a runnable target — a test path or an
  * `evals/E-<n>_*.md` spec (v2/02-engine.md §4.1). Mechanically: after
@@ -210,8 +305,31 @@ export function isConcreteVerifiedBy(value: string): boolean {
 // The gate
 // ---------------------------------------------------------------------------
 
+/**
+ * Does this expectation NAME a runnable measure?
+ *
+ * Two shapes count: an inline `Measure:` with a backticked command, or a
+ * `Verified by:` pointing at a markdown eval manifest (which is where a
+ * `metric` step lives). The second is deliberately checked by SHAPE only —
+ * Gate 1 is pure over its two inputs and never opens the manifest, so it can
+ * tell you a measure was named, not that it runs. Whether the named manifest
+ * actually carries a deferred step is `devx outcome score --run`'s refusal,
+ * which happens with the file in hand.
+ */
+function namesMeasure(block: EBlock): boolean {
+  if (parseMeasureField(block.measure) !== null) return true;
+  const target = (block.verifiedBy ?? "").replace(/`/g, "").trim();
+  return (
+    target !== "" &&
+    !PLACEHOLDER_RE.test(target) &&
+    target.toLowerCase().endsWith(".md") &&
+    target.replace(/\\/g, "/").split("/").includes(EVALS_DIR_REL)
+  );
+}
+
 export function evaluateGatePrd(inputs: GatePrdInputs): GatePrdResult {
   const gaps: GateGap[] = [];
+  const concerns: GateGap[] = [];
   // Bound once so every message and location below names the SAME resolved
   // spelling. Two reads of the same subject is how one gap points at
   // `prd.md` and the next at `prd/agent.md` in a single report.
@@ -264,6 +382,8 @@ export function evaluateGatePrd(inputs: GatePrdInputs): GatePrdResult {
   const definedIdRefs = extractDefinedIds(inputs.prd);
   const definedIds = new Set(definedIdRefs.map((r) => r.id));
   const coveredIds = new Set<string>();
+  /** Goal ID → does ANY covering expectation name a runnable measure. */
+  const goalHasMeasure = new Map<string, boolean>();
 
   for (const block of blocks) {
     const loc = `${expectationsRel}:${block.line}`;
@@ -294,8 +414,12 @@ export function evaluateGatePrd(inputs: GatePrdInputs): GatePrdResult {
           location: loc,
         });
       }
+      const measured = namesMeasure(block);
       for (const id of ids) {
         coveredIds.add(id);
+        if (id.startsWith("G-")) {
+          goalHasMeasure.set(id, (goalHasMeasure.get(id) ?? false) || measured);
+        }
         if (!definedIds.has(id)) {
           gaps.push({
             check: "covers-id-dangling",
@@ -327,9 +451,25 @@ export function evaluateGatePrd(inputs: GatePrdInputs): GatePrdResult {
     });
   }
 
+  // ---- 6. Measurability floor (ADVISORY). ---------------------------------
+  // Only reached for goals that are actually covered: an UNcovered goal is
+  // already a FAIL above, and saying "and it has no measure" about a goal
+  // nothing verifies is noise on top of the real finding.
+  for (const goal of parsePrdGoals(inputs.prd)) {
+    if (!isNumericGoal(goal.text)) continue;
+    if (goalHasMeasure.get(goal.id) !== false) continue;
+    concerns.push({
+      check: "goal-no-runnable-measure",
+      message: `${prdRel} goal '${goal.id}' carries a number but no covering expectation names a runnable measure — add \`- **Measure:** \`<command>\`\` to one of them, or point its Verified-by at an \`${EVALS_DIR_REL}/E-*.md\` manifest with a \`metric\` step, so \`devx outcome score --run\` can score it instead of asking for the figure`,
+      location: `${prdRel}:${goal.line}`,
+    });
+  }
+
   return {
-    verdict: gaps.length === 0 ? "PASS" : "FAIL",
+    verdict:
+      gaps.length > 0 ? "FAIL" : concerns.length > 0 ? "CONCERNS" : "PASS",
     gaps,
+    concerns,
     definedIds: [...definedIds],
   };
 }

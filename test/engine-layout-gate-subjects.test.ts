@@ -98,6 +98,8 @@ function artifactRel(layout: Layout, kind: string): string {
       return under("expectations.md");
     case "evals":
       return under("evals");
+    case "research":
+      return under(flat ? "design-research.md" : "design/research.md");
     default:
       throw new Error(`unknown artifact kind '${kind}'`);
   }
@@ -166,6 +168,13 @@ function expectationsBody(): string {
       "- **Expectation (EARS):** When a gate runs under either layout, the system SHALL return the identical verdict for identical content.",
       "- **Threshold:** 0 verdict differences across both layouts.",
       `- **Verified by:** \`evals/E-${n}_deferred.mjs\``,
+      // Gate 1's measurability floor: G-1 ("cut layout-path defects to 0 by
+      // 2026-12-31") is numeric, so without a named measure the good
+      // fixture would score CONCERNS and this suite's layout-independence
+      // assertions would all read as tolerated concerns. The measure is a
+      // command, not a layout path — it cannot reintroduce the thing these
+      // tests exist to rule out.
+      "- **Measure:** `bin/layout-path-defects` · window: trailing 30d",
       "",
     ].join("\n");
   return ["# Expectations — Demo", "", block(1, "P0"), block(2, "P1"), block(3, "P1")].join("\n");
@@ -303,6 +312,10 @@ function seedRepo(gate: GateName, layout: Layout, broken: boolean): EngineRepo {
   put("prd", prdBody(gate === "prd" && broken));
   put("expectations", expectationsBody());
   if (gate !== "prd") put("design", designBody());
+  // harness-s4: Gate 2's mechanical hygiene check reads research presence
+  // through the layout — the good fixture carries it in both shapes, so a
+  // research path that resolved for one layout only would split the verdict.
+  if (gate !== "prd") put("research", "# Research — Demo\n\n## Q1\n\nFixture (`src/x.ts:1`).\n");
   if (gate === "coverage-plan" || gate === "evals") put("plan", planBody());
   if (gate === "evals") {
     for (const n of [1, 2, 3]) {

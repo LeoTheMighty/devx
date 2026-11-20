@@ -256,6 +256,9 @@ describe("cli303 — devx --help command listing", () => {
         pr-body [options]            Render the canonical /devx PR body for a spec.
                                      Substitutes mode + spec path + AC checklist
                                      (Phase 1).
+        render                       Human-digest tooling (v2 engine). \`lint\`
+                                     measures a stage's human.md against
+                                     docs/RENDER-STYLE.md.
         revise [options] <hash>      Apply the v2 cascade-reset table for a touched
                                      workstream artifact (prd/expectations → 4 flags;
                                      design → 3; plan → 2), print the replay path,

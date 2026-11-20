@@ -95,7 +95,8 @@ believed when they filed it; the repo records what is true now.
   `walk.dig_depth` is `spike-offered` — propose a **spike**: a timeboxed
   throwaway that answers the question and is then deleted. The entry stays
   parked with its done-condition recorded; a spike is not a resolution and
-  must never be logged as one.
+  must never be logged as one. Its record is `decisions/<date>-spike-<slug>.md`
+  in the doc set it unblocks, in the spike form `decision.md` defines.
 
 ## Step 3 — Present, in plan mode
 
