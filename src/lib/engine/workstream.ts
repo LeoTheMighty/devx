@@ -118,6 +118,17 @@ export function planFilenameSlug(name: string): string | null {
   return PLAN_FILENAME_RE.exec(name)?.[1] ?? null;
 }
 
+/** Hash prefix of a plan-spec FILENAME, lowercased, or null.
+ *
+ *  Deliberately looser than `PLAN_FILENAME_RE`: it matches the `plan-<hash>-`
+ *  prefix alone, so a hand-authored spec whose timestamp segment does not
+ *  parse still yields the hash every consumer keys on. It is the fallback for
+ *  a spec with no `hash:` frontmatter — the same tolerance `devx status`
+ *  already applies, stated once instead of re-spelled per surface. */
+export function planFilenameHash(name: string): string | null {
+  return /^plan-([a-z0-9]{3,12})-/i.exec(name)?.[1].toLowerCase() ?? null;
+}
+
 /**
  * Derive the repo-relative workstream dir from a plan-spec FILENAME, or null
  * when the name doesn't match. Single-sourced (hfi103) — resolveWorkstream,
@@ -954,7 +965,19 @@ export interface PlanSpecIndexCache {
   entries?: Array<{ name: string; state: EngineState }>;
 }
 
-function planSpecEntries(
+/** Every `plan/*.md` with its parsed engine state, sorted by filename.
+ *
+ *  Exported for `devx workstream position`, which needs the same walk. A
+ *  reader that re-rolls `readdir(plan/) → readEngineState` is a second
+ *  definition of "which specs the engine manages", and two surfaces
+ *  disagreeing about that is how a workstream shows up in one rollup and not
+ *  the other (the failure `devx status`'s header already warns about from the
+ *  other direction). `devx status` still carries its own copy; it should
+ *  collapse onto this one.
+ *
+ *  Unreadable entries are skipped, never fatal — a rollup must not be
+ *  bricked by one bad file. */
+export function planSpecEntries(
   fs: Pick<EngineFs, "exists" | "readdir" | "readFile">,
   repoRoot: string,
   cache: PlanSpecIndexCache | undefined,

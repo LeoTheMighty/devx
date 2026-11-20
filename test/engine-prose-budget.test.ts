@@ -55,6 +55,8 @@ const OFF_THE_FULL_RUN: Record<string, string> = {
   "devx-address.md": "human review input on an open PR: its own invocation, `/devx address <pr>`",
   "devx-revise.md": "the backward path: reopens an artifact that already passed its gate",
   "devx-walk.md": "the health queue's resolver: its own invocation",
+  "devx-review.md":
+    "the holistic pass over a WHOLE workstream: its own invocation, at moments a human picks — no /devx phase loads it. The advisory CI step runs the `devx workstream position` CLI, not this body, which is why CI needs no prose and no API key. Count it the day CI invokes the skill itself, or a phase does.",
   "devx-interview.md": "walks INTERVIEW.md: its own invocation",
   "devx-test.md": "attended exploratory QA: its own invocation",
   "devx-personalize.md": "the preference interview; a full run reaches only its layout-ask block, once per repo, while `engine.docs_layout` is unset (uncounted before the arm split too)",

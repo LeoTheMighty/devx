@@ -60,6 +60,9 @@ export const DECISIONS_DIR_REL = "decisions";
 export const CHECKPOINTS_DIR_REL = "checkpoints";
 /** Outcome scoring output (devx outcome). */
 export const RESULTS_REL = "RESULTS.md";
+/** The holistic review pass's living report (`/devx-review`). Advisory:
+ *  reconciled in place on every run, never a gate input. */
+const REVIEW_REL = "review.md";
 
 /** The subdirs `devx workstream new` creates empty. `prd` is created by the
  *  scaffold's own prd/agent.md write; design/ and plan/ appear when their
@@ -240,14 +243,14 @@ export const SUBJECT_STAGES: readonly SubjectStage[] = STAGE_DIRS.filter(
   (s): s is SubjectStage => s !== "evals",
 );
 
-/** A layout-independent artifact identity. 11 variants render as the §15
- *  table's 13 rows: `agent` expands to three (prd / design / plan), the three
- *  stage-parametrized companions are one row each, and the seven singletons
+/** A layout-independent artifact identity. 13 variants render as the §15
+ *  table's 15 rows: `agent` expands to three (prd / design / plan), the three
+ *  stage-parametrized companions are one row each, and the nine singletons
  *  are one row each. */
 export type ArtifactKind =
   | { kind: "agent"; stage: SubjectStage }
   | { kind: "human" | "outline" | "outline-critique"; stage: StageDir }
-  | { kind: "expectations" | "todo" | "questions" | "results" }
+  | { kind: "expectations" | "todo" | "questions" | "results" | "review" }
   | { kind: "evals-dir" | "decisions-dir" | "checkpoints-dir" }
   | { kind: "red-report" };
 
@@ -280,6 +283,7 @@ export const ARTIFACT_KINDS = [
   "todo",
   "questions",
   "results",
+  "review",
   "evals-dir",
   "decisions-dir",
   "checkpoints-dir",
@@ -424,6 +428,8 @@ export function artifactRel(layout: DocsLayout, kind: ArtifactKind): string {
       return QUESTIONS_REL;
     case "results":
       return RESULTS_REL;
+    case "review":
+      return REVIEW_REL;
     case "evals-dir":
       return EVALS_DIR_REL;
     case "decisions-dir":
@@ -571,6 +577,7 @@ export const ALL_ARTIFACT_KINDS: readonly ArtifactKind[] = [
   { kind: "todo" },
   { kind: "questions" },
   { kind: "results" },
+  { kind: "review" },
   { kind: "evals-dir" },
   { kind: "decisions-dir" },
   { kind: "checkpoints-dir" },

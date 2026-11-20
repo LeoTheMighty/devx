@@ -411,7 +411,7 @@ engine:
   archive_root: _devx/archive           # where `devx archive` moves a CLOSED doc set
   code_citation_hints: []               # paths the design stage grounds discussion in
   expectations_min: 3                   # Gate 1 floor: ≥N E-blocks in expectations.md
-  prose_budget_kb: 60                   # S-1 planning surface: engine templates + /devx-plan skill body
+  prose_budget_kb: 60                   # S-1 planning surface: engine templates + /devx-plan skill body (this repo runs 62, D-17)
   full_run_prose_budget_kb: 128         # S-1 full run: planning surface + /devx dispatcher + its execute/retro arm bodies (D-14)
   reading_guide_roles: [pm, architect, dev, qa]   # Reading Guide columns on a design human render
   critique:                             # re-homed party-mode (plan-stage critique)
@@ -474,6 +474,7 @@ The kind leads each row because the table is keyed on it, not on prose:
 | `todo` — derived working memory (`devx todo sync`) | `<root>/<slug>/todo.md` | `todo.md` |
 | `questions` — the health queue; gates reconcile their findings here | `<root>/<slug>/questions.md` | `questions.md` |
 | `results` — outcome scoring (`devx outcome score`) | `<root>/<slug>/RESULTS.md` | `RESULTS.md` |
+| `review` — the holistic review pass's living report (`/devx-review`); advisory, never a gate input | `<root>/<slug>/review.md` | `review.md` |
 | `evals-dir` — RED artifacts (`E-*`) | `<root>/<slug>/evals/` | `evals/` |
 | `decisions-dir` — dated verify / critique / revision records | `<root>/<slug>/decisions/` | `decisions/` |
 | `checkpoints-dir` — per-phase verification reports | `<root>/<slug>/checkpoints/` | `checkpoints/` |
@@ -482,8 +483,8 @@ The kind leads each row because the table is keyed on it, not on prose:
 `<root>` is `engine.workstreams_root` and `<slug>` the workstream's directory
 name; neither exists under `project-level`, where the doc set **is** the repo
 root. `<stage>` is one of `prd` · `design` · `plan` · `evals` — the three
-companion rows are stage-generic, which is how 23 representable identities
-render as 14 rows, while the three subjects keep their stage because
+companion rows are stage-generic, which is how 24 representable identities
+render as 15 rows, while the three subjects keep their stage because
 `prd.md`, `design.md` and `plan.md` are three different names.
 
 The table is machine-checked, not prose-reviewed: `ARTIFACT_KINDS` in
