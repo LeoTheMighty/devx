@@ -47,22 +47,22 @@ function greenGates(over: Partial<Record<keyof GateEvidenceMap, Partial<GateEvid
     prd: {
       subjects: [probe("prd/agent.md"), probe("expectations.md")],
       evidence: null,
-      rerun: "devx gate prd abc123",
+      reopen: "`devx revise abc123 --touched prd`",
     },
     design: {
       subjects: [probe("design/agent.md")],
       evidence: probe("decisions/2026-01-01-design-verify.md", { changedAt: T_LATE }),
-      rerun: "devx gate coverage abc123",
+      reopen: "`devx revise abc123 --touched design`",
     },
     plan: {
       subjects: [probe("plan/agent.md")],
       evidence: probe("decisions/2026-01-01-plan-verify.md", { changedAt: T_LATE }),
-      rerun: "devx gate coverage abc123",
+      reopen: "`devx revise abc123 --touched plan`",
     },
     evals: {
       subjects: [probe("evals/E-1_thing.ts")],
       evidence: probe("evals/RED-report.md", { changedAt: T_LATE }),
-      rerun: "devx gate evals abc123",
+      reopen: "`devx revise abc123 --touched plan`",
     },
   };
   for (const [key, patch] of Object.entries(over)) {
@@ -172,7 +172,7 @@ describe("reconcileGates — premature closure", () => {
     expect(checks(found)).toEqual(["premature-closure"]);
     expect(found[0].severity).toBe("blocking");
     expect(found[0].receipt).toContain("does not exist");
-    expect(found[0].receipt).toContain("devx gate coverage abc123");
+    expect(found[0].receipt).toContain("devx revise abc123 --touched design");
   });
 
   it("flags a green gate whose SUBJECT is missing", () => {
@@ -523,5 +523,217 @@ describe("the review verdict is deterministic and its own vocabulary", () => {
       expect((VERDICTS as readonly string[]).includes(word)).toBe(true);
     }
     expect([...REVIEW_VERDICTS]).not.toEqual([...VERDICTS]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A receipt never names a command that refuses (#187 / #190)
+// ---------------------------------------------------------------------------
+
+describe("receipts name commands that can actually do what they claim", () => {
+  /** Findings from every state that trips a check, unioned — so the scan
+   *  below looks at the whole receipt surface and not at three rows. */
+  function everyFinding(): PositionFinding[] {
+    const out: PositionFinding[] = [];
+    const push = (i: Parameters<typeof reconcileGates>[0]): void => {
+      out.push(...reconcileGates(i));
+    };
+    // missing record / missing subject / stale evidence / dirty subject
+    push({
+      ...PASSING,
+      gates: greenGates({
+        design: { evidence: probe("decisions/x-design-verify.md", { exists: false }) },
+        plan: { subjects: [probe("plan/agent.md", { exists: false, dirty: true })] },
+        evals: {
+          subjects: [probe("evals/E-1_thing.ts", { changedAt: T_LATE + 1 })],
+          evidence: probe("evals/RED-report.md", { changedAt: T_LATE }),
+        },
+      }),
+    });
+    // the same, on a DONE workstream — the branch that names `outcome tune`
+    push({
+      ...PASSING,
+      state: stateFrom([
+        ...ALL_GREEN_FM.filter((l) => l !== "stage: executing"),
+        "stage: done",
+        "outcome:",
+        "  status: pending",
+      ]),
+      gates: greenGates({
+        evals: {
+          subjects: [probe("evals/E-1_thing.ts", { changedAt: T_LATE + 1 })],
+          evidence: probe("evals/RED-report.md", { changedAt: T_LATE }),
+        },
+      }),
+    });
+    // unstamped lock / unarmed outcome / blocked / illegal / stage skew
+    push({ ...PASSING, state: stateFrom(ALL_GREEN_FM.filter((l) => l !== "  evals_locked: true")) });
+    push({
+      ...PASSING,
+      state: stateFrom([...ALL_GREEN_FM.filter((l) => l !== "stage: executing"), "stage: done"]),
+    });
+    push({ ...PASSING, state: stateFrom([...ALL_GREEN_FM, "blocked_by: [q1]"]) });
+    push({
+      ...PASSING,
+      state: stateFrom([
+        "hash: abc123",
+        "stage: plan",
+        "gate_status:",
+        "  prd_validated: false",
+        "  design_verified: true",
+        "  plan_verified: false",
+        "  evals_red: false",
+        "gate_verdicts:",
+        "  design: PASS",
+      ]),
+    });
+    push({
+      ...PASSING,
+      prdRecheck: { verdict: "FAIL", gaps: [{ check: "goal-orphan", message: "G-2 orphaned" }] },
+    });
+    // all four green at a planning stage — a rollback left the flags standing
+    push({
+      ...PASSING,
+      state: stateFrom([...ALL_GREEN_FM.filter((l) => l !== "stage: executing"), "stage: plan"]),
+    });
+    // executing with Gate 4 still open — only Gate 4 advances past red
+    push({
+      ...PASSING,
+      state: stateFrom([
+        "hash: abc123",
+        "stage: executing",
+        "gate_status:",
+        "  prd_validated: true",
+        "  design_verified: true",
+        "  plan_verified: true",
+        "  evals_red: false",
+        "gate_verdicts:",
+        "  prd: PASS",
+        "  design: PASS",
+        "  plan: PASS",
+      ]),
+    });
+    // flags green with no gate_verdicts at all — a pre-hfi102 workstream
+    push({
+      ...PASSING,
+      state: stateFrom([
+        "hash: abc123",
+        "stage: executing",
+        "gate_status:",
+        "  prd_validated: true",
+        "  design_verified: true",
+        "  plan_verified: true",
+        "  evals_red: true",
+        "  evals_locked: true",
+      ]),
+    });
+    return out;
+  }
+
+  const findings = everyFinding();
+
+  it("exercises the whole receipt surface, not a sample", () => {
+    // Without this the scan below could pass by looking at nothing. Every
+    // check this module can emit must appear at least once.
+    const seen = new Set(findings.map((f) => f.check));
+    for (const check of [
+      "premature-closure",
+      "subject-missing",
+      "stale-evidence",
+      "uncommitted-subject",
+      "gate-1-regression",
+      "verdict-not-persisted",
+      "illegal-transition",
+      "stage-ahead-of-gates",
+      "stage-behind-gates",
+      "blocked-while-validated",
+      "evals-unstamped",
+      "outcome-unarmed",
+    ]) {
+      expect(seen.has(check), `no fixture trips ${check}`).toBe(true);
+    }
+  });
+
+  it("no receipt tells a reader to re-run a gate that would refuse", () => {
+    // Since #187 and #190 a CLOSED gate refuses a re-run and writes nothing,
+    // and every gate-evidence finding here fires only when the flag is TRUE.
+    // A receipt saying "re-run `devx gate …`" therefore sends the reader into
+    // an exit 1 — this lens's own failure mode turned on itself: state
+    // asserting more than its evidence supports.
+    //
+    // `--verify` is the single exception the refusal itself carves out, so it
+    // is allowed rather than excluded: the test names the one legal form.
+    for (const f of findings) {
+      const m = /devx gate [a-z]+[^`]*/.exec(f.receipt);
+      if (m === null) continue;
+      expect(
+        m[0],
+        `${f.check} receipt names a gate command that refuses: ${m[0]}`,
+      ).toContain("--verify");
+    }
+  });
+
+  it("the gate-command scan is honest — it would catch one", () => {
+    // Negative control: a scan whose regex stopped matching reports zero
+    // offenders, therefore a pass, forever.
+    const bad = /devx gate [a-z]+[^`]*/.exec("x does not exist; re-run `devx gate evals abc123`");
+    expect(bad).not.toBeNull();
+    expect((bad as RegExpExecArray)[0]).not.toContain("--verify");
+    const ok = /devx gate [a-z]+[^`]*/.exec("`devx gate evals abc123 --verify` has nothing");
+    expect((ok as RegExpExecArray)[0]).toContain("--verify");
+  });
+
+  it("every reopen receipt names the sanctioned path, not a gate", () => {
+    const reopeners = findings.filter((f) =>
+      ["premature-closure", "subject-missing", "stale-evidence"].includes(f.check),
+    );
+    expect(reopeners.length).toBeGreaterThanOrEqual(3);
+    for (const f of reopeners) {
+      expect(f.receipt, f.check).toContain("devx revise");
+    }
+  });
+
+  it("a done workstream's evals finding offers the verification-scoped door first", () => {
+    // `outcome ... --verdict tune` clears evals_red and rolls back to red;
+    // `devx revise --touched plan` would also drop plan_verified. On a closed
+    // workstream the narrower one is named first, with which is which.
+    const onDone = findings.find(
+      (f) => f.check === "stale-evidence" && f.receipt.includes("--verdict tune"),
+    );
+    expect(onDone, "no done-stage evals receipt names outcome tune").toBeDefined();
+    expect((onDone as PositionFinding).receipt).toContain("verification-scoped");
+    expect((onDone as PositionFinding).receipt).toContain("reopens the plan too");
+    // `--reopen` is REQUIRED for tune, so the bare verdict would leave a
+    // reader on an arg-shape error — the same defect as naming a command
+    // that refuses. The E-id comes from the eval's own filename.
+    expect((onDone as PositionFinding).receipt).toContain("--reopen E-1");
+  });
+
+  it("falls back to a placeholder when the artifact carries no E-id", () => {
+    // A fixture or helper under evals/ has no E-id to extract. The receipt
+    // must still name the flag rather than drop it, or the command it offers
+    // is incomplete in a way the reader cannot see.
+    const found = reconcileGates({
+      ...PASSING,
+      state: stateFrom([
+        ...ALL_GREEN_FM.filter((l) => l !== "stage: executing"),
+        "stage: done",
+        "outcome:",
+        "  status: pending",
+      ]),
+      gates: greenGates({
+        evals: {
+          subjects: [probe("evals/_fixture.ts", { changedAt: T_LATE + 1 })],
+          evidence: probe("evals/RED-report.md", { changedAt: T_LATE }),
+        },
+      }),
+    });
+    const stale = found.find((f) => f.check === "stale-evidence");
+    expect(stale?.receipt).toContain("--reopen <E-ids>");
+  });
+
+  it("an unarmed outcome names the command that arms it", () => {
+    const f = findings.find((x) => x.check === "outcome-unarmed");
+    expect(f?.receipt).toContain("devx outcome arm");
   });
 });

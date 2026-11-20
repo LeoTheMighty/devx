@@ -62,6 +62,7 @@ import {
   stampEvalShas,
   verifyStepBodies,
 } from "../lib/engine/evals-lock.js";
+import { reviseCommand } from "../lib/engine/revise.js";
 import { formatDate } from "../lib/engine/verdict.js";
 import type { GateFinding } from "../lib/engine/questions.js";
 import { blocksForGate } from "../lib/engine/questions.js";
@@ -374,8 +375,7 @@ function closedGateWayOut(hash: string, reopen: string): string {
   return `To look without writing: \`devx workstream position ${hash}\`. To re-open it for a re-stamp: ${reopen}.`;
 }
 
-const reviseCmd = (hash: string, touched: "prd" | "design" | "plan"): string =>
-  `\`devx revise ${hash} --touched ${touched}\``;
+const reviseCmd = reviseCommand;
 
 // ---------------------------------------------------------------------------
 // devx gate prd <hash>

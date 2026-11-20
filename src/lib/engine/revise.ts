@@ -144,6 +144,20 @@ const STAGE_SHORTHAND = new Map<string, ArtifactKind>([
  *  documented input. */
 export const STAGE_SHORTHAND_NAMES: readonly string[] = [...STAGE_SHORTHAND.keys()];
 
+/** The sanctioned reopen command for a closed gate, spelled once.
+ *
+ *  Two surfaces have to agree on this string: the gate CLIs' closed-gate
+ *  refusals, which tell an operator how to reopen, and `devx workstream
+ *  position`'s receipts, which tell a reader the same thing about a finding.
+ *  They were two copies for one release, and a user-facing command that two
+ *  modules spell independently is a command one of them will eventually spell
+ *  wrong. The argument is a `STAGE_SHORTHAND` key, so a reopen can only name
+ *  an artifact `cascadeFor` actually resolves. */
+export const reviseCommand = (
+  hash: string,
+  touched: "prd" | "design" | "plan",
+): string => `\`devx revise ${hash} --touched ${touched}\``;
+
 /** Cascade row for a touched path, or null.
  *
  *  Resolves the touched string to an `ArtifactKind` first — accepting BOTH

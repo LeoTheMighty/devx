@@ -195,8 +195,17 @@ export interface GateEvidence {
    *  it is reconciled through the flags and the critique record instead — and
    *  the reconciler says so rather than inventing a missing artifact. */
   evidence: PathProbe | null;
-  /** The command that re-runs this gate — the receipt a reader acts on. */
-  rerun: string;
+  /** The sanctioned way to REOPEN this gate, from `reviseCommand` — the
+   *  receipt a reader acts on.
+   *
+   *  Not "the command that re-runs this gate", which is what this field held
+   *  for one release. Every finding that cites it fires only when the gate's
+   *  flag is TRUE, and since #187/#190 all three gate CLIs refuse a closed
+   *  re-run and write nothing — so `re-run \`devx gate evals <hash>\`` sent a
+   *  reader straight into an exit 1. A receipt naming a command that cannot
+   *  do what the receipt claims is this lens's own failure mode turned on
+   *  itself: state asserting more than its evidence supports. */
+  reopen: string;
 }
 
 export type GateEvidenceMap = Record<GateKey, GateEvidence>;
@@ -257,6 +266,47 @@ const PRE_GATE_STAGES: ReadonlySet<Stage> = new Set<Stage>([
   "red",
 ]);
 
+/**
+ * The receipt tail for a finding whose fix is reopening a closed gate.
+ *
+ * On a `done` workstream the EVALS gate has a second, narrower door: the
+ * outcome loop's `tune` reopens verification only — it clears `evals_red` and
+ * rolls the stage back to red — where `devx revise --touched plan` would also
+ * drop `plan_verified` and reopen the plan. Naming the wider one first on a
+ * closed workstream would have a reader re-open more than the finding asks
+ * for, so both are named with which is which.
+ */
+function reopenTail(
+  gate: GateEvidence,
+  state: EngineState,
+  key: GateKey,
+  /** The eval artifact this finding is about, when it is about one — its
+   *  basename carries the E-id `--reopen` needs. */
+  subjectRel?: string,
+): string {
+  if (key === "evals" && state.stage === "done" && state.hash !== null) {
+    // `--reopen` is REQUIRED for tune ("verdict 'tune' requires --reopen with
+    // at least one E-id"), so naming the bare verdict would leave a reader on
+    // an arg-shape error — the same defect as naming a command that refuses,
+    // which is what this helper exists to stop. The E-id is in the eval's own
+    // filename, so the receipt can carry the real one rather than a
+    // placeholder.
+    const eid = subjectRel === undefined ? null : eIdFromEvalPath(subjectRel);
+    return (
+      `reopen with \`devx outcome score ${state.hash} --verdict tune --reopen ${eid ?? "<E-ids>"}\` ` +
+      `(verification-scoped) or ${gate.reopen} (reopens the plan too)`
+    );
+  }
+  return `reopen with ${gate.reopen}`;
+}
+
+/** `evals/E-7_skill-todo-discipline.ts` → `E-7`; null when the name carries
+ *  no E-id (a fixture, a helper, a hand-named artifact). */
+function eIdFromEvalPath(rel: string): string | null {
+  const base = rel.split("/").pop() ?? "";
+  return /^(E-\d+)[_.]/.exec(base)?.[1] ?? null;
+}
+
 const isTrue = (state: EngineState, flag: GateFlag): boolean =>
   state.gateStatus[flag] === true;
 
@@ -291,7 +341,7 @@ export function reconcileGates(inputs: ReconcileInputs): PositionFinding[] {
         check: "premature-closure",
         severity: "blocking",
         message: `gate_status.${flag} is true but its evidence record is missing — claimed passed vs no record on disk`,
-        receipt: `${gate.evidence.rel} does not exist; re-run \`${gate.rerun}\``,
+        receipt: `${gate.evidence.rel} does not exist; ${reopenTail(gate, state, key)}`,
       });
     }
 
@@ -309,7 +359,7 @@ export function reconcileGates(inputs: ReconcileInputs): PositionFinding[] {
           check: "stale-evidence",
           severity: "blocking",
           message: `gate_status.${flag} is true but ${subject.rel} changed after ${gate.evidence.rel} was written — the gate passed a version that no longer exists`,
-          receipt: `git log --follow -1 --format=%ct --diff-filter=AM -- ${subject.rel} (${subject.changedAt}) > ${gate.evidence.rel} (${gate.evidence.changedAt}); re-run \`${gate.rerun}\``,
+          receipt: `git log --follow -1 --format=%ct --diff-filter=AM -- ${subject.rel} (${subject.changedAt}) > ${gate.evidence.rel} (${gate.evidence.changedAt}); ${reopenTail(gate, state, key, subject.rel)}`,
         });
       }
 
@@ -333,7 +383,7 @@ export function reconcileGates(inputs: ReconcileInputs): PositionFinding[] {
           check: "subject-missing",
           severity: "blocking",
           message: `gate_status.${flag} is true but ${subject.rel} does not exist — the gate cannot have passed an artifact that is not there`,
-          receipt: `${subject.rel} does not exist; re-run \`${gate.rerun}\``,
+          receipt: `${subject.rel} does not exist; ${reopenTail(gate, state, key, subject.rel)}`,
         });
       }
     }
@@ -450,7 +500,7 @@ export function reconcileGates(inputs: ReconcileInputs): PositionFinding[] {
       severity: "advisory",
       message:
         "evals_red is true but evals_locked is not set — Gate 4 stamped no step bodies, so a softened eval is undetectable",
-      receipt: `spec frontmatter: gate_status.evals_locked absent; \`${gates.evals.rerun} --verify\` has nothing to compare`,
+      receipt: `spec frontmatter: gate_status.evals_locked absent; \`devx gate evals ${state.hash ?? "<hash>"} --verify\` — the one re-run a closed Gate 4 still allows — has nothing to compare`,
     });
   }
 
@@ -463,7 +513,7 @@ export function reconcileGates(inputs: ReconcileInputs): PositionFinding[] {
       severity: "advisory",
       message:
         "stage is 'done' but the outcome was never armed — nothing will ever score whether the PRD's goals were met",
-      receipt: "spec frontmatter: outcome.status: null",
+      receipt: `spec frontmatter: outcome.status: null; arm it with \`devx outcome arm ${state.hash ?? "<hash>"}\``,
     });
   }
 
