@@ -21,7 +21,8 @@
 //   | 9   | a workstream is mid-pipeline                     | workstream-stage  |
 //   | 10  | PLAN.md has ready plan items                     | plan-prd          |
 //   | 10.5| TEST.md has unclaimed QA walkthroughs            | explore-qa        |
-//   | 11  | nothing ready, blocked items exist               | report-blocked    |
+//   | 11  | nothing ready; blocked items or open blockers    | report-blocked    |
+//   |     |   in a workstream's health queue (questions.md)   |                   |
 //   |     |   → /devx-walk (the health queue's resolver)      |                   |
 //   | 12  | genuinely empty                                  | propose-interview |
 //
@@ -59,6 +60,7 @@
 import type { SpecStatus, SpecType } from "../backlog/parse.js";
 import type { GateVerdicts } from "../engine/frontmatter.js";
 import type { NextDecision } from "../engine/next.js";
+import type { HealthCounts } from "../engine/questions.js";
 import type { TodoDrift } from "../engine/todo.js";
 
 // ---------------------------------------------------------------------------
@@ -210,6 +212,26 @@ export interface ReadyItemSignal {
   gate: GateInfo;
 }
 
+/** One workstream's health-queue rollup (B11), stamped with the workstream
+ *  it belongs to.
+ *
+ *  Snapshot-level like `todoDrift` and for the same reason: executing-stage
+ *  workstreams sit outside `midPipeline` (their stage row is the v1 terminal
+ *  row 12), and execute is exactly where a gate concern is most likely to be
+ *  sitting unread. A per-signal-only field would hide the blockers row 11
+ *  exists to surface. */
+export interface WorkstreamHealthSignal {
+  hash: string;
+  slug: string;
+  counts: HealthCounts;
+  /** Titles of the open BLOCKING entries, in file order — what row 11 names.
+   *  Bounded by the caller; a queue is a worklist, not a log. */
+  blockingTitles: string[];
+  /** Non-null when the queue exists but could not be read or parsed. An
+   *  unknown count is not a zero count. */
+  error: string | null;
+}
+
 export interface WorkstreamSignal {
   hash: string;
   slug: string;
@@ -227,6 +249,10 @@ export interface WorkstreamSignal {
    *  (renderFocusLine, hfi103). Null — omitted, never empty — when todo.md
    *  is absent (FR-1 grandfathering) or no section maps to the stage. */
   focus: string | null;
+  /** Pre-rendered `health: N blocking · M concern` line (renderHealthLine,
+   *  B11). Null — omitted, never rendered as a pair of zeroes — when the
+   *  queue is clean or absent. */
+  health: string | null;
 }
 
 /** One advisory todo↔ground-truth contradiction (computeTodoDrift,
@@ -300,6 +326,9 @@ export interface RepoSnapshot {
   qaWalkthroughs: QaWalkthroughSignal[];
   /** Blocked rows across DEV/DEBUG/PLAN (for row 11's report). */
   blocked: BlockedItemSignal[];
+  /** Health-queue rollups across every scanned engine workstream (B11) —
+   *  row 11's second source, and `devx status`'s per-workstream line. */
+  health: WorkstreamHealthSignal[];
   /** Advisory todo-drift rows across every scanned engine workstream
    *  (hfi103) — including executing-stage ones outside midPipeline. */
   todoDrift: WorkstreamTodoDrift[];
@@ -380,6 +409,17 @@ export interface RepoNextDecision {
    */
   focus: string | null;
   /**
+   * `health: N blocking · M concern` line for the row-9 workstream (B11).
+   * Null on every other row, and on row 9 when the queue is absent or clean
+   * — omitted, never a pair of zeroes.
+   *
+   * The per-workstream line, NOT a repo rollup: row 11's own detail already
+   * names every unhealthy workstream, and the two surfaces answer different
+   * questions ("what is wrong with the thing I am about to work on" vs
+   * "what is wrong anywhere").
+   */
+  health: string | null;
+  /**
    * Advisory todo-drift rows across ALL scanned engine workstreams
    * (hfi103) — surfaced on EVERY decision, like `drift`, because the
    * workstream a drift belongs to may not be the one the fired row is
@@ -410,8 +450,13 @@ type RowFn = (
       | "loops"
       | "gateSummary"
       | "focus"
+      | "health"
       | "todoDrift"
-    > & { gateSummary?: string; focus?: string | null })
+    > & {
+      gateSummary?: string;
+      focus?: string | null;
+      health?: string | null;
+    })
   | null;
 
 const row1: RowFn = (s) => {
@@ -611,6 +656,7 @@ const row9: RowFn = (s) => {
     detail: `workstream '${ws.slug}' (${ws.hash}) is mid-pipeline at stage '${ws.stage ?? "?"}' — ${ws.decision.reason}`,
     gateSummary: ws.gateSummary,
     focus: ws.focus,
+    health: ws.health,
   };
 };
 
@@ -642,16 +688,44 @@ const row10_5: RowFn = (s) => {
   };
 };
 
+/** Health-queue rollups worth routing to `/devx-walk`: an open BLOCKING
+ *  entry, or a queue whose counts are unknown because it does not parse.
+ *
+ *  Open CONCERNS deliberately do not fire row 11. A concern advanced its gate
+ *  by definition (D-9), so treating one as "nothing is ready, go resolve a
+ *  blocker" would route the dispatcher at a note — and row 11 sits above row
+ *  12, so it would displace the one row that asks for new work. Concerns
+ *  surface on `devx status` and `devx board`, which is where a worklist
+ *  belongs. */
+const unhealthy = (h: WorkstreamHealthSignal): boolean =>
+  h.counts.blocking > 0 || h.error !== null;
+
 const row11: RowFn = (s) => {
-  if (s.blocked.length === 0) return null;
-  const lines = s.blocked
-    .map(
-      (b) =>
-        `'${b.hash}' (${b.backlog}${b.owner ? `, owner ${b.owner}` : ""})${
-          b.blocked_by.length > 0 ? ` blocked-by: ${b.blocked_by.join(", ")}` : ""
-        }`,
-    )
-    .join("; ");
+  const sick = s.health.filter(unhealthy);
+  if (s.blocked.length === 0 && sick.length === 0) return null;
+  const clauses: string[] = [];
+  if (s.blocked.length > 0) {
+    const lines = s.blocked
+      .map(
+        (b) =>
+          `'${b.hash}' (${b.backlog}${b.owner ? `, owner ${b.owner}` : ""})${
+            b.blocked_by.length > 0 ? ` blocked-by: ${b.blocked_by.join(", ")}` : ""
+          }`,
+      )
+      .join("; ");
+    clauses.push(`${s.blocked.length} blocked item(s): ${lines}`);
+  }
+  for (const h of sick) {
+    if (h.error !== null) {
+      clauses.push(`${h.slug} (${h.hash}) health queue unreadable — ${h.error}`);
+      continue;
+    }
+    clauses.push(
+      `${h.slug} (${h.hash}) health queue: ${h.counts.blocking} blocking` +
+        `${h.counts.concern > 0 ? ` · ${h.counts.concern} concern` : ""}` +
+        `${h.blockingTitles.length > 0 ? ` — ${h.blockingTitles.join("; ")}` : ""}`,
+    );
+  }
   return {
     row: 11,
     action: "report-blocked",
@@ -660,7 +734,7 @@ const row11: RowFn = (s) => {
     // resolves one blocker per invocation: pick by a fixed rule, dig against
     // code truth, propose, route back to the entry's writer.
     command: "/devx-walk",
-    detail: `nothing is ready; ${s.blocked.length} blocked item(s): ${lines}`,
+    detail: `nothing is ready; ${clauses.join("; ")}`,
   };
 };
 
@@ -722,6 +796,7 @@ export function decideRepoNext(
         loops: snapshot.loop.loops,
         gateSummary: hit.gateSummary ?? null,
         focus: hit.focus ?? null,
+        health: hit.health ?? null,
         todoDrift: snapshot.todoDrift,
       };
     }
@@ -738,6 +813,7 @@ export function decideRepoNext(
     loops: snapshot.loop.loops,
     gateSummary: null,
     focus: null,
+    health: null,
     todoDrift: snapshot.todoDrift,
   };
 }

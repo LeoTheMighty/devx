@@ -923,6 +923,18 @@ No human in the loop. No continuation snippet to paste.
 
 ManageAgent and workers emit structured events to `.devx-cache/events/<agent-id>.jsonl`. **Three views consume that stream — same files, three lenses.**
 
+Of the three below, `devx ui` and `devx serve` are still Phase-4 stubs and the mobile Activity tab went with the companion (D-16) — so the lens that actually ships today is a fourth, cheaper one.
+
+### `devx board` — static HTML (shipped)
+
+`devx board` writes an index plus one page per workstream into `.devx-cache/board/` (gitignored; `--out <dir>` to move it). Each page carries the stage, the gate summary with verdicts and FAIL fix paths, the current focus, the health queue (`questions.md`), the `todo.md` checklist, and that workstream's slice of `GRAPH.md` as a mermaid diagram. No server, no watch, no build step: re-run the command to refresh.
+
+It is deliberately a *view*, not a reader: every cell comes from the helper some other surface already consumes (`renderGateSummary`, `renderFocusLine`, `renderHealthLine`, `parseTodo`, `loadQuestions`), so the board and `devx status` cannot disagree about the same workstream. `GRAPH.md` is read rather than re-derived — `devx graph --check` already gates its freshness, and a second graph nobody checks would be worse than a stale one somebody does.
+
+Almost entirely no-JS. The one exception is mermaid from a CDN, loaded only on a page that actually has a graph; the alternative was build-time SVG via `mermaid-cli`, which wants a headless-Chromium download to draw a diagram the repo already stores as text.
+
+What it is **not**: `devx serve`'s diff viewer, live PR preview, drag-to-reorder and Concierge dock are all still ahead of it. This is the lens that could ship in a day and be rebuilt by one command.
+
 ### `devx ui` — local TUI
 
 A persistent terminal dashboard (Ink/Bubbletea-class library). Dock it on a second monitor; it stays open while you work.

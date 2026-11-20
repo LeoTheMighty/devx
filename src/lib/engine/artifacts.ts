@@ -47,6 +47,9 @@ const PLAN_REL = "plan/agent.md";
 const EXPECTATIONS_REL = "expectations.md";
 /** Derived working memory (`devx todo sync`). Workstream root; never a gate input. */
 const TODO_REL = "todo.md";
+/** The health queue — gate concerns + parked questions, reconciled by the
+ *  gate CLIs (`devx gate …`). Workstream root; never a gate INPUT. */
+const QUESTIONS_REL = "questions.md";
 /** RED-gate artifact dir (E-* runnables/checklists + RED-report.md). */
 export const EVALS_DIR_REL = "evals";
 /** Gate 4's persisted report. */
@@ -244,7 +247,7 @@ export const SUBJECT_STAGES: readonly SubjectStage[] = STAGE_DIRS.filter(
 export type ArtifactKind =
   | { kind: "agent"; stage: SubjectStage }
   | { kind: "human" | "outline" | "outline-critique"; stage: StageDir }
-  | { kind: "expectations" | "todo" | "results" }
+  | { kind: "expectations" | "todo" | "questions" | "results" }
   | { kind: "evals-dir" | "decisions-dir" | "checkpoints-dir" }
   | { kind: "red-report" };
 
@@ -275,6 +278,7 @@ export const ARTIFACT_KINDS = [
   "outline-critique",
   "expectations",
   "todo",
+  "questions",
   "results",
   "evals-dir",
   "decisions-dir",
@@ -416,6 +420,8 @@ export function artifactRel(layout: DocsLayout, kind: ArtifactKind): string {
       return EXPECTATIONS_REL;
     case "todo":
       return TODO_REL;
+    case "questions":
+      return QUESTIONS_REL;
     case "results":
       return RESULTS_REL;
     case "evals-dir":
@@ -563,6 +569,7 @@ export const ALL_ARTIFACT_KINDS: readonly ArtifactKind[] = [
   ]),
   { kind: "expectations" },
   { kind: "todo" },
+  { kind: "questions" },
   { kind: "results" },
   { kind: "evals-dir" },
   { kind: "decisions-dir" },

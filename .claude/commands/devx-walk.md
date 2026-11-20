@@ -1,11 +1,11 @@
 # /devx-walk — Resolve one blocker, properly
 
-> The health queue's **resolver**. Blocked specs, unanswered INTERVIEW
-> questions, and pending MANUAL items all have writers (every lifecycle skill
-> files them) and readers (`devx next` row 11, `devx status`) — and until now
-> nothing whose job was to *resolve* one. That showed up as the single row in
-> the `devx next` table that named no command, precisely when the workstream
-> was stuck.
+> The health queue's **resolver**. Per-workstream `questions.md` entries,
+> blocked specs, unanswered INTERVIEW questions, and pending MANUAL items all
+> have writers (the gates and every lifecycle skill file them) and readers
+> (`devx next` row 11, `devx status`) — and until now nothing whose job was to
+> *resolve* one. That showed up as the single row in the `devx next` table
+> that named no command, precisely when the workstream was stuck.
 >
 > This is that command. **One entry per invocation**, resolved properly:
 > picked by a fixed rule, dug into against code truth, proposed in plan mode,
@@ -47,13 +47,22 @@ Three neighbours, and the boundaries are load-bearing:
 
 Union of, in this order:
 
+0. **Open `questions.md` entries** in any workstream — `Status:` anything but
+   `resolved`. Written by the gates (a `gate-concern` is a ⚠️/❌ a verdict
+   recorded) and by the planning stages (a parked `open-question`). An entry
+   whose `Severity:` is `blocking` outranks every other source; a `concern`
+   sits below the blocked specs, since its gate advanced. `devx status` prints
+   the counts per workstream and `devx next` row 11 names the blockers.
 1. **Blocked specs** — `[-]` rows in `DEV.md` / `PLAN.md` / `DEBUG.md` /
    `TEST.md`, and specs whose frontmatter carries `status: blocked`.
 2. **Unanswered `INTERVIEW.md` questions** that block at least one ready item.
 3. **Pending `MANUAL.md` items** that block at least one ready item.
 
-Build it by reading the backlogs — do not trust a cached snapshot. Print the
-queue size before picking, so the user can see what you are choosing from.
+Build it by reading the backlogs and the queues — do not trust a cached
+snapshot. Print the queue size before picking, so the user can see what you
+are choosing from. A `questions.md` that will not parse is itself an entry:
+fix the malformed bullet first, since every count over that workstream is
+unknown until it reads.
 
 ## Step 1 — Pick, by a fixed rule
 
@@ -126,6 +135,7 @@ in place is the exception:
 | Blocked on a stage never run | The owning stage (`/devx-plan <stage>`), handed the dig as input |
 | Blocked on a bug | `DEBUG.md` + the Debug arm — repro first, as always |
 | Blocked on mechanical state | `devx doctor --fix` — and say so plainly rather than hand-fixing it here |
+| A `questions.md` entry resolved by the dig | The entry — `Status: resolved` + a `Resolution:` naming what closed it. Never delete it: the queue is current-state, and a resolved entry is the record that the concern was real |
 
 After routing: append one line to the entry's status log (what was dug, what
 was found, where it went), and run `devx todo sync <hash>` if the entry
@@ -141,6 +151,10 @@ sub-item behind.
   `Recommendation:` line.
 - **Editing a gated artifact** — that is `devx revise`'s job, cascade and all.
 - **Writing any gate verdict or `gate_status` field.**
+- **Resolving a `gate-concern` entry by hand when the fix was to the artifact
+  the gate reads.** Re-run that gate instead: its own reconcile resolves the
+  entry, and a hand-resolved concern the next run re-opens is noise. Resolve
+  one by hand only when the dig showed the concern itself was wrong.
 - **Editing an outline file.** Outlines are human-only in every layout; read
   them, critique them in the critique file, never write them.
 
