@@ -7,10 +7,12 @@
 //   0 — gate passed (PASS, or CONCERNS: the gate advances with the concern
 //       recorded — D-9 semantics).
 //   1 — gate failed / refused (FAIL verdict, predecessor gate open, no
-//       open gate). Precise gap report in the JSON. An *evaluated* FAIL
-//       records its verdict in the spec's `gate_verdicts:` map (hfi102) —
-//       gate_status booleans and stage stay untouched; refusals (missing
-//       inputs, open predecessor) write nothing.
+//       open gate, a closed gate re-run, a coverage table judging another
+//       gate than the open one). Precise gap report in the JSON. An
+//       *evaluated* FAIL records its verdict in the spec's `gate_verdicts:`
+//       map (hfi102) — gate_status booleans and stage stay untouched;
+//       refusals (missing inputs, open predecessor, closed gate) write
+//       nothing — no verdict, no report, no questions.md reconcile.
 //   2 — error: unresolvable hash/workstream, malformed --table, missing
 //       config. Nothing written. One exception: an evaluated FAIL whose
 //       verdict write fails still prints its gap JSON (and keeps any report
@@ -44,6 +46,7 @@ import {
   extractSourceIds,
   parseCoverageTable,
   renderVerifyReport,
+  tableJudges,
 } from "../lib/engine/gate-coverage.js";
 import { type GraphCheck, checkExecutionGraph } from "../lib/engine/plan-graph.js";
 import {
@@ -356,6 +359,24 @@ function reconcileHealthQueue(
   );
 }
 
+/**
+ * The two exits a closed-gate refusal names. Never a third: re-running the
+ * gate is the thing being refused.
+ *
+ * A gate re-run is not a look. It re-evaluates, re-stamps `gate_verdicts`,
+ * and resolves the gate's `questions.md` entries — a caller who wanted to
+ * read the state had no read-only path to reach for, so they ran the gate,
+ * and a real plan spec took a stray verdict. Re-stamping a passed gate is a
+ * revision, and `devx revise` is the path that records one: it clears the
+ * flag and verdict on purpose, after which the gate runs as normal.
+ */
+function closedGateWayOut(hash: string, reopen: string): string {
+  return `To look without writing: \`devx workstream position ${hash}\`. To re-open it for a re-stamp: ${reopen}.`;
+}
+
+const reviseCmd = (hash: string, touched: "prd" | "design" | "plan"): string =>
+  `\`devx revise ${hash} --touched ${touched}\``;
+
 // ---------------------------------------------------------------------------
 // devx gate prd <hash>
 // ---------------------------------------------------------------------------
@@ -369,6 +390,27 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
   const r = resolveOrFail(args[0], "devx gate prd", opts, io);
   if (!r.ok) return r.code;
   const { ws, subjects } = r;
+
+  // A closed gate is not re-run (it used to be: a "check" re-stamped
+  // `gate_verdicts.prd` over a passed Gate 1 and resolved its questions.md
+  // entries). Refused before the input check, so a closed gate whose PRD has
+  // since moved or broken still refuses rather than reading as unauthored.
+  if (ws.state.gateStatus.prd_validated) {
+    const recorded = ws.state.gateVerdicts.prd;
+    io.out(
+      `${JSON.stringify({
+        gate: "FAIL",
+        hash: ws.hash,
+        refusal: `Gate 1 (prd) is closed — prd_validated is true${
+          recorded !== null ? ` (verdict: ${recorded})` : ""
+        }, stage: ${ws.state.stage ?? "unset"}. A re-run would re-stamp its verdict, so it refuses and writes nothing. ${closedGateWayOut(
+          ws.hash,
+          reviseCmd(ws.hash, "prd"),
+        )}`,
+      })}\n`,
+    );
+    return 1;
+  }
 
   // Missing Gate-1 inputs are a refusal with a precise gap (exit 1), not an
   // error: the artifact simply hasn't been authored yet (/devx prd is next).
@@ -486,9 +528,13 @@ export function runGateCoverage(
     planRel: subjects.plan.rel,
   });
   if (detected.mode === null) {
-    io.out(
-      `${JSON.stringify({ gate: "FAIL", hash: ws.hash, refusal: detected.refusal })}\n`,
-    );
+    const refusal = detected.closed
+      ? `${detected.refusal}. ${closedGateWayOut(
+          ws.hash,
+          `${reviseCmd(ws.hash, "design")} (Gates 2 + 3) or ${reviseCmd(ws.hash, "plan")} (Gate 3)`,
+        )}`
+      : detected.refusal;
+    io.out(`${JSON.stringify({ gate: "FAIL", hash: ws.hash, refusal })}\n`);
     return 1;
   }
   const mode = detected.mode;
@@ -520,6 +566,31 @@ export function runGateCoverage(
       ? io.fs.readFile(subjects.expectations.abs)
       : "",
   };
+
+  // The mode above comes from STATE; the table is what the caller judged.
+  // When they disagree the caller is not running the gate they think they
+  // are — a design table after Gate 2 closed would otherwise be run against
+  // Gate 3, and only a completeness miss stood between that and a Gate-3
+  // verdict nobody asked for. Refuse before anything is written.
+  const judged = tableJudges(parsed.table, files);
+  if (judged !== null && judged !== mode) {
+    const refusal =
+      judged === "design"
+        ? `this table judges design coverage, but Gate 2 (design coverage) is closed — design_verified is true${
+            ws.state.gateVerdicts.design !== null
+              ? ` (verdict: ${ws.state.gateVerdicts.design})`
+              : ""
+          } — and the open coverage gate is Gate 3 (plan coverage). Refusing rather than evaluating a gate the table does not judge; nothing written. ${closedGateWayOut(
+            ws.hash,
+            reviseCmd(ws.hash, "design"),
+          )}`
+        : `this table judges plan coverage, but Gate 2 (design coverage) is still open and Gate 3 (plan coverage) can't run before it. Refusing rather than evaluating a gate the table does not judge; nothing written. Judge ${subjects.design.rel} against ${subjects.prd.rel} first; \`devx workstream position ${ws.hash}\` shows where the workstream stands.`;
+    // Same shape as every other refusal: `mode` in this JSON means the mode
+    // EVALUATED, and nothing was.
+    io.out(`${JSON.stringify({ gate: "FAIL", hash: ws.hash, refusal })}\n`);
+    return 1;
+  }
+
   const sourceIds = extractSourceIds(mode, files);
   if (sourceIds.length === 0) {
     io.err(
