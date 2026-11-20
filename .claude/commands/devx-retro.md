@@ -40,4 +40,5 @@ LEARN.md row format is byte-compatible with v1.
 4. Promotion check: any pattern with ≥3-retro concordance moves to
    `LEARN.md § Cross-epic patterns` with per-epic evidence.
 5. Apply low-blast findings in the retro PR; file higher-blast ones as
-   specs/backlog rows. Ship through the normal PR flow.
+   specs/backlog rows. Ship through the normal PR flow — the Execute arm's,
+   `.claude/commands/devx-execute.md`.

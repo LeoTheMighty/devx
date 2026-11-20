@@ -7,7 +7,7 @@ description: 'The universal devx dispatcher: knows when to plan, design, execute
 
 > **v2 (v2d101).** `/devx` is the only command you need. It routes to the
 > right stage — plan / design / execute / debug / address / loop — from repo
-> state (`devx next`) or from what you typed. The execute arm below is the
+> state (`devx next`) or from what you typed. The execute arm is the
 > Phase 1 loop, unchanged where it was already proven.
 >
 > **Until ManageAgent ships, /devx still runs the full loop end-to-end — claim → implement → self-review → local CI → PR → merge → cleanup.** Specifically: `/devx-manage` references in this file are about cross-item orchestration (parallelism, prioritization, soak windows). They are NOT a license to leave PRs open for human review. In YOLO single-branch this skill merges its own PR on every successful run. The only things that stop a YOLO merge are a failing local-CI gate, a non-empty workflow that returned non-success, or trust-gradient N not yet reached. "Prior PRs were merged by a human" is a bug log, not a precedent — do not infer policy from it.
@@ -66,7 +66,7 @@ Parse the user's message after `/devx`:
    the report — never summarize an overnight run from memory; treat the
    night's claims as claims.
 2. **Hash or spec path** → route by the spec's type + stage: dev spec →
-   Execute arm (Phase 1 below); plan spec mid-pipeline → the matching
+   Execute arm (Phase 1); plan spec mid-pipeline → the matching
    `/devx-plan` stage; debug spec → Stage: Debug. A stage name after the
    hash overrides (`/devx <hash> retro`).
 3. **Explicit stage word** (`prd|design|plan|red|execute|verify|revise|
@@ -88,6 +88,11 @@ Parse the user's message after `/devx`:
 5. **stop_after**: `this-item` (default) | `n-items` | `until-blocked` |
    `all` — the execute arm loops back through `devx next` after each merge.
 6. **instructions**: extra constraints, logged to the spec status log.
+
+**Every arm is its own body**, beside this file (`.claude/commands/`, or
+`~/.claude/commands/` under `--global`): the Execute arm is
+`devx-execute.md`; each `Stage:` below names its file. Load the body a route
+lands on and follow it — never improvise an arm from its pointer here.
 
 Drift reported by `devx next` (backlog↔frontmatter mismatch) is surfaced to
 the user as a defect, never silently fixed.

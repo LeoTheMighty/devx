@@ -15,7 +15,8 @@
    irreproducible, document the attempt and file for observability instead.
 3. Root-cause with evidence in the status log (hypothesis → check →
    result, one line each).
-4. Fix via the Execute arm (worktree → PR → merge); the PR body's Notes
+4. Fix via the Execute arm (`.claude/commands/devx-execute.md`; worktree →
+   PR → merge); the PR body's Notes
    section carries the root-cause narrative.
 5. **An incident becomes an eval.** A bug that reached the integration
    branch is a live proof that some expectation was never expressed. Its
