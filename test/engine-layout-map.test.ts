@@ -250,7 +250,13 @@ describe("pathToArtifactKind — the same table, read backwards", () => {
   // `plan-*`, and all six `evals` companions, in both spellings. Drive it off
   // the same product the map is built from.
   it("round-trips EVERY representable identity, in both layouts", () => {
-    expect(ALL_ARTIFACT_KINDS.length).toBe(3 + STAGE_DIRS.length * 3 + 8);
+    // 3 subjects + 3 stage-parametrized companions per stage + 9 singletons
+    // (expectations, todo, questions, results, review, evals-dir,
+    // decisions-dir, checkpoints-dir, red-report). Spelled out rather than
+    // imported so this stays an independent statement of the product's size:
+    // a new kind that nobody meant to add fails here before it reaches the
+    // round-trip below.
+    expect(ALL_ARTIFACT_KINDS.length).toBe(3 + STAGE_DIRS.length * 3 + 9);
     for (const kind of ALL_ARTIFACT_KINDS) {
       for (const layout of DOCS_LAYOUTS) {
         const base = layout === "workstream" ? BASE : FLAT;
