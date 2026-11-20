@@ -549,6 +549,14 @@ describe("emittedSpecsFor — the plan's executable face", () => {
     readFile: (p: string) => readFileSync(p, "utf8"),
   });
 
+  /** The two fields `resolveWorkstream()` returns, which is what the scan
+   *  matches a `plan:` pointer against. Spelled per-test so each case says
+   *  which SPELLING of the pointer it is exercising. */
+  const target = (workstreamRel: string, specRel = SPEC_REL) => ({
+    workstreamRel,
+    specRel,
+  });
+
   function devSpec(
     name: string,
     fm: Record<string, string | number>,
@@ -567,7 +575,7 @@ describe("emittedSpecsFor — the plan's executable face", () => {
   }
 
   it("returns [] when dev/ does not exist", () => {
-    expect(emittedSpecsFor(r.root, WS, fs())).toEqual([]);
+    expect(emittedSpecsFor(r.root, target(WS), fs())).toEqual([]);
   });
 
   it("collects only specs whose plan: points at THIS workstream", () => {
@@ -585,7 +593,7 @@ describe("emittedSpecsFor — the plan's executable face", () => {
       phase: 1,
       plan: "_devx/workstreams/other-stream",
     });
-    const got = emittedSpecsFor(r.root, WS, fs());
+    const got = emittedSpecsFor(r.root, target(WS), fs());
     expect(got.map((s) => s.hash)).toEqual(["aaa111"]);
   });
 
@@ -599,7 +607,73 @@ describe("emittedSpecsFor — the plan's executable face", () => {
       phase: 2,
       plan: `./${WS}/`,
     });
-    expect(emittedSpecsFor(r.root, `${WS}/`, fs()).map((s) => s.hash)).toEqual(["ccc333"]);
+    expect(emittedSpecsFor(r.root, target(`${WS}/`), fs()).map((s) => s.hash)).toEqual(["ccc333"]);
+  });
+
+  it("matches the PLAN-SPEC spelling of the pointer, not only the directory", () => {
+    // Measured 2026-11-20 in this repo: 40 dev specs spell `plan:` as the
+    // workstream directory and 100 spell it as the parent plan spec's path,
+    // with several workstreams carrying both. A directory-only matcher
+    // reported ZERO specs for the only workstream then executing — and zero
+    // is indistinguishable from "this revision reopens nothing".
+    devSpec("dev-aaa111-2026-01-01T00:00-by-spec-path.md", {
+      hash: "aaa111",
+      type: "dev",
+      status: "ready",
+      plan: SPEC_REL,
+    });
+    devSpec("dev-bbb222-2026-01-01T00:00-by-dir.md", {
+      hash: "bbb222",
+      type: "dev",
+      status: "ready",
+      plan: WS,
+    });
+    // One target, both spellings, one list.
+    expect(
+      emittedSpecsFor(r.root, target(WS), fs()).map((x) => x.hash),
+    ).toEqual(["aaa111", "bbb222"]);
+  });
+
+  it("still rejects another workstream's plan-spec path", () => {
+    // The widened matcher must not widen into a different workstream: a
+    // plan-spec path is unique, so accepting it is safe only if it is
+    // compared, not merely pattern-matched.
+    devSpec("dev-ccc333-2026-01-01T00:00-foreign.md", {
+      hash: "ccc333",
+      type: "dev",
+      status: "ready",
+      plan: "plan/plan-zzz999-2026-01-01T00:00-other.md",
+    });
+    expect(emittedSpecsFor(r.root, target(WS), fs())).toEqual([]);
+  });
+
+  it("the uwg shape: no phase: key, mixed statuses, all reported", () => {
+    // The real specs the empirical leg ran against carry a plan-spec pointer
+    // and NO `phase:`. Every one must still appear with its disposition —
+    // a phase-less spec is claimable exactly like a phased one.
+    for (const [hash, status] of [
+      ["uwg101", "done"],
+      ["uwg102", "in-progress"],
+      ["uwg103", "ready"],
+      ["uwgret", "ready"],
+    ] as const) {
+      devSpec(`dev-${hash}-2026-01-01T00:00-x.md`, {
+        hash,
+        type: "dev",
+        status,
+        plan: SPEC_REL,
+      });
+    }
+    const got = emittedSpecsFor(r.root, target(WS), fs());
+    expect(got).toHaveLength(4);
+    expect(got.every((x) => x.phase === null)).toBe(true);
+    expect(emittedCounts(got)).toEqual({
+      block: 2,
+      halt: 1,
+      shipped: 1,
+      "already-blocked": 0,
+      unknown: 0,
+    });
   });
 
   it("matches the root doc set under project-level (both sides normalize to '')", () => {
@@ -610,7 +684,7 @@ describe("emittedSpecsFor — the plan's executable face", () => {
       phase: 1,
       plan: ".",
     });
-    expect(emittedSpecsFor(r.root, ".", fs()).map((s) => s.hash)).toEqual(["ddd444"]);
+    expect(emittedSpecsFor(r.root, target("."), fs()).map((s) => s.hash)).toEqual(["ddd444"]);
   });
 
   it("orders by phase, phase-less last, hash as the stable tiebreak", () => {
@@ -626,7 +700,7 @@ describe("emittedSpecsFor — the plan's executable face", () => {
     mk("aaa111", 1);
     mk("mmm555", null);
     mk("bbb222", 3);
-    expect(emittedSpecsFor(r.root, WS, fs()).map((s) => s.hash)).toEqual([
+    expect(emittedSpecsFor(r.root, target(WS), fs()).map((s) => s.hash)).toEqual([
       "aaa111",
       "zzz999",
       "bbb222",
@@ -646,7 +720,7 @@ describe("emittedSpecsFor — the plan's executable face", () => {
       status: "ready",
       plan: WS,
     });
-    const got = emittedSpecsFor(r.root, WS, fs());
+    const got = emittedSpecsFor(r.root, target(WS), fs());
     expect(got).toHaveLength(1);
     expect(got[0]).toMatchObject({ hash: "fff666", phase: null, disposition: "block" });
   });
@@ -654,7 +728,7 @@ describe("emittedSpecsFor — the plan's executable face", () => {
   it("ignores non-dev filenames in dev/", () => {
     r.write("dev/README.md", "notes\n");
     r.write("dev/dev-ggg777-2026-01-01T00:00-x.txt", "nope\n");
-    expect(emittedSpecsFor(r.root, WS, fs())).toEqual([]);
+    expect(emittedSpecsFor(r.root, target(WS), fs())).toEqual([]);
   });
 });
 

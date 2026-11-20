@@ -159,7 +159,7 @@ export function runRevise(
   // The dev specs this plan already emitted. Reported, never touched (see
   // revise.ts §"Emitted dev specs"): a `halt` row is a live claim, and the
   // blast radius of the change is judgment, not arithmetic.
-  const emitted = emittedSpecsFor(ctx.ctx.repoRoot, ws.workstreamRel, fs);
+  const emitted = emittedSpecsFor(ctx.ctx.repoRoot, ws, fs);
   const counts = emittedCounts(emitted);
 
   out(

@@ -42,10 +42,11 @@ import {
 } from "./frontmatter.js";
 import {
   type ArtifactKind,
+  type WorkstreamPointerTarget,
   DOCS_LAYOUTS,
   artifactKindIdentity,
   artifactRel,
-  normalizeArtifactPath,
+  planPointerMatches,
 } from "./artifacts.js";
 import { pathToArtifactKind } from "./artifact-index.js";
 
@@ -346,23 +347,30 @@ export interface EmittedScanFs {
  * Every `dev/dev-*.md` spec whose `plan:` pointer resolves to this
  * workstream, ordered by phase (phase-less last) then hash.
  *
- * Both sides of the pointer comparison go through `normalizeArtifactPath`,
- * the resolver the rest of the engine uses: `.`, `./x`, `x/` and `x` are one
- * workstream, and under `project-level` the root doc set normalizes to the
- * empty string on both sides. A raw `===` here would silently report an empty
- * list — which reads exactly like "this revision reopens nothing".
+ * Matching is `planPointerMatches`, which accepts BOTH spellings the key
+ * carries in the wild — the workstream directory and the plan-spec path —
+ * and normalizes both sides. Accepting only one reports an empty list for a
+ * live workstream, and empty reads exactly like "this revision reopens
+ * nothing": the one answer that must never be wrong by accident. Measured
+ * against this repo, matching only the directory form missed every spec of
+ * the only workstream currently executing.
  *
- * An unreadable or unparseable spec is reported with `disposition: unknown`
- * rather than dropped: the whole point of the list is that nothing executable
- * disappears into silence. One that cannot even be read for its pointer is
- * skipped, because there is no evidence it belongs to this workstream.
+ * A spec whose `status:` is unrecognizable is reported with `disposition:
+ * unknown` rather than dropped — the whole point of the list is that nothing
+ * executable disappears into silence, and a spec nobody can classify is the
+ * one that gets claimed by accident.
+ *
+ * A spec whose FILE cannot be read at all is skipped, which is a different
+ * call and a deliberate one: without a readable `plan:` there is no evidence
+ * it belongs to this workstream, and reporting it here would mean naming every
+ * unreadable dev spec in the repo on every revise. Malformed specs are
+ * `devx doctor`'s surface.
  */
 export function emittedSpecsFor(
   repoRoot: string,
-  workstreamRel: string,
+  target: WorkstreamPointerTarget,
   fs: EmittedScanFs,
 ): EmittedSpec[] {
-  const wanted = normalizeArtifactPath(workstreamRel);
   const dir = joinPath(repoRoot, "dev");
   if (!fs.exists(dir)) return [];
   let names: string[];
@@ -380,7 +388,7 @@ export function emittedSpecsFor(
     } catch {
       continue; // no readable pointer → no evidence it is ours
     }
-    if (state.plan === null || normalizeArtifactPath(state.plan) !== wanted) continue;
+    if (!planPointerMatches(state.plan, target)) continue;
     out.push({
       hash: state.hash ?? name.replace(/^dev-/, "").split("-")[0] ?? name,
       phase: state.phase,

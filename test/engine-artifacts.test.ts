@@ -20,6 +20,7 @@ import {
   docsLayoutFrom,
   isAuthoredEvalEntry,
   planAbs,
+  planPointerMatches,
   stageSubject,
   todoAbs,
 } from "../src/lib/engine/artifacts.js";
@@ -199,5 +200,76 @@ describe("docsLayoutFrom", () => {
         DEFAULT_DOCS_LAYOUT,
       );
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// planPointerMatches — a dev spec's `plan:` pointer, both spellings
+// ---------------------------------------------------------------------------
+
+describe("planPointerMatches", () => {
+  const TARGET = {
+    workstreamRel: "_devx/workstreams/slug",
+    specRel: "plan/plan-abc123-2026-01-01T00:00-slug.md",
+  };
+
+  it("accepts the workstream-directory spelling", () => {
+    expect(planPointerMatches("_devx/workstreams/slug", TARGET)).toBe(true);
+  });
+
+  it("accepts the plan-spec-path spelling", () => {
+    // The spelling 100 of this repo's 140 pointered dev specs use, and the
+    // only one the newest workstreams use. A matcher that took just the
+    // directory reported an empty emitted-spec list for a live workstream.
+    expect(
+      planPointerMatches("plan/plan-abc123-2026-01-01T00:00-slug.md", TARGET),
+    ).toBe(true);
+  });
+
+  it("normalizes both sides", () => {
+    for (const p of [
+      "./_devx/workstreams/slug",
+      "_devx/workstreams/slug/",
+      "_devx/workstreams/./slug",
+      "_devx\\workstreams\\slug",
+    ]) {
+      expect(planPointerMatches(p, TARGET), p).toBe(true);
+    }
+    expect(
+      planPointerMatches("plan/plan-abc123-2026-01-01T00:00-slug.md", {
+        ...TARGET,
+        specRel: "./plan/plan-abc123-2026-01-01T00:00-slug.md",
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects another workstream, by either spelling", () => {
+    // The widening must not widen across workstreams — the pointer is
+    // compared, never pattern-matched.
+    expect(planPointerMatches("_devx/workstreams/other", TARGET)).toBe(false);
+    expect(
+      planPointerMatches("plan/plan-zzz999-2026-01-01T00:00-other.md", TARGET),
+    ).toBe(false);
+    // A path INTO the workstream is not the workstream: nothing writes this
+    // spelling, and accepting it would make `plan:` ambiguous with a subject.
+    expect(planPointerMatches("_devx/workstreams/slug/plan/agent.md", TARGET)).toBe(
+      false,
+    );
+  });
+
+  it("rejects an absent pointer rather than matching the root doc set", () => {
+    // Under `project-level` the workstream normalizes to "", so a null or
+    // empty pointer must not fall through to a match — every dev spec in the
+    // repo would then belong to the only doc set there is.
+    expect(planPointerMatches(null, TARGET)).toBe(false);
+    expect(planPointerMatches(undefined, TARGET)).toBe(false);
+    const flat = { workstreamRel: ".", specRel: "plan/plan-abc123-x.md" };
+    expect(planPointerMatches(null, flat)).toBe(false);
+    expect(planPointerMatches("", flat)).toBe(false);
+    expect(planPointerMatches("   ", flat)).toBe(false);
+    // …while the root's own legitimate spelling still matches. Both normalize
+    // to "", so the blank check has to run BEFORE normalization.
+    expect(planPointerMatches(".", flat)).toBe(true);
+    expect(planPointerMatches("./", flat)).toBe(true);
   });
 });
