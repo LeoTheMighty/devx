@@ -86,7 +86,7 @@ describe("/devx-plan stage discipline (v2e102)", () => {
     const design = section("Design");
     expect(design).toContain("design/research-questions.md");
     expect(design).toContain("design/research.md");
-    expect(design).toMatch(/intent kept OUT/);
+    expect(design).toMatch(/intent kept\s+OUT/);
     expect(design).toMatch(/ONLY that file\s+\(no PRD\)/);
     expect(design).toMatch(/Re-entry refreshes, never\s+redoes/);
     // Research comes before the template is filled.

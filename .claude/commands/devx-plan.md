@@ -170,17 +170,12 @@ free-nested sub-items (contract in Stage: PRD).
 1. Open by asking the user's design questions: "You've got the PRD — what
    are you unsure about?" Work those first.
 2. **Research before drafting — captured, blind.** Write
-   `design/research-questions.md` (template): factual, code-answerable
-   questions — what exists to reuse, how a mechanism works today, its
-   limits, which files touch this — with the PRD's intent kept OUT ("which
-   approach?" is design, not research); a handful for a small change, the
-   full map for a new subsystem. Give one `Explore` subagent ONLY that file
-   (no PRD) and `engine.code_citation_hints`; write its answers, each with
-   a `path:line`, to `design/research.md`. Re-entry refreshes, never
-   redoes: re-verify cited lines, answer new questions. A load-bearing
+   `design/research-questions.md` per its template (the PRD's intent kept
+   OUT; sized to the work). Give one `Explore` subagent ONLY that file
+   (no PRD) plus `engine.code_citation_hints`; its cited answers go to
+   `design/research.md`. Re-entry refreshes, never redoes. A load-bearing
    claim traces to a citation or an answer; every cited path must exist. A
-   question that must be *tried*, not read, gets a `spike` record
-   (`decision.md`) and stays Unresolved, naming it.
+   question that must be *tried* gets a `spike` record (`decision.md`).
 3. Fill the template: Overview, Constraints, Risks (each proven by an
    E-id), Trade-offs (every load-bearing choice names the alternative it
    beat), Out of scope, Assumptions, Discarded considerations,
