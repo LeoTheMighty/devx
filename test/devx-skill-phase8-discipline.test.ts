@@ -1,6 +1,6 @@
 // Phase 8 dispatch discipline assertion (dvx106).
 //
-// Pins the structural shape of `.claude/commands/devx.md` Phase 8 so that
+// Pins the structural shape of `.claude/commands/devx-execute.md` Phase 8 so that
 // future edits can't quietly drift away from the contract dvx106 establishes:
 //
 //   • First action of Phase 8 is `devx merge-gate <hash>` (AC #1).
@@ -30,7 +30,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = resolve(__dirname, "..");
-const SKILL_PATH = resolve(REPO_ROOT, ".claude/commands/devx.md");
+const SKILL_PATH = resolve(REPO_ROOT, ".claude/commands/devx-execute.md");
 
 function loadSkill(): string {
   return readFileSync(SKILL_PATH, "utf8");

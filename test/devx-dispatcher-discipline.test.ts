@@ -2,6 +2,9 @@
 // stage. The 12-row table itself lives in the CLI (devx next) — the skill
 // body must RENDER its output, never re-enumerate the rows (the dvx106
 // lesson: prose tables are the regression vector).
+//
+// The Debug body is its own file since the D-14 arm split; devx.md keeps
+// the `## Stage: Debug` heading as a pointer to it.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -9,6 +12,10 @@ import { describe, expect, it } from "vitest";
 
 const body = readFileSync(
   join(process.cwd(), ".claude", "commands", "devx.md"),
+  "utf8",
+);
+const debugBody = readFileSync(
+  join(process.cwd(), ".claude", "commands", "devx-debug.md"),
   "utf8",
 );
 
@@ -39,8 +46,10 @@ describe("/devx dispatcher discipline (v2d101)", () => {
 
   it("pins the debug stage's repro-first discipline", () => {
     expect(body).toMatch(/## Stage: Debug \(repro-first\)/);
-    expect(body).toMatch(/Reproduce before touching code/);
-    expect(body).toMatch(/No repro → no fix/);
+    expect(body).toContain("Body: `.claude/commands/devx-debug.md`.");
+    expect(debugBody).toMatch(/## Stage: Debug \(repro-first\)/);
+    expect(debugBody).toMatch(/Reproduce before touching code/);
+    expect(debugBody).toMatch(/No repro → no fix/);
   });
 
   it("pins drift-is-reported-never-silently-fixed", () => {
