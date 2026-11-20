@@ -27,6 +27,42 @@ const STAGE_SKILL_SECTIONS: string[] = [
   ".claude/commands/devx-plan.md",
 ];
 
+// The /devx dispatcher plus the arm bodies one full run loads. Until the
+// D-14 arm split (INTERVIEW Q#9 option (b): load only the arm a run needs)
+// every arm lived inside devx.md and was counted by being there. The Execute
+// arm and the Retro arm are both rows of `v2/02-engine.md` §6's "full
+// feature end-to-end", so moving them into their own files moves nothing out
+// of this budget: they are counted here exactly as they were inside devx.md.
+// Listed explicitly, like STAGE_SKILL_SECTIONS, for the same reason.
+const FULL_RUN_DISPATCH_SURFACES: string[] = [
+  ".claude/commands/devx.md",
+  ".claude/commands/devx-execute.md",
+  ".claude/commands/devx-retro.md",
+];
+
+// Every OTHER skill body under .claude/commands/, with why one full run does
+// not load it. This is not an exclusion list — nothing here was ever in a
+// budget except the debug, loop and outcome arms, whose prose left devx.md in
+// the arm split precisely because no full run loads it. A body in neither
+// list fails the classification test below, so a new skill body cannot sit
+// uncounted by default: it is counted, or it is named here with the evidence
+// that a full run never loads it. Moving prose a full run DOES load into a
+// file listed here is the exclusion the header forbids.
+const OFF_THE_FULL_RUN: Record<string, string> = {
+  "devx-debug.md": "the bug arm: intake + repro, then the Execute arm; a debug run, not a feature run (§6 has no row for it)",
+  "devx-loop.md": "starts the `devx loop` CLI; loop workers get the CLI's own iteration prompt (src/lib/loop/iteration.ts), never this body",
+  "devx-outcome.md": "post-ship scoring, weeks after the run's last merge (§6 has no row for it)",
+  "devx-address.md": "human review input on an open PR: its own invocation, `/devx address <pr>`",
+  "devx-revise.md": "the backward path: reopens an artifact that already passed its gate",
+  "devx-walk.md": "the health queue's resolver: its own invocation",
+  "devx-interview.md": "walks INTERVIEW.md: its own invocation",
+  "devx-test.md": "attended exploratory QA: its own invocation",
+  "devx-personalize.md": "the preference interview; a full run reaches only its layout-ask block, once per repo, while `engine.docs_layout` is unset (uncounted before the arm split too)",
+  "devx-learn.md": "session mining; a full run reaches only its one marked nudge sentence, and only after friction (uncounted before the arm split too)",
+};
+
+const COMMANDS_DIR = join(REAL_REPO_ROOT, ".claude", "commands");
+
 const ENGINE_TEMPLATES_DIR = join(REAL_REPO_ROOT, "_devx", "templates", "engine");
 
 /** Every .md under the templates dir, /-joined relative names, recursive —
@@ -110,10 +146,10 @@ describe("engine prose-budget canary (S-1)", () => {
   });
 
   // S-1 full-run budget (D-14, 5c215e). The prose actually loadable across
-  // one full PRD→merge run is the planning surface above PLUS the /devx
-  // dispatcher body (.claude/commands/devx.md), which carries the execute
-  // arm and five others — a surface the BMAD era also paid (~48KB/story
-  // dev-story + code-review) inside its ~550KB total.
+  // one full feature run is the planning surface above PLUS the /devx
+  // dispatcher and the arm bodies that run loads (FULL_RUN_DISPATCH_SURFACES:
+  // Execute and Retro) — a surface the BMAD era also paid (~48KB/story
+  // dev-story + code-review, 63KB retro) inside its ~550KB total.
   //
   // History, so the next reader does not re-derive it: measured 65,767 B at
   // v2o101 (2026-07-05), ~96.6KB at the outline-folders restructure
@@ -122,12 +158,16 @@ describe("engine prose-budget canary (S-1)", () => {
   // WAS the budget by accident, and raising it would have loosened the
   // planning gate above as well. It now has its own knob and is gated
   // directly: the number that binds is the number that was chosen.
+  // 2026-11-20: the budget bound again (130,547 B, 525 free) and D-14's
+  // named lever was pulled instead of a raise — devx.md's arms became their
+  // own bodies. The debug/loop/outcome arms (no full run loads them) left
+  // the sum; 126,488 B after.
   //
   // If this fails: cut prose, or change `engine.full_run_prose_budget_kb`
   // in a PR that says why (D-14 records the reasoning for the current
-  // value). The durable lever, if growth continues, is loading only the
-  // dispatcher arm a run needs rather than all six — see D-14.
-  it("S-1 full-run surface (planning + devx.md) fits engine.full_run_prose_budget_kb", () => {
+  // value). The arm split is spent: what is left counted is what a full run
+  // loads.
+  it("S-1 full-run surface (planning + dispatcher + its full-run arms) fits engine.full_run_prose_budget_kb", () => {
     const surfaces: Array<{ path: string; bytes: number }> = [];
     for (const name of listTemplateMdFiles()) {
       surfaces.push({
@@ -135,7 +175,7 @@ describe("engine prose-budget canary (S-1)", () => {
         bytes: statSync(join(ENGINE_TEMPLATES_DIR, ...name.split("/"))).size,
       });
     }
-    for (const rel of [...STAGE_SKILL_SECTIONS, ".claude/commands/devx.md"]) {
+    for (const rel of [...STAGE_SKILL_SECTIONS, ...FULL_RUN_DISPATCH_SURFACES]) {
       surfaces.push({
         path: rel,
         bytes: Buffer.byteLength(readFileSync(join(REAL_REPO_ROOT, ...rel.split("/")))),
@@ -152,6 +192,45 @@ describe("engine prose-budget canary (S-1)", () => {
         "Cut prose or change the budget in devx.config.yaml with an explanation (see D-14).",
       ].join("\n"),
     ).toBeLessThanOrEqual(budget);
+  });
+
+  // The arm split makes "a separate skill file" the cheapest place to put
+  // prose, so the budget is only honest if every skill body is accounted for.
+  it("every skill body is counted toward a budget or named as off the full run", () => {
+    const counted = new Set(
+      [...STAGE_SKILL_SECTIONS, ...FULL_RUN_DISPATCH_SURFACES].map((rel) =>
+        rel.replace(".claude/commands/", ""),
+      ),
+    );
+    const bodies = readdirSync(COMMANDS_DIR).filter((n) => n.endsWith(".md")).sort();
+    const unclassified = bodies.filter((n) => !counted.has(n) && !(n in OFF_THE_FULL_RUN));
+    expect(
+      unclassified,
+      [
+        "skill bodies in neither the counted lists nor OFF_THE_FULL_RUN:",
+        ...unclassified.map((n) => `  .claude/commands/${n}`),
+        "Count it (STAGE_SKILL_SECTIONS / FULL_RUN_DISPATCH_SURFACES) if any full run",
+        "loads it; otherwise name it in OFF_THE_FULL_RUN with why no full run does.",
+      ].join("\n"),
+    ).toEqual([]);
+    // Both sides stay true: no body is both counted and off, and every name
+    // in OFF_THE_FULL_RUN is a real file (a stale entry would hide nothing,
+    // but would mislead the next reader about what exists).
+    expect(Object.keys(OFF_THE_FULL_RUN).filter((n) => counted.has(n))).toEqual([]);
+    expect(Object.keys(OFF_THE_FULL_RUN).filter((n) => !bodies.includes(n))).toEqual([]);
+    for (const [name, why] of Object.entries(OFF_THE_FULL_RUN)) {
+      expect(why.trim().length, `${name} needs a reason`).toBeGreaterThan(20);
+    }
+  });
+
+  // The two arm bodies counted above must be the ones the dispatcher actually
+  // routes a full run to — a rename that left this list pointing at a file
+  // Routing no longer names would keep the sum green while measuring nothing.
+  it("the dispatcher routes to every full-run arm body it is charged for", () => {
+    const dispatcher = readFileSync(join(COMMANDS_DIR, "devx.md"), "utf8");
+    for (const rel of FULL_RUN_DISPATCH_SURFACES.filter((r) => !r.endsWith("/devx.md"))) {
+      expect(dispatcher, `devx.md never names ${rel}`).toContain(rel.replace(".claude/commands/", ""));
+    }
   });
 
   // The two knobs must stay independent: the whole point of D-14 is that
