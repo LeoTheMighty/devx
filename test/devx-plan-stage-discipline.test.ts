@@ -66,4 +66,47 @@ describe("/devx-plan stage discipline (v2e102)", () => {
     expect(body).toContain("engine.critique.min_surfaces");
     expect(body).toContain("engine.critique.lenses");
   });
+
+  // harness-s4 — the planning-stage quality rules (gap analysis A3, B6, A6,
+  // B8, B9). Each pin is the load-bearing clause, not the surrounding prose.
+  const section = (h: string): string => {
+    const start = body.indexOf(`## Stage: ${h}`);
+    const end = body.indexOf("\n## ", start + 1);
+    return body.slice(start, end === -1 ? undefined : end);
+  };
+
+  it("PRD critique holds the altitude and ends with a risk register (A3)", () => {
+    const prd = section("PRD");
+    expect(prd).toMatch(/an item naming only mechanism/);
+    expect(prd).toMatch(/`Risk \| Mitigation \|\s+Proven by`/);
+    expect(prd).toMatch(/high-severity risk with none is a finding/);
+  });
+
+  it("Design captures blind research before drafting, and refreshes on re-entry (B6)", () => {
+    const design = section("Design");
+    expect(design).toContain("design/research-questions.md");
+    expect(design).toContain("design/research.md");
+    expect(design).toMatch(/intent kept\s+OUT/);
+    expect(design).toMatch(/ONLY that file\s+\(no PRD\)/);
+    expect(design).toMatch(/Re-entry refreshes, never\s+redoes/);
+    // Research comes before the template is filled.
+    expect(design.indexOf("research-questions.md")).toBeLessThan(design.indexOf("Fill the template"));
+  });
+
+  it("the coverage subagent returns the four hygiene kinds, which never FAIL (A6)", () => {
+    const design = section("Design");
+    for (const kind of ["`residue`", "`duplication`", "`ungrounded`", "`bare-decision`"]) {
+      expect(design).toContain(kind);
+    }
+    expect(design).toMatch(/hygiene\s+holds CONCERNS at most, never FAIL/);
+    expect(design).not.toMatch(/Resolved \+ Unresolved/);
+    expect(design).toMatch(/Decision log \(links only\)/);
+  });
+
+  it("rule 9 runs the render lint before the gate; rule 8 names the critique form (B8, B9)", () => {
+    expect(body).toContain("devx render lint <hash> <stage>");
+    expect(body).toMatch(/fix every HARD finding/);
+    expect(body).toMatch(/annotated reproduction, one redraw, Gap \/ Content \/\s+Framing findings/);
+    expect(body).toMatch(/A critique is regenerated, never amended/);
+  });
 });

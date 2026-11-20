@@ -51,7 +51,7 @@ const WS_REL = "_devx/workstreams/scene-engine";
 const BASE = { repoRoot: REPO, workstreamRel: WS_REL };
 const FLAT = { repoRoot: REPO, workstreamRel: "." };
 
-/** design §"The artifact map" — 13 rows, both layouts. */
+/** design §"The artifact map" — 13 rows, both layouts, plus the two research rows harness-s4 added. */
 const ROWS: ReadonlyArray<{ kind: ArtifactKind; ws: string; flat: string }> = [
   { kind: { kind: "agent", stage: "prd" }, ws: "prd/agent.md", flat: "prd.md" },
   { kind: { kind: "agent", stage: "design" }, ws: "design/agent.md", flat: "design.md" },
@@ -66,6 +66,13 @@ const ROWS: ReadonlyArray<{ kind: ArtifactKind; ws: string; flat: string }> = [
   { kind: { kind: "expectations" }, ws: "expectations.md", flat: "expectations.md" },
   { kind: { kind: "todo" }, ws: "todo.md", flat: "todo.md" },
   { kind: { kind: "results" }, ws: "RESULTS.md", flat: "RESULTS.md" },
+  // harness-s4: the Design stage's captured research (gap analysis B6).
+  {
+    kind: { kind: "research-questions" },
+    ws: "design/research-questions.md",
+    flat: "design-research-questions.md",
+  },
+  { kind: { kind: "research" }, ws: "design/research.md", flat: "design-research.md" },
   { kind: { kind: "evals-dir" }, ws: "evals", flat: "evals" },
   { kind: { kind: "decisions-dir" }, ws: "decisions", flat: "decisions" },
   { kind: { kind: "checkpoints-dir" }, ws: "checkpoints", flat: "checkpoints" },
@@ -76,7 +83,7 @@ const abs = (rel: string): string => join(REPO, ...rel.split("/"));
 
 describe("stageSubject — the §15 table, both layouts", () => {
   it("covers every artifact-kind row the table names", () => {
-    expect(ROWS).toHaveLength(13);
+    expect(ROWS).toHaveLength(15);
   });
 
   for (const row of ROWS) {
@@ -250,13 +257,13 @@ describe("pathToArtifactKind — the same table, read backwards", () => {
   // `plan-*`, and all six `evals` companions, in both spellings. Drive it off
   // the same product the map is built from.
   it("round-trips EVERY representable identity, in both layouts", () => {
-    // 3 subjects + 3 stage-parametrized companions per stage + 9 singletons
-    // (expectations, todo, questions, results, review, evals-dir,
-    // decisions-dir, checkpoints-dir, red-report). Spelled out rather than
+    // 3 subjects + 3 stage-parametrized companions per stage + 11 singletons
+    // (expectations, todo, questions, results, review, research-questions,
+    // research, evals-dir, decisions-dir, checkpoints-dir, red-report). Spelled out rather than
     // imported so this stays an independent statement of the product's size:
     // a new kind that nobody meant to add fails here before it reaches the
     // round-trip below.
-    expect(ALL_ARTIFACT_KINDS.length).toBe(3 + STAGE_DIRS.length * 3 + 9);
+    expect(ALL_ARTIFACT_KINDS.length).toBe(3 + STAGE_DIRS.length * 3 + 11);
     for (const kind of ALL_ARTIFACT_KINDS) {
       for (const layout of DOCS_LAYOUTS) {
         const base = layout === "workstream" ? BASE : FLAT;

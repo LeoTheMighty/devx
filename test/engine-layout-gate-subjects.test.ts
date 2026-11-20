@@ -98,6 +98,8 @@ function artifactRel(layout: Layout, kind: string): string {
       return under("expectations.md");
     case "evals":
       return under("evals");
+    case "research":
+      return under(flat ? "design-research.md" : "design/research.md");
     default:
       throw new Error(`unknown artifact kind '${kind}'`);
   }
@@ -310,6 +312,10 @@ function seedRepo(gate: GateName, layout: Layout, broken: boolean): EngineRepo {
   put("prd", prdBody(gate === "prd" && broken));
   put("expectations", expectationsBody());
   if (gate !== "prd") put("design", designBody());
+  // harness-s4: Gate 2's mechanical hygiene check reads research presence
+  // through the layout — the good fixture carries it in both shapes, so a
+  // research path that resolved for one layout only would split the verdict.
+  if (gate !== "prd") put("research", "# Research — Demo\n\n## Q1\n\nFixture (`src/x.ts:1`).\n");
   if (gate === "coverage-plan" || gate === "evals") put("plan", planBody());
   if (gate === "evals") {
     for (const n of [1, 2, 3]) {

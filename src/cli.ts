@@ -47,6 +47,7 @@ import * as planHelperCommand from "./commands/plan-helper.js";
 import * as prBodyCommand from "./commands/pr-body.js";
 import * as restartCommand from "./commands/restart.js";
 import * as resumeCommand from "./commands/resume.js";
+import * as renderCommand from "./commands/render.js";
 import * as reviseCommand from "./commands/revise.js";
 import * as serveCommand from "./commands/serve.js";
 import * as splitCommand from "./commands/split.js";
@@ -91,6 +92,7 @@ const commands: CommandModule[] = [
   prBodyCommand,
   restartCommand,
   resumeCommand,
+  renderCommand,
   reviseCommand,
   serveCommand,
   splitCommand,
