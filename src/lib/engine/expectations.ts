@@ -12,6 +12,14 @@
 //   - **Expectation (EARS):** When <trigger>, the system SHALL <behavior>.
 //   - **Threshold:** p95 latency < 8s
 //   - **Verified by:** test/foo.test.ts
+//   - **Measure:** `scripts/count-merges.sh` · window: trailing 30d
+//
+// `Measure:` is optional and only means something on an expectation that
+// Covers a numeric `G-` goal: it is the command `devx outcome score --run`
+// executes weeks later to score that goal. The alternative home for a
+// measure is a `metric` step in a `Verified by:` eval manifest
+// (eval-manifest.ts); this field is the one-liner for the common personal-
+// repo case where the measure is a script or a count.
 //
 // Parsing is tolerant of field order and missing fields — validation of
 // each field is gate-prd's job, not the parser's; the parser reports what
@@ -33,6 +41,8 @@ export interface EBlock {
   expectation: string | null;
   threshold: string | null;
   verifiedBy: string | null;
+  /** `Measure:` — the raw field value; parse it with `parseMeasureField`. */
+  measure: string | null;
 }
 
 const E_HEADING_RE = /^##\s+(E-\d+)\s*:\s*(.*)$/;
@@ -49,6 +59,7 @@ const FIELD_RES: Array<{ key: keyof EBlock; re: RegExp }> = [
   },
   { key: "threshold", re: /^[-*]\s+\*\*Threshold:\*\*\s*(.*)$/ },
   { key: "verifiedBy", re: /^[-*]\s+\*\*Verified[- ]by:\*\*\s*(.*)$/i },
+  { key: "measure", re: /^[-*]\s+\*\*Measure:\*\*\s*(.*)$/i },
 ];
 
 export function parseExpectations(content: string): EBlock[] {
@@ -75,6 +86,7 @@ export function parseExpectations(content: string): EBlock[] {
         expectation: null,
         threshold: null,
         verifiedBy: null,
+        measure: null,
       };
       blocks.push(current);
       openKey = null;
@@ -127,6 +139,43 @@ export function parseCoversIds(covers: string): string[] {
     if (/^(?:G|UC|CAP|FR)-\d+$/i.test(tok)) out.push(tok.toUpperCase());
   }
   return out;
+}
+
+/** A parsed `Measure:` field: the command, plus the window it reads over. */
+export interface MeasureField {
+  /** The shell command, backticks stripped. */
+  command: string;
+  /** `window: <text>`, or null when the author declared none. */
+  window: string | null;
+}
+
+// The command MUST be backticked. Requiring the fence is what keeps the
+// field from being guessable: "whatever the author typed" would make
+// `Measure: see the Datadog dashboard` look runnable to `--run`, which would
+// then execute a sentence. An unfenced value parses as NO measure, so Gate
+// 1 still warns and the outcome gate still asks for an attested number.
+const MEASURE_COMMAND_RE = /`([^`]+)`/;
+// `· window: trailing 30d`. Any of `·`, `|`, `;` separates it; so does a
+// plain newline-folded continuation, which is why the separator is optional
+// when `window:` starts the remainder.
+const MEASURE_WINDOW_RE = /window:\s*(.+?)\s*$/i;
+
+/**
+ * Parse a `Measure:` value. Returns null when the field carries no backticked
+ * command — i.e. when there is nothing to run.
+ */
+export function parseMeasureField(value: string | null): MeasureField | null {
+  if (value === null) return null;
+  const cmdMatch = MEASURE_COMMAND_RE.exec(value);
+  if (cmdMatch === null) return null;
+  const command = cmdMatch[1].trim();
+  if (command === "") return null;
+  // Only the text AFTER the command can declare the window — a `window:`
+  // inside the backticked command is part of the command.
+  const rest = value.slice((cmdMatch.index ?? 0) + cmdMatch[0].length);
+  const win = MEASURE_WINDOW_RE.exec(rest);
+  const window = win === null ? null : win[1].trim().replace(/[·|;,]+$/, "").trim();
+  return { command, window: window === "" ? null : window };
 }
 
 const PRIORITY_RE = /^P[0-3]$/;

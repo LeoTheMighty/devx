@@ -125,6 +125,8 @@ function runPure(opts: {
   existing?: string[];
   waived?: ReadonlySet<string>;
   dryRun?: boolean;
+  /** Repo-relative path → file content, for the .md manifest check (B17). */
+  files?: Record<string, string>;
 }) {
   const { exec, calls } = fakeExec(opts.exitCode ?? 1);
   const existing = new Set(
@@ -140,6 +142,10 @@ function runPure(opts: {
     runners: [{ name: "cli", path: ".", test: "npm test --" }],
     exec,
     exists: (p) => existing.has(p),
+    readFile: (p) => {
+      const rel = p.startsWith("/repo/") ? p.slice("/repo/".length) : p;
+      return opts.files?.[rel] ?? null;
+    },
     waived: opts.waived,
     dryRun: opts.dryRun,
   });
@@ -205,6 +211,114 @@ describe("runGateEvals — pure gate", () => {
     const run = result.runs.find((r) => r.eId === "E-1")!;
     expect(run.redVerdict).toBe("not-run (eval-spec)");
     expect(run.gap).toContain("nonzero exit");
+  });
+
+  // -------------------------------------------------------------------------
+  // B17 — the all-deferred outcome-measure manifest
+  // -------------------------------------------------------------------------
+
+  const MD_REL = "_devx/workstreams/demo/evals/E-1_x.md";
+  const p0ManifestPlan = (): string =>
+    validPlan().replace(
+      "| E-1 | P0 | 1 | tests-first | test/demo.test.mjs | full |",
+      "| E-1 | P0 | 1 | tests-first | evals/E-1_x.md | full |",
+    );
+  const DEFERRED_ONLY = [
+    "# E-1: adoption",
+    "",
+    "## Steps",
+    "",
+    "### 1. metric — weekly actives `(measured at outcome)`",
+    "",
+    "- **Run:** `bin/actives.sh`",
+    "- **Window:** trailing 30d",
+    "- **Expected:** >= 20",
+    "",
+  ].join("\n");
+
+  it("P0 whose only step is deferred to outcome → deferred, not FAIL", () => {
+    // The whole point of B17: a production number cannot be observed RED
+    // pre-launch, so demanding RED from it would make the only honest way to
+    // write a measurable goal also the way to wedge Gate 4.
+    const { result } = runPure({
+      plan: p0ManifestPlan(),
+      existing: [MD_REL, "test/perf.test.mjs"],
+      files: { [MD_REL]: DEFERRED_ONLY },
+    });
+    expect(result.verdict).not.toBe("FAIL");
+    const run = result.deferred.find((r) => r.eId === "E-1");
+    expect(run?.redVerdict).toBe("not-run (deferred: outcome-measure)");
+    // Deferred means deferred: no gap at all, so it cannot drag the verdict
+    // down to CONCERNS either.
+    expect(run?.gap).toBeNull();
+    expect(run?.blocking).toBe(false);
+  });
+
+  it("a manifest with ONE runnable step keeps the strict P0 rule", () => {
+    const mixed = `${DEFERRED_ONLY}\n### 2. script — the route answers\n\n- **Run:** \`npm test\`\n`;
+    const { result } = runPure({
+      plan: p0ManifestPlan(),
+      existing: [MD_REL, "test/perf.test.mjs"],
+      files: { [MD_REL]: mixed },
+    });
+    expect(result.verdict).toBe("FAIL");
+    expect(result.runs.find((r) => r.eId === "E-1")?.redVerdict).toBe(
+      "not-run (eval-spec)",
+    );
+  });
+
+  it("a freeform (non-manifest) .md keeps today's P0 FAIL", () => {
+    const { result } = runPure({
+      plan: p0ManifestPlan(),
+      existing: [MD_REL, "test/perf.test.mjs"],
+      files: { [MD_REL]: "# E-1\n\nA supervised overnight run.\n" },
+    });
+    expect(result.verdict).toBe("FAIL");
+  });
+
+  it("an unreadable .md keeps today's P0 FAIL (null reads as not-a-manifest)", () => {
+    // The conservative direction. A read failure must never be the thing
+    // that lets a P0 through.
+    const { result } = runPure({
+      plan: p0ManifestPlan(),
+      existing: [MD_REL, "test/perf.test.mjs"],
+      files: {},
+    });
+    expect(result.verdict).toBe("FAIL");
+    expect(result.runs.find((r) => r.eId === "E-1")?.redVerdict).toBe(
+      "not-run (eval-spec)",
+    );
+  });
+
+  it("deferral is priority-blind — a P2 manifest defers the same way", () => {
+    const plan = validPlan().replace(
+      "| E-3 | P2 | 2 | human | evals/E-3_perf.md | partial |",
+      "| E-3 | P2 | 2 | tests-first | evals/E-3_perf.md | partial |",
+    );
+    const rel = "_devx/workstreams/demo/evals/E-3_perf.md";
+    const { result } = runPure({
+      plan,
+      existing: ["test/demo.test.mjs", rel],
+      files: { [rel]: DEFERRED_ONLY },
+    });
+    expect(result.deferred.find((r) => r.eId === "E-3")?.redVerdict).toBe(
+      "not-run (deferred: outcome-measure)",
+    );
+    expect(result.verdict).toBe("PASS");
+  });
+
+  it("without the readFile seam, behaviour is exactly as before", () => {
+    // Every pre-B17 caller omits it; the gate must not change under them.
+    const result = runGateEvals({
+      repoRoot: "/repo",
+      workstreamAbs: "/repo/_devx/workstreams/demo",
+      expectations: validExpectations(),
+      plan: p0ManifestPlan(),
+      runners: [{ name: "cli", path: ".", test: "npm test --" }],
+      exec: () => ({ stdout: "", stderr: "", exitCode: 1 }),
+      exists: (p) => p === `/repo/${MD_REL}` || p === "/repo/test/perf.test.mjs",
+    });
+    expect(result.verdict).toBe("FAIL");
   });
 
   it("P1+ gaps are CONCERNS, never a block", () => {

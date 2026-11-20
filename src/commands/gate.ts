@@ -311,7 +311,11 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
     return writeFailVerdict(r.repoRoot, ws, "prd", "devx gate prd", io) ? 1 : 2;
   }
 
-  // PASS: flip prd_validated + stage: design + verdict in one patch.
+  // PASS / CONCERNS: both advance (D-9) — flip prd_validated + stage: design
+  // + the evaluated verdict in one patch. CONCERNS is how the measurability
+  // floor surfaces: persisting it rather than only printing it is what makes
+  // the concern outlive this run, so `devx status`'s gates line still says
+  // `prd CONCERNS` weeks later when the outcome comes due.
   const newStage = advanceStage(ws.state.stage, "design");
   try {
     const updated = applyEnginePatch(ws.content, {
@@ -322,15 +326,16 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
     writeSpecPatchLocked(r.repoRoot, io, ws.specAbs, updated);
   } catch (e) {
     io.err(
-      `devx gate prd: PASS computed but frontmatter write failed: ${e instanceof Error ? e.message : String(e)}\n`,
+      `devx gate prd: ${result.verdict} computed but frontmatter write failed: ${e instanceof Error ? e.message : String(e)}\n`,
     );
     return 2;
   }
   io.out(
     `${JSON.stringify({
-      gate: "PASS",
+      gate: result.verdict,
       hash: ws.hash,
       flipped: { prd_validated: true, stage: newStage },
+      ...(result.concerns.length > 0 ? { concerns: result.concerns } : {}),
       spec: ws.specRel,
     })}\n`,
   );
@@ -502,6 +507,23 @@ export function runGateCoverage(
 // ---------------------------------------------------------------------------
 // devx gate evals <hash> [--dry-run] [--verify]
 // ---------------------------------------------------------------------------
+
+/**
+ * Read a markdown eval artifact for the gate's manifest check (B17), or null.
+ *
+ * Swallows every read failure on purpose: this feeds ONE decision — is this
+ * `.md` an all-deferred outcome-measure manifest — and null is the strict
+ * answer (keep demanding RED). A throw here would turn an unreadable file
+ * into a crashed gate, and a loud warning would fire on every ordinary
+ * freeform eval spec, which is the shape most of them still have.
+ */
+function readMdOrNull(io: GateIo, abs: string): string | null {
+  try {
+    return io.fs.readFile(abs);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Read each run eval's artifact for stamping. Keys are REPO-relative —
@@ -834,6 +856,7 @@ export function runGateEvalsCli(
         runners: projectRunnersFrom(r.merged),
         exec: () => ({ stdout: "", stderr: "--verify never executes evals", exitCode: 127 }),
         exists: (p) => io.fs.exists(p),
+        readFile: (p) => readMdOrNull(io, p),
         donePhases: new Set<number>(),
         waived: new Set<string>(),
         dryRun: true,
@@ -978,6 +1001,7 @@ export function runGateEvalsCli(
     runners: projectRunnersFrom(r.merged),
     exec: opts.exec ?? realShellExec,
     exists: (p) => io.fs.exists(p),
+    readFile: (p) => readMdOrNull(io, p),
     donePhases: donePhasesFor(io.fs, r.repoRoot, subjects.docSetRel),
     waived: new Set(waive),
     dryRun: flags.dryRun === true,
@@ -1115,7 +1139,7 @@ export function register(program: Command): void {
       // here — name the ARTIFACTS rather than one layout's spelling of
       // them, which under `project-level` would name files that don't
       // exist (review BH-3 / AA / EC-LOW2).
-      "Gate 1: placeholder/E-block/EARS/threshold/ID-resolution checks on the PRD + expectations artifacts; pass flips prd_validated + stage: design.",
+      "Gate 1: placeholder/E-block/EARS/threshold/ID-resolution checks on the PRD + expectations artifacts; pass flips prd_validated + stage: design. A numeric goal with no runnable measure is advisory CONCERNS, which also advances.",
     )
     .argument("<hash>", "workstream (plan spec) hash")
     .action((hash: string) => {

@@ -143,7 +143,30 @@ export function validPrd(): string {
   ].join("\n");
 }
 
-export function validExpectations(): string {
+/**
+ * Three valid E-blocks covering every PRD ID in `validPrd()`.
+ *
+ * `measures` defaults TRUE so this fixture passes every gate cleanly,
+ * including Gate 1's advisory measurability floor (a numeric `G-` needs a
+ * covering expectation that names a runnable measure). A fixture called
+ * "valid" that produced CONCERNS would make every PASS assertion in the
+ * suite read as a tolerated concern.
+ *
+ * Pass `{ measures: false }` for the outcome-scoring tests, where the point
+ * is the hand-typed `--goal` path: a goal WITH a measure refuses a typed
+ * figure, which is the behaviour those tests predate.
+ *
+ * E-1 and E-3 both cover G-1 and only E-1 carries the measure, so a test
+ * that deletes one block still leaves G-1 exactly one measure — two would
+ * be an ambiguity refusal.
+ */
+export function validExpectations(
+  opts: { measures?: boolean } = {},
+): string {
+  const measure = (cmd: string, window: string): string[] =>
+    opts.measures === false
+      ? []
+      : [`- **Measure:** \`${cmd}\` · window: ${window}`];
   return [
     "# Expectations — Demo Feature",
     "",
@@ -155,6 +178,7 @@ export function validExpectations(): string {
     "- **Expectation (EARS):** When a PR is opened, the system SHALL attach a tour.",
     "- **Threshold:** tour present on 100% of PRs",
     "- **Verified by:** test/demo.test.mjs",
+    ...measure("scripts/review-minutes.sh", "trailing 30d"),
     "",
     "## E-2: scope fence",
     "",
@@ -164,6 +188,7 @@ export function validExpectations(): string {
     "- **Expectation (EARS):** When extras appear, the system SHALL flag them.",
     "- **Threshold:** at least 1 extras row per undeclared surface",
     "- **Verified by:** test/demo.test.mjs",
+    ...measure("scripts/creep-incidents.sh", "trailing 30d"),
     "",
     "## E-3: perf",
     "",

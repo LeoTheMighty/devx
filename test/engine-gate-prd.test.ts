@@ -64,6 +64,128 @@ describe("evaluateGatePrd — clean fixture", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Measurability floor (ADVISORY) — row A18 / upstream FUTURE.md §C.1
+// ---------------------------------------------------------------------------
+
+describe("evaluateGatePrd — the measurability floor", () => {
+  it("a numeric goal with no runnable measure is CONCERNS, not FAIL", () => {
+    const result = evaluate({ expectations: validExpectations({ measures: false }) });
+    // Advisory is the whole point: the workstream still advances. Making it
+    // block would retro-fail every PRD written before the field existed,
+    // and a goal CAN legitimately be scored by hand.
+    expect(result.verdict).toBe("CONCERNS");
+    expect(result.gaps).toEqual([]);
+    const c = result.concerns.find((x) => x.check === "goal-no-runnable-measure");
+    expect(c).toBeDefined();
+    expect(c!.message).toContain("G-1");
+    expect(c!.location).toMatch(
+      /^_devx\/workstreams\/demo\/prd\/agent\.md:\d+$/,
+    );
+  });
+
+  it("an inline Measure: on any covering expectation clears it", () => {
+    const result = evaluate({});
+    expect(result.concerns).toEqual([]);
+    expect(result.verdict).toBe("PASS");
+  });
+
+  it("a Verified-by pointing at an evals/*.md manifest also clears it", () => {
+    // Gate 1 is pure over its two inputs and never opens the manifest, so it
+    // checks that a measure is NAMED. Whether the manifest really carries a
+    // runnable step is `devx outcome score --run`'s refusal, with the file
+    // in hand.
+    const base = validExpectations({ measures: false });
+    // E-1 and E-3 both cover G-1; re-point E-3's (a .test.mjs path) at a
+    // manifest and G-1 has a named measure again.
+    const withManifest = base.replace(
+      "- **Verified by:** test/perf.test.mjs",
+      "- **Verified by:** evals/E-3_perf.md",
+    );
+    expect(withManifest, "the fixture line moved — update this replace").not.toBe(base);
+    const concerns = evaluate({ expectations: withManifest }).concerns;
+    expect(concerns).toEqual([]);
+    // And the inverse, so the test cannot pass by accident: the same
+    // fixture WITHOUT the re-point does flag G-1.
+    expect(evaluate({ expectations: base }).concerns.map((c) => c.check)).toEqual([
+      "goal-no-runnable-measure",
+    ]);
+  });
+
+  it("a plain repo test path is NOT a named measure", () => {
+    // Only an `evals/*.md` manifest can carry a `metric` step. A .test.ts
+    // target is Gate 4's runnable artifact, which is a different claim.
+    const exp = validExpectations({ measures: false }).replace(
+      "- **Verified by:** test/perf.test.mjs",
+      "- **Verified by:** test/perf-outcome.md",
+    );
+    expect(evaluate({ expectations: exp }).concerns.map((c) => c.check)).toEqual([
+      "goal-no-runnable-measure",
+    ]);
+  });
+
+  it("a non-numeric goal is never flagged (the check under-warns on purpose)", () => {
+    // G-2 is "zero silent scope-creep incidents per month" — numeric in
+    // spirit, no digit. Flagging every goal and letting the author dismiss
+    // it is how an advisory becomes wallpaper.
+    const flagged = evaluate({ expectations: validExpectations({ measures: false }) })
+      .concerns.map((c) => c.message)
+      .join(" ");
+    expect(flagged).toContain("'G-1'");
+    expect(flagged).not.toContain("'G-2'");
+  });
+
+  it("a date is not a measurable number", () => {
+    const prd = validPrd().replace(
+      "- **G-1**: review time per PR under 10 min by 2026-08-01",
+      "- **G-1**: ship the reviewer surface by 2026-08-01",
+    );
+    const result = evaluate({
+      prd,
+      expectations: validExpectations({ measures: false }),
+    });
+    expect(result.concerns).toEqual([]);
+    expect(result.verdict).toBe("PASS");
+  });
+
+  it("an UNCOVERED numeric goal reports only the coverage FAIL", () => {
+    // "and it has no measure" about a goal nothing verifies is noise piled
+    // on the real finding.
+    const prd = validPrd().replace(
+      "- **G-2**: zero silent scope-creep incidents per month",
+      "- **G-2**: zero silent scope-creep incidents per month\n- **G-3**: onboarding under 5 minutes",
+    );
+    const result = evaluate({ prd });
+    expect(result.verdict).toBe("FAIL");
+    expect(checksOf(result)).toContain("goal-uncovered");
+    expect(result.concerns.map((c) => c.message).join(" ")).not.toContain("'G-3'");
+  });
+
+  it("a real FAIL outranks a concern in the verdict", () => {
+    const result = evaluate({
+      expectations: validExpectations({ measures: false }).replace(
+        "- **Threshold:** tour present on 100% of PRs\n",
+        "",
+      ),
+    });
+    expect(result.verdict).toBe("FAIL");
+    expect(result.concerns.length).toBeGreaterThan(0);
+  });
+
+  it("an unfenced Measure: value does not count as runnable", () => {
+    // `Measure: see the Datadog dashboard` would otherwise look runnable to
+    // `--run`, which would then execute a sentence.
+    const exp = validExpectations({ measures: false }).replace(
+      "- **Verified by:** test/demo.test.mjs\n\n## E-2",
+      "- **Verified by:** test/demo.test.mjs\n- **Measure:** check the dashboard each month\n\n## E-2",
+    );
+    const result = evaluate({ expectations: exp });
+    expect(result.concerns.map((c) => c.check)).toContain(
+      "goal-no-runnable-measure",
+    );
+  });
+});
+
 describe("evaluateGatePrd — seeded defects", () => {
   it("missing threshold → expectation-threshold-missing", () => {
     const exp = validExpectations().replace(
@@ -276,7 +398,9 @@ afterEach(() => repo.cleanup());
 const SPEC_REL = "plan/plan-abc123-2026-07-05T13:01-demo-feature.md";
 const WS = "_devx/workstreams/demo-feature";
 
-function seedWorkstream(opts: { blockedBy?: string } = {}): void {
+function seedWorkstream(
+  opts: { blockedBy?: string; expectations?: string } = {},
+): void {
   repo.write(
     SPEC_REL,
     [
@@ -306,7 +430,7 @@ function seedWorkstream(opts: { blockedBy?: string } = {}): void {
   );
   repo.mkdir(WS);
   repo.write(`${WS}/prd/agent.md`, validPrd());
-  repo.write(`${WS}/expectations.md`, validExpectations());
+  repo.write(`${WS}/expectations.md`, opts.expectations ?? validExpectations());
 }
 
 function gatePrd() {
@@ -325,6 +449,35 @@ describe("devx gate prd — CLI driver", () => {
     const state = readEngineState(repo.read(SPEC_REL));
     expect(state.gateStatus.prd_validated).toBe(true);
     expect(state.stage).toBe("design");
+  });
+
+  it("CONCERNS: exit 0, advances like PASS, and PERSISTS the concern", () => {
+    seedWorkstream({ expectations: validExpectations({ measures: false }) });
+    const { code, io } = gatePrd();
+    // D-9: CONCERNS advances with the concern recorded, exactly as gate
+    // coverage does. Exit 0 — this is not a refusal.
+    expect(code).toBe(0);
+    const j = io.json() as {
+      gate: string;
+      concerns: Array<{ check: string; message: string }>;
+    };
+    expect(j.gate).toBe("CONCERNS");
+    expect(j.concerns.map((c) => c.check)).toEqual(["goal-no-runnable-measure"]);
+    const state = readEngineState(repo.read(SPEC_REL));
+    expect(state.gateStatus.prd_validated).toBe(true);
+    expect(state.stage).toBe("design");
+    // Persisted, not merely printed: `devx status`'s gates line still says
+    // `prd CONCERNS` weeks later, when the outcome actually comes due. A
+    // finding that lives only in one run's stdout is a finding nobody
+    // re-reads — the exact complaint the gap analysis makes about gate
+    // reports.
+    expect(state.gateVerdicts.prd).toBe("CONCERNS");
+  });
+
+  it("PASS omits the concerns key entirely", () => {
+    seedWorkstream();
+    const { io } = gatePrd();
+    expect(io.json()).not.toHaveProperty("concerns");
   });
 
   it("PASS on a later-stage spec does not regress the stage", () => {
