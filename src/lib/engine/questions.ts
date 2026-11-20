@@ -376,6 +376,24 @@ const FIELD_ORDER: ReadonlyArray<[label: string, key: keyof Question]> = [
 
 const EM_DASH = "—";
 
+/**
+ * Collapse a value onto one line, because the entry's shape depends on it.
+ *
+ * A heading is one line and a field is one `- **Label:** value` bullet. A
+ * newline in either silently BREAKS the shape: the bullet splits, the tail
+ * does not match `FIELD_RE`, and the next parse reads a truncated field with
+ * orphan prose beside it — so a recommendation would lose half its text with
+ * nothing reporting it.
+ *
+ * No value reaches here with a newline today (every gate builds its gap and
+ * reason from single-line templates), and that is exactly why the guard
+ * belongs at the boundary rather than in each caller's discipline:
+ * `GateFinding` is exported, and the planning stages are meant to park
+ * entries through it later. Normalizing once is what keeps "an entry is seven
+ * bullets" true for every writer, including the ones not written yet.
+ */
+const oneLine = (s: string): string => s.replace(/\s*\r?\n\s*/g, " ").trim();
+
 /** Id-allocation stand-in for an entry this run appended but has not parsed
  *  back. Only `id` is read by `nextQuestionId`. */
 const PLACEHOLDER_QUESTION: Question = {
@@ -396,9 +414,9 @@ function renderEntry(
   title: string,
   fields: Readonly<Record<string, string>>,
 ): string[] {
-  const lines = [`## ${id}: ${title}`, ""];
+  const lines = [`## ${id}: ${oneLine(title)}`, ""];
   for (const [label, key] of FIELD_ORDER) {
-    const v = fields[key] ?? "";
+    const v = oneLine(fields[key] ?? "");
     lines.push(`- **${label}:** ${v === "" ? EM_DASH : v}`);
   }
   lines.push("", "---", "");
@@ -456,7 +474,8 @@ export function reconcileGateConcerns(
   const insert = new Map<number, string[]>();
 
   const setField = (span: EntrySpan, label: string, value: string): void => {
-    const text = `- **${label}:** ${value === "" ? EM_DASH : value}`;
+    const v = oneLine(value);
+    const text = `- **${label}:** ${v === "" ? EM_DASH : v}`;
     const idx = span.fieldIdx.get(label.toLowerCase());
     if (idx !== undefined) {
       replace.set(idx, text);

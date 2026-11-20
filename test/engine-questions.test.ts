@@ -477,6 +477,49 @@ describe("reconcileGateConcerns — surgery, not re-render", () => {
     expect(r.content).toContain("## Q-1: t");
   });
 
+  it("collapses a multi-line value so the entry's shape survives", () => {
+    // A newline in a field splits the bullet; the tail stops matching
+    // FIELD_RE and the next parse reads a truncated field with orphan prose
+    // beside it — half a recommendation lost, silently.
+    const r = reconcileGateConcerns(TEMPLATE, {
+      ...input,
+      findings: [
+        {
+          title: "a title\nwith a break",
+          severity: "blocking",
+          recommendation: "line one\nline two\n  line three",
+        },
+      ],
+    });
+    const q = parseQuestions(r.content).entries[0];
+    expect(q.title).toBe("a title with a break");
+    expect(q.recommendation).toBe("line one line two line three");
+    // Still exactly seven bullets — the shape held.
+    const bullets = r.content
+      .split("\n")
+      .filter((l) => /^- \*\*[^*]+:\*\*/.test(l));
+    expect(bullets).toHaveLength(7);
+  });
+
+  it("collapses a multi-line value on an UPDATE too", () => {
+    const before = entry("Q-1", "FR-3 missing", {});
+    const r = reconcileGateConcerns(before, {
+      ...input,
+      findings: [
+        {
+          title: "FR-3 missing",
+          severity: "concern",
+          recommendation: "first\nsecond",
+        },
+      ],
+    });
+    const q = parseQuestions(r.content).entries[0];
+    expect(q.recommendation).toBe("first second");
+    expect(
+      r.content.split("\n").filter((l) => /^- \*\*[^*]+:\*\*/.test(l)),
+    ).toHaveLength(7);
+  });
+
   it("does not read a commented-out entry as live, in either half", () => {
     const masked = `<!--\n${entry("Q-9", "ghost", { Severity: "blocking" })}-->\n`;
     expect(parseQuestions(masked).entries).toEqual([]);
