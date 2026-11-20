@@ -249,6 +249,22 @@ export function outcomeMeasures(md: string): EvalStep[] {
  * gate can actually run — because its "only unmet step" is then not the
  * deferred one, and weakening the P0 floor on a partially-runnable manifest
  * would turn the whole RED gate into an opt-out.
+ *
+ * KNOWN BOUND, stated here because this function is what opens it. A
+ * deferred manifest is not covered by the RED stamp: Gate 4 maps a deferred
+ * E-id to `null` in `red_eval_ids` (see `lockedEvalIds` in
+ * commands/gate.ts), exactly as it does for `human` and `tests-after`. So
+ * the `Expected:` bar this manifest asserts — the threshold
+ * `devx outcome score --run` will compare against weeks later — can be
+ * softened after Gate 4 with nothing detecting it. Before this function a
+ * P0 could not name a markdown artifact at all (the gate FAILed), so no
+ * P0's bar could live outside the lock; now one can. That is the same class
+ * of problem "fix the code, not the eval" exists to prevent, displaced from
+ * the RED gate to the outcome gate. Closing it means stamping a deferred
+ * outcome-measure manifest — mapping its E-id to its artifact rather than
+ * `null` — which `--verify`'s `dropped` branch would then read as a locked
+ * eval that no longer runs. That interaction needs its own decision, so it
+ * is recorded rather than guessed at here.
  */
 export function isOutcomeDeferredManifest(md: string): boolean {
   const { isManifest, steps } = parseEvalManifest(md);
