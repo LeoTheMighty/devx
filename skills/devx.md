@@ -729,11 +729,17 @@ the loop v1 never closed.
 1. Arming happens at workstream close: `devx outcome arm <hash>
    [--measure-by <date|+Nw>]` (default +4 weeks). `devx next` surfaces due
    outcomes automatically (row 5.5).
-2. When due: gather each `G-` goal's actual value with a real source (a
-   metric, an eval run, a count — never vibes), then
-   `devx outcome score <hash> --verdict keep|tune|restart|retire
-   --goal G-N=<actual> --source G-N=<where> [...]`. The CLI writes
-   RESULTS.md and applies the verdict mechanics.
+2. When due: `devx outcome score <hash> --run
+   --verdict keep|tune|restart|retire [...]`. **Measurement is run, not
+   asked for — a real source, never vibes.** `--run` executes each goal's
+   declared measure (an expectations `Measure:`, or a
+   `(measured at outcome)` manifest step), recording command · value ·
+   window · timestamp as the Source, then writes RESULTS.md and applies
+   the verdict mechanics. A goal naming a measure REFUSES a `--goal`
+   figure; one without takes `--goal G-N=<actual> --source G-N=<where>`
+   (Gate 1 warned about that gap at PRD time). Never estimate around a
+   broken measure — fix it, or `--attested G-N` with its `--goal`/
+   `--source`, which labels the figure attested in RESULTS.md.
 3. Verdicts: **keep** is mechanical (goals hit). **tune** reopens via the
    revision cascade keyed to the missed expectations (`--reopen E-n,...`).
    **restart** links a successor workstream (`--successor <slug>`) with
