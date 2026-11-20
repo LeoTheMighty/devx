@@ -10,6 +10,7 @@
 //     gates: prd PASS · design FAIL · plan — · evals —
 //       design FAIL → report: … · re-run: devx gate coverage <hash>
 //     focus: <current focus from the todo walk>
+//     health: 2 blocking · 1 concern   (the questions.md queue, B11)
 //
 // Workstream identity derives from the scanned FILE (frontmatter
 // `workstream:` → filename-slug fallback) — the same derivation the `devx
@@ -37,7 +38,13 @@ import {
   frontmatterParseError,
   readEngineState,
 } from "../lib/engine/frontmatter.js";
-import { renderFocusLine, renderGateSummary } from "../lib/engine/render.js";
+import {
+  renderFocusLine,
+  renderGateSummary,
+  renderHealthLine,
+} from "../lib/engine/render.js";
+import { healthCounts } from "../lib/engine/questions.js";
+import { loadQuestions } from "../lib/engine/questions-io.js";
 import { loadTodoDoc } from "../lib/engine/todo-truth.js";
 import { heartbeatIntervalMsFrom } from "../lib/loop/config.js";
 import { listLiveInstances } from "../lib/loop/instances.js";
@@ -155,6 +162,19 @@ export function runStatus(opts: RunStatusOpts = {}): number {
         // unreadable todo.md — the focus line is advisory; omit it
       }
 
+      // B11: the health-queue line. `loadQuestions` never throws and reports
+      // a malformed queue with its reason rather than zeroes, so there is no
+      // try/catch here and no way for a bad entry to make this block render
+      // a confident `0 blocking` over a file that may hold four.
+      const questions = loadQuestions(fs, base);
+      const healthLine =
+        questions === null
+          ? null
+          : renderHealthLine(
+              questions.error === null ? healthCounts(questions.entries) : null,
+              questions.error,
+            );
+
       // Through the shared helper (dlr103): the tail of `.` is `.`, so under
       // `project-level` a hand-rolled tail renders every workstream as
       // ". (<hash>)". The slug lives in the plan spec's filename there.
@@ -164,6 +184,7 @@ export function runStatus(opts: RunStatusOpts = {}): number {
         ...summary.split("\n").map((l) => `  ${l}`),
       ];
       if (focusLine !== null) lines.push(`  ${focusLine}`);
+      if (healthLine !== null) lines.push(`  ${healthLine}`);
       blocks.push(lines.join("\n"));
     } catch {
       continue;
@@ -222,7 +243,7 @@ export function register(program: Command): void {
   const sub = program
     .command("status")
     .description(
-      "Per-workstream status: stage, gate summary (verdicts + FAIL fix paths), and the current todo focus for every active workstream. Read-only.",
+      "Per-workstream status: stage, gate summary (verdicts + FAIL fix paths), the current todo focus, and the health-queue counts for every active workstream. Read-only.",
     )
     .action(() => {
       const code = runStatus();

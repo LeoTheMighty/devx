@@ -31,6 +31,7 @@ import {
   type Stage,
 } from "./frontmatter.js";
 import { type TodoDoc, currentFocus } from "./todo.js";
+import type { HealthCounts } from "./questions.js";
 import {
   type ArtifactKind,
   type DocsLayout,
@@ -180,4 +181,33 @@ export function renderFocusLine(
   if (doc === null || stage === null) return null;
   const focus = currentFocus(doc, stage);
   return focus !== null ? `focus: ${focus}` : null;
+}
+
+/**
+ * The health-queue line for one workstream (B11):
+ * `health: 2 blocking · 1 concern`.
+ *
+ * Null — the line is OMITTED, never rendered as `0 blocking · 0 concern` —
+ * when the queue is clean or absent. A board whose every row carries a zero
+ * is a board nobody scans; the signal is the non-zero row.
+ *
+ * `error` is the one case that renders with no counts: the file exists but
+ * does not parse, so its real counts are unknown and a confident `0 blocking`
+ * would be a claim about a file that may hold four blockers (D-13). The
+ * counts are dropped rather than shown as zero, and the reason is named.
+ *
+ * `null` counts with `null` error means the queue is absent — silence, which
+ * is what a grandfathered workstream must look like everywhere.
+ */
+export function renderHealthLine(
+  counts: HealthCounts | null,
+  error: string | null = null,
+): string | null {
+  if (error !== null) return `health: unreadable — ${error}`;
+  if (counts === null) return null;
+  const parts = [
+    counts.blocking > 0 ? `${counts.blocking} blocking` : null,
+    counts.concern > 0 ? `${counts.concern} concern` : null,
+  ].filter((p): p is string => p !== null);
+  return parts.length > 0 ? `health: ${parts.join(" · ")}` : null;
 }

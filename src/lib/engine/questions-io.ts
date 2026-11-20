@@ -22,6 +22,7 @@ import { dirname, join } from "node:path";
 
 import { type ResolvedBase, artifactRel, stageSubject } from "./artifacts.js";
 import {
+  type Question,
   type ReconcileInput,
   QuestionsError,
   parseQuestions,
@@ -171,4 +172,58 @@ export function reconcileQuestionsOnDisk(
 
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+// ---------------------------------------------------------------------------
+// Read side
+// ---------------------------------------------------------------------------
+
+export interface LoadedQuestions {
+  /** Parsed entries. EMPTY when the file does not parse — see `error`. */
+  entries: Question[];
+  /** 1-indexed lines of `## Q…` headings off the canonical shape. */
+  headingDrift: number[];
+  /**
+   * Non-null when the file EXISTS but could not be read or parsed.
+   *
+   * Separate from "absent" on purpose, and it is the difference between two
+   * answers a surface must never conflate: an absent queue is SILENCE (a
+   * grandfathered workstream, nothing to report), while a malformed one is a
+   * queue whose real counts are unknown. Rendering `0 blocking` for the
+   * second is a confident empty state over a file that may hold four
+   * blockers — the shape D-13 exists to prevent.
+   */
+  error: string | null;
+}
+
+/**
+ * Read + parse a workstream's health queue. Null when the file is absent
+ * (grandfathered — every renderer omits its line).
+ *
+ * Never throws: a surface that renders the queue is advisory, and the three
+ * that do (`devx next`, `devx status`, `devx board`) must degrade to a named
+ * warning rather than taking the command down.
+ */
+export function loadQuestions(
+  fs: Pick<QuestionsFs, "exists" | "readFile">,
+  base: ResolvedBase,
+): LoadedQuestions | null {
+  const { abs } = stageSubject(base.layout, base, { kind: "questions" });
+  if (!fs.exists(abs)) return null;
+  let content: string;
+  try {
+    content = fs.readFile(abs);
+  } catch (e) {
+    return { entries: [], headingDrift: [], error: `unreadable: ${message(e)}` };
+  }
+  try {
+    const doc = parseQuestions(content);
+    return { entries: doc.entries, headingDrift: doc.headingDrift, error: null };
+  } catch (e) {
+    return {
+      entries: [],
+      headingDrift: [],
+      error: e instanceof QuestionsError ? e.message : message(e),
+    };
+  }
 }

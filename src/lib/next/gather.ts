@@ -36,7 +36,11 @@ import {
   readEngineState,
 } from "../engine/frontmatter.js";
 import { type EngineConfig } from "../engine/config.js";
-import { renderFocusLine, renderGateSummary } from "../engine/render.js";
+import {
+  renderFocusLine,
+  renderGateSummary,
+  renderHealthLine,
+} from "../engine/render.js";
 import * as wsArtifacts from "../engine/artifacts.js";
 import { computeTodoDrift } from "../engine/todo.js";
 import { loadTodoDoc, todoGroundTruth } from "../engine/todo-truth.js";
@@ -67,6 +71,8 @@ import {
 } from "../loop/instances.js";
 import { heartbeatPath } from "../manage/state.js";
 import { parseFrontmatterValue } from "../plan/validate-emit.js";
+import { healthCounts, isBlocking } from "../engine/questions.js";
+import { loadQuestions } from "../engine/questions-io.js";
 import { type Exec, realExec } from "../exec.js";
 import {
   type BlockedItemSignal,
@@ -85,6 +91,7 @@ import {
   type ReadyItemSignal,
   type RepoSnapshot,
   type RowVerdict,
+  type WorkstreamHealthSignal,
   type WorkstreamSignal,
   type WorkstreamTodoDrift,
 } from "./decide.js";
@@ -497,7 +504,7 @@ export function gatherRepoSnapshot(opts: GatherOpts): RepoSnapshot {
   // ── Mid-pipeline workstreams (row 9 — reuse the v1 stage rows) + due
   //    outcomes (row 5.5, v2o101) + advisory todo drift (hfi103) — one
   //    plan/ scan feeds all three. ─────────────────────────────────────────
-  const { midPipeline, outcomeDue, todoDrift } = gatherWorkstreamSignals(
+  const { midPipeline, outcomeDue, todoDrift, health } = gatherWorkstreamSignals(
     fs,
     repoRoot,
     engine,
@@ -523,6 +530,7 @@ export function gatherRepoSnapshot(opts: GatherOpts): RepoSnapshot {
     midPipeline,
     planReady,
     qaWalkthroughs,
+    health,
     blocked,
     todoDrift,
     drift: [...drift, ...doctorDrift(fs, repoRoot, allRows, opts)],
@@ -846,13 +854,15 @@ function gatherWorkstreamSignals(
   midPipeline: WorkstreamSignal[];
   outcomeDue: OutcomeDueSignal[];
   todoDrift: WorkstreamTodoDrift[];
+  health: WorkstreamHealthSignal[];
 } {
   const planDir = join(repoRoot, "plan");
   const midPipeline: WorkstreamSignal[] = [];
   const outcomeDue: OutcomeDueSignal[] = [];
   const allTodoDrift: WorkstreamTodoDrift[] = [];
+  const allHealth: WorkstreamHealthSignal[] = [];
   if (!fs.exists(planDir)) {
-    return { midPipeline, outcomeDue, todoDrift: allTodoDrift };
+    return { midPipeline, outcomeDue, todoDrift: allTodoDrift, health: allHealth };
   }
   for (const name of [...fs.readdir(planDir)].sort()) {
     if (!name.endsWith(".md")) continue;
@@ -949,6 +959,52 @@ function gatherWorkstreamSignals(
         }
       }
     }
+
+    // B11: the health-queue rollup — computed for EVERY engine workstream,
+    // same reason the focus walk above is. An executing-stage workstream
+    // never enters `midPipeline`, and execute is exactly where a gate concern
+    // sits unread; a per-signal-only read would hide the blockers row 11
+    // exists to surface.
+    //
+    // Absent queue → null, which renders as silence (grandfathered). A queue
+    // that exists but does not PARSE is reported with no counts rather than
+    // zeroes: an unknown count is not a zero count, and a confident
+    // `0 blocking` over a file that may hold four is the shape D-13 removes.
+    let healthLine: string | null = null;
+    if (base !== null) {
+      const loaded = loadQuestions(fs, base);
+      if (loaded !== null) {
+        const counts = healthCounts(loaded.entries);
+        healthLine = renderHealthLine(loaded.error === null ? counts : null, loaded.error);
+        if (loaded.error !== null || counts.blocking > 0 || counts.concern > 0) {
+          const blockingTitles = loaded.entries
+            .filter(isBlocking)
+            .map((q) => `${q.id} ${q.title}`);
+          allHealth.push({
+            hash,
+            slug,
+            counts,
+            blockingTitles:
+              blockingTitles.length > ROW_11_TITLE_CAP
+                ? [
+                    ...blockingTitles.slice(0, ROW_11_TITLE_CAP),
+                    `+${blockingTitles.length - ROW_11_TITLE_CAP} more`,
+                  ]
+                : blockingTitles,
+            error: loaded.error,
+          });
+        }
+        for (const line of loaded.headingDrift) {
+          const rel = wsArtifacts.stageSubject(base.layout, base, {
+            kind: "questions",
+          }).rel;
+          warnings.push(
+            `${rel}:${line}: a '## Q…' heading is off the canonical '## Q-<n>: <title>' shape — its fields read as the entry above it`,
+          );
+        }
+      }
+    }
+
     // Row-9 domain: a stage/gate command exists AND it isn't the v1
     // "all gates passed → /devx executes its dev items" terminal row
     // (that is row 8's domain via DEV.md).
@@ -989,11 +1045,18 @@ function gatherWorkstreamSignals(
             wsArtifacts.artifactExists(fs, base, { kind: "red-report" }),
         }),
         focus,
+        health: healthLine,
       });
     }
   }
-  return { midPipeline, outcomeDue, todoDrift: allTodoDrift };
+  return { midPipeline, outcomeDue, todoDrift: allTodoDrift, health: allHealth };
 }
+
+/** Open blocking titles named in a row-11 report. Bounded, because the
+ *  dispatcher prints ONE line and a workstream with fifteen blockers would
+ *  bury every other clause in it; the full list is what `devx status` and
+ *  `devx board` are for. */
+const ROW_11_TITLE_CAP = 3;
 
 function artifactsFor(
   fs: NextFs,
