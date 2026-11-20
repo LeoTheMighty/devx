@@ -48,6 +48,21 @@ product approval">
 - [ ] Phase 1: <name>
 - [ ] Phase 2: <name>
 
+## Execution graph
+
+<!-- OPTIONAL — delete for a serial plan. Gate 3 FAILs a cycle, a phase set
+     ≠ the checklist, or two unordered phases changing one file (per their
+     **Files**) without a waiver. Emission sets `blocked_by` from `depends_on`
+     (`devx workstream graph <hash>`). Wave = one `devx loop --items` per
+     independent set. Contract: v2/02-engine.md §4.5. -->
+
+```yaml
+phases:
+  - { id: 1, depends_on: [] }
+  - { id: 2, depends_on: [1] }          # integration/production_touch: true ⇒ never parallel
+waivers: []   # - { phases: [2, 3], paths: [src/x.ts], approver: <name>, reason: <why safe> }
+```
+
 ## Phases
 
 ### 1. Phase: <name>
@@ -55,7 +70,7 @@ product approval">
 **Overview**: <what this phase lands and why it's first>
 
 **Files**:
-- `path/to/file.ext` — <what changes and why>
+- `path/to/file.ext` — <what changes and why; files this phase CHANGES only>
 
 **Context**:
 - <design decisions / codebase patterns relevant here>

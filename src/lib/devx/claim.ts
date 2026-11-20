@@ -679,7 +679,7 @@ export async function claimSpec(
   //     even when integration_branch is set. Closes
   //     feedback_devx_push_claim_before_pr.md by pushing to origin/main.
   //   - worktreeBase: what the feature branch forks off. The skill body
-  //     prose at .claude/commands/devx.md says
+  //     prose at .claude/commands/devx-execute.md says
   //     `BASE=${git.integration_branch:-${git.default_branch:-main}}` —
   //     develop for split-branch, main for single. The PR opens against
   //     this base, so the worktree must fork from the same place.

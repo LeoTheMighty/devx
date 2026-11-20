@@ -1668,3 +1668,55 @@ branch: feat/dev-v2a996
     expect(findIssue(r.issues, "orphan-spec-claims-epic")).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Check 7 (harness-s5): Execution graph ⇒ emitted blocked_by.
+// ---------------------------------------------------------------------------
+
+describe("validateEmit — check 7 graph-blocked-by", () => {
+  const GRAPH = ["## Execution graph", "", "```yaml", "phases:", "  - { id: 1 }", "  - { id: 2, depends_on: [1] }", "```", ""].join("\n");
+
+  function withGraph(fs: MemoryFs, planText: string): void {
+    fs.put(WS_PLAN_PATH, planText.replace("## Phases", `${GRAPH}## Phases`));
+  }
+
+  it("flags a dependent spec whose blocked_by lacks its phase's dependency", () => {
+    const { fs, repoRoot } = wsFixture();
+    withGraph(fs, fs.readFile(WS_PLAN_PATH));
+    const r = validateEmit({ repoRoot, epicSlug: WS_SLUG, config: SINGLE_BRANCH_CONFIG }, fs);
+    const issue = findIssue(r.issues, "graph-blocked-by");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain("'v2a102' (phase 2) lacks blocked_by 'v2a101'");
+    expect(issue?.location).toBe("dev/dev-v2a102-2026-07-05T12:00-polish.md");
+  });
+
+  it("is clean when the emitted spec carries the edge", () => {
+    const { fs, repoRoot } = wsFixture();
+    withGraph(fs, fs.readFile(WS_PLAN_PATH));
+    fs.put(
+      `${REPO_ROOT}/dev/dev-v2a102-2026-07-05T12:00-polish.md`,
+      fs.readFile(`${REPO_ROOT}/dev/dev-v2a102-2026-07-05T12:00-polish.md`).replace("status: ready", "status: ready\nblocked_by: [v2a101]"),
+    );
+    const r = validateEmit({ repoRoot, epicSlug: WS_SLUG, config: SINGLE_BRANCH_CONFIG }, fs);
+    expect(findIssue(r.issues, "graph-blocked-by")).toBeUndefined();
+  });
+
+  it("maps phases to hashes through todo.md pointers when the checklist has no markers", () => {
+    const { fs, repoRoot } = wsFixture();
+    const plain = fs.readFile(WS_PLAN_PATH).replace(" (dev spec: v2a101)", "").replace(" (dev spec: v2a102)", "");
+    withGraph(fs, plain);
+    fs.put(
+      `${REPO_ROOT}/_devx/workstreams/${WS_SLUG}/todo.md`,
+      ["- [ ] Stage: Execute", "  - [ ] Phase 1: core → v2a101", "  - [ ] Phase 2: polish → v2a102", ""].join("\n"),
+    );
+    const r = validateEmit({ repoRoot, epicSlug: WS_SLUG, config: SINGLE_BRANCH_CONFIG }, fs);
+    expect(findIssue(r.issues, "graph-blocked-by")?.message).toContain("phase 2");
+  });
+
+  it("no graph, or an unreadable one, adds no issue (the gate owns that)", () => {
+    const { fs, repoRoot } = wsFixture();
+    expect(findIssue(validateEmit({ repoRoot, epicSlug: WS_SLUG, config: SINGLE_BRANCH_CONFIG }, fs).issues, "graph-blocked-by")).toBeUndefined();
+    withGraph(fs, fs.readFile(WS_PLAN_PATH).replace("## Phases", "## Execution graph\n\n```yaml\nphases: [\n```\n\n## Phases"));
+    expect(findIssue(validateEmit({ repoRoot, epicSlug: WS_SLUG, config: SINGLE_BRANCH_CONFIG }, fs).issues, "graph-blocked-by")).toBeUndefined();
+  });
+});

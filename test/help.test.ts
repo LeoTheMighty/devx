@@ -201,6 +201,13 @@ describe("cli303 — devx --help command listing", () => {
                                      unmapped-doc-set-files, dirty-tree,
                                      untracked-sources, nested-repo-root,
                                      not-a-git-repo. There is no --force.
+        checkpoint [options] <hash>  Write a plan phase's verification record to the
+                                     workstream's checkpoints/phase-<n>.md: a D-9
+                                     verdict block, the observed expectation runs,
+                                     and the cross-cutting checks. Resolves the phase
+                                     from the dev spec's \`phase:\` frontmatter.
+                                     Re-running overwrites every section but 'Drift
+                                     noted', which is carried forward.
         devx-helper                  Helpers invoked by the /devx skill body (Phase
                                      1). Subcommand-driven; mirrors \`devx merge-gate\`
                                      + \`devx plan-helper\`.
@@ -251,7 +258,9 @@ describe("cli303 — devx --help command listing", () => {
                                      (Phase 1).
         revise [options] <hash>      Apply the v2 cascade-reset table for a touched
                                      workstream artifact (prd/expectations → 4 flags;
-                                     design → 3; plan → 2) and print the replay path.
+                                     design → 3; plan → 2), print the replay path,
+                                     and report the dev specs the plan already
+                                     emitted (never edits them).
         split [options] <hash>       Split an in-progress spec: emit a follow-up spec
                                      + backlog row for the remaining work (mss101).
                                      merge-first (default): parent lands at reduced
@@ -284,9 +293,15 @@ describe("cli303 — devx --help command listing", () => {
         restart                      (coming in Phase 2 — epic-devx-concierge-skill)
         resume                       (coming in Phase 2 — epic-devx-manage-minimal)
         status                       Per-workstream status: stage, gate summary
-                                     (verdicts + FAIL fix paths), and the current
-                                     todo focus for every active workstream.
-                                     Read-only.
+                                     (verdicts + FAIL fix paths), the current todo
+                                     focus, and the health-queue counts for every
+                                     active workstream. Read-only.
+        board [options]              Write a static HTML board: one index plus one
+                                     page per workstream (stage, gates with verdicts,
+                                     focus, the health queue, the todo checklist, and
+                                     its slice of GRAPH.md). No server, no build
+                                     step; re-run to refresh. Read-only except for
+                                     its own output dir.
         serve                        (coming in Phase 4 — epic-devx-serve-web)
         tail                         (coming in Phase 4 — epic-devx-ui-tui)
         ui                           (coming in Phase 4 — epic-devx-ui-tui)

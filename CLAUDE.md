@@ -236,7 +236,8 @@ skill is branch-model-aware; values below are this project's resolution.
 12. **Cleanup**: remove worktree, mark spec `done`, flip `DEV.md` checkbox to
     `[x]`, append PR URL inline.
 
-Full contract: `.claude/commands/devx.md`.
+Full contract: `.claude/commands/devx-execute.md` (the execute arm), loaded by
+the `.claude/commands/devx.md` dispatcher.
 
 ---
 
@@ -385,12 +386,18 @@ Full contract: `.claude/commands/devx.md`.
 - `docs/MODES.md` — what each mode does to each subsystem.
 - `docs/ROADMAP.md` — phased buildout + locked cross-epic decisions
   (Phases 2+ re-cut by `v2/06-phases.md`).
-- `.claude/commands/devx.md` — `/devx` command spec (execute loop + retro
-  stage); `.claude/commands/devx-plan.md` — planning stages (PRD → Design →
+- `.claude/commands/devx.md` — the `/devx` dispatcher (Step 0 + routing);
+  each arm's body is its own file beside it — `devx-execute.md` (the execute
+  loop), `devx-debug.md`, `devx-loop.md`, `devx-outcome.md`,
+  `devx-retro.md`; `.claude/commands/devx-plan.md` — planning stages (PRD → Design →
   Plan → RED); `.claude/commands/devx-walk.md` — the health queue's resolver
   (one blocker per invocation: pick by rule → dig against code → propose →
-  route to the writer); `.claude/commands/devx-personalize.md` — the
-  preference interview.
+  route to the writer); `.claude/commands/devx-address.md` — the Stage:
+  Address body (triage every PR comment → research → one plan-mode batch →
+  act on approval); `.claude/commands/devx-revise.md` — the Stage: Revise
+  body (the backward path: name the lowest artifact → amend → record →
+  `devx revise` → dispose the emitted dev specs);
+  `.claude/commands/devx-personalize.md` — the preference interview.
 - `_devx/workstreams/<slug>/` — engine workstream artifacts (prd/agent.md,
   design/agent.md, plan/agent.md, evals/); spec files in `dev/` remain the lightweight
   index on top.

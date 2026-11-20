@@ -47,6 +47,9 @@ const PLAN_REL = "plan/agent.md";
 const EXPECTATIONS_REL = "expectations.md";
 /** Derived working memory (`devx todo sync`). Workstream root; never a gate input. */
 const TODO_REL = "todo.md";
+/** The health queue — gate concerns + parked questions, reconciled by the
+ *  gate CLIs (`devx gate …`). Workstream root; never a gate INPUT. */
+const QUESTIONS_REL = "questions.md";
 /** RED-gate artifact dir (E-* runnables/checklists + RED-report.md). */
 export const EVALS_DIR_REL = "evals";
 /** Gate 4's persisted report. */
@@ -244,7 +247,7 @@ export const SUBJECT_STAGES: readonly SubjectStage[] = STAGE_DIRS.filter(
 export type ArtifactKind =
   | { kind: "agent"; stage: SubjectStage }
   | { kind: "human" | "outline" | "outline-critique"; stage: StageDir }
-  | { kind: "expectations" | "todo" | "results" }
+  | { kind: "expectations" | "todo" | "questions" | "results" }
   | { kind: "evals-dir" | "decisions-dir" | "checkpoints-dir" }
   | { kind: "red-report" };
 
@@ -275,6 +278,7 @@ export const ARTIFACT_KINDS = [
   "outline-critique",
   "expectations",
   "todo",
+  "questions",
   "results",
   "evals-dir",
   "decisions-dir",
@@ -319,6 +323,62 @@ export function normalizeArtifactPath(p: string): string {
   return trimmed === "." ? "" : trimmed;
 }
 
+/** Identity of a workstream, for matching a dev spec's `plan:` pointer.
+ *  Exactly the two fields `resolveWorkstream()` returns, so a resolved
+ *  workstream can be passed straight through. */
+export interface WorkstreamPointerTarget {
+  /** Repo-relative workstream dir (`.` under `project-level`). */
+  workstreamRel: string;
+  /** Repo-relative plan-spec path. */
+  specRel: string;
+}
+
+/**
+ * Does a dev spec's `plan:` pointer name this workstream?
+ *
+ * **Two spellings ship in this repo and both are legitimate** — measured
+ * 2026-11-20 across `dev/`:
+ *
+ *   `plan: _devx/workstreams/<slug>`                    40 specs
+ *   `plan: plan/plan-<hash>-<ts>-<slug>.md`            100 specs
+ *
+ * Several workstreams carry BOTH (the per-phase specs use the directory, the
+ * `*ret` retro spec uses the plan-spec path), and the most recent workstreams
+ * use the plan-spec form exclusively. So a matcher that accepts only the
+ * directory — which `frontmatter.ts`'s comment on the key describes, and
+ * which is what the key was introduced as — reports an empty list for a live
+ * workstream. To a consumer asking "what did this plan emit?", an empty list
+ * and a genuinely empty plan read the same, and that is the one answer which
+ * must never be wrong by accident.
+ *
+ * Both sides normalize, so `.`, `./x`, `x/` and `x` are one path (the project
+ * level doc set normalizes to `""` on both sides).
+ *
+ * NOTE: `shippedPhases()` in `gate-evals.ts` hand-rolls this same predicate
+ * and accepts only the directory form, so Gate 4's "a shipped phase's P0 is
+ * deferred" relief silently does not fire for a plan-spec-form workstream.
+ * Routing it here is a one-line change in a file this change does not own.
+ */
+export function planPointerMatches(
+  pointer: string | null | undefined,
+  target: WorkstreamPointerTarget,
+): boolean {
+  if (pointer === null || pointer === undefined) return false;
+  // A BLANK pointer is "no pointer", never "the root doc set" — and the test
+  // has to happen before normalization, because under `project-level` the
+  // root legitimately spells itself `.` and normalizes to `""` too. Without
+  // the pre-normalization check a blank `plan:` would be adopted by the only
+  // doc set there is, reporting every unpointered dev spec in the repo as
+  // this plan's emission. `readEngineState` already nulls a blank scalar, so
+  // this guards the callers that do not come through it.
+  if (pointer.trim() === "") return false;
+  const got = normalizeArtifactPath(pointer);
+  return (
+    got === normalizeArtifactPath(target.workstreamRel) ||
+    got === normalizeArtifactPath(target.specRel)
+  );
+}
+
 /** Per-kind resolver pair for the stage-parametrized companions. BOTH halves
  *  delegate to the helpers that already existed — the project-level ones
  *  lacked a caller, not a fix. Re-spelling them here would put two independent
@@ -360,6 +420,8 @@ export function artifactRel(layout: DocsLayout, kind: ArtifactKind): string {
       return EXPECTATIONS_REL;
     case "todo":
       return TODO_REL;
+    case "questions":
+      return QUESTIONS_REL;
     case "results":
       return RESULTS_REL;
     case "evals-dir":
@@ -507,6 +569,7 @@ export const ALL_ARTIFACT_KINDS: readonly ArtifactKind[] = [
   ]),
   { kind: "expectations" },
   { kind: "todo" },
+  { kind: "questions" },
   { kind: "results" },
   { kind: "evals-dir" },
   { kind: "decisions-dir" },

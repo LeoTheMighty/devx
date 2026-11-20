@@ -29,8 +29,8 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = resolve(__dirname, "..");
-const SKILL_PATH = resolve(REPO_ROOT, ".claude/commands/devx.md");
-const MIRROR_PATH = resolve(REPO_ROOT, "skills/devx.md");
+const SKILL_PATH = resolve(REPO_ROOT, ".claude/commands/devx-execute.md");
+const MIRROR_PATH = resolve(REPO_ROOT, "skills/devx-execute.md");
 
 function loadSkill(): string {
   return readFileSync(SKILL_PATH, "utf8");
@@ -117,7 +117,7 @@ describe("devx skill — Phase 7 routes pr-conflicting (c94f14 AC #3)", () => {
   });
 
   it("the packaged mirror carries the same routing", () => {
-    // skills/devx.md is byte-identical to the canonical file
+    // skills/devx-execute.md is byte-identical to the canonical file
     // (test/skills-sync.test.ts) — asserted independently so a mirror that
     // ships without the fix fails here too, naming the file.
     const mirror = readFileSync(MIRROR_PATH, "utf8");

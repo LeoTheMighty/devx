@@ -329,7 +329,7 @@ describe("runAwaitRemoteCi (CLI passthrough)", () => {
     // The catch-all branch in runAwaitRemoteCi handles non-GhProbeError
     // throws (e.g., a TypeError from a malformed seam, or the headSha
     // validation Error). It maps them to stage='unknown' — documented
-    // both in devx-helper.ts header and .claude/commands/devx.md Phase 7.
+    // both in devx-helper.ts header and .claude/commands/devx-execute.md Phase 7.
     const fix = makeRepoFixture();
     const io = captureIo();
     const code = await runAwaitRemoteCi([branch], {

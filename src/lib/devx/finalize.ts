@@ -888,8 +888,8 @@ export function finalize(hash: string, opts: FinalizeOpts): FinalizeResult {
       detail: "--no-rebuild",
     });
   } else if (!isSelfHostedCheckout(repoRoot, readFile)) {
-    // A SKIP, not a failure. `skills/devx.md` ships in the npm tarball and
-    // `devx init` installs this Phase 8 prose into consumer repos — without
+    // A SKIP, not a failure. `skills/devx-execute.md` ships in the npm tarball
+    // and `devx init` installs this Phase 8 prose into consumer repos — without
     // this branch, every merge in every other project would run
     // `npm run build:swap`, get `Missing script`, and exit 3, telling that
     // project's agent to go finish a stage by hand that never applied to it.

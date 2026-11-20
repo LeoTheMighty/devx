@@ -20,11 +20,15 @@ import { type Exec, realExec } from "../lib/exec.js";
 import { loadEngineContext } from "../lib/engine/context.js";
 import { baseBranchFrom } from "../lib/engine/outline.js";
 import { PlanScopeError, checkStoryPlanScope, storyFromBranch } from "../lib/engine/plan-scope.js";
+import { planAbs } from "../lib/engine/artifacts.js";
+import { emissionPlan } from "../lib/engine/plan-graph.js";
 import {
   type EngineFs,
   WorkstreamError,
   WorkstreamRefusal,
   createWorkstream,
+  realEngineFs,
+  resolveWorkstream,
 } from "../lib/engine/workstream.js";
 
 export interface RunWorkstreamNewOpts {
@@ -216,6 +220,75 @@ export function runScopeCheck(
   return 1;
 }
 
+// `devx workstream graph <hash>` — the plan's Execution graph as RED emission
+// reads it (harness-s5). JSON on stdout, always:
+//
+//   { hash, present, order: [ids], phases: [{ id, depends_on, parallel_safe,
+//     independent_with, files }], findings: [{severity, code, message}] }
+//
+// With no `## Execution graph` section `present` is false and `order` is the
+// Phase checklist order — the serial contract, unchanged. The gate owns the
+// verdict; this command only reports, so findings never change its exit code.
+//
+// Exit codes: 0 — printed; 2 — unresolvable hash/workstream, no plan artifact,
+// config load failure.
+export interface RunWorkstreamGraphOpts {
+  out?: (s: string) => void;
+  err?: (s: string) => void;
+  projectPath?: string;
+  fs?: Partial<EngineFs>;
+}
+
+export function runWorkstreamGraph(
+  args: string[],
+  opts: RunWorkstreamGraphOpts = {},
+): number {
+  const out = opts.out ?? ((s) => process.stdout.write(s));
+  const err = opts.err ?? ((s) => process.stderr.write(s));
+  const fs: EngineFs = { ...realEngineFs, ...(opts.fs ?? {}) };
+  if (args.length !== 1) {
+    err("usage: devx workstream graph <hash>\n");
+    return 2;
+  }
+  const ctx = loadEngineContext(opts.projectPath);
+  if (!ctx.ok) {
+    err(`devx workstream graph: ${ctx.error}\n`);
+    return 2;
+  }
+  let ws;
+  try {
+    ws = resolveWorkstream(ctx.ctx.repoRoot, args[0], ctx.ctx.engine, opts.fs ?? {});
+  } catch (e) {
+    if (e instanceof WorkstreamError) {
+      err(`devx workstream graph: ${e.message}\n`);
+      return 2;
+    }
+    throw e;
+  }
+  const plan = planAbs(ws);
+  if (!fs.exists(plan)) {
+    err(`devx workstream graph: workstream '${ws.workstreamRel}' has no plan artifact yet — run the Plan stage first\n`);
+    return 2;
+  }
+  const ep = emissionPlan(fs.readFile(plan));
+  out(
+    `${JSON.stringify({
+      hash: ws.hash,
+      present: ep.present,
+      order: ep.order,
+      phases: ep.phases.map((p) => ({
+        id: p.id,
+        depends_on: p.dependsOn,
+        parallel_safe: p.parallelSafe,
+        independent_with: p.independentWith,
+        files: p.files,
+      })),
+      findings: ep.findings,
+    })}\n`,
+  );
+  return 0;
+}
+
 export function register(program: Command): void {
   const sub = program
     .command("workstream")
@@ -237,6 +310,17 @@ export function register(program: Command): void {
       const code = runWorkstreamNew(slug === undefined ? [] : [slug], {
         hash: cmdOpts.hash,
       });
+      if (code !== 0) process.exit(code);
+    });
+
+  sub
+    .command("graph")
+    .description(
+      "Print the plan's Execution graph as RED emission consumes it: phase order, per-phase depends_on / parallel_safe / independent_with, and the gate's findings. JSON on stdout; no graph section → serial checklist order.",
+    )
+    .argument("<hash>", "plan-spec hash")
+    .action((hash: string) => {
+      const code = runWorkstreamGraph([hash]);
       if (code !== 0) process.exit(code);
     });
 

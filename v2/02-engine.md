@@ -245,6 +245,29 @@ v1's story rhythm.
 Includes the **critique step** (re-homed party-mode, `01-bmad-capture.md`
 §2.4) before Gate 3, thoroughness-gated.
 
+**Execution graph (optional, harness-s5).** A plan may carry an
+`## Execution graph` section — one YAML block of phases with `depends_on`,
+`touches`, `parallel_safe`, `integration`, `production_touch`, plus
+`waivers` (phases + paths + approver + reason). `src/lib/engine/plan-graph.ts`
+checks it and Gate 3 folds the findings in: a cycle, a phase set that differs
+from the Phase checklist, a `depends_on` naming no phase, or two unordered
+phases that both change one file (from their `Files:` entries — the path
+before the ` — ` annotation; a path inside the annotation is prose) with no
+waiver → FAIL; a waived overlap between two parallel-safe phases, or a
+parallel-safe flag on an integration/production-touch phase → CONCERNS.
+Without the section the gate is coverage + P0 floor, exactly as before.
+Ported from the upstream shape minus `repo`, `task_edges` and worker caps
+(`docs/updates/8am-harness-gap-analysis.md` rows C8/A7/A8/B10).
+
+**Wave execution is the loop you already have.** `devx workstream graph
+<hash>` prints the order, each phase's `depends_on` and the pairs the graph
+proves independent (no path, no shared file, both parallel-safe). Emission
+turns those into `blocked_by` edges and `Parallel-safe with` rows, so
+`devx next` and the story graph see the shape; running independent phases
+concurrently is one `devx loop --items <h1,h2>` per independent set
+(mlc106 scope). No new executor — the loop is frozen (D-15); only what it
+is handed changes.
+
 ### 4.6 Gate 4 — RED (`/devx red <hash>` + `devx gate evals <hash>`)
 For every expectation, author the runnable artifact at the exact
 `Verified by:` target: a failing test at the named path, or an eval spec under
@@ -256,7 +279,10 @@ new `eval.command` concept needed). P0 gaps block; P1+ → CONCERNS.
 PASS flips `evals_red`, `stage: executing`, and triggers dev-spec emission:
 each plan phase becomes a `dev/dev-<hash>` spec + DEV.md entry via the
 existing pln-primitives (`derive-branch`, `emit-retro-story`, `validate-emit`
-all survive unchanged).
+all survive unchanged). When the plan declares an Execution graph, each
+spec's `blocked_by` carries its phase's `depends_on` hashes and
+`validate-emit` check 7 (`graph-blocked-by`) fails the emission on a miss
+(harness-s5).
 
 *Motto (keep): if you didn't watch it fail, you don't know if it tests the
 right thing.*
@@ -345,6 +371,11 @@ and templates (fail CI if the engine's loadable prose regresses past budget).
 > overrun is concentrated in one row: the dispatcher carries six arms in one
 > file (~67.6KB), so every run loads all of them against the "Execute per
 > story ≤ 10KB" target. D-14 records why that was accepted rather than fixed.
+>
+> *2026-11-20:* D-14's named lever was pulled when the 128KB budget bound
+> again. Each arm is now its own body beside `devx.md`, so a run loads the
+> dispatcher plus the arm it needs; the full run stays charged for the
+> Execute and Retro bodies (both rows above), not for Debug, Loop or Outcome.
 
 ## 7. Config: `engine:` block (replaces §15 `bmad:`)
 
@@ -383,6 +414,7 @@ config sections untouched.
 | `devx next [<hash>]` | pure decision function |
 | `devx workstream new <slug>` | scaffolder (templates → `_devx/workstreams/`) |
 | `devx revise <hash> --touched <file>` | cascade-reset applier |
+| `devx workstream graph <hash>` | plan Execution graph → emission order, `blocked_by`, independent pairs (harness-s5) |
 | `devx outline guard\|check\|init\|commit` | outline protection (hook endpoint, diff scan, human-side helpers) |
 | `devx loop …` | see `04-overnight-loop.md` |
 

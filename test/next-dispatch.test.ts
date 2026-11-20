@@ -59,6 +59,7 @@ function emptySnapshot(): RepoSnapshot {
     planReady: [],
     qaWalkthroughs: [],
     blocked: [],
+    health: [],
     todoDrift: [],
     drift: [],
     warnings: [],
@@ -145,6 +146,7 @@ function fullSnapshot(): RepoSnapshot {
       verdicts: { prd: null, design: null, plan: null, evals: null },
       gateSummary: "gates: prd — · design — · plan — · evals —",
       focus: "focus: interview the user",
+      health: null,
     },
   ];
   s.planReady = [

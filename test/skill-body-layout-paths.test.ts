@@ -143,10 +143,13 @@ describe("a57f22 — skill bodies name the folder shape, not the layout", () => 
     expect(engineTemplates().length).toBeGreaterThanOrEqual(21);
     expect(rels).toContain(".claude/commands/devx.md");
     expect(rels).toContain(".claude/commands/devx-plan.md");
-    // The two scaffolds that carried the hardcoded root before a57f22 — named
-    // so a restructure that drops them from the walk fails loudly.
-    expect(rels).toContain("_devx/templates/engine/checkpoint.md");
+    // The scaffolds that carried the hardcoded root before a57f22 — named so a
+    // restructure that drops them from the walk fails loudly. `checkpoint.md`
+    // was the other one; it is gone, because `engine/checkpoint.ts` now
+    // renders that artifact whole and a template with no reader is dead prose
+    // inside a gated budget.
     expect(rels).toContain("_devx/templates/engine/decision.md");
+    expect(rels).toContain("_devx/templates/engine/questions.md");
   });
 
   it("the proximity check distinguishes qualified prose from unqualified", () => {

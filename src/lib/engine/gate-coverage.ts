@@ -17,6 +17,10 @@
 //                          a runnable artifact path)
 //   - report writing      (decisions/<date>-<mode>-verify.md via the
 //                          shared verdict module, extras section included)
+//   - execution graph     (plan mode only, harness-s5: the plan's optional
+//                          `## Execution graph` is checked by plan-graph.ts
+//                          and folded in via `applyGraphFindings` — a `fail`
+//                          finding is a FAIL, a `concern` is CONCERNS at most)
 //
 // Table JSON shape (authored by the subagent):
 //
@@ -46,6 +50,7 @@ import {
   type Verdict,
   renderVerdictBlock,
 } from "./verdict.js";
+import { type GraphCheck, effectiveParallelSafe } from "./plan-graph.js";
 
 export type CoverageMode = "design" | "plan";
 export type TriState = "covered" | "partial" | "missing";
@@ -245,10 +250,34 @@ export function parseCoverageTable(json: string): TableParseResult {
 // Verdict computation
 // ---------------------------------------------------------------------------
 
+/**
+ * One source ID this run did not clear, with the severity its own verdict
+ * contribution proves — `blocking` when it is what made the run FAIL
+ * (❌ missing, or an unmet P0 floor), `concern` when the run still advances
+ * (⚠️ partial).
+ *
+ * Emitted alongside `reasons` rather than derived from it: severity is
+ * decided by the same branches that set `anyMissing` / `anyPartial`, and a
+ * consumer re-deriving it from the reason STRINGS would be a second,
+ * drifting copy of the floor rule. One finding per ID, not per reason — a
+ * P0 expectation that is missing contributes three reasons and is one defect.
+ *
+ * Read by `devx gate coverage`'s health-queue reconcile (B11). Never by the
+ * verdict: `verdict` is computed from the same loop and does not look here.
+ */
+export interface CoverageFinding {
+  id: string;
+  severity: "blocking" | "concern";
+  /** Every reason recorded for this ID, joined — the entry's Recommendation. */
+  detail: string;
+}
+
 export interface CoverageComputation {
   verdict: Extract<Verdict, "PASS" | "CONCERNS" | "FAIL">;
   /** Human-precise reasons behind a FAIL / CONCERNS. */
   reasons: string[];
+  /** The same shortfalls, one per source ID and severity-classified. */
+  findings: CoverageFinding[];
   /** Source-keyed rows in source order. */
   keyedRows: CoverageRow[];
   /** Table rows whose id is not a source ID → extras section. */
@@ -286,6 +315,16 @@ export function computeCoverageVerdict(
 
   const keyedRows: CoverageRow[] = [];
   const reasons: string[] = [];
+  // id → its shortfalls. `blocking` latches true: a P0 partial is blocking
+  // even though `partial` alone is not, and the floor branch below is what
+  // knows that.
+  const shortfalls = new Map<string, { blocking: boolean; details: string[] }>();
+  const note = (id: string, blocking: boolean, detail: string): void => {
+    const cur = shortfalls.get(id) ?? { blocking: false, details: [] };
+    cur.blocking = cur.blocking || blocking;
+    cur.details.push(detail);
+    shortfalls.set(id, cur);
+  };
   let anyMissing = false;
   let anyPartial = false;
 
@@ -295,10 +334,14 @@ export function computeCoverageVerdict(
     keyedRows.push(row);
     if (row.status === "missing") {
       anyMissing = true;
-      reasons.push(`${id} is ❌ missing${row.note ? ` (${row.note})` : ""}`);
+      const reason = `${id} is ❌ missing${row.note ? ` (${row.note})` : ""}`;
+      reasons.push(reason);
+      note(id, true, reason);
     } else if (row.status === "partial") {
       anyPartial = true;
-      reasons.push(`${id} is ⚠️ partial${row.note ? ` (${row.note})` : ""}`);
+      const reason = `${id} is ⚠️ partial${row.note ? ` (${row.note})` : ""}`;
+      reasons.push(reason);
+      note(id, false, reason);
     }
 
     // P0 floor — plan mode only: every P0 expectation `covered` AND naming
@@ -306,15 +349,15 @@ export function computeCoverageVerdict(
     if (mode === "plan" && priorities.get(id) === "P0") {
       if (row.status !== "covered") {
         anyMissing = true;
-        reasons.push(
-          `P0 floor unmet: ${id} is P0 but not fully covered (status: ${row.status})`,
-        );
+        const reason = `P0 floor unmet: ${id} is P0 but not fully covered (status: ${row.status})`;
+        reasons.push(reason);
+        note(id, true, reason);
       }
       if (row.artifact === null || !isConcreteVerifiedBy(row.artifact)) {
         anyMissing = true;
-        reasons.push(
-          `P0 floor unmet: ${id} is P0 but names no runnable artifact path${row.artifact ? ` ('${row.artifact}' is not path-shaped)` : ""}`,
-        );
+        const reason = `P0 floor unmet: ${id} is P0 but names no runnable artifact path${row.artifact ? ` ('${row.artifact}' is not path-shaped)` : ""}`;
+        reasons.push(reason);
+        note(id, true, reason);
       }
     }
   }
@@ -325,7 +368,45 @@ export function computeCoverageVerdict(
       ? "CONCERNS"
       : "PASS";
 
-  return { verdict, reasons, keyedRows, extraRows, missingRowIds, duplicateRowIds };
+  // Source order, so the queue's entry order matches the report's.
+  const findings: CoverageFinding[] = sourceIds
+    .filter((id) => shortfalls.has(id))
+    .map((id) => {
+      const s = shortfalls.get(id)!;
+      return {
+        id,
+        severity: s.blocking ? ("blocking" as const) : ("concern" as const),
+        detail: s.details.join("; "),
+      };
+    });
+
+  return {
+    verdict,
+    reasons,
+    findings,
+    keyedRows,
+    extraRows,
+    missingRowIds,
+    duplicateRowIds,
+  };
+}
+
+/**
+ * Fold the plan's Execution graph findings into a plan-mode computation
+ * (harness-s5). Pure and additive: coverage rows are untouched, the
+ * verdict only ever moves toward FAIL, and a plan with no graph section is
+ * a no-op. Design mode never calls this.
+ */
+export function applyGraphFindings(
+  c: CoverageComputation,
+  check: GraphCheck,
+): CoverageComputation {
+  if (!check.present || check.findings.length === 0) return c;
+  const reasons = [...c.reasons, ...check.findings.map((f) => `execution graph: ${f.message}`)];
+  let verdict = c.verdict;
+  if (check.failed) verdict = "FAIL";
+  else if (verdict === "PASS") verdict = "CONCERNS";
+  return { ...c, verdict, reasons };
 }
 
 // ---------------------------------------------------------------------------
@@ -359,6 +440,8 @@ export function renderVerifyReport(args: {
     planRel: string;
     expectationsRel: string;
   };
+  /** Plan mode only (harness-s5). Omitted / null in design mode. */
+  graph?: GraphCheck | null;
 }): string {
   const { mode, computation: c, subjects } = args;
   const source =
@@ -413,6 +496,41 @@ export function renderVerifyReport(args: {
     lines.push("- none");
   } else {
     lines.push(...extraLines);
+  }
+  // ── Plan-mode-only section (harness-s5). ────────────────────────────
+  // SEAM: design-mode additions (the advisory hygiene lens, Stream 4 of
+  // docs/updates/8am-harness-gap-analysis.md) belong in their own block,
+  // gated on `mode === "design"`, not inside this one.
+  if (mode === "plan" && args.graph) {
+    lines.push("");
+    lines.push("## Execution graph");
+    lines.push("");
+    const g = args.graph;
+    if (!g.present) {
+      lines.push("- none declared — the plan is serial-only; phases emit in checklist order.");
+    } else if (g.graph === null) {
+      lines.push("- declared but unreadable (see Verdict detail).");
+    } else {
+      lines.push("| Phase | Depends on | Parallel-safe | Changes |");
+      lines.push("|---|---|---|---|");
+      for (const p of [...g.graph.phases].sort((a, b) => a.id - b.id)) {
+        const touched = [...(g.files.get(p.id) ?? []), ...p.touches];
+        lines.push(
+          `| ${p.id} | ${p.dependsOn.length ? p.dependsOn.join(", ") : "—"} | ${effectiveParallelSafe(p) ? "yes" : "no"} | ${mdCell(touched.join(", ") || "—")} |`,
+        );
+      }
+      if (g.graph.waivers.length > 0) {
+        lines.push("");
+        for (const w of g.graph.waivers) {
+          lines.push(
+            `- waiver: phases ${w.phases.join(", ")}${w.paths.length ? ` on ${w.paths.join(", ")}` : ""} — ${w.approver || "(no approver)"}: ${w.reason || "(no reason)"}`,
+          );
+        }
+      }
+    }
+    for (const f of g.findings) {
+      lines.push(`- ${f.severity === "fail" ? "❌" : "⚠️"} ${f.message}`);
+    }
   }
   lines.push("");
   lines.push("## Verdict detail");

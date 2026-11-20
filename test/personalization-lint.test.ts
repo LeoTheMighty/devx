@@ -25,6 +25,8 @@ const CARRIERS = [
   "devx-test",
   "devx-interview",
   "devx-walk",
+  "devx-address",
+  "devx-revise",
 ];
 
 describe("splitRow", () => {
