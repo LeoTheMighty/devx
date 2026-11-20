@@ -47,6 +47,9 @@ const PLAN_REL = "plan/agent.md";
 const EXPECTATIONS_REL = "expectations.md";
 /** Derived working memory (`devx todo sync`). Workstream root; never a gate input. */
 const TODO_REL = "todo.md";
+/** The health queue — gate concerns + parked questions, reconciled by the
+ *  gate CLIs (`devx gate …`). Workstream root; never a gate INPUT. */
+const QUESTIONS_REL = "questions.md";
 /** RED-gate artifact dir (E-* runnables/checklists + RED-report.md). */
 export const EVALS_DIR_REL = "evals";
 /** Gate 4's persisted report. */
@@ -244,14 +247,14 @@ export const SUBJECT_STAGES: readonly SubjectStage[] = STAGE_DIRS.filter(
   (s): s is SubjectStage => s !== "evals",
 );
 
-/** A layout-independent artifact identity. 13 variants render as the §15
- *  table's 15 rows: `agent` expands to three (prd / design / plan), the three
- *  stage-parametrized companions are one row each, and the nine singletons
+/** A layout-independent artifact identity. 14 variants render as the §15
+ *  table's 16 rows: `agent` expands to three (prd / design / plan), the three
+ *  stage-parametrized companions are one row each, and the ten singletons
  *  are one row each. */
 export type ArtifactKind =
   | { kind: "agent"; stage: SubjectStage }
   | { kind: "human" | "outline" | "outline-critique"; stage: StageDir }
-  | { kind: "expectations" | "todo" | "results" }
+  | { kind: "expectations" | "todo" | "questions" | "results" }
   | { kind: "research-questions" | "research" }
   | { kind: "evals-dir" | "decisions-dir" | "checkpoints-dir" }
   | { kind: "red-report" };
@@ -261,7 +264,7 @@ export type ArtifactKind =
  *  It exists because a TYPE erases: `docs/CONFIG.md` §15 claims one row per
  *  artifact kind, and a doc check has nothing to set-compare against unless
  *  the enumeration survives to runtime. `ALL_ARTIFACT_KINDS` is the wrong
- *  granularity for that job — it is the full 24-identity product, because the
+ *  granularity for that job — it is the full 25-identity product, because the
  *  reverse map has to key `human · design` apart from `human · prd`. §15 is
  *  read by a human choosing a layout, and the three stage-parametrized
  *  companions have one stage-generic spelling each (`<stage>/human.md` →
@@ -283,6 +286,7 @@ export const ARTIFACT_KINDS = [
   "outline-critique",
   "expectations",
   "todo",
+  "questions",
   "results",
   "research-questions",
   "research",
@@ -426,6 +430,8 @@ export function artifactRel(layout: DocsLayout, kind: ArtifactKind): string {
       return EXPECTATIONS_REL;
     case "todo":
       return TODO_REL;
+    case "questions":
+      return QUESTIONS_REL;
     case "results":
       return RESULTS_REL;
     // Design-stage singletons: folder-shaped under `workstream`; under
@@ -580,6 +586,7 @@ export const ALL_ARTIFACT_KINDS: readonly ArtifactKind[] = [
   ]),
   { kind: "expectations" },
   { kind: "todo" },
+  { kind: "questions" },
   { kind: "results" },
   { kind: "research-questions" },
   { kind: "research" },

@@ -46,6 +46,7 @@ function computation(verdict: CoverageComputation["verdict"]): CoverageComputati
   return {
     verdict,
     reasons: verdict === "PASS" ? [] : [`G-1 is ${verdict === "FAIL" ? "❌ missing" : "⚠️ partial"}`],
+    findings: [],
     keyedRows: [],
     extraRows: [],
     missingRowIds: [],
@@ -332,6 +333,24 @@ describe("devx gate coverage — design-mode hygiene, end to end", () => {
     expect(json.gate).toBe("CONCERNS");
     expect((json.hygiene as string[]).every((h) => h.startsWith("judgment:"))).toBe(true);
     expect(parseVerdictBlock(repo.read(REPORT))!.block.gate).toBe("CONCERNS");
+  });
+
+  it("hygiene findings reach the health queue as concerns, and resolve when fixed (B11 handshake)", () => {
+    seed({ research: false });
+    run(designTable());
+    const queue = repo.read(`${WS}/questions.md`);
+    expect(queue).toContain(`hygiene ungrounded · ${WS}/design/research.md`);
+    const entry = queue.slice(queue.indexOf("hygiene ungrounded"));
+    expect(entry).toMatch(/Severity:\**\s*concern/);
+    expect(entry).not.toMatch(/Severity:\**\s*blocking/);
+    // Research captured → the re-run resolves the entry instead of stacking it.
+    repo.write(`${WS}/design/research.md`, "# Research\n");
+    const spec = repo.read(SPEC_REL).replace("design_verified: true", "design_verified: false");
+    repo.write(SPEC_REL, spec);
+    expect(run(designTable()).json.gate).toBe("PASS");
+    const after = repo.read(`${WS}/questions.md`);
+    const again = after.slice(after.indexOf("hygiene ungrounded"));
+    expect(again).toMatch(/Status:\**\s*resolved/);
   });
 
   it("a coverage FAIL stays FAIL with hygiene present (exit 1)", () => {

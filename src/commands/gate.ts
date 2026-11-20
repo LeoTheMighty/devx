@@ -20,11 +20,12 @@
 // Spec: dev/dev-v2e101-2026-07-05T13:01-engine-cli-primitives.md
 // Design: v2/02-engine.md §4.2, §4.4, §4.6
 
-import { dirname, join, posix } from "node:path";
+import { basename, dirname, join, posix } from "node:path";
 import type { Command } from "commander";
 
 import { attachPhase } from "../lib/help.js";
 import * as artifacts from "../lib/engine/artifacts.js";
+import type { EngineConfig } from "../lib/engine/config.js";
 import { loadEngineContext } from "../lib/engine/context.js";
 import {
   FLAG_TO_GATE_KEY,
@@ -61,12 +62,18 @@ import {
   verifyStepBodies,
 } from "../lib/engine/evals-lock.js";
 import { formatDate } from "../lib/engine/verdict.js";
+import type { GateFinding } from "../lib/engine/questions.js";
+import { blocksForGate } from "../lib/engine/questions.js";
+import { reconcileQuestionsOnDisk } from "../lib/engine/questions-io.js";
 import {
   type EngineFs,
   type ResolvedWorkstream,
+  TEMPLATES_DIR,
   WorkstreamError,
   realEngineFs,
   resolveWorkstream,
+  titleFromSlug,
+  workstreamSlugFor,
 } from "../lib/engine/workstream.js";
 import { withBacklogLock } from "../lib/backlog/mutate.js";
 
@@ -171,6 +178,10 @@ type Resolution =
       repoRoot: string;
       merged: unknown;
       expectationsMin: number;
+      /** Carried whole for the post-verdict health-queue reconcile, which
+       *  needs `workstreamsRoot` + `docsLayout` to derive the workstream's
+       *  slug through the shared resolver rather than a hand-rolled tail. */
+      engine: EngineConfig;
       subjects: GateSubjects;
     }
   | { ok: false; code: number };
@@ -210,6 +221,7 @@ function resolveOrFail(
       repoRoot: ctx.ctx.repoRoot,
       merged: ctx.ctx.merged,
       expectationsMin: ctx.ctx.engine.expectationsMin,
+      engine: ctx.ctx.engine,
       subjects: subjectsFor(ctx.ctx.repoRoot, ws, ctx.ctx.engine.docsLayout),
     };
   } catch (e) {
@@ -268,6 +280,88 @@ function writeFailVerdict(
   }
 }
 
+/**
+ * Reconcile this gate run's findings into the workstream's health queue
+ * (`questions.md`, B11) — the post-verdict half of every gate.
+ *
+ * Called AFTER the verdict JSON is printed and after the frontmatter patch,
+ * and it changes neither. Three properties the call sites depend on:
+ *
+ *  - **Never changes the exit code.** The verdict is the gate's answer; the
+ *    queue is the record of what the answer was about. A gate that could fail
+ *    on its own bookkeeping would be a gate whose grading depends on a
+ *    markdown file parsing.
+ *  - **Runs on EVERY outcome, PASS included.** The resolve half is what
+ *    clears a prior FAIL's blocking entries when the re-run comes back clean
+ *    — skip it on PASS and a gate that now advances still reads "blocked" on
+ *    every board, which is the failure the queue exists to remove.
+ *  - **Reads nothing the verdict read.** The queue is never a gate input
+ *    (pinned by test/gate-questions-isolation.test.ts), so this call is
+ *    strictly downstream — it cannot influence what it records.
+ *
+ * The JSON already printed names the report, so the queue result goes to
+ * STDERR as a one-line note rather than being folded into stdout: a consumer
+ * parsing the gate's JSON must not have its shape move because a workstream
+ * acquired a questions.md.
+ */
+function reconcileHealthQueue(
+  r: Extract<Resolution, { ok: true }>,
+  gateKey: GateKey,
+  origin: string,
+  findings: readonly GateFinding[],
+  resolution: string,
+  usage: string,
+  io: GateIo,
+): void {
+  // `r.ws` already IS an `artifacts.ResolvedBase` (dlr104 made it one), so it
+  // passes straight through rather than being re-spelled field by field.
+  //
+  // Same slug derivation `devx todo sync` uses for the same `<workstream
+  // title>` substitution: under `project-level` the doc-set tail is `.`, and a
+  // hand-rolled tail would title the queue ".".
+  const slug =
+    workstreamSlugFor(basename(r.ws.specAbs), r.ws.workstreamRel, r.engine) ??
+    r.ws.workstreamRel;
+  let report;
+  try {
+    report = reconcileQuestionsOnDisk({
+      fs: io.fs,
+      repoRoot: r.repoRoot,
+      base: r.ws,
+      templatesDir: TEMPLATES_DIR,
+      title: titleFromSlug(slug),
+      input: {
+        blocks: blocksForGate(gateKey),
+        origin,
+        findings,
+        resolution,
+      },
+    });
+  } catch (e) {
+    // reconcileQuestionsOnDisk documents that it never throws; this is the
+    // belt that keeps that promise a property of the GATE rather than of one
+    // module's internals.
+    io.err(
+      `${usage}: health queue not reconciled (${e instanceof Error ? e.message : String(e)})\n`,
+    );
+    return;
+  }
+  if (report.warning !== null) io.err(`${usage}: warning: ${report.warning}\n`);
+  const o = report.outcome;
+  if (o === null) return;
+  const parts = [
+    o.added.length > 0 ? `added ${o.added.join(", ")}` : null,
+    o.updated.length > 0 ? `updated ${o.updated.join(", ")}` : null,
+    o.resolved.length > 0 ? `resolved ${o.resolved.join(", ")}` : null,
+  ].filter((p): p is string => p !== null);
+  if (parts.length === 0 && !o.created) return;
+  io.err(
+    `${usage}: health queue ${o.rel}${o.created ? " created" : ""}${
+      parts.length > 0 ? ` — ${parts.join(" · ")}` : ""
+    }\n`,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // devx gate prd <hash>
 // ---------------------------------------------------------------------------
@@ -309,6 +403,27 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
     expectationsRel: subjects.expectations.rel,
   });
 
+  // Gate 1 is binary (PASS | FAIL), so every gap it reports is what made it
+  // fail — each one is `blocking`. The check name leads the title because it
+  // is the stable half across runs; the message carries the detail that moves.
+  const prdFindings: GateFinding[] = result.gaps.map((gap) => ({
+    title: `${gap.check}${gap.location ? ` at ${gap.location}` : ""}: ${gap.message}`,
+    severity: "blocking",
+    recommendation: gap.message,
+  }));
+  const prdQueue = (): void =>
+    reconcileHealthQueue(
+      r,
+      "prd",
+      `devx gate prd · ${subjects.prd.rel}`,
+      prdFindings,
+      // Gate 1 writes no report artifact, so a resolved entry points at the
+      // spec whose frontmatter now records the passing verdict.
+      ws.specRel,
+      "devx gate prd",
+      io,
+    );
+
   if (result.verdict === "FAIL") {
     // Gap diagnostics print BEFORE the verdict write: a spec whose
     // frontmatter can't be patched must not swallow the reason the gate
@@ -316,7 +431,9 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
     io.out(
       `${JSON.stringify({ gate: "FAIL", hash: ws.hash, gaps: result.gaps })}\n`,
     );
-    return writeFailVerdict(r.repoRoot, ws, "prd", "devx gate prd", io) ? 1 : 2;
+    const ok = writeFailVerdict(r.repoRoot, ws, "prd", "devx gate prd", io);
+    prdQueue();
+    return ok ? 1 : 2;
   }
 
   // PASS: flip prd_validated + stage: design + verdict in one patch.
@@ -342,6 +459,10 @@ export function runGatePrd(args: string[], opts: RunGateOpts = {}): number {
       spec: ws.specRel,
     })}\n`,
   );
+  // With no findings this run, the reconcile is pure resolve: a prior FAIL's
+  // blocking entries close here, which is what makes the queue track a gate
+  // that now advances instead of reading "blocked" forever.
+  prdQueue();
   return 0;
 }
 
@@ -534,12 +655,39 @@ export function runGateCoverage(
         : {}),
     })}\n`,
   );
-  if (
-    computation.verdict === "FAIL" &&
-    !writeFailVerdict(r.repoRoot, ws, FLAG_TO_GATE_KEY[flag], "devx gate coverage", io)
-  ) {
-    return 2;
-  }
+  const gateKey = FLAG_TO_GATE_KEY[flag];
+  const failWriteOk =
+    computation.verdict !== "FAIL" ||
+    writeFailVerdict(r.repoRoot, ws, gateKey, "devx gate coverage", io);
+
+  // Severity comes from `computation.findings`, which the evaluator classifies
+  // in the same loop that sets the verdict — never re-derived here from the
+  // reason strings, which would be a second, drifting copy of the P0 floor.
+  reconcileHealthQueue(
+    r,
+    gateKey,
+    `devx gate coverage · ${mode === "design" ? subjects.design.rel : subjects.plan.rel}`,
+    [
+      ...computation.findings.map((f) => ({
+        title: `${f.id} coverage`,
+        severity: f.severity,
+        recommendation: f.detail,
+      })),
+      // harness-s4: hygiene findings are gate concerns too — always `concern`,
+      // never `blocking` (the lens holds CONCERNS at most). Title = kind +
+      // location, the stable match key; the note is the recommendation.
+      ...computation.hygiene.map((h) => ({
+        title: `hygiene ${h.kind} · ${h.where}`,
+        severity: "concern" as const,
+        recommendation: h.note,
+      })),
+    ],
+    reportRel,
+    "devx gate coverage",
+    io,
+  );
+
+  if (!failWriteOk) return 2;
   return computation.verdict === "FAIL" ? 1 : 0;
 }
 
@@ -1132,12 +1280,30 @@ export function runGateEvalsCli(
       ...(waive.length > 0 ? { waived: waive } : {}),
     })}\n`,
   );
-  if (
-    result.verdict === "FAIL" &&
-    !writeFailVerdict(r.repoRoot, ws, "evals", "devx gate evals", io)
-  ) {
-    return 2;
-  }
+  const failWriteOk =
+    result.verdict !== "FAIL" ||
+    writeFailVerdict(r.repoRoot, ws, "evals", "devx gate evals", io);
+
+  // Per-eval severity, not the run's aggregate: `EvalRun.blocking` is what the
+  // verdict itself latched on, so a CONCERNS run's P1 gap records as a concern
+  // while a P0 gap in the same run records as blocking.
+  reconcileHealthQueue(
+    r,
+    "evals",
+    `devx gate evals · ${subjects.expectations.rel}`,
+    [...result.runs, ...result.deferred]
+      .filter((run) => run.gap !== null)
+      .map((run) => ({
+        title: `${run.eId} ${run.name}`,
+        severity: run.blocking ? ("blocking" as const) : ("concern" as const),
+        recommendation: run.gap!,
+      })),
+    reportRel,
+    "devx gate evals",
+    io,
+  );
+
+  if (!failWriteOk) return 2;
   return result.verdict === "FAIL" ? 1 : 0;
 }
 
