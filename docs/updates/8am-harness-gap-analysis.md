@@ -81,6 +81,14 @@ upstream). Citations: upstream paths are relative to the 8am-harness repo
 root; `§N` alone means `docs/harness/CONVENTIONS.md` §N. devx paths are
 relative to this repo.
 
+A devx row citing `skills/<name>.md` names where the text **lives**, not where
+to edit it: `skills/` is generated from `.claude/commands/` by
+`scripts/sync-skills.mjs` and pinned byte-identical by
+`test/skills-sync.test.ts`, so an edit there is silently overwritten. Read
+either; change `.claude/commands/`. (Added 2026-11-23: the stream sections
+below were amended with the real paths as each landed, but the table rows were
+not, and three sessions had to be told this mid-stream.)
+
 ---
 
 ## Capability table
