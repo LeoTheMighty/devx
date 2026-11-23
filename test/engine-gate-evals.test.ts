@@ -669,6 +669,40 @@ describe("devx gate evals — CLI driver", () => {
     expect(state.gateStatus.evals_red).toBe(true);
   });
 
+  // The other legitimate `plan:` spelling — the parent plan spec's path,
+  // which 100 of dev/'s specs use (planPointerMatches, artifacts.ts). Matched
+  // against the directory alone, this spec read as not-shipped and a green
+  // E-1 FAILed the gate.
+  it("defers E-1 when the done spec's plan: names the plan spec, not the directory", () => {
+    seed();
+    repo.write(
+      "dev/dev-def456-2026-07-05T14:00-phase-one.md",
+      ["---", "hash: def456", "type: dev", "status: done", `plan: ${SPEC_REL}`, "phase: 1", "---", "body", ""].join(
+        "\n",
+      ),
+    );
+    const { code, io, calls } = gateEvals({}, 0); // green suite
+    expect((io.json() as { gate: string }).gate).toBe("PASS");
+    expect(code).toBe(0);
+    expect(calls).toHaveLength(0);
+    expect(repo.read(`${WS}/evals/RED-report.md`)).toContain("E-1: not-run (deferred: shipped-green)");
+  });
+
+  it("a blank or foreign plan: pointer never defers — green E-1 still FAILs the gate", () => {
+    for (const pointer of ['""', "plan/plan-zzz999-2026-07-05T13:01-other.md", "_devx/workstreams/other"]) {
+      seed();
+      repo.write(
+        "dev/dev-def456-2026-07-05T14:00-phase-one.md",
+        ["---", "hash: def456", "type: dev", "status: done", `plan: ${pointer}`, "phase: 1", "---", "body", ""].join(
+          "\n",
+        ),
+      );
+      const { code, io } = gateEvals({}, 0);
+      expect((io.json() as { gate: string }).gate, `plan: ${pointer}`).toBe("FAIL");
+      expect(code).toBe(1);
+    }
+  });
+
   it("an in-progress phase spec does not defer — green E-1 still FAILs the gate", () => {
     seed();
     repo.write(

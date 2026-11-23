@@ -27,6 +27,11 @@ describe("fencedLineMask", () => {
     expect(mask(md)).toEqual([true, true, true, true, true, false]);
   });
 
+  it("tolerates a trailing \\r on opener and closer (CRLF split on \\n)", () => {
+    expect(mask(["```ts\r", "x\r", "```\r", "out\r"].join("\n"))).toEqual([true, true, true, false]);
+    expect(fenceLang("```mermaid\r")).toBe("mermaid");
+  });
+
   it("accepts tilde fences, whose info string may hold a backtick", () => {
     expect(mask(["~~~ `x`", "inside", "~~~", "out"].join("\n"))).toEqual([true, true, true, false]);
   });

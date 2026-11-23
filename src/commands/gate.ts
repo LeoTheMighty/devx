@@ -783,6 +783,16 @@ export function runGateCoverage(
         severity: "concern" as const,
         recommendation: h.note,
       })),
+      // harness-s5: Execution-graph findings, severity as applyGraphFindings
+      // folds them into the verdict — `fail` is what FAILs Gate 3, so it
+      // blocks. The message names the phases, so it is the match key; a
+      // repeated one (`depends_on: [9, 9]`) is one entry, since two equal
+      // titles in one run would stack a fresh entry on every re-run.
+      ...[...new Map((graphCheck?.findings ?? []).map((g) => [g.message, g])).values()].map((g) => ({
+        title: `execution graph · ${g.message}`,
+        severity: g.severity === "fail" ? ("blocking" as const) : ("concern" as const),
+        recommendation: `${g.code} in ${subjects.plan.rel} — amend its \`## Execution graph\` (or the phases it keys to) and re-run \`devx gate coverage\``,
+      })),
     ],
     reportRel,
     "devx gate coverage",
@@ -1329,7 +1339,10 @@ export function runGateEvalsCli(
     exec: opts.exec ?? realShellExec,
     exists: (p) => io.fs.exists(p),
     readFile: (p) => readMdOrNull(io, p),
-    donePhases: donePhasesFor(io.fs, r.repoRoot, subjects.docSetRel),
+    donePhases: donePhasesFor(io.fs, r.repoRoot, {
+      workstreamRel: subjects.docSetRel,
+      specRel: ws.specRel,
+    }),
     waived: new Set(waive),
     dryRun: flags.dryRun === true,
   });

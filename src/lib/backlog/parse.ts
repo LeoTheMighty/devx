@@ -23,6 +23,8 @@
 // Spec: dev/dev-mgr103-2026-04-28T19:30-manage-reconcile.md
 // Epic: _bmad-output/planning-artifacts/epic-devx-manage-minimal.md
 
+import { fencedLineMask } from "../engine/md-fence.js";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -353,41 +355,26 @@ function stripCR(line: string): string {
 }
 
 /**
- * Replace every line inside a ``` ... ``` fenced block with an empty
+ * Replace every line inside a fenced block (``` or ~~~) with an empty
  * string, preserving line indices for downstream tooling (DevRow.lineIndex
- * stays accurate). Fences may be indented (sub-bullet code blocks); the
- * leading-whitespace allowance matches CommonMark's tolerance.
+ * stays accurate). Fences may be indented (sub-bullet code blocks).
  *
  * Without this, an example block in INTERVIEW.md (`Example: \`\`\`markdown
  * - [x] Q#7 ... \`\`\``) parses as a real Q#7 entry — two reviewers flagged
  * (BH#2 fence-state, EC#3 answer-marker false positive). Pre-stripping the
  * fenced lines closes both via the same primitive.
+ *
+ * Detection is md-fence.ts's CommonMark-shaped mask, not a local toggle: a
+ * bare `^\s*```` toggle read an INLINE ```mermaid``` span at line start as
+ * an opener and blanked every row/heading below it (the same bug Gate 2's
+ * hygiene hit on story-graph's design). Tilde fences still close only on
+ * tildes, so a `~~~` example holding `### Epic — …` can't mis-attribute the
+ * rows below it (mlc106 review BH#4); a struck row (`- ~~…~~`) never reads
+ * as a fence because a fence needs 3+ characters at line start.
  */
 export function blankFencedLines(lines: string[]): string[] {
-  // Both CommonMark fence characters. Tildes matter more since mlc106: a
-  // `~~~`-fenced example containing `### Epic — …` would otherwise not just
-  // inject a phantom ROW (the pre-mlc106 risk) but MIS-ATTRIBUTE every real
-  // row below it to a fictional epic (review BH#4). Three-or-more is
-  // required, so a struck row (`- ~~…~~`) can never read as a fence.
-  let fence: "`" | "~" | null = null;
-  return lines.map((line) => {
-    const m = /^[ \t]*(`{3,}|~{3,})/.exec(line);
-    if (m) {
-      const kind = m[1][0] as "`" | "~";
-      // A fence only closes with its OWN character (CommonMark): a `~~~`
-      // line inside a ``` block is content, not a terminator.
-      if (fence === null) {
-        fence = kind;
-        return "";
-      }
-      if (fence === kind) {
-        fence = null;
-        return "";
-      }
-      return "";
-    }
-    return fence !== null ? "" : line;
-  });
+  const mask = fencedLineMask(lines);
+  return lines.map((line, i) => (mask[i] ? "" : line));
 }
 
 export interface EpicHeading {

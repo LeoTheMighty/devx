@@ -9,8 +9,19 @@
 // commander-arity question first. With `.argument("<slug>")` commander rejects
 // the invocation before a line of devx code runs, so an in-process test would
 // pass while `devx workstream new` still exited 1 with `error: missing required
-// argument 'slug'` — the exact failure E-5 was RED on. Spawning is also why
-// this file is registered in `SYNC_BLOCKING_TESTS` (vitest.shared.ts).
+// argument 'slug'` — the exact failure E-5 was RED on.
+//
+// NOT in `SYNC_BLOCKING_TESTS`, and it should not be. Since 2e1174 (#169)
+// the spawn is async, so the partition pin (vitest-split.test.ts, membership
+// = a sync child-process call site) keeps it in the parallel pass. There it
+// measured 1.1-2.2s under ~9x oversubscription; in the blocking pass it was
+// 12-24s. A KNOWN LOAD CASUALTY: each test runs 0.6-1s alone, but every
+// `runCli` is a tsx transpile + CLI boot, so when several sessions run suites
+// at once all 11 spawn tests can miss the 5s default together. Timeouts with
+// zero assertion failures in this file are load; re-run it alone or trust CI
+// on the same SHA. No cap raise: 5s is already 5x intrinsic, and it is what
+// catches a real CLI start-up regression (the 120s kill below only reaps a
+// wedge).
 //
 // Spec: dev/dev-dlr104-2026-09-02T09:14-consumer-sweep-scaffolding.md
 // Design: _devx/workstreams/docs-layout-resolution/design/agent.md §"The slug"

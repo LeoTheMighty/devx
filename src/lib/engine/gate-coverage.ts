@@ -595,7 +595,9 @@ export function applyHygieneFindings(
  * Fold the plan's Execution graph findings into a plan-mode computation
  * (harness-s5). Pure and additive: coverage rows are untouched, the
  * verdict only ever moves toward FAIL, and a plan with no graph section is
- * a no-op. Design mode never calls this.
+ * a no-op. Design mode never calls this. It adds `reasons` only, never
+ * `findings`: the health queue maps the `GraphCheck` itself, beside the
+ * hygiene list, in `runGateCoverage`'s reconcile.
  */
 export function applyGraphFindings(
   c: CoverageComputation,

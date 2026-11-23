@@ -368,10 +368,8 @@ export interface WorkstreamPointerTarget {
  * Both sides normalize, so `.`, `./x`, `x/` and `x` are one path (the project
  * level doc set normalizes to `""` on both sides).
  *
- * NOTE: `shippedPhases()` in `gate-evals.ts` hand-rolls this same predicate
- * and accepts only the directory form, so Gate 4's "a shipped phase's P0 is
- * deferred" relief silently does not fire for a plan-spec-form workstream.
- * Routing it here is a one-line change in a file this change does not own.
+ * Gate 4's shipped-phase relief (`donePhasesFor()` in `gate-evals.ts`)
+ * matches through here too; it once accepted only the directory form.
  */
 export function planPointerMatches(
   pointer: string | null | undefined,
