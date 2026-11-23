@@ -14,6 +14,7 @@ import {
   extractSourceIds,
   parseCoverageTable,
 } from "../src/lib/engine/gate-coverage.js";
+import { healthCounts, parseQuestions } from "../src/lib/engine/questions.js";
 import { parseVerdictBlock } from "../src/lib/engine/verdict.js";
 import {
   type EngineRepo,
@@ -576,6 +577,52 @@ describe("devx gate coverage — plan-mode Execution graph", () => {
     expect(j.gate).toBe("CONCERNS");
     expect(j.graph.findings).toEqual(["concern:graph-parallel-collision"]);
     expect(readEngineState(repo.read(SPEC_REL)).gateStatus.plan_verified).toBe(true);
+  });
+
+  it("a graph FAIL leaves an open blocking Q-N entry on the health queue; fixing it resolves the entry", () => {
+    // The queue is what `devx next` row 11 and `devx status`'s `health:` read.
+    // Coverage is clean here, so the graph is the ONLY thing that can put an
+    // entry on it — a queue with no graph routing stays empty (or absent).
+    seed({ design_verified: true, stage: "plan", plan: true });
+    repo.write(`${WS}/plan/agent.md`, graphPlan(SOUND_GRAPH.replace("{ id: 1 }", "{ id: 1, depends_on: [3] }")));
+    expect(gateCoverage(planTable()).code).toBe(1);
+    const queuePath = `${WS}/questions.md`;
+    expect(repo.exists(queuePath), "graph FAIL wrote no health queue").toBe(true);
+    const failed = parseQuestions(repo.read(queuePath)).entries;
+    expect(healthCounts(failed)).toEqual({ blocking: 1, concern: 0 });
+    expect(failed[0]).toMatchObject({ id: "Q-1", kind: "gate-concern", blocks: "gate-plan", status: "open" });
+    expect(failed[0].title).toContain("cycle through phases");
+
+    // Same defect, re-run: the entry is updated in place, not stacked.
+    expect(gateCoverage(planTable()).code).toBe(1);
+    expect(parseQuestions(repo.read(queuePath)).entries.map((q) => q.id)).toEqual(["Q-1"]);
+
+    repo.write(`${WS}/plan/agent.md`, graphPlan(SOUND_GRAPH));
+    expect(gateCoverage(planTable()).code).toBe(0);
+    const fixed = parseQuestions(repo.read(queuePath)).entries;
+    expect(healthCounts(fixed)).toEqual({ blocking: 0, concern: 0 });
+    expect(fixed.map((q) => [q.id, q.status])).toEqual([["Q-1", "resolved"]]);
+  });
+
+  it("a repeated graph finding is one queue entry, and re-runs do not stack more", () => {
+    // `depends_on: [9, 9]` makes plan-graph emit the same message twice.
+    seed({ design_verified: true, stage: "plan", plan: true });
+    repo.write(`${WS}/plan/agent.md`, graphPlan(SOUND_GRAPH.replace("{ id: 1 }", "{ id: 1, depends_on: [9, 9] }")));
+    expect(gateCoverage(planTable()).code).toBe(1);
+    expect(gateCoverage(planTable()).code).toBe(1);
+    const entries = parseQuestions(repo.read(`${WS}/questions.md`)).entries;
+    expect(entries.map((q) => [q.id, q.status])).toEqual([["Q-1", "open"]]);
+    expect(entries[0].title).toContain("depends on phase 9");
+  });
+
+  it("a graph concern reaches the health queue as a concern, never blocking", () => {
+    seed({ design_verified: true, stage: "plan", plan: true });
+    const waived = `${SOUND_GRAPH}\nwaivers:\n  - { phases: [2, 3], paths: [src/b.ts], approver: leo, reason: append-only }`;
+    repo.write(`${WS}/plan/agent.md`, graphPlan(waived, "- `src/b.ts` — also b"));
+    expect(gateCoverage(planTable()).code).toBe(0);
+    const entries = parseQuestions(repo.read(`${WS}/questions.md`)).entries;
+    expect(healthCounts(entries)).toEqual({ blocking: 0, concern: 1 });
+    expect(entries[0].blocks).toBe("gate-plan");
   });
 
   it("no graph section: serial-only note, verdict untouched, JSON says present: false", () => {
