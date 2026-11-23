@@ -26,6 +26,11 @@ describe("blankFencedLines — inline ```lang``` span keeps fence parity", () =>
     expect(blankFencedLines(lines)).toEqual(["", "", "", "", "prose"]);
   });
 
+  it("CRLF lines still open and close fences (validate-emit passes them un-stripped)", () => {
+    const body = ["## Phase checklist", "```md", "- [ ] Phase 9: example (dev spec: zzz999)", "```", "- [ ] Phase 1: real (dev spec: abc123)", ""].join("\r\n");
+    expect(parsePlanStoryHashes(body).map((h) => h.hash)).toEqual(["abc123"]);
+  });
+
   it("parseDevMd: rows below the span are still rows (devx next, graph, loop)", () => {
     const md = [
       "# DEV",

@@ -10,8 +10,12 @@
 // string may not contain a backtick, and a closer is the same character, at
 // least as long, with nothing after it but whitespace.
 
-const OPEN_RE = /^[ \t]*(`{3,}|~{3,})(.*)$/;
-const CLOSE_RE = /^[ \t]*(`{3,}|~{3,})[ \t]*$/;
+// A trailing `\r` (CRLF file, split on `\n`) is tolerated: `.` and `[ \t]`
+// both stop at it, so without `\r?` a CRLF fence never opens or closes —
+// and blankFencedLines' callers that pass un-stripped lines (validate-emit)
+// would read fenced example rows as real ones.
+const OPEN_RE = /^[ \t]*(`{3,}|~{3,})(.*)\r?$/;
+const CLOSE_RE = /^[ \t]*(`{3,}|~{3,})[ \t]*\r?$/;
 
 /** One entry per input line: `true` when the line is a fence line or sits
  *  inside a fenced block (and so is code, not prose or structure). */
