@@ -1339,7 +1339,10 @@ export function runGateEvalsCli(
     exec: opts.exec ?? realShellExec,
     exists: (p) => io.fs.exists(p),
     readFile: (p) => readMdOrNull(io, p),
-    donePhases: donePhasesFor(io.fs, r.repoRoot, subjects.docSetRel),
+    donePhases: donePhasesFor(io.fs, r.repoRoot, {
+      workstreamRel: subjects.docSetRel,
+      specRel: ws.specRel,
+    }),
     waived: new Set(waive),
     dryRun: flags.dryRun === true,
   });
