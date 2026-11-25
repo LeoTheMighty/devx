@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="2" failures="1" errors="0" time="0.212">
+    <testsuite name="assert.test.mjs" timestamp="2026-11-25T00:00:00" hostname="host" tests="2" failures="1" errors="0" skipped="0" time="0.005039334">
+        <testcase classname="assert.test.mjs" name="adds" time="0.004371209">
+            <failure message="expected 2 to be 3 // Object.is equality" type="AssertionError">
+AssertionError: expected 2 to be 3 // Object.is equality
+
+- Expected
++ Received
+
+- 3
++ 2
+
+ ❯ assert.test.mjs:2:34
+            </failure>
+        </testcase>
+        <testcase classname="assert.test.mjs" name="ok" time="0.000187">
+        </testcase>
+    </testsuite>
+</testsuites>

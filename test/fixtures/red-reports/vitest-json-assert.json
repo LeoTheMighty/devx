@@ -1,0 +1,32 @@
+{
+ "numTotalTests": 2,
+ "numFailedTests": 1,
+ "numPassedTests": 1,
+ "numPendingTests": 0,
+ "success": false,
+ "testResults": [
+  {
+   "assertionResults": [
+    {
+     "ancestorTitles": [],
+     "fullName": "adds",
+     "status": "failed",
+     "title": "adds",
+     "failureMessages": [
+      "AssertionError: expected 2 to be 3 // Object.is equality\n    at /work/assert.test.mjs:2:34\n    at file:///home/user/personal/devx/node_modules/@vitest/runner/dist/index.js:146:14\n    at file:///home/user/personal/devx/node_modules/@vitest/runner/dist/index.js:533:11\n    at runWithTimeout (file:///home/user/personal/devx/node_modules/@vitest/runner/dist/index.js:39:7)\n    at runTest (file:///home/user/personal/devx/node_modules/@vitest/runner/dist/index.js:1056:17)\n    at processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at runSuite (file:///home/user/personal/devx/node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file:///home/user/personal/devx/node_modules/@vitest/runner/dist/index.js:1262:5)\n    at startTests (file:///home/user/personal/devx/node_modules/@vitest/runner/dist/index.js:1271:3)\n    at file:///home/user/personal/devx/node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11"
+     ]
+    },
+    {
+     "ancestorTitles": [],
+     "fullName": "ok",
+     "status": "passed",
+     "title": "ok",
+     "failureMessages": []
+    }
+   ],
+   "status": "failed",
+   "message": "",
+   "name": "/work/assert.test.mjs"
+  }
+ ]
+}

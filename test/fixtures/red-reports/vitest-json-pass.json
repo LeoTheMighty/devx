@@ -1,0 +1,23 @@
+{
+ "numTotalTests": 1,
+ "numFailedTests": 0,
+ "numPassedTests": 1,
+ "numPendingTests": 0,
+ "success": true,
+ "testResults": [
+  {
+   "assertionResults": [
+    {
+     "ancestorTitles": [],
+     "fullName": "ok",
+     "status": "passed",
+     "title": "ok",
+     "failureMessages": []
+    }
+   ],
+   "status": "passed",
+   "message": "",
+   "name": "/work/pass.test.mjs"
+  }
+ ]
+}

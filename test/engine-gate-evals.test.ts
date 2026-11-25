@@ -99,6 +99,11 @@ describe("projectRunnersFrom + resolveRunner", () => {
 // Pure gate over an exec seam
 // ---------------------------------------------------------------------------
 
+/** D-19: the fake exec's exit 1 stands for "a test ran and failed", and the
+ *  runner declares exactly that. Reason-check cases live in
+ *  gate-evals-red-reason.test.ts. */
+const EXIT1_CONTRACT = { command: null, report: null, args: null, failedExit: [1] };
+
 interface ExecCall {
   command: string;
   cwd: string;
@@ -139,7 +144,7 @@ function runPure(opts: {
     workstreamAbs: "/repo/_devx/workstreams/demo",
     expectations: opts.expectations ?? validExpectations(),
     plan: opts.plan === undefined ? validPlan() : opts.plan,
-    runners: [{ name: "cli", path: ".", test: "npm test --" }],
+    runners: [{ name: "cli", path: ".", test: "npm test --", red: EXIT1_CONTRACT }],
     exec,
     exists: (p) => existing.has(p),
     readFile: (p) => {
@@ -162,7 +167,7 @@ describe("runGateEvals — pure gate", () => {
     expect(run.command).toBe("npm test -- test/demo.test.mjs");
     expect(run.exitCode).toBe(1);
     expect(run.excerpt).toContain("AssertionError");
-    expect(run.redVerdict).toBe("right-reason");
+    expect(run.redVerdict).toBe("red (asserted)");
     expect(result.deferred.map((d) => d.redVerdict)).toEqual([
       "not-run (deferred: tests-after)",
       "not-run (deferred: human)",
@@ -314,7 +319,7 @@ describe("runGateEvals — pure gate", () => {
       workstreamAbs: "/repo/_devx/workstreams/demo",
       expectations: validExpectations(),
       plan: p0ManifestPlan(),
-      runners: [{ name: "cli", path: ".", test: "npm test --" }],
+      runners: [{ name: "cli", path: ".", test: "npm test --", red: EXIT1_CONTRACT }],
       exec: () => ({ stdout: "", stderr: "", exitCode: 1 }),
       exists: (p) => p === `/repo/${MD_REL}` || p === "/repo/test/perf.test.mjs",
     });
@@ -367,7 +372,7 @@ describe("runGateEvals — pure gate", () => {
       workstreamAbs: "/repo/_devx/workstreams/demo",
       expectations: validExpectations(),
       plan: validPlan(),
-      runners: [{ name: "cli", path: ".", test: "npm test --" }],
+      runners: [{ name: "cli", path: ".", test: "npm test --", red: EXIT1_CONTRACT }],
       exec,
       exists: () => true,
     });
@@ -408,7 +413,7 @@ describe("runGateEvals — shipped-green deferral (debug-9b9be5)", () => {
       workstreamAbs: "/repo/_devx/workstreams/demo",
       expectations: validExpectations(),
       plan: validPlan(),
-      runners: [{ name: "cli", path: ".", test: "npm test --" }],
+      runners: [{ name: "cli", path: ".", test: "npm test --", red: EXIT1_CONTRACT }],
       exec,
       exists: () => true,
       donePhases: new Set([1]), // E-1's "Verified in phase" is 1
@@ -428,7 +433,7 @@ describe("runGateEvals — shipped-green deferral (debug-9b9be5)", () => {
       workstreamAbs: "/repo/_devx/workstreams/demo",
       expectations: validExpectations(),
       plan: validPlan(),
-      runners: [{ name: "cli", path: ".", test: "npm test --" }],
+      runners: [{ name: "cli", path: ".", test: "npm test --", red: EXIT1_CONTRACT }],
       exec,
       exists: () => true,
     });
@@ -444,7 +449,7 @@ describe("runGateEvals — shipped-green deferral (debug-9b9be5)", () => {
       workstreamAbs: "/repo/_devx/workstreams/demo",
       expectations: validExpectations(),
       plan: validPlan(),
-      runners: [{ name: "cli", path: ".", test: "npm test --" }],
+      runners: [{ name: "cli", path: ".", test: "npm test --", red: EXIT1_CONTRACT }],
       exec,
       exists: () => true,
       donePhases: new Set([2]), // E-1 is phase 1 — NOT shipped

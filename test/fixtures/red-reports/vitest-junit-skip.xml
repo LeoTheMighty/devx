@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="1" failures="0" errors="0" time="0.178">
+    <testsuite name="skip.test.mjs" timestamp="2026-11-25T00:00:00" hostname="host" tests="1" failures="0" errors="0" skipped="1" time="0">
+        <testcase classname="skip.test.mjs" name="later" time="0">
+            <skipped/>
+        </testcase>
+    </testsuite>
+</testsuites>

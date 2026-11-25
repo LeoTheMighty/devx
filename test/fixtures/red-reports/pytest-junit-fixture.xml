@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="0.033" timestamp="2026-11-25T00:00:00" hostname="host"><testcase classname="test_fixture" name="test_x" time="0.000"><error message="failed on setup with &quot;RuntimeError: db not running&quot;">#x1B[0m#x1B[37m@pytest#x1B[39;49;00m.fixture#x1B[90m#x1B[39;49;00m
+    #x1B[94mdef#x1B[39;49;00m#x1B[90m #x1B[39;49;00m#x1B[92mdb#x1B[39;49;00m():#x1B[90m#x1B[39;49;00m
+&gt;       #x1B[94mraise#x1B[39;49;00m #x1B[96mRuntimeError#x1B[39;49;00m(#x1B[33m"#x1B[39;49;00m#x1B[33mdb not running#x1B[39;49;00m#x1B[33m"#x1B[39;49;00m)#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE       RuntimeError: db not running#x1B[0m
+
+#x1B[1m#x1B[31mtest_fixture.py#x1B[0m:4: RuntimeError</error></testcase></testsuite></testsuites>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="1" failures="1" errors="0" time="0.201">
+    <testsuite name="empty.test.mjs" timestamp="2026-11-25T00:00:00" hostname="host" tests="1" failures="1" errors="0" skipped="0" time="0">
+        <testcase classname="empty.test.mjs" name="empty.test.mjs" time="0">
+            <failure message="No test suite found in file /work/empty.test.mjs" type="Error">
+Error: No test suite found in file /work/empty.test.mjs
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>
