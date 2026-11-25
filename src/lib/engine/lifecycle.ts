@@ -593,7 +593,7 @@ export function planSplit(input: SplitInput): SplitPlan {
       code: "partition-unassigned",
       message:
         `the partition leaves ${unassigned.join(", ")} with no child. A split never drops an expectation; ` +
-        `assign it, or remove it from the parent first (\`devx revise ${p.hash} --touched expectations.md\`).`,
+        `assign it, or delete it from the parent's expectations.md first and record that with \`devx revise ${p.hash} --touched expectations.md\`.`,
       paths: unassigned,
     });
   }
