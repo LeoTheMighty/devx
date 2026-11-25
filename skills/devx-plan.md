@@ -277,9 +277,10 @@ free-nested sub-items (contract in Stage: PRD).
    types get stubs (legal for P1+; a deferred P0 fails).
 2. Run **`devx gate evals <hash>`** (use `--dry-run` first to sanity-check
    resolution). Every P0 must fail *for the right reason* — missing
-   feature, not an import/wiring error. Read the failure quotes in
-   `evals/RED-report.md` and confirm each one; wrong-reason failures are
-   yours to fix before the gate counts.
+   feature, not an import/wiring error. The gate checks only that the eval
+   ran and a test failed, by its runner's `red:` contract (D-19; none FAILs
+   a P0), so stub what a test imports. Whether it fails on the missing
+   feature is yours: read each quote in `evals/RED-report.md`.
 2b. **Gate 4 stamps the evals it ran.** On every non-FAIL verdict (PASS,
    CONCERNS, WAIVED), Gate 4 stamps a sha256 of each eval artifact it ran
    into `gate_status.red_eval_shas` (`stampEvalShas()` in

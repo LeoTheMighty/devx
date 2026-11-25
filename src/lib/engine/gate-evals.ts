@@ -8,8 +8,15 @@
 //
 //   - P0: must run RED (nonzero exit). Missing artifact, exit 0, or a
 //     deferred validation type ⇒ FAIL.
-//   - P1+: gaps (missing artifact / exit 0 / deferred) ⇒ CONCERNS, never a
-//     block.
+//   - P0 RED must also be RED for a reason the gate can see (D-19,
+//     red-reason.ts): the eval ran and a test in it failed, by the runner's
+//     declared `projects[].red` contract. A wrong reason (could not start,
+//     killed, load/collection/setup error, nothing ran, all passed, an exit
+//     outside the contract) or an unchecked one (no contract) ⇒ FAIL.
+//     The gate does NOT check that the failing test fails on the missing
+//     behaviour — that stays the author's judgment, and the report says so.
+//   - P1+: gaps (missing artifact / exit 0 / deferred / wrong or unchecked
+//     reason) ⇒ CONCERNS, never a block.
 //   - Deferred stubs are legal only for `tests-after` / `human` validation
 //     types, read from plan/agent.md's Expectation-coverage table when present
 //     (column `Validation type`); expectations without a plan row default
@@ -37,6 +44,7 @@
 // Design: v2/02-engine.md §4.6
 
 import { spawnSync } from "node:child_process";
+import { constants as osConstants } from "node:os";
 import { isAbsolute, join, relative, sep } from "node:path";
 
 import {
@@ -47,6 +55,16 @@ import {
 import { readEngineState } from "./frontmatter.js";
 import { EVALS_DIR_REL, type WorkstreamPointerTarget, planPointerMatches } from "./artifacts.js";
 import { isOutcomeDeferredManifest } from "./eval-manifest.js";
+import {
+  type CaseResult,
+  RED_REPORT_ENV,
+  RED_REPORT_PLACEHOLDER,
+  type RedContract,
+  type RedReason,
+  classifyRed,
+  describeContract,
+  redContractFrom,
+} from "./red-reason.js";
 import {
   INACTIVE_WAIVER,
   type Verdict,
@@ -136,6 +154,10 @@ export interface ProjectRunner {
   name: string;
   path: string;
   test: string | null;
+  /** Gate 4 contract (`projects[].red`, D-19). Absent/null → undeclared. */
+  red?: RedContract | null;
+  /** Why a present `red:` block was rejected; it then reads as undeclared. */
+  redProblems?: string[];
 }
 
 /** Narrow the merged-config `projects:` list. Malformed entries dropped. */
@@ -148,10 +170,13 @@ export function projectRunnersFrom(merged: unknown): ProjectRunner[] {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
     const p = raw as Record<string, unknown>;
     if (typeof p.name !== "string" || typeof p.path !== "string") continue;
+    const red = redContractFrom(p.red);
     out.push({
       name: p.name,
       path: p.path.replace(/\/+$/, "") || ".",
       test: typeof p.test === "string" && p.test.trim() !== "" ? p.test : null,
+      red: red.contract,
+      ...(red.problems.length > 0 ? { redProblems: red.problems } : {}),
     });
   }
   return out;
@@ -245,10 +270,35 @@ export interface ExecResult {
   exitCode: number;
 }
 
-export type ShellExec = (command: string, cwd: string) => ExecResult;
+/** `env` is merged over the gate's own environment when given. */
+export type ShellExec = (
+  command: string,
+  cwd: string,
+  env?: Readonly<Record<string, string>>,
+) => ExecResult;
 
-export const realShellExec: ShellExec = (command, cwd) => {
-  const r = spawnSync(command, { shell: true, encoding: "utf8", cwd });
+export const realShellExec: ShellExec = (command, cwd, env) => {
+  const r = spawnSync(command, {
+    shell: true,
+    encoding: "utf8",
+    cwd,
+    ...(env ? { env: { ...process.env, ...env } } : {}),
+    // The 1 MB default kills a chatty suite with ENOBUFS, which lands below
+    // as exit 127. Since D-19 that reads "could not run" — right for a
+    // missing binary, wrong for a long log — so give the output room.
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (!r.error && r.status === null && r.signal) {
+    // Killed by a signal with no shell left to report 128+n (sh exec'd the
+    // runner directly). Say so in the shell's own convention, so the reason
+    // check reads "killed", not "not found" (D-19).
+    const n = osConstants.signals[r.signal as keyof typeof osConstants.signals];
+    return {
+      stdout: r.stdout ?? "",
+      stderr: `${r.stderr ?? ""}\nkilled by ${r.signal}`,
+      exitCode: 128 + (typeof n === "number" ? n : 0),
+    };
+  }
   if (r.error || r.status === null) {
     return {
       stdout: r.stdout ?? "",
@@ -260,7 +310,16 @@ export const realShellExec: ShellExec = (command, cwd) => {
 };
 
 export type RedVerdict =
-  | "right-reason"
+  /** Ran, and a test failed, by the runner's contract (D-19). NOT a claim
+   *  that the failure is the missing behaviour — see red-reason.ts. */
+  | "red (asserted)"
+  /** Nonzero exit; the runner declares nothing the gate can check. */
+  | "red (reason unchecked)"
+  | "wrong-reason (could not run)"
+  | "wrong-reason (nothing ran)"
+  | "wrong-reason (no result)"
+  | "wrong-reason (passed)"
+  | "wrong-reason (undeclared exit)"
   | "not-red"
   | "not-run (artifact missing)"
   | "not-run (deferred: tests-after)"
@@ -281,6 +340,11 @@ export interface EvalRun {
   exitCode: number | null;
   excerpt: string | null;
   redVerdict: RedVerdict;
+  /** What the gate could see of WHY it was red (D-19); null when not run
+   *  or not red. */
+  reason: RedReason | null;
+  /** The runner's Gate 4 contract, as `describeContract` prints it. */
+  contract: string | null;
   /** Non-null when this run contributes a gap (P0 → blocking). */
   gap: string | null;
   blocking: boolean;
@@ -317,6 +381,17 @@ export interface GateEvalsInputs {
   waived?: ReadonlySet<string>;
   /** Dry-run: resolve everything, run nothing. */
   dryRun?: boolean;
+  /**
+   * Structured-result seam for runners whose contract declares `report`
+   * (D-19). `allocate` returns a fresh path no file occupies yet, one per
+   * run; `read` returns its text after the run, or null. Absent → a
+   * declared report can never be read, which classifies "no result" — the
+   * strict direction.
+   */
+  redReport?: {
+    allocate(eId: string): string;
+    read(path: string): string | null;
+  };
 }
 
 export interface GateEvalsResult {
@@ -430,6 +505,8 @@ function evaluateExpectation(
     exitCode: null,
     excerpt: null,
     redVerdict: "not-red",
+    reason: null,
+    contract: null,
     gap: null,
     blocking: false,
   };
@@ -514,7 +591,8 @@ function evaluateExpectation(
   }
 
   const runner = resolveRunner(inputs.runners, rel);
-  if (!runner || runner.test === null) {
+  const baseCommand = runner ? (runner.red?.command ?? runner.test) : null;
+  if (!runner || baseCommand === null) {
     base.redVerdict = "not-run (no runner)";
     base.gap = `${block.id}: no \`projects:\` runner with a test command matches '${rel}'`;
     base.blocking = isP0;
@@ -526,8 +604,17 @@ function evaluateExpectation(
     runner.path === "."
       ? rel
       : relative(join(inputs.repoRoot, runner.path), abs).split(sep).join("/");
-  const command = `${runner.test} ${artifactForRunner}`;
+  const contract = runner.red ?? null;
+  // Recorded with `{report}` left as written: the real path is a temp file
+  // the gate deletes, and a report that named it would differ on every run.
+  const command = `${baseCommand} ${artifactForRunner}${
+    contract?.args ? ` ${contract.args}` : ""
+  }`;
   base.command = command;
+  base.contract =
+    runner.redProblems && runner.redProblems.length > 0
+      ? `none (malformed \`red:\` — ${runner.redProblems.join("; ")})`
+      : describeContract(contract);
 
   if (inputs.dryRun) {
     base.redVerdict = "not-red";
@@ -535,7 +622,28 @@ function evaluateExpectation(
     return base;
   }
 
-  const result = inputs.exec(command, cwd);
+  let reportPath: string | null = null;
+  if (contract?.report) {
+    if (!inputs.redReport) {
+      // Nowhere to put the result. Running anyway would hand the runner a
+      // literal `{report}` path — a junk file in the repo — and could only
+      // classify "no result", so do not run at all.
+      base.redVerdict = "wrong-reason (no result)";
+      base.gap = `${block.id}: runner '${runner.name}' declares a ${contract.report} report but this caller gave the gate no place to put it`;
+      base.blocking = isP0;
+      return base;
+    }
+    reportPath = inputs.redReport.allocate(block.id);
+  }
+  const executed =
+    reportPath === null
+      ? command
+      : command.split(RED_REPORT_PLACEHOLDER).join(shellQuote(reportPath));
+  const result = inputs.exec(
+    executed,
+    cwd,
+    reportPath === null ? undefined : { [RED_REPORT_ENV]: reportPath },
+  );
   base.exitCode = result.exitCode;
   const combined = `${result.stdout}\n${result.stderr}`;
   base.excerpt = lastLines(combined, 10);
@@ -544,15 +652,51 @@ function evaluateExpectation(
     base.redVerdict = "not-red";
     base.gap = `${block.id} expected RED but '${command}' exited 0 — the artifact does not test the missing behavior`;
     base.blocking = isP0;
-  } else {
-    base.redVerdict = "right-reason";
+    return base;
   }
+
+  const reason = classifyRed({
+    exitCode: result.exitCode,
+    contract,
+    reportText:
+      reportPath !== null && inputs.redReport ? inputs.redReport.read(reportPath) : null,
+    runnerName: runner.name,
+    contractProblems: runner.redProblems,
+  });
+  base.reason = reason;
+  if (reason.kind === "asserted") {
+    base.redVerdict = "red (asserted)";
+    return base;
+  }
+  if (reason.kind === "unchecked") {
+    base.redVerdict = "red (reason unchecked)";
+    base.gap = `${block.id} ran RED but the gate cannot see why — ${reason.detail}${
+      isP0 ? "; a P0 must fail for a reason the gate can check" : ""
+    }`;
+  } else {
+    base.redVerdict = `wrong-reason (${reason.wrong})`;
+    base.gap = `${block.id} is RED for the wrong reason — ${reason.detail}${
+      isP0 ? "; a P0 must fail inside a test, on the missing behaviour" : ""
+    }`;
+  }
+  base.blocking = isP0;
   return base;
+}
+
+/** POSIX single-quote a path for the shell the runner command goes to. */
+function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
 // ---------------------------------------------------------------------------
 // RED-report rendering — evals/RED-report.md
 // ---------------------------------------------------------------------------
+
+/** The two halves of the D-19 scope statement every report carries. */
+export const CHECKED =
+  "Each run P0 must have executed and failed a test, by its runner's `projects[].red` contract: a counted structured report, or exit codes the runner declares mean a test failed.";
+export const NOT_CHECKED =
+  "Not checked: that the failing test fails on the missing behaviour rather than a typo or a wrong assertion — the author's judgment, from the failure quotes.";
 
 export function renderRedReport(args: {
   workstreamRel: string;
@@ -568,7 +712,7 @@ export function renderRedReport(args: {
     .map((r) => r.eId);
   const statusReason =
     result.verdict === "PASS"
-      ? `Every runnable expectation observed RED for the right reason (${result.runs.length} run(s), ${result.deferred.length} deferred).`
+      ? `Every runnable expectation ran and failed a test, by its runner's contract (${result.runs.length} run(s), ${result.deferred.length} deferred). ${NOT_CHECKED}`
       : result.verdict === "WAIVED"
         ? `${waivedIds.join(", ")} waived by ${args.waiver?.approver ?? "(unknown)"}: ${args.waiver?.reason ?? "(no reason)"} — remaining expectations clear (${result.runs.length} run(s), ${result.deferred.length} deferred).`
         : result.reasons.slice(0, 2).join(" ") +
@@ -593,6 +737,8 @@ export function renderRedReport(args: {
   );
   lines.push(`# RED report — ${args.workstreamRel} — ${args.date}`);
   lines.push("");
+  lines.push(`> **What Gate 4 checked (D-19).** ${CHECKED} ${NOT_CHECKED}`);
+  lines.push("");
   lines.push("## Runs");
   lines.push("");
   for (const run of result.runs) {
@@ -614,6 +760,18 @@ export function renderRedReport(args: {
     }
     lines.push("  ```");
     lines.push(`- **RED verdict**: ${run.redVerdict}`);
+    if (run.contract !== null) lines.push(`- **Runner contract**: ${run.contract}`);
+    if (run.reason !== null) {
+      lines.push(`- **Reason check**: ${run.reason.detail}`);
+      const failing: CaseResult[] = run.reason.kind === "unchecked" ? [] : run.reason.failing;
+      if (failing.length > 0) {
+        lines.push("- **Failing cases**:");
+        for (const c of failing.slice(0, 5)) {
+          lines.push(`  - \`${c.id}\`${c.message ? ` — ${c.message}` : ""}`);
+        }
+        if (failing.length > 5) lines.push(`  - (+${failing.length - 5} more)`);
+      }
+    }
     lines.push("");
   }
   if (result.runs.length === 0) {

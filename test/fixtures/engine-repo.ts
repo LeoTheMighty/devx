@@ -40,6 +40,15 @@ const DEFAULT_CONFIG = [
   "  - name: cli",
   "    path: .",
   '    test: "node --eval \\"process.exit(1)\\" --"',
+  // D-19: Gate 4 checks WHY a P0 is red only through a runner's declared
+  // contract. The engine tests drive Gate 4 through an exec seam that stands
+  // in for a runner whose exit 1 means "a test ran and failed", and this
+  // says so. Without it, every PASS fixture here would be a P0 red for an
+  // unchecked reason — which is what each of them was until D-19: the
+  // command above exits 1 unconditionally. Fixtures that need the gate to
+  // COUNT test cases declare `report:` instead (gate-evals-red-reason.test.ts).
+  "    red:",
+  "      failed_exit: [1]",
   "",
 ].join("\n");
 

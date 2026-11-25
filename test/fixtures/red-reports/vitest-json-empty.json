@@ -1,0 +1,15 @@
+{
+ "numTotalTests": 0,
+ "numFailedTests": 0,
+ "numPassedTests": 0,
+ "numPendingTests": 0,
+ "success": false,
+ "testResults": [
+  {
+   "assertionResults": [],
+   "status": "failed",
+   "message": "No test suite found in file /work/empty.test.mjs",
+   "name": "/work/empty.test.mjs"
+  }
+ ]
+}

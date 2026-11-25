@@ -254,6 +254,10 @@ function configFor(layout: Layout): string {
     "  - name: cli",
     "    path: .",
     '    test: "node --eval \\"process.exit(1)\\" --"',
+    // D-19: the exec seam's exit 1 stands for a failed test (see
+    // fixtures/engine-repo.ts DEFAULT_CONFIG).
+    "    red:",
+    "      failed_exit: [1]",
     "",
   ].join("\n");
 }

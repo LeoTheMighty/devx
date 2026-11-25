@@ -926,6 +926,40 @@
               "string",
               "null"
             ]
+          },
+          "red": {
+            "description": "Gate 4 contract (v2/07-decisions.md D-19): what `devx gate evals` can see of WHY an eval is red. `report` (junit | jest-json) makes the gate count test cases from a structured result written to `{report}` / $DEVX_RED_REPORT; `failed_exit` lists the exit codes the runner promises mean a test ran and failed; `command` replaces `test` for Gate 4 runs only. With neither `report` nor `failed_exit`, a P0's RED reason is unchecked and Gate 4 fails it. See docs/CONFIG.md \u00a715 `projects[].red`.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "command": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "report": {
+                "enum": [
+                  "junit",
+                  "jest-json"
+                ]
+              },
+              "args": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "failed_exit": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 125
+                }
+              }
+            }
           }
         }
       }

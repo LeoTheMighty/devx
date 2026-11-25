@@ -10,8 +10,9 @@ waiver: { active: false, approver: null, reason: null }
 
 <!-- Gate 4. Every P0 expectation's runnable artifact must be observed
      failing FOR THE RIGHT REASON (missing feature, not an import/wiring
-     error) before implementation. If you didn't watch it fail, you don't
-     know if it tests the right thing. P1+ gaps → CONCERNS, never a block. -->
+     error) before implementation. The gate checks it ran and a test failed
+     (D-19); the quote shows whether that is the missing feature. P1+ gaps
+     → CONCERNS, never a block. -->
 
 ## Runs
 
@@ -24,7 +25,7 @@ waiver: { active: false, approver: null, reason: null }
   ```
   <the line(s) proving it fails for the right reason>
   ```
-- **RED verdict**: <right-reason | wrong-reason (wiring) | not-run (deferred: tests-after|human)>
+- **RED verdict**: <red (asserted) | red (reason unchecked) | wrong-reason (…) | not-run (deferred: …)>
 
 ### E-2: <…>
 

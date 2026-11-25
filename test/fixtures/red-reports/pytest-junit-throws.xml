@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="0.035" timestamp="2026-11-25T00:00:00" hostname="host"><testcase classname="test_throws" name="test_x" time="0.000"><failure message="NameError: name 'undefined_fn' is not defined">#x1B[0m#x1B[94mdef#x1B[39;49;00m#x1B[90m #x1B[39;49;00m#x1B[92mtest_x#x1B[39;49;00m():#x1B[90m#x1B[39;49;00m
+&gt;       undefined_fn()#x1B[90m#x1B[39;49;00m
+        ^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE       NameError: name 'undefined_fn' is not defined#x1B[0m
+
+#x1B[1m#x1B[31mtest_throws.py#x1B[0m:2: NameError</failure></testcase></testsuite></testsuites>

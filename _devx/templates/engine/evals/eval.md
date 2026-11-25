@@ -52,4 +52,4 @@ last_run: null   # stamped on every Runs row
 
 | Date | Run by | Result | Evidence |
 |---|---|---|---|
-| YYYY-MM-DD | devx gate evals | RED — right reason | <exit codes / quotes> |
+| YYYY-MM-DD | devx gate evals | RED — asserted | <exit codes / quotes> |

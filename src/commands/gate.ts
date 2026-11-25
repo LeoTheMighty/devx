@@ -22,6 +22,8 @@
 // Spec: dev/dev-v2e101-2026-07-05T13:01-engine-cli-primitives.md
 // Design: v2/02-engine.md §4.2, §4.4, §4.6
 
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, dirname, join, posix } from "node:path";
 import type { Command } from "commander";
 
@@ -58,6 +60,8 @@ import {
   realShellExec,
   renderRedReport,
   runGateEvals,
+  CHECKED as RED_CHECKED,
+  NOT_CHECKED as RED_NOT_CHECKED,
 } from "../lib/engine/gate-evals.js";
 import {
   blocksVerification,
@@ -1028,6 +1032,17 @@ function carryForwardStamps(
   return { ...carried, ...fresh };
 }
 
+/** The gate could not make the temp dir a runner's `red.report` goes to. */
+class RedReportDirError extends Error {
+  constructor(cause: unknown) {
+    super(
+      `could not create a temp directory for a runner's RED report (${
+        cause instanceof Error ? cause.message : String(cause)
+      }) — nothing was run or written`,
+    );
+  }
+}
+
 export function runGateEvalsCli(
   args: string[],
   flags: {
@@ -1328,24 +1343,61 @@ export function runGateEvalsCli(
     }
   }
 
-  const result = runGateEvals({
-    repoRoot: r.repoRoot,
-    workstreamAbs: subjects.docSetAbs,
-    expectations,
-    plan: io.fs.exists(subjects.plan.abs)
-      ? io.fs.readFile(subjects.plan.abs)
-      : null,
-    runners: projectRunnersFrom(r.merged),
-    exec: opts.exec ?? realShellExec,
-    exists: (p) => io.fs.exists(p),
-    readFile: (p) => readMdOrNull(io, p),
-    donePhases: donePhasesFor(io.fs, r.repoRoot, {
-      workstreamRel: subjects.docSetRel,
-      specRel: ws.specRel,
-    }),
-    waived: new Set(waive),
-    dryRun: flags.dryRun === true,
-  });
+  // D-19: a runner that declares a structured report writes it here — a
+  // fresh temp dir per gate run, OUTSIDE the repo (a report inside the
+  // workstream would be swept into a directory eval's lock), one file per
+  // run so no run can read another's result, removed whatever happens.
+  const redReportDir: { path: string | null } = { path: null };
+  let redReportSeq = 0;
+  let result: ReturnType<typeof runGateEvals>;
+  try {
+    result = runGateEvals({
+      repoRoot: r.repoRoot,
+      workstreamAbs: subjects.docSetAbs,
+      expectations,
+      plan: io.fs.exists(subjects.plan.abs)
+        ? io.fs.readFile(subjects.plan.abs)
+        : null,
+      runners: projectRunnersFrom(r.merged),
+      exec: opts.exec ?? realShellExec,
+      exists: (p) => io.fs.exists(p),
+      readFile: (p) => readMdOrNull(io, p),
+      donePhases: donePhasesFor(io.fs, r.repoRoot, {
+        workstreamRel: subjects.docSetRel,
+        specRel: ws.specRel,
+      }),
+      waived: new Set(waive),
+      dryRun: flags.dryRun === true,
+      redReport: {
+        allocate: (eId) => {
+          try {
+            redReportDir.path ??= mkdtempSync(join(tmpdir(), "devx-red-"));
+          } catch (e) {
+            throw new RedReportDirError(e);
+          }
+          redReportSeq += 1;
+          return join(redReportDir.path, `${redReportSeq}-${eId.replace(/[^A-Za-z0-9-]/g, "_")}.report`);
+        },
+        read: (p) => {
+          try {
+            return readFileSync(p, "utf8");
+          } catch {
+            return null;
+          }
+        },
+      },
+    });
+  } catch (e) {
+    // Only the temp-dir failure is ours to report; anything else keeps
+    // propagating exactly as it did before D-19. Nothing was written yet.
+    if (!(e instanceof RedReportDirError)) throw e;
+    io.err(`devx gate evals: ${e.message}\n`);
+    return 2;
+  } finally {
+    if (redReportDir.path !== null) {
+      rmSync(redReportDir.path, { recursive: true, force: true });
+    }
+  }
 
   if (flags.dryRun === true) {
     io.out(
@@ -1356,6 +1408,9 @@ export function runGateEvalsCli(
           eId: run.eId,
           artifact: run.artifact,
           command: run.command,
+          // D-19: what the gate will be able to see of why it is red. A
+          // P0 on `none` FAILs when it runs — visible here before it does.
+          red_contract: run.contract,
         })),
         deferred: result.deferred.map((run) => ({
           eId: run.eId,
@@ -1448,6 +1503,8 @@ export function runGateEvalsCli(
       hash: ws.hash,
       report: reportRel,
       reasons: result.reasons,
+      // D-19: the verdict's scope, stated rather than implied.
+      red_reason: { checked: RED_CHECKED, not_checked: RED_NOT_CHECKED },
       flipped,
       ...(waive.length > 0 ? { waived: waive } : {}),
     })}\n`,

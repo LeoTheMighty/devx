@@ -523,6 +523,132 @@ file; supersessions are appended, never rewritten.
   survivor's shipped phases, and it reaches no state that `revise` cannot
   already reach.
 
+- **D-19 [user] (2026-11-25, `feat/gate4-red-reason`)** — *Gate 4 checks
+  that a P0 **executed and a test in it failed**, through a contract the
+  runner declares. It does not check that the failure is the missing
+  behaviour, and it says so in every report.* Gate 4's claim is "RED for the
+  right reason", but until now it checked only for a nonzero exit. An import
+  error, a collection error, a fixture whose DB was down, an empty
+  selection, a runner not on PATH, a killed runner, and a runner that exits
+  1 on a green suite all PASSed and flipped `evals_red`. Palateful's api
+  runner had the last shape (fixed runner-side in its `8434722f`), and the
+  gate PASSed a vacuous suite on it.
+  The core is `src/lib/engine/red-reason.ts` (pure), and
+  `evaluateExpectation` in `gate-evals.ts` consumes it.
+  `test/gate-evals-red-reason.test.ts` tests the parsers against real
+  vitest 3 and pytest 9 output. `test/gate-evals-red-reason-cli.test.ts`
+  runs a two-P0 mkdtemp workstream through real processes.
+
+  *The line, and why there.* There are three candidate lines.
+  1. **Executed-and-asserted** is held, because a structured result can
+     tell "a test ran and failed" from "the eval never got that far".
+  2. **Recorded failure vs current failure** is not attempted. Gate 4 is
+     one-shot: a closed gate refuses re-runs (`5307283`), so on the run
+     that decides there is no earlier reason to compare against. The only
+     later re-run is `/devx` Phase 5's re-RED, which is skill prose, not a
+     gate. Palateful's RED registry (`tools/red-artifacts.txt`) records
+     *which* files are RED, not *why*. A comparator with no caller would be
+     an inert producer, which this ledger has learned not to ship.
+  3. **Semantic equivalence** of two failure reasons is out of reach.
+
+  *How a nonzero exit is read* (exit 0 is still not RED). Every rule
+  below only refuses:
+  - **126, 127, 128+n** mean "could not run" for every runner, declared or
+    not. `realShellExec` now reports a signal death as 128+n rather than
+    127.
+  - **`projects[].red.report`** (`junit` | `jest-json`; result path passed as
+    `{report}` and as `$DEVX_RED_REPORT`): the gate counts the cases itself.
+    Any of these is a wrong reason:
+    - a case that errored before its test body ran (load, collection or
+      setup), even beside a real failure
+    - zero cases, or every case skipped
+    - every case passed
+    - a report that is missing or unparseable
+
+    vitest's JUnit reports a module that failed to import as a `<failure>`
+    on a case named after the file. The parser reads that case as errored,
+    and the docs point vitest at `jest-json`.
+  - **`red.failed_exit`**: the runner *promises* these codes mean a test
+    ran and failed. The gate checks the code but counts nothing, so the
+    check is as good as the runner's promise. Pytest's bare `1` is not
+    such a promise: a fixture that cannot reach its DB also exits 1. When
+    both keys are declared, both must hold.
+  - **No contract** gives "reason unchecked". A malformed `red:` reads the
+    same, and the gate names the problem.
+
+  A P0 that is wrong-reason or unchecked fails the gate. A P1+ is a
+  CONCERNS gap. The verdict label `right-reason` is retired: the gate never
+  established it. The labels are now `red (asserted)`, `red (reason
+  unchecked)` and `wrong-reason (…)`.
+
+  *What the gate still does not check.* Whether the failing test fails
+  *on the expectation's missing behaviour*. These all read as a failed
+  case:
+  - a `NameError` or `ReferenceError` from a typo in the test body
+  - an assertion on the wrong thing
+  - a stub that throws "not implemented"
+
+  So does a test that would fail with any implementation at all. That
+  judgment stays the Gate 4 author's, made from the failure quotes. Every
+  RED report opens with a "What Gate 4 checked" line, and the CLI JSON
+  carries `red_reason: { checked, not_checked }`. The `failed_exit` path
+  has a second limit: the runner's word is not verified.
+
+  *Why `[user]`.* D-18's reasoning, that nothing in it loosens anything,
+  holds here too: no rule passes anything that failed before. But one rule
+  refuses a state that may be honest, and that rule is Leo's call. **A P0
+  on a runner with no `red:` contract fails.** That blocks the next Gate 4
+  in any repo until its runners declare a contract, which is one config
+  line per runner. The other rules refuse states that are provably not "a
+  test failed", and they need no sign-off. If Leo declines the undeclared
+  rule, the fallback is to make an undeclared P0 a CONCERNS gap that still
+  advances. Even then it is never `right-reason`, and the report keeps
+  saying the reason is unchecked. The refusal is the default because the
+  P0 floor already fails P0s the gate cannot observe: a `.md` artifact,
+  and no runner.
+
+  *What flips, PASS → FAIL.*
+  - **Tests in this repo.** 74 existing tests in 6 files flipped. Every one
+    ran on the shared engine fixture's runner, `node --eval
+    "process.exit(1)"`, which exits 1 unconditionally: the brief's
+    vacuous shape, on which this suite proved Gate 4 "passes". They now
+    declare `red: { failed_exit: [1] }`, which is what their exec seam
+    models. Against `origin/main`, 11 of the new CLI cases PASS Gate 4,
+    every one of them red for the wrong reason.
+  - **Real workstreams, today: none can flip.** Every workstream past RED
+    is closed, and a closed Gate 4 refuses before this check:
+    - devx `usage-window-governor`
+    - Palateful `browser-qa-agent`, `rotation-self-heal` and
+      `admin-request-intake`
+    - rooted-light `rooted-light-website`
+
+    `--verify` executes nothing and is unchanged, so admin-request-intake's
+    passing `--verify` stands. Run again today, usage-window-governor's own
+    P0s would fail. They were recorded `right-reason` on a `tsc` TS2307
+    error, because Gate 4 ran `npm test --silent <file>`: build, typecheck
+    and the whole parallel suite, returning whichever step failed first.
+  - **The next Gate 4** fails its P0s until its runners declare a contract.
+    None of these declare one yet:
+    - Palateful: all five runners. Since `8434722f`, `api`'s wrapper maps a
+      green run that exits 1 to 3, and a run where nothing passed to 5. So
+      `failed_exit: [1]` there would catch the original defect. But its 1
+      still covers errors-only runs, where a fixture raised and no
+      assertion failed. Only `report: junit` separates those.
+    - rooted-light: both runners.
+    - this repo's `workstream-evals` (bare tsx scripts).
+
+    ClassyLights `scene-engine` (stage `plan`) has no `projects:` block, so
+    its P0s already fail as "no runner". This repo's `cli` runner now
+    declares `npx vitest run` + `jest-json`. That was checked against the
+    real vitest config: an assertion failure reads asserted, and an import
+    of an unwritten module reads could-not-run. A RED test here must
+    therefore import a stub, not a missing module.
+
+  *Not touched.* `evals_red` and every gate flag; the closed-gate refusal
+  (still first, still byte-identical, and the runner is never executed);
+  `--verify` and `--dry-run` (still execute nothing; `--dry-run` now prints
+  each run's `red_contract`); `devx loop`; both prose-budget knobs.
+
 ## Open questions (non-blocking, tracked)
 
 - ~~**O-1** — Mermaid in tours~~ **CLOSED 2026-08-04 (tur101)** — moot; the

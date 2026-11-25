@@ -1,0 +1,15 @@
+{
+ "numTotalTests": 0,
+ "numFailedTests": 0,
+ "numPassedTests": 0,
+ "numPendingTests": 0,
+ "success": false,
+ "testResults": [
+  {
+   "assertionResults": [],
+   "status": "failed",
+   "message": "Failed to load url ./src/missing.mjs (resolved id: ./src/missing.mjs) in /work/importfail.test.mjs. Does the file exist?",
+   "name": "/work/importfail.test.mjs"
+  }
+ ]
+}

@@ -406,6 +406,11 @@ projects:
     test: 'npx tsx'
     coverage: null
     pre_push: null
+    # No `red:` contract (D-19): a bare tsx script's exit 1 is also what an
+    # import error gives, so Gate 4 cannot see why one is red and FAILs a
+    # P0 that runs here. A P0 eval belongs in a vitest file under test/, or
+    # in a script that writes JUnit to $DEVX_RED_REPORT and declares
+    # `red: { report: junit }`.
   - name: cli
     path: .
     layers: [backend]
@@ -413,6 +418,15 @@ projects:
     test: 'npm test --silent'
     coverage: null
     pre_push: null
+    # D-19: Gate 4 runs ONE eval file straight through vitest and counts the
+    # result. `npm test --silent <file>` ran the whole chain (build,
+    # typecheck, the parallel suite) and returned whichever step failed
+    # first — usage-window-governor's P0s were "red" on a tsc error.
+    # jest-json, not junit: vitest's JUnit calls an import error a failure.
+    red:
+      command: 'npx vitest run'
+      report: jest-json
+      args: '--reporter=default --reporter=json --outputFile={report}'
   # The `mobile` and `worker` projects were removed 2026-09-25 with the mobile
   # companion's retirement (v2/07-decisions.md D-16, plan-47b842). `mobile/`
   # never went past a Flutter scaffold and `worker/` was never written, so
