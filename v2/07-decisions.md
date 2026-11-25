@@ -364,6 +364,140 @@ file; supersessions are appended, never rewritten.
   it, and he confirmed it directly in the session that made this change. The
   `[user]` marker stays until Leo flips it himself, per D-2's precedent.*
 
+- **D-18 (locked, 2026-11-24, `feat/workstream-split-combine`)** — *A
+  workstream splits or combines by **retirement and re-earning**. No gate
+  verdict crosses either operation, and either one refuses rather than
+  guesses.* **This decision is the implementing session's, not Leo's.** It
+  needs no sign-off because nothing in it loosens anything: every rule below
+  either refuses or resets. Leo can overturn any refusal with a later entry.
+  The primitives are `devx workstream split <hash> --into <a>,<b>[,…]
+  --partition <file>` and `devx workstream combine <into-hash> <from-hash>`.
+  Their pure core is `src/lib/engine/lifecycle.ts`, with all IO in
+  `src/commands/workstream.ts`. `test/workstream-lifecycle.test.ts` pins
+  them, and every refusal there asserts that the whole fixture tree is
+  byte-identical afterwards.
+
+  *The one rule.* A verdict is a claim about one artifact body. Both
+  operations change an expectation set, and §4.9's cascade says an
+  expectations change resets all four flags. So no verdict survives onto the
+  new scope, and nothing is "carried with care".
+
+  *Split.* The parent is **retired, not shrunk**: it gets `stage: retired`,
+  `status: superseded`, `spawned: [children]`, a status-log line and
+  `decisions/<date>-split.md`. Everything else in it stays byte-identical
+  where it is: verdicts, `decisions/`, `checkpoints/`, outlines, digests and
+  `questions.md`. History is never rewritten, and every link to it keeps
+  resolving. Each child is exactly the `devx workstream new` scaffold (stage
+  `prd`, every flag false, no `gate_verdicts:`, no lock), plus:
+  - `expectations.md`: exactly the E-blocks the partition assigns to it,
+    byte-identical, with their E-ids kept. A block assigned to two children
+    is copied into both, and each child's gates must pass it separately.
+  - `from:` pointing at the parent spec, and the parent's whole
+    `blocked_by:`. Dropping an INTERVIEW blocker would let a child pass a
+    Gate 1 its parent could not.
+  - `decisions/<date>-split-from-<parent>.md`, listing:
+    - its E-ids
+    - the PRD IDs those E-ids Cover, which it must now define
+    - the parent PRD's path
+    - the eval targets it must re-author
+    - the phases the parent already shipped, which Gate 4 will want waived
+  - The **template** `prd/agent.md`, not a copy of the parent's. A copied PRD
+    would keep the sibling's UC-/CAP-/FR- items. Gate 1 tolerates those as
+    orphans, and Gate 2 would then demand that the child design them. With
+    Covers copied verbatim, Gate 1 forces the child's PRD to define its own
+    IDs (`covers-id-dangling`) and only its own goals (`goal-uncovered`).
+  - No design, plan or evals. By §4.9, an expectations change invalidates
+    both downstream stages.
+
+  *Who partitions.* The partition comes from a human or a judgment skill,
+  never from the CLI. `--partition` is required. Without it the command
+  refuses, writes nothing, and prints a template listing every E-id with its
+  Covers and Verified-by, for someone to fill in. The CLI only validates the
+  partition. Every E-id must be assigned. Unknown E-ids and children are
+  refused. Every child must get at least one E-id, and there must be at
+  least two children.
+
+  *Combine.* `<into>` survives and **absorbs** `<from>`. The absorbed side is
+  retired exactly as a split parent is, and also gets `superseded_by:
+  <into>`. The survivor goes through the `expectations.md` cascade via
+  `computeRevise`: all flags false, verdicts null, stage back to `prd`. Its
+  `blocked_by` becomes the union of both sides'. The absorbed E-blocks are
+  appended **re-keyed**. Each E-id is renumbered past the highest one the
+  survivor uses, and so is every G-, UC-, CAP- and FR- ID in their Covers.
+  That is necessary, not tidy: Gate 1 never checks for duplicate IDs, so a
+  verbatim append would let the absorbed `G-1` count as coverage of the
+  survivor's unrelated `G-1`. A fresh ID dangles instead, and the survivor
+  fails Gate 1 until someone defines it in the survivor's PRD. Both sides'
+  records carry the ID map, with the absorbed PRD's text for each ID.
+  Expectations with identical text are reported as likely duplicates and
+  never merged, because deciding that two expectations are the same is
+  judgment.
+
+  *Refused, by either operation, with the tree byte-identical.* In each of
+  these states the mechanical answer would be wrong:
+  1. **A closed RED stage**: `evals_red`, `evals_locked`, or any
+     `red_eval_shas`/`red_eval_ids` entry. The lock proves that *these* P0s
+     failed before *this* work was built. If the lock were divided, a child
+     would hold a stamp over evals it does not own. If a child had to
+     re-earn it, a P0 that is already built could never be observed RED.
+     `devx revise <hash> --touched plan` is the only sanctioned way to clear
+     a lock, so a post-RED split goes through it first. Neither operation
+     ever clears, carries or retires a lock.
+  2. **A live emitted dev spec**: one whose `plan:` names either workstream
+     and whose status is anything but `done`, `deleted` or `superseded`.
+     - An in-progress spec holds a claim, a worktree and an open PR whose
+       body cites the old plan. D-12 gives a phase exactly one home, and the
+       CLI cannot pick which child that is.
+     - A ready spec would become claimable against a retired or reopened
+       plan.
+     - Shipped specs stay with their workstream and are **never
+       re-pointed**. Gate 4's shipped-green deferral keys on the `phase:`
+       *number*. Re-point a parent's done phase 2 at a child, and the child's
+       gate would defer whatever the child calls phase 2: a P0 passing that
+       nobody built.
+  3. **An unsettled dependent**: a spec whose `blocked_by` names the
+     retiring plan. `superseded` counts as a settled blocker
+     (`next/gather.ts`), so retiring the plan would make the dependent
+     runnable for work that has not shipped. The fix is to re-point the
+     dependent, and which child it waits on is judgment.
+  4. **Parked human entries** (open and not `gate-concern`) in the retiring
+     side's `questions.md`, or a `questions.md` that does not parse. Once
+     retired, the workstream leaves the health queue, so those entries would
+     go dark. Which child owns each one is judgment. Gate concerns pass
+     through: the children's own gates re-derive them.
+  5. Four more states with no mechanical answer: an outcome in flight, a
+     stage of `done` or `retired`, unreadable frontmatter (D-13), and
+     `engine.docs_layout: project-level`. That layout holds one doc set, so
+     neither operation fits it.
+  6. **Expectations that cannot be carried faithfully**:
+     - a missing file, or one with no E-blocks
+     - a duplicated E-id
+     - an `## E-n` heading the parser would skip, so its block would vanish
+       silently
+     - for combine only, a workstream-local `Verified by: evals/<f>` whose
+       path already exists in the survivor: the survivor's gate would run
+       its own file for the absorbed expectation
+  7. A child slug that is already taken, a decision-record path that is
+     already taken (records are never overwritten), and a workstream asked
+     to absorb itself.
+
+  *Deliberately not done.* Neither operation copies eval artifacts, edits
+  backlog rows, re-points dependents, moves dev specs, carries gate concerns
+  or writes a `blocks` edge:
+  - Children and the survivor re-author their evals at their own RED stage,
+    from the paths in the records.
+  - A retiring spec's PLAN.md row is reported for striking, not struck.
+
+  GRAPH.md is regenerated, warn-and-continue as at claim and mark-done, so
+  `devx graph --check` sees the new specs and their lineage edges.
+
+  *A known adjacent exposure that this does not introduce.* Combine reopens
+  a survivor with shipped phases exactly as `devx revise --touched
+  expectations.md` does. If the re-authored plan then renumbers its phases,
+  it meets the same phase-number keying as rule 2. Combine lists the
+  survivor's shipped phases, and it reaches no state that `revise` cannot
+  already reach.
+
 ## Open questions (non-blocking, tracked)
 
 - ~~**O-1** — Mermaid in tours~~ **CLOSED 2026-08-04 (tur101)** — moot; the
