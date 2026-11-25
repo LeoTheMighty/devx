@@ -618,7 +618,7 @@ projects:
     red:
       command: 'npx vitest run'          # Gate 4 runs only; replaces `test`
       report: jest-json
-      args: '--reporter=json --outputFile={report}'
+      args: '--reporter=default --reporter=json --outputFile={report}'
   - name: wrapped
     path: tools
     test: ./run-one.sh

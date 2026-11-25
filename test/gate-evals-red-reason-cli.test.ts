@@ -297,6 +297,26 @@ describe("refusals and read-only looks are untouched", () => {
     expect(runs()).toEqual([]);
   });
 
+  it("no temp dir for the report → exit 2, nothing run, tree byte-identical", () => {
+    seed("junit", RED("e1"), RED("e2"));
+    const before = snapshot();
+    const saved = process.env.TMPDIR;
+    process.env.TMPDIR = join(probeDir, "no", "such", "dir");
+    let r: ReturnType<typeof gate>["io"];
+    let code: number;
+    try {
+      r = captureIo();
+      code = runGateEvalsCli(["abc123"], {}, { ...r, projectPath: repo.configPath, now: NOW });
+    } finally {
+      if (saved === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = saved;
+    }
+    expect(code).toBe(2);
+    expect(r.stderr()).toContain("could not create a temp directory");
+    expectTreeUnchanged(before);
+    expect(runs()).toEqual([]);
+  });
+
   it("each run gets its own report path, and the temp dir is gone afterwards", () => {
     seed("junit", RED("e1"), RED("e2"));
     expect(gate().code).toBe(0);

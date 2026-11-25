@@ -1032,6 +1032,17 @@ function carryForwardStamps(
   return { ...carried, ...fresh };
 }
 
+/** The gate could not make the temp dir a runner's `red.report` goes to. */
+class RedReportDirError extends Error {
+  constructor(cause: unknown) {
+    super(
+      `could not create a temp directory for a runner's RED report (${
+        cause instanceof Error ? cause.message : String(cause)
+      }) — nothing was run or written`,
+    );
+  }
+}
+
 export function runGateEvalsCli(
   args: string[],
   flags: {
@@ -1359,7 +1370,11 @@ export function runGateEvalsCli(
       dryRun: flags.dryRun === true,
       redReport: {
         allocate: (eId) => {
-          redReportDir.path ??= mkdtempSync(join(tmpdir(), "devx-red-"));
+          try {
+            redReportDir.path ??= mkdtempSync(join(tmpdir(), "devx-red-"));
+          } catch (e) {
+            throw new RedReportDirError(e);
+          }
           redReportSeq += 1;
           return join(redReportDir.path, `${redReportSeq}-${eId.replace(/[^A-Za-z0-9-]/g, "_")}.report`);
         },
@@ -1372,6 +1387,12 @@ export function runGateEvalsCli(
         },
       },
     });
+  } catch (e) {
+    // Only the temp-dir failure is ours to report; anything else keeps
+    // propagating exactly as it did before D-19. Nothing was written yet.
+    if (!(e instanceof RedReportDirError)) throw e;
+    io.err(`devx gate evals: ${e.message}\n`);
+    return 2;
   } finally {
     if (redReportDir.path !== null) {
       rmSync(redReportDir.path, { recursive: true, force: true });

@@ -120,6 +120,31 @@ describe("parseJestJson — real vitest 3 --reporter=json output", () => {
     expect(parseJestJson(report("vitest-json-pass.json"))!.passed).toBe(1);
   });
 
+  it("jest's file-level message beside failed results is its failure text, not an error", () => {
+    const t = parseJestJson(
+      JSON.stringify({
+        testResults: [
+          {
+            name: "/w/sum.test.js",
+            status: "failed",
+            message: "● sum › adds\n\n    expect(received).toBe(expected)",
+            assertionResults: [{ status: "failed", fullName: "sum adds", failureMessages: ["Error: expect(received)"] }],
+          },
+        ],
+      }),
+    )!;
+    expect([t.failed, t.errored]).toEqual([1, 0]);
+  });
+
+  it("jest's 'Test suite failed to run' (no results, a message) is errored", () => {
+    const t = parseJestJson(
+      JSON.stringify({
+        testResults: [{ name: "/w/x.test.js", status: "failed", message: "Test suite failed to run", assertionResults: [] }],
+      }),
+    )!;
+    expect([t.failed, t.errored]).toEqual([0, 1]);
+  });
+
   it("non-JSON and non-jest JSON are not reports", () => {
     expect(parseJestJson("not json")).toBeNull();
     expect(parseJestJson('{"tests": 3}')).toBeNull();
@@ -319,6 +344,24 @@ describe("redContractFrom", () => {
     expect(r.problems.length).toBeGreaterThan(0);
   });
 
+  it("a malformed contract is named in the run's contract line, not shown as plain none", () => {
+    const [runner] = projectRunnersFrom({
+      projects: [{ name: "bad", path: ".", test: "t", red: { report: "tap" } }],
+    });
+    const result = runGateEvals({
+      repoRoot: "/repo",
+      workstreamAbs: "/repo/_devx/workstreams/demo",
+      expectations: validExpectations(),
+      plan: validPlan(),
+      runners: [runner],
+      exec: () => ({ stdout: "", stderr: "", exitCode: 1 }),
+      exists: () => true,
+      dryRun: true,
+    });
+    expect(result.runs[0].contract).toContain("malformed");
+    expect(result.runs[0].contract).toContain("junit");
+  });
+
   it("projectRunnersFrom carries the contract and its problems", () => {
     const runners = projectRunnersFrom({
       projects: [
@@ -461,6 +504,25 @@ describe("runGateEvals — P0 blocks, P1 concerns, on every wrong or unchecked r
     expect(allocated).toBe(0);
     expect(result.runs[0].contract).toBe("junit report");
     expect(result.runs[0].command).toBe("run test/demo.test.mjs --x {report}");
+  });
+
+  it("a declared report with no seam to put it in is never run — no literal {report} file", () => {
+    let ran = 0;
+    const result = runGateEvals({
+      repoRoot: "/repo",
+      workstreamAbs: "/repo/_devx/workstreams/demo",
+      expectations: validExpectations(),
+      plan: validPlan(),
+      runners: [{ name: "cli", path: ".", test: "run", red: { ...JUNIT, args: "--junitxml={report}" } }],
+      exec: () => {
+        ran += 1;
+        return { stdout: "", stderr: "", exitCode: 1 };
+      },
+      exists: () => true,
+    });
+    expect(ran).toBe(0);
+    expect(result.runs[0].redVerdict).toBe("wrong-reason (no result)");
+    expect(result.verdict).toBe("FAIL");
   });
 
   it("exit 0 is still not-red, whatever the report says", () => {

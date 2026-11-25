@@ -275,7 +275,8 @@ export function parseJunit(xml: string): CaseTally | null {
  * --json`), or null when it is not one. Each `assertionResults` entry is a
  * case. A file whose `assertionResults` is empty but which carries a
  * `message` or `status: failed` is a file that failed to load — one errored
- * case, never a failed test (that is the shape vitest gives an import error).
+ * case, never a failed test (that is the shape vitest gives an import error,
+ * and jest a suite that failed to run).
  */
 export function parseJestJson(text: string): CaseTally | null {
   let j: unknown;
@@ -323,11 +324,10 @@ export function parseJestJson(text: string): CaseTally | null {
             : "skipped"; // pending, skipped, todo, disabled
       cases.push({ id, status, message: firstLine((msgs[0] as string | undefined) ?? null) });
     }
-    // A file with tests AND a file-level message failed after collection
-    // (an afterAll that threw, say). Record it as errored, alongside.
-    if (fileMessage !== null) {
-      cases.push({ id: `${fileName} (file)`, status: "errored", message: firstLine(fileMessage) });
-    }
+    // A file-level `message` beside real results is NOT read as an error:
+    // jest folds its assertion-failure text into that field, so counting it
+    // would call every jest failure "could not run". The cases themselves
+    // say whether a test ran and failed.
   }
   return tally(cases);
 }

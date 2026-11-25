@@ -611,7 +611,10 @@ function evaluateExpectation(
     contract?.args ? ` ${contract.args}` : ""
   }`;
   base.command = command;
-  base.contract = describeContract(contract);
+  base.contract =
+    runner.redProblems && runner.redProblems.length > 0
+      ? `none (malformed \`red:\` — ${runner.redProblems.join("; ")})`
+      : describeContract(contract);
 
   if (inputs.dryRun) {
     base.redVerdict = "not-red";
@@ -620,7 +623,16 @@ function evaluateExpectation(
   }
 
   let reportPath: string | null = null;
-  if (contract?.report && inputs.redReport) {
+  if (contract?.report) {
+    if (!inputs.redReport) {
+      // Nowhere to put the result. Running anyway would hand the runner a
+      // literal `{report}` path — a junk file in the repo — and could only
+      // classify "no result", so do not run at all.
+      base.redVerdict = "wrong-reason (no result)";
+      base.gap = `${block.id}: runner '${runner.name}' declares a ${contract.report} report but this caller gave the gate no place to put it`;
+      base.blocking = isP0;
+      return base;
+    }
     reportPath = inputs.redReport.allocate(block.id);
   }
   const executed =

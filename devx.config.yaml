@@ -426,7 +426,7 @@ projects:
     red:
       command: 'npx vitest run'
       report: jest-json
-      args: '--reporter=json --outputFile={report}'
+      args: '--reporter=default --reporter=json --outputFile={report}'
   # The `mobile` and `worker` projects were removed 2026-09-25 with the mobile
   # companion's retirement (v2/07-decisions.md D-16, plan-47b842). `mobile/`
   # never went past a Flutter scaffold and `worker/` was never written, so
