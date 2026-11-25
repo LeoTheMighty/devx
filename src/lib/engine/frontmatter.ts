@@ -176,6 +176,20 @@ export interface EnginePatch {
    * re-spelling, never an edge drop.
    */
   blocked_by?: string[];
+  /** v1 `status:` scalar (D-18: a workstream retired by `devx workstream
+   *  split` / `combine` becomes `superseded`, the settled status the graph
+   *  and the dispatcher already read). Set in place, so the key keeps its
+   *  position for the v1 line-splicing readers. */
+  status?: string;
+  /** `from:` — the parent pointer (D-18: a split child names its parent's
+   *  plan spec). Set as a scalar; an existing value is replaced. */
+  from?: string;
+  /** Hashes to APPEND to `spawned:`, deduplicated, written as a flow list.
+   *  Append, never replace: `spawned:` is lineage, and a writer that
+   *  replaced it would erase children an earlier split recorded. The
+   *  existing value is read in every shape the graph model accepts (bare
+   *  scalar, flow list, block list). */
+  spawnedAppend?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -387,6 +401,41 @@ export function readEngineState(content: string): EngineState {
 }
 
 /**
+ * Every `blocked_by:` entry under BOTH spellings — the canonical key and the
+ * hyphenated `blocked-by:` drift key — verbatim, deduplicated, in order.
+ *
+ * `readEngineState().blockedBy` reads only the canonical key, which is right
+ * for Gate 1 (it is what Gate 1 has always read) and wrong for a WRITER:
+ * `EnginePatch.blocked_by` deletes the hyphen key as a re-spelling, so a
+ * caller that passed only `state.blockedBy` would drop every hyphen-spelled
+ * edge. `devx workstream split|combine` (D-18) carry a retiring spec's
+ * blockers forward and need the whole set. Unparseable → [] (the caller has
+ * already refused on `frontmatterParseError`).
+ */
+export function readBlockedByAllSpellings(content: string): string[] {
+  const split = splitFrontmatter(content);
+  if (!split) return [];
+  let fm: unknown;
+  try {
+    fm = parseDocument(split.fmText).toJS();
+  } catch {
+    return [];
+  }
+  if (!fm || typeof fm !== "object" || Array.isArray(fm)) return [];
+  const out: string[] = [];
+  for (const key of ["blocked_by", "blocked-by"]) {
+    const v = (fm as Record<string, unknown>)[key];
+    const list = Array.isArray(v) ? v : v === undefined || v === null ? [] : [v];
+    for (const x of list) {
+      if (typeof x !== "string" && typeof x !== "number") continue;
+      const s = String(x).trim();
+      if (s !== "" && !out.includes(s)) out.push(s);
+    }
+  }
+  return out;
+}
+
+/**
  * The first YAML error in a spec's frontmatter block, or null when it parses.
  *
  * `readEngineState` deliberately fails SOFT — a half-edited spec must not
@@ -517,6 +566,19 @@ export function applyEnginePatch(content: string, patch: EnginePatch): string {
     // See EnginePatch.blocked_by: the drift key's entries are already folded
     // into the value above, so this is a re-spelling, not a deletion.
     if (doc.hasIn(["blocked-by"])) doc.deleteIn(["blocked-by"]);
+  }
+  if (patch.status !== undefined) doc.setIn(["status"], patch.status);
+  if (patch.from !== undefined) doc.setIn(["from"], patch.from);
+  if (patch.spawnedAppend !== undefined) {
+    const js = doc.toJS() as Record<string, unknown> | null;
+    const raw = js?.spawned;
+    const existing = (Array.isArray(raw) ? raw : raw === undefined || raw === null ? [] : [raw])
+      .filter((x): x is string | number => typeof x === "string" || typeof x === "number")
+      .map((x) => String(x).trim())
+      .filter((x) => x !== "");
+    const merged = [...existing];
+    for (const h of patch.spawnedAppend) if (!merged.includes(h)) merged.push(h);
+    doc.setIn(["spawned"], doc.createNode(merged, { flow: true }));
   }
   if (patch.successor !== undefined) doc.setIn(["successor"], patch.successor);
   if (patch.learnsFrom !== undefined) {

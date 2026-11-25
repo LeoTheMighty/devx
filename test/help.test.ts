@@ -277,7 +277,8 @@ describe("cli303 — devx --help command listing", () => {
                                      (harness-fold-in). Subcommand-driven.
         workstream                   Workstream operations (v2 engine). \`new <slug>\`
                                      scaffolds _devx/workstreams/<slug>/ + the plan
-                                     spec's engine frontmatter.
+                                     spec's engine frontmatter; \`split\` / \`combine\`
+                                     restructure one (D-18).
         ask                          (coming in Phase 2 — epic-devx-concierge-skill)
         doctor [options]             Detect - and with --fix mechanically repair -
                                      repo-state debris that otherwise needs human

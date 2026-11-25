@@ -45,7 +45,11 @@ export interface EBlock {
   measure: string | null;
 }
 
-const E_HEADING_RE = /^##\s+(E-\d+)\s*:\s*(.*)$/;
+/** An E-block heading, exactly as the parser reads one. Exported for
+ *  `devx workstream split|combine` (D-18), which slice blocks out of the file
+ *  verbatim and must agree with this parser about where a block starts — a
+ *  second spelling would let a block the gate reads be one the split drops. */
+export const E_HEADING_RE = /^##\s+(E-\d+)\s*:\s*(.*)$/;
 
 // Field lines: `- **<Label>:** <value>`. The Expectation label carries the
 // `(EARS)` suffix in the template; accept it with or without.

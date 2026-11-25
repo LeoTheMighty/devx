@@ -437,6 +437,8 @@ config sections untouched.
 | `devx next [<hash>]` | pure decision function |
 | `devx workstream new <slug>` | scaffolder (templates → `_devx/workstreams/`) |
 | `devx revise <hash> --touched <file>` | cascade-reset applier |
+| `devx workstream split <hash> --into <a>,<b> --partition <file>` | retire one workstream into fresh children; nothing inherited, refuses rather than guesses (D-18) |
+| `devx workstream combine <into> <from>` | retire `<from>` into `<into>`: re-keyed E-blocks, survivor's gates reopened by the expectations cascade (D-18) |
 | `devx workstream graph <hash>` | plan Execution graph → emission order, `blocked_by`, independent pairs (harness-s5) |
 | `devx outline guard\|check\|init\|commit` | outline protection (hook endpoint, diff scan, human-side helpers) |
 | `devx render lint <hash> <stage>` | human-digest style bar (`docs/RENDER-STYLE.md`); exit 1 on HARD; never a gate input (harness-s4) |
