@@ -17,6 +17,7 @@ import { join } from "node:path";
 import type { Command } from "commander";
 
 import { attachPhase } from "../lib/help.js";
+import { runWorkstreamCombine, runWorkstreamSplit } from "./workstream-lifecycle.js";
 import { type Exec, realExec } from "../lib/exec.js";
 import * as artifacts from "../lib/engine/artifacts.js";
 import type { EngineConfig } from "../lib/engine/config.js";
@@ -867,7 +868,7 @@ export function register(program: Command): void {
   const sub = program
     .command("workstream")
     .description(
-      "Workstream operations (v2 engine). `new <slug>` scaffolds _devx/workstreams/<slug>/ + the plan spec's engine frontmatter.",
+      "Workstream operations (v2 engine). `new <slug>` scaffolds _devx/workstreams/<slug>/ + the plan spec's engine frontmatter; `split` / `combine` restructure one (D-18).",
     );
 
   sub
@@ -911,6 +912,37 @@ export function register(program: Command): void {
         json: cmdOpts.json,
         changed: cmdOpts.changed,
       });
+      if (code !== 0) process.exit(code);
+    });
+
+  sub
+    .command("split")
+    .description(
+      "Retire a workstream into two or more fresh ones (D-18). Each child gets exactly the E-blocks --partition assigns it, byte-identical, and starts at stage prd with every gate open: no verdict, flag or RED lock is inherited. Without --partition it refuses and prints the template to fill. Refuses rather than guesses (closed RED stage, live emitted phases, unsettled dependents, parked questions, …); a refusal writes nothing.",
+    )
+    .argument("<hash>", "plan-spec hash of the workstream to split")
+    .requiredOption("--into <slugs>", "comma-separated child slugs (at least two)")
+    .option("--partition <file>", 'JSON: { "expectations": { "E-1": ["<child>"], "E-2": ["<child>", "<child>"] } }')
+    .option("--dry-run", "plan and print, write nothing")
+    .action((hash: string, cmdOpts: { into: string; partition?: string; dryRun?: boolean }) => {
+      const code = runWorkstreamSplit([hash], {
+        into: cmdOpts.into,
+        partition: cmdOpts.partition,
+        dryRun: cmdOpts.dryRun,
+      });
+      if (code !== 0) process.exit(code);
+    });
+
+  sub
+    .command("combine")
+    .description(
+      "Absorb one workstream into another (D-18). The absorbed side is retired; its E-blocks are appended to the survivor re-keyed past every ID the survivor uses, and the survivor's gates reopen through the expectations.md cascade. Never merges two expectations, never carries a RED lock; refuses rather than guesses, and a refusal writes nothing.",
+    )
+    .argument("<into-hash>", "plan-spec hash of the surviving workstream")
+    .argument("<from-hash>", "plan-spec hash of the workstream it absorbs")
+    .option("--dry-run", "plan and print, write nothing")
+    .action((into: string, from: string, cmdOpts: { dryRun?: boolean }) => {
+      const code = runWorkstreamCombine([into, from], { dryRun: cmdOpts.dryRun });
       if (code !== 0) process.exit(code);
     });
 
