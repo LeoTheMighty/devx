@@ -597,6 +597,65 @@ checker today; the Design stage does. Promoting it to a blocking gate signal
 is a deliberate follow-up, because it changes a verdict every existing
 workstream would be re-scored against.
 
+### `projects[].red` — what Gate 4 can see of why an eval is red (D-19)
+
+Gate 4 (`devx gate evals`) runs each eval through the `projects:` runner whose
+`path` is the longest prefix of the artifact. A nonzero exit used to be the
+whole check. Since D-19 the gate also asks *why* the eval was red, and it can
+only see what the runner declares:
+
+```yaml
+projects:
+  - name: api
+    path: services/api
+    test: poetry run pytest
+    red:
+      report: junit                      # junit | jest-json — the gate COUNTS test cases
+      args: '--junitxml={report}'        # appended after the artifact
+  - name: cli
+    path: .
+    test: 'npm test --silent'            # local CI, unchanged
+    red:
+      command: 'npx vitest run'          # Gate 4 runs only; replaces `test`
+      report: jest-json
+      args: '--reporter=json --outputFile={report}'
+  - name: wrapped
+    path: tools
+    test: ./run-one.sh
+    red:
+      failed_exit: [1]                   # the runner PROMISES: 1 = a test ran and failed
+```
+
+| Key | Meaning |
+|---|---|
+| `report` | `junit` or `jest-json`. The runner writes its result to a fresh path the gate owns, passed as `{report}` in `args` and as `$DEVX_RED_REPORT` in the environment. The gate parses it and counts cases itself. Use `jest-json` for vitest: vitest's JUnit reports a module that failed to import as a `<failure>`. |
+| `args` | Appended after the artifact. `{report}` becomes the shell-quoted result path. Optional when the runner reads `$DEVX_RED_REPORT`. |
+| `failed_exit` | Exit codes (1–125) the runner promises mean "at least one test ran and failed". The gate checks the code; it counts nothing. Pytest's own `1` is not such a promise: a fixture that cannot reach its DB also exits 1. |
+| `command` | Replaces `test` for Gate 4 runs only. For when `test` is a whole-suite chain that cannot run one file. |
+
+How a nonzero exit is read, for every runner:
+
+- **126, 127, 128+n** (not executable, not found or not spawned, killed by a
+  signal): *could not run*, declared contract or not.
+- **`report` declared**: any case that errored before its test body ran (load,
+  collection, setup), no cases at all, every case skipped, or every case passed
+  is a *wrong reason*. So is a missing or unparseable report. Otherwise, with at
+  least one failed case, the eval is *asserted*.
+- **`failed_exit` declared**: an exit outside the list is a *wrong reason*. When
+  both keys are declared, both must hold.
+- **Neither declared**: *reason unchecked*. A malformed `red:` reads the same and
+  the gate names the problem.
+
+A P0 that is wrong-reason or unchecked fails Gate 4. A P1+ is a CONCERNS gap.
+Exit 0 is still not RED. `--dry-run` prints each run's `red_contract`, so an
+undeclared runner shows up before anything runs.
+
+**What the gate still cannot check:** whether the failing test fails *on the
+expectation's missing behaviour*. A `NameError` from a typo inside a test body
+is a failed case, and so is a wrong assertion. Every RED report and the CLI's
+`red_reason` field say this. Reading each failure quote remains the author's
+job at Gate 4.
+
 ---
 
 ## 15b. Overnight loop budgets
