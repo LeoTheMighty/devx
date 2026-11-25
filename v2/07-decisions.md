@@ -479,7 +479,32 @@ file; supersessions are appended, never rewritten.
        its own file for the absorbed expectation
   7. A child slug that is already taken, a decision-record path that is
      already taken (records are never overwritten), and a workstream asked
-     to absorb itself.
+     to absorb itself. That last case includes two plan specs that claim
+     one directory.
+
+  *The contract callers build against* (a router included).
+  - **Exit codes.** `0` means done, or a `--dry-run` that printed its plan.
+    `1` means refused, and nothing was written. `2` means a usage, config
+    or resolution error, or a write that failed after some files had
+    landed; the message then names every file that did.
+  - **A refusal** prints one JSON line on stdout: `{ "refused": true,
+    "refusals": [{ "code", "message", "paths"? }], "template"? }`. It
+    reports every refusal the state has earned, not only the first.
+  - **`code`s are stable identifiers**, the `LifecycleRefusalCode` union in
+    `lifecycle.ts`. A caller branches on the code, never on the prose.
+  - **`partition-required`** carries `template`, which maps every E-id to
+    `[]` and comes with a catalog (name, priority, Covers, Verified by).
+    Fill it in and pass it back as `--partition`.
+  - **Success JSON** has its keys in snake_case. Each split child reports
+    `expectations`, `shared`, `covers_to_define`, `eval_targets`,
+    `shipped_in_parent` and `record`. Combine reports `expectation_map`,
+    `id_map`, `likely_duplicates`, `not_carried` and `eval_targets`. Both
+    report `backlog_rows`, `warnings` and `graph`.
+  - **`eval_targets`** names each carried `Verified by:` that will not
+    resolve as written at its destination. A `local` target (`evals/<f>`)
+    names a file the destination does not have yet. A `foreign` target is a
+    repo path into another workstream's directory, which is how this repo's
+    own story-graph expectations spell theirs.
 
   *Deliberately not done.* Neither operation copies eval artifacts, edits
   backlog rows, re-points dependents, moves dev specs, carries gate concerns

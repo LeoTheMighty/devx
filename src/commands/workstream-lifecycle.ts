@@ -389,6 +389,7 @@ export function runWorkstreamSplit(
     expectationsTemplate: fs.readFile(templateAbs),
     expectationsMin: engine.expectationsMin,
     workstreamsRoot: engine.workstreamsRoot,
+    archiveRoot: engine.archiveRoot,
     today: ymd(now),
     stamp: minuteStamp(now),
   });
@@ -422,7 +423,16 @@ export function runWorkstreamSplit(
       childSpecs.push(made.specPath);
       overlay.writeFile(join(repoRoot, ...c.workstreamRel.split("/"), "expectations.md"), c.expectations);
       overlay.writeFile(join(repoRoot, ...c.recordRel.split("/")), c.record);
-      overlay.writeFile(specAbs, patchSpec(overlay.readFile(specAbs), c.patch, c.logLine));
+      // The scaffold's own first log line credits `devx workstream new`; this
+      // spec was never on disk under that line, so saying who made it is
+      // composing the entry, not rewriting history.
+      const scaffolded = overlay
+        .readFile(specAbs)
+        .replace(
+          `workstream scaffolded by \`devx workstream new ${c.slug}\`.`,
+          "workstream scaffolded by `devx workstream split` (through the `devx workstream new` scaffold).",
+        );
+      overlay.writeFile(specAbs, patchSpec(scaffolded, c.patch, c.logLine));
     }
     const recordAbs = join(repoRoot, ...plan.parent.recordRel.split("/"));
     overlay.mkdirRecursive(dirname(recordAbs));
@@ -498,6 +508,8 @@ export function runWorkstreamCombine(
     absorbed,
     survivorTexts: mdTexts(fs, sWs.workstreamAbs),
     survivorHas: (rel) => fs.exists(join(sWs.workstreamAbs, ...rel.split("/"))),
+    workstreamsRoot: engine.workstreamsRoot,
+    archiveRoot: engine.archiveRoot,
     exists: (rel) => fs.exists(join(repoRoot, ...rel.split("/"))),
     today: ymd(now),
     stamp: minuteStamp(now),
@@ -521,6 +533,7 @@ export function runWorkstreamCombine(
     not_carried: plan.notCarried,
     likely_duplicates: plan.likelyDuplicates,
     survivor_shipped: plan.survivorShipped,
+    eval_targets: plan.evalTargets,
     backlog_rows: liveRows(fs, repoRoot, absorbed.hash),
     warnings: plan.warnings,
   };

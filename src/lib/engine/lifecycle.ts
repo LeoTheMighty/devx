@@ -378,6 +378,7 @@ export interface SplitInput {
   expectationsTemplate: string;
   expectationsMin: number;
   workstreamsRoot: string;
+  archiveRoot: string;
   /** `YYYY-MM-DD` and minute-ISO stamps, from the caller's clock. */
   today: string;
   stamp: string;
@@ -392,8 +393,8 @@ export interface SplitChildPlan {
   sharedIds: string[];
   /** PRD IDs the carried Covers name — the child's PRD must define them. */
   coversToDefine: string[];
-  /** Workstream-local `Verified by:` targets, with the parent's copy. */
-  evalTargets: Array<{ id: string; target: string; parentPath: string }>;
+  /** Carried eval targets that will not simply resolve here. */
+  evalTargets: EvalTarget[];
   /** Carried E-ids whose parent phase already shipped. */
   shippedInParent: Array<{ id: string; phase: number; specs: string[] }>;
   /** Full content of the child's expectations.md. */
@@ -465,6 +466,50 @@ const localEvalTarget = (verifiedBy: string | null): string | null => {
   const t = (verifiedBy ?? "").replace(/`/g, "").trim();
   return t.startsWith(`${EVALS_DIR_REL}/`) ? t : null;
 };
+
+/** A carried expectation's eval target, when it will not simply work where
+ *  it lands. `local` (`evals/<f>`) resolves against whichever workstream
+ *  reads it, so at the destination it names a file that does not exist yet:
+ *  re-author it from `source`, the origin's copy. `foreign` is a repo path
+ *  into some workstream's directory: it keeps resolving to THAT file, which
+ *  the destination does not own — and archiving the owner breaks it. Found
+ *  by running split against this repo, whose story-graph expectations all
+ *  name `_devx/workstreams/story-graph/evals/…` rather than `evals/…`. */
+export interface EvalTarget {
+  id: string;
+  target: string;
+  kind: "local" | "foreign";
+  source: string;
+}
+
+export function classifyEvalTarget(
+  block: EBlock,
+  origin: WorkstreamFacts,
+  docRoots: readonly string[],
+  destRel: string,
+): EvalTarget | null {
+  const local = localEvalTarget(block.verifiedBy);
+  if (local !== null) return { id: block.id, target: local, kind: "local", source: relOf(origin, local) };
+  const t = (block.verifiedBy ?? "").replace(/`/g, "").trim().replace(/^\.\//, "");
+  const inDocRoot = docRoots.some((r) => t.startsWith(`${r}/`));
+  if (!inDocRoot || t.startsWith(`${destRel}/`)) return null;
+  return { id: block.id, target: t, kind: "foreign", source: t };
+}
+
+const renderEvalTarget = (t: EvalTarget): string =>
+  t.kind === "local"
+    ? `- ${t.id}: \`${t.target}\` is not copied. The origin's copy is \`${t.source}\`; re-author it here at RED.`
+    : `- ${t.id}: \`${t.target}\` resolves into another workstream's directory, to a file this one does not own. ` +
+      "Copy it into `evals/` and re-point Verified by before RED; archiving its owner would break it.";
+
+const ID_ORDER = ["G", "UC", "CAP", "FR"];
+/** PRD IDs in reading order: by prefix as the PRD lists them, then number. */
+const sortIds = (ids: string[]): string[] =>
+  [...ids].sort((a, b) => {
+    const [pa, na] = a.split("-");
+    const [pb, nb] = b.split("-");
+    return ID_ORDER.indexOf(pa) - ID_ORDER.indexOf(pb) || Number(na) - Number(nb);
+  });
 
 export function planSplit(input: SplitInput): SplitPlan {
   const { parent: p } = input;
@@ -614,13 +659,13 @@ export function planSplit(input: SplitInput): SplitPlan {
       continue;
     }
 
-    const coversToDefine = [
+    const coversToDefine = sortIds([
       ...new Set(ids.flatMap((id) => parseCoversIds(parsedById.get(id)?.covers ?? ""))),
-    ];
+    ]);
     const sharedIds = ids.filter((id) => (assignment.get(id) ?? []).length > 1);
     const evalTargets = ids.flatMap((id) => {
-      const t = localEvalTarget(parsedById.get(id)?.verifiedBy ?? null);
-      return t === null ? [] : [{ id, target: t, parentPath: relOf(p, t) }];
+      const t = classifyEvalTarget(parsedById.get(id) as EBlock, p, [input.workstreamsRoot, input.archiveRoot], workstreamRel);
+      return t === null ? [] : [t];
     });
     const shippedInParent = ids.flatMap((id) => {
       const s = shipped.get(id);
@@ -742,7 +787,8 @@ function renderChildRecord(a: {
     "",
     "## Before Gate 1",
     "",
-    `- \`prd/agent.md\` is the template. The carried Covers name these IDs, so the PRD must define them, and only these goals: ${a.coversToDefine.join(", ") || "none"}.`,
+    `- \`prd/agent.md\` is the template. Define the IDs the carried Covers name: ${a.coversToDefine.join(", ") || "none"}. ` +
+      "Its goals must be exactly the G- IDs among them; any other goal fails `goal-uncovered`.",
     `  The parent's definitions are in \`${a.parentPrdRel}\`:`,
     ...a.coversToDefine.map((id) => {
       const line = a.prdDefs.get(id);
@@ -756,11 +802,9 @@ function renderChildRecord(a: {
   }
   L.push("", "## Evals", "");
   if (a.evalTargets.length === 0) {
-    L.push("- No carried expectation names a workstream-local eval.");
+    L.push("- Every carried Verified by resolves here as written.");
   } else {
-    for (const t of a.evalTargets) {
-      L.push(`- ${t.id}: \`${t.target}\` is not copied; the parent's copy is \`${t.parentPath}\`. Re-author it at this workstream's RED stage.`);
-    }
+    L.push(...a.evalTargets.map(renderEvalTarget));
   }
   if (a.shippedInParent.length > 0) {
     L.push(
@@ -833,6 +877,8 @@ export interface CombineInput {
   survivorTexts: string[];
   /** True when `<survivor>/<rel>` exists (`evals/<f>` collision probe). */
   survivorHas: (wsRel: string) => boolean;
+  workstreamsRoot: string;
+  archiveRoot: string;
   exists: (rel: string) => boolean;
   today: string;
   stamp: string;
@@ -851,6 +897,8 @@ export interface CombinePlan {
   likelyDuplicates: Array<[string, string]>;
   /** Survivor shipped phases — reported, see D-18's adjacent exposure. */
   survivorShipped: Array<{ hash: string; phase: number | null }>;
+  /** Absorbed eval targets that will not simply resolve in the survivor. */
+  evalTargets: EvalTarget[];
   survivor: {
     expectations: string;
     patch: EnginePatch;
@@ -913,12 +961,20 @@ export function planCombine(input: CombineInput): CombinePlan {
     notCarried: [],
     likelyDuplicates: [],
     survivorShipped: [],
+    evalTargets: [],
     survivor: null,
     absorbed: null,
   };
 
-  if (s.hash === a.hash) {
-    refusals.push({ code: "same-workstream", message: `a workstream cannot absorb itself ('${s.slug}', ${s.hash}).` });
+  if (s.hash === a.hash || s.workstreamRel === a.workstreamRel) {
+    refusals.push({
+      code: "same-workstream",
+      message:
+        s.hash === a.hash
+          ? `a workstream cannot absorb itself ('${s.slug}', ${s.hash}).`
+          : `${s.hash} and ${a.hash} both claim '${s.workstreamRel}'; absorbing one into the other would append that directory's expectations to themselves. Fix the duplicate claim first.`,
+      paths: [s.specRel, a.specRel],
+    });
     return base;
   }
   const layout = layoutRefusal(s, "combine");
@@ -1015,6 +1071,10 @@ export function planCombine(input: CombineInput): CombinePlan {
     return base;
   }
 
+  const evalTargets = aParsed.flatMap((b) => {
+    const t = classifyEvalTarget(b, a, [input.workstreamsRoot, input.archiveRoot], s.workstreamRel);
+    return t === null ? [] : [t];
+  });
   const aDefs = a.prd === null ? [] : extractDefinedIds(a.prd);
   const notCarried = aDefs.map((d) => d.id).filter((id) => !idMap.has(id));
   const likelyDuplicates: Array<[string, string]> = [];
@@ -1073,7 +1133,7 @@ export function planCombine(input: CombineInput): CombinePlan {
     "",
     "## Before Gate 1",
     "",
-    `- Define ${[...idMap.values()].join(", ") || "nothing new"} in \`prd/agent.md\`. Until then Gate 1 FAILs on \`covers-id-dangling\`, which is the point: a fresh ID cannot be mistaken for one of this PRD's own.`,
+    `- Define ${sortIds([...idMap.values()]).join(", ") || "nothing new"} in \`prd/agent.md\`. Until then Gate 1 FAILs on \`covers-id-dangling\`, which is the point: a fresh ID cannot be mistaken for one of this PRD's own.`,
     ...(likelyDuplicates.length > 0
       ? [`- Identical EARS text, never merged automatically: ${likelyDuplicates.map(([o, n]) => `${eMap.get(o)} (was ${o}) ≡ ${n}`).join("; ")}.`]
       : []),
@@ -1084,7 +1144,9 @@ export function planCombine(input: CombineInput): CombinePlan {
       ? [`- blocked_by gained the absorbed side's blockers: ${a.blockedBy.join(", ")}.`]
       : []),
     "",
-    "Evals are not copied: re-author any workstream-local `evals/` target at this workstream's RED stage from the absorbed copy.",
+    "## Evals",
+    "",
+    ...(evalTargets.length > 0 ? evalTargets.map(renderEvalTarget) : ["- Every carried Verified by resolves here as written."]),
     "",
   ].join("\n");
   const aRecord = [
@@ -1106,6 +1168,7 @@ export function planCombine(input: CombineInput): CombinePlan {
     notCarried,
     likelyDuplicates,
     survivorShipped,
+    evalTargets,
     survivor: {
       expectations,
       patch: sPatch,

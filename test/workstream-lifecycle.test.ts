@@ -389,6 +389,22 @@ describe("devx workstream split — what a successful split writes", () => {
     expect(repo.read(auth.record)).toContain("E-1: parent phase 1, shipped by dev111");
   });
 
+  it("lists carried eval targets that will not resolve as written — local and into the parent's dir", () => {
+    seedWs(PARENT, {
+      expectations: parentExpectations().replace("evals/E-6_perf.md", `${wsRel(PARENT)}/evals/E-6_perf.md`),
+    });
+    const out = split("auth,billing").json();
+    const billing = out.children.find((c: any) => c.slug === "billing");
+    expect(billing.eval_targets).toEqual([
+      { id: "E-3", target: "evals/E-3_perf.md", kind: "local", source: `${wsRel(PARENT)}/evals/E-3_perf.md` },
+      { id: "E-6", target: `${wsRel(PARENT)}/evals/E-6_perf.md`, kind: "foreign", source: `${wsRel(PARENT)}/evals/E-6_perf.md` },
+    ]);
+    expect(repo.read(billing.record)).toContain("resolves into another workstream's directory");
+    // The scaffold line names who actually made the spec.
+    expect(repo.read(billing.spec)).toContain("workstream scaffolded by `devx workstream split`");
+    expect(repo.read(billing.spec)).not.toContain("`devx workstream new billing`");
+  });
+
   it("regenerates GRAPH.md with the children and their lineage edges (no regen seam)", () => {
     seedWs(PARENT);
     const io = captureIo();
@@ -671,6 +687,14 @@ describe("devx workstream combine — what a successful combine writes", () => {
     expect(gatePrd(SURVIVOR.hash).json().gate).toBe("PASS");
   });
 
+  it("lists the absorbed side's workstream-local evals with the copy to re-author from", () => {
+    seedPair();
+    const j = combine().json();
+    expect(j.eval_targets).toEqual([
+      { id: "E-3", target: "evals/E-3_beta.md", kind: "local", source: `${wsRel(ABSORBED)}/evals/E-3_beta.md` },
+    ]);
+  });
+
   it("unions the absorbed side's blockers into the survivor", () => {
     seedPair({ absorbed: { extraFm: ["blocked_by: [INTERVIEW-Q7]"] } });
     expect(combine().code).toBe(0);
@@ -697,6 +721,14 @@ describe("devx workstream combine — what a successful combine writes", () => {
 
 const COMBINE_REFUSALS: Array<{ name: string; setup: () => void; into?: string; from?: string; code: string }> = [
   { name: "a workstream absorbing itself", setup: () => seedPair(), from: SURVIVOR.hash, code: "same-workstream" },
+  {
+    name: "two plan specs claiming one directory",
+    setup: () => {
+      seedPair();
+      repo.write(specRel(ABSORBED), specText(ABSORBED).replace(`workstream: ${wsRel(ABSORBED)}`, `workstream: ${wsRel(SURVIVOR)}`));
+    },
+    code: "same-workstream",
+  },
   { name: "a closed RED stage on the survivor", setup: () => seedPair({ survivor: { stage: "executing", flags: { evals_red: true } } }), code: "red-closed" },
   { name: "a closed RED stage on the absorbed side", setup: () => seedPair({ absorbed: { stage: "executing", flags: { evals_red: true } } }), code: "red-closed" },
   { name: "a live phase on the survivor", setup: () => { seedPair(); devSpec("dev222", ["status: ready", `plan: ${wsRel(SURVIVOR)}`]); }, code: "emitted-specs-live" },
