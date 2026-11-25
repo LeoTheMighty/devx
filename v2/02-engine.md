@@ -296,6 +296,14 @@ feature, not an import/wiring error — capturing exact command + exit code +
 failure quote into `evals/RED-report.md` (verdict block). Runner commands come
 from `devx.config.yaml → projects:` (v1's existing per-project CI config — no
 new `eval.command` concept needed). P0 gaps block; P1+ → CONCERNS.
+The gate checks *part* of "the right reason" (D-19): through the runner's
+`projects[].red` contract — a structured report it counts, or exit codes the
+runner promises — it requires that the eval **executed and a test in it
+failed**. It reads load, collection and setup errors, empty selections,
+all-skipped and all-green runs as wrong reasons. Exit 126, 127 and 128+n mean
+"could not run" for every runner. A P0 whose runner declares no contract is
+"reason unchecked" and fails. That the failure is the *missing feature* stays
+the author's judgment: every RED report says so.
 PASS flips `evals_red`, `stage: executing`, and triggers dev-spec emission:
 each plan phase becomes a `dev/dev-<hash>` spec + DEV.md entry via the
 existing pln-primitives (`derive-branch`, `emit-retro-story`, `validate-emit`
