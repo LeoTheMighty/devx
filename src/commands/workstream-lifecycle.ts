@@ -82,57 +82,64 @@ export interface RunLifecycleOpts {
 /** An `EngineFs` that records writes and mkdirs in memory and reads through
  *  to the base for everything it has not been handed. `createWorkstream` runs
  *  against it unchanged, so a child scaffold is planned by the same code that
- *  scaffolds a workstream for real. */
-class OverlayFs implements EngineFs {
-  readonly files = new Map<string, string>();
-  readonly dirs = new Set<string>();
-  constructor(private readonly base: EngineFs) {}
+ *  scaffolds a workstream for real.
+ *
+ *  A plain object of OWN function properties, deliberately not a class:
+ *  every engine entry point merges its seam as `{ ...realEngineFs, ...fs }`,
+ *  and a spread copies own properties only. A class instance's methods live
+ *  on its prototype, so the spread silently fell back to the REAL fs and the
+ *  scaffold wrote to disk mid-plan — caught by the dry-run byte-identity
+ *  test, which is exactly what it is for. */
+interface OverlayFs extends EngineFs {
+  flush(written: string[]): void;
+}
 
-  readFile(p: string): string {
-    const v = this.files.get(p);
-    return v !== undefined ? v : this.base.readFile(p);
-  }
-  writeFile(p: string, c: string): void {
-    // Same ENOENT contract as `realEngineFs.writeFile`: a write into a
-    // directory nobody made is a bug in the plan, not something to paper over.
-    if (!this.exists(dirname(p))) {
-      const e = new Error(`ENOENT: no such directory, write '${p}'`) as NodeJS.ErrnoException;
-      e.code = "ENOENT";
-      throw e;
-    }
-    this.files.set(p, c);
-  }
-  exists(p: string): boolean {
-    return this.files.has(p) || this.dirs.has(p) || this.base.exists(p);
-  }
-  mkdirRecursive(p: string): void {
-    let cur = p;
-    while (!this.base.exists(cur) && !this.dirs.has(cur)) {
-      this.dirs.add(cur);
-      const up = dirname(cur);
-      if (up === cur) break;
-      cur = up;
-    }
-  }
-  readdir(p: string): string[] {
-    const names = new Set<string>(this.base.exists(p) ? this.base.readdir(p) : []);
-    for (const k of [...this.files.keys(), ...this.dirs]) {
-      if (dirname(k) === p) names.add(basename(k));
-    }
-    return [...names];
-  }
-
-  /** Flush to the base. Directories first (shallowest first), then files.
-   *  Returns every absolute path written, in order, for a failure report. */
-  flush(written: string[]): void {
-    for (const d of [...this.dirs].sort((a, b) => a.length - b.length)) {
-      if (!this.base.exists(d)) this.base.mkdirRecursive(d);
-    }
-    for (const [p, c] of this.files) {
-      this.base.writeFile(p, c);
-      written.push(p);
-    }
-  }
+function overlayFs(base: EngineFs): OverlayFs {
+  const files = new Map<string, string>();
+  const dirs = new Set<string>();
+  const exists = (p: string): boolean => files.has(p) || dirs.has(p) || base.exists(p);
+  return {
+    readFile: (p) => {
+      const v = files.get(p);
+      return v !== undefined ? v : base.readFile(p);
+    },
+    writeFile: (p, c) => {
+      // Same ENOENT contract as `realEngineFs.writeFile`: a write into a
+      // directory nobody made is a bug in the plan, not something to paper over.
+      if (!exists(dirname(p))) {
+        const e = new Error(`ENOENT: no such directory, write '${p}'`) as NodeJS.ErrnoException;
+        e.code = "ENOENT";
+        throw e;
+      }
+      files.set(p, c);
+    },
+    exists,
+    mkdirRecursive: (p) => {
+      let cur = p;
+      while (!base.exists(cur) && !dirs.has(cur)) {
+        dirs.add(cur);
+        const up = dirname(cur);
+        if (up === cur) break;
+        cur = up;
+      }
+    },
+    readdir: (p) => {
+      const names = new Set<string>(base.exists(p) ? base.readdir(p) : []);
+      for (const k of [...files.keys(), ...dirs]) if (dirname(k) === p) names.add(basename(k));
+      return [...names];
+    },
+    // Directories first (shallowest first), then files. `written` collects
+    // every path that landed, for a failure report.
+    flush: (written) => {
+      for (const d of [...dirs].sort((a, b) => a.length - b.length)) {
+        if (!base.exists(d)) base.mkdirRecursive(d);
+      }
+      for (const [p, c] of files) {
+        base.writeFile(p, c);
+        written.push(p);
+      }
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -354,7 +361,7 @@ export function runWorkstreamSplit(
   }
 
   const parent = gatherFacts(fs, repoRoot, engine, ws, dependentsFrom(fs, repoRoot, engine));
-  const overlay = new OverlayFs(fs);
+  const overlay = overlayFs(fs);
   const childHashes: string[] = [];
   for (let i = 0; i < into.length; i++) {
     let h = generateHash(overlay, repoRoot);
@@ -518,7 +525,7 @@ export function runWorkstreamCombine(
     warnings: plan.warnings,
   };
 
-  const overlay = new OverlayFs(fs);
+  const overlay = overlayFs(fs);
   try {
     overlay.writeFile(subjectAbs(sWs, { kind: "expectations" }), plan.survivor.expectations);
     overlay.writeFile(sWs.specAbs, patchSpec(sWs.content, plan.survivor.patch, plan.survivor.logLine));
